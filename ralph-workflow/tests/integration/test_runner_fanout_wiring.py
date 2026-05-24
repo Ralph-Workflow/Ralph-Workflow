@@ -176,7 +176,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     monkeypatch.setattr(runner_module, "SubprocessAgentExecutor", _FakeExecutor)
     monkeypatch.setattr(runner_module, "DynamicBindingMcpServerFactory", _FakeMcpFactory)
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
     runner_module.execute_fan_out_sync(
         effect=effect,
@@ -253,7 +253,7 @@ def test_execute_fan_out_sync_persists_worker_manifests_with_distinct_phase_and_
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
     )
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
     runner_module.execute_fan_out_sync(
         effect=effect,
@@ -307,7 +307,7 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
     )
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _boom)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
     recovered = runner_module.execute_fan_out_sync(
         effect=effect,
@@ -375,7 +375,7 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
     )
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
     monkeypatch.setattr(runner_module, "reducer_reduce", _recording_reduce)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
     result = runner_module.execute_fan_out_sync(
         effect=effect,
@@ -434,7 +434,7 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
         "reducer_reduce",
         lambda current_state, *_args, **_kwargs: (current_state, None),
     )
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
     runner_module.execute_fan_out_sync(
         effect=effect,
@@ -496,7 +496,7 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
     )
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
     monkeypatch.setattr(runner_module, "reducer_reduce", _recording_reduce)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
     runner_module.execute_fan_out_sync(
         effect=effect,

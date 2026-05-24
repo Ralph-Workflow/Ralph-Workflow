@@ -4,7 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 31
+UNIT_TEST_SHARD_COUNT = 51
 
 
 def _target_body(name: str) -> list[str]:
@@ -27,6 +27,14 @@ def _target_body(name: str) -> list[str]:
         raise AssertionError(f"target {name!r} not found")
 
     return body
+
+
+def _assert_any_line_contains(body: list[str], needle: str) -> None:
+    assert any(needle in line for line in body)
+
+
+def _assert_all_lines_contain(body: list[str], needles: list[str]) -> None:
+    assert all(all(needle in line for needle in needles) for line in body)
 
 
 def test_verify_target_delegates_to_wrapper_module() -> None:
@@ -68,43 +76,72 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     unit_body = _target_body("test-unit")
     integration_body = _target_body("test-integration")
 
+    expected_unit_markers = [
+        "$(PYTEST_CORE_PATHS)",
+        "$(PYTEST_RUNTIME_PATHS_MCP)",
+        "$(PYTEST_RUNTIME_PATHS_PIPELINE)",
+        "$(PYTEST_RUNTIME_PATHS_RECOVERY)",
+        "$(PYTEST_ROOT_PATHS_A_ACTIVITY)",
+        "$(PYTEST_ROOT_PATHS_A_AGENT)",
+        "$(PYTEST_ROOT_PATHS_A_AGENTS)",
+        "$(PYTEST_ROOT_PATHS_A_AGY)",
+        "$(PYTEST_ROOT_PATHS_A_ANALYSIS)",
+        "$(PYTEST_ROOT_PATHS_A_API)",
+        "$(PYTEST_ROOT_PATHS_A_ARTIFACT)",
+        "$(PYTEST_ROOT_PATHS_A_ASYNCIO)",
+        "$(PYTEST_ROOT_PATHS_A_AUDIT)",
+        "$(PYTEST_ROOT_PATHS_B)",
+        "$(PYTEST_ROOT_PATHS_C_CAPABILITY)",
+        "$(PYTEST_ROOT_PATHS_C_CHECKPOINT)",
+        "$(PYTEST_ROOT_PATHS_C_CHILD_CLASSIFIER)",
+        "$(PYTEST_ROOT_PATHS_C_CLAUDE)",
+        "$(PYTEST_ROOT_PATHS_C_CLI_1)",
+        "$(PYTEST_ROOT_PATHS_C_CLI_2)",
+        "$(PYTEST_ROOT_PATHS_C_CODEX_COMMIT)",
+        "$(PYTEST_ROOT_PATHS_C_COMPLETION)",
+        "$(PYTEST_ROOT_PATHS_C_CONFIG)",
+        "$(PYTEST_ROOT_PATHS_C_CUSTOM_POLICY)",
+        "$(PYTEST_ROOT_PATHS_C_CYCLE)",
+        "$(PYTEST_ROOT_PATHS_D)",
+        "$(PYTEST_ROOT_PATHS_E)",
+        "$(PYTEST_ROOT_PATHS_F)",
+        "$(PYTEST_ROOT_PATHS_G)",
+        "$(PYTEST_ROOT_PATHS_H)",
+        "$(PYTEST_ROOT_PATHS_I)",
+        "$(PYTEST_ROOT_PATHS_J)",
+        "$(PYTEST_ROOT_PATHS_K)",
+        "$(PYTEST_ROOT_PATHS_L)",
+        "$(PYTEST_ROOT_PATHS_M_CONFIG)",
+        "$(PYTEST_ROOT_PATHS_M_ARTIFACTS)",
+        "$(PYTEST_ROOT_PATHS_M_BRIDGE)",
+        "$(PYTEST_ROOT_PATHS_M_CAPABILITY)",
+        "$(PYTEST_ROOT_PATHS_M_CORE)",
+        "$(PYTEST_ROOT_PATHS_M_RUNTIME)",
+        "$(PYTEST_ROOT_PATHS_M_SERVER)",
+        "$(PYTEST_ROOT_PATHS_M_TOOL)",
+        "$(PYTEST_ROOT_PATHS_N)",
+        "$(PYTEST_ROOT_PATHS_O)",
+        "$(PYTEST_ROOT_PATHS_PA_PC)",
+        "$(PYTEST_ROOT_PATHS_PD_PF)",
+        "$(PYTEST_ROOT_PATHS_PG_PI)",
+        "$(PYTEST_ROOT_PATHS_PJ_PL)",
+        "$(PYTEST_ROOT_PATHS_PM_PZ)",
+        "$(PYTEST_ROOT_PATHS_Q_S)",
+        "$(PYTEST_ROOT_PATHS_T_Z)",
+    ]
+
     assert len(unit_body) == UNIT_TEST_SHARD_COUNT
     assert len(integration_body) == 1
-    assert all("python -m ralph.verify_timeout" in line for line in unit_body)
+    _assert_all_lines_contain(
+        unit_body,
+        ["python -m ralph.verify_timeout", "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)"],
+    )
     assert "python -m ralph.verify_timeout" in integration_body[0]
-    assert all("--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in line for line in unit_body)
     assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
-    assert any("$(PYTEST_CORE_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_RUNTIME_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_A)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_B)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_C)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_D)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_E)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_F)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_G)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_H)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_I)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_J)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_K)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_L)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_M_CONFIG)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_M_ARTIFACTS)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_M_BRIDGE)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_M_CAPABILITY)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_M_CORE)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_M_RUNTIME)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_M_SERVER)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_M_TOOL)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_N)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_O)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PA_PC)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PD_PF)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PG_PI)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PJ_PL)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PM_PZ)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_Q_S)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_T_Z)" in line for line in unit_body)
+
+    for marker in expected_unit_markers:
+        _assert_any_line_contains(unit_body, marker)
+
     assert "python -m pytest tests/integration/ -q" in integration_body[0]
 
 

@@ -147,3 +147,38 @@ def test_init_command_skill_failure_does_not_block_init(
     output = stream.getvalue()
     assert "Ralph" in output
     assert "Created" in output
+
+
+def test_init_command_fallback_path_skips_capability_refresh(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The no-op init fallback should avoid repeating baseline capability refresh work."""
+    stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+
+    calls = 0
+
+    def fake_ensure(
+        *_args: object, **_kwargs: object
+    ) -> object:
+        nonlocal calls
+        calls += 1
+        from ralph.skills._capability_state import CapabilityState
+        return CapabilityState()
+
+    from ralph.skills import manager as manager_module
+    monkeypatch.setattr(
+        manager_module.SkillManager,
+        "ensure_baseline_capabilities",
+        fake_ensure,
+    )
+
+    init_module.init_command(template="default")
+    assert calls == 1
+
+    # Second run should hit the fallback path without re-refreshing capabilities.
+    init_module.init_command(template="default")
+    assert calls == 1
+
+    output = stream.getvalue()
+    assert "Ralph Workflow initialized in" in output

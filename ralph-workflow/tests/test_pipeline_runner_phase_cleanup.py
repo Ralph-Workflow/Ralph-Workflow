@@ -252,7 +252,11 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     interrupted_state = MagicMock()
     initial_state.copy_with.return_value = interrupted_state
     saved_states: list[object] = []
-    monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
+
+    def _save_state(saved_state: object, *_args: object, **_kwargs: object) -> None:
+        saved_states.append(saved_state)
+
+    monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
 
     original_singleton = _mgr._pm_state.instance
     _mgr._pm_state.instance = pm

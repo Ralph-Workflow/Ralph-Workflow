@@ -308,7 +308,7 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
     idle_timeout = 1.0
     max_waiting = 2.0
     drain_window = 0.05
-    poll_interval = 0.01
+    poll_interval = 0.25
 
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -322,11 +322,11 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
     clock = FakeClock(start=0.0)
 
     _release = threading.Event()
-    _max_heartbeats = 500  # safety: must fire long before this
+    _max_heartbeats = 20  # safety: must fire long before this
 
     def _oscillating_stdout() -> Iterator[str]:
         # Yield a meaningful heartbeat line every (idle_timeout + 1.0) fake-clock
-        # seconds.  Between yields, busy-wait with time.sleep(0) to release the
+        # seconds. Between yields, busy-wait with time.sleep(0) to release the
         # GIL so the main read-loop thread can advance the FakeClock.
         for heartbeat_num in range(_max_heartbeats):
             target_t = (heartbeat_num + 1) * (idle_timeout + 0.1)

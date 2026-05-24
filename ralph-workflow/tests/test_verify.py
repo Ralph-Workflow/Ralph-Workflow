@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from threading import Barrier
+from threading import Barrier, Event, Lock
 from typing import TYPE_CHECKING
 
+import ralph.verify as verify_module
 from ralph.executor.process import TIMEOUT_EXIT_CODE, ProcessResult
 from ralph.verify import main
 
@@ -80,6 +81,13 @@ _VERIFY_COMMANDS = [
 ]
 
 
+_VERIFY_TIMEOUTS = {
+    _VERIFY_COMMANDS[0]: 30.0,
+    _VERIFY_COMMANDS[1]: 30.0,
+    _VERIFY_COMMANDS[2]: 300.0,
+}
+
+
 _PYTEST_ARGS = _VERIFY_COMMANDS[2][1]
 
 
@@ -136,7 +144,10 @@ def test_main_runs_all_verify_steps_concurrently_when_successful(
     assert exit_code == 0
     assert sorted(call[:2] for call in runner.calls) == sorted(_expected_command_tuples())
     assert len(runner.calls) == 3
-    assert all(call[3] == 30.0 for call in runner.calls)
+    assert {
+        (command, args): timeout
+        for command, args, _cwd, timeout in runner.calls
+    } == _VERIFY_TIMEOUTS
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
 
@@ -182,6 +193,50 @@ def test_main_prints_agent_fix_banner_when_verify_step_fails(
     assert "Fix surfaced issues immediately" in captured.err
     assert "If verification fails, fix the issue and rerun it" in captured.err
     assert "python -m mypy ralph/" in captured.err
+
+
+def test_default_runner_parallelizes_fast_pytest_shards(tmp_path: Path) -> None:
+    active_started = 0
+    lock = Lock()
+    second_shard_started = Event()
+
+    def fake_run_process(
+        command: str,
+        args: Sequence[str] = (),
+        *,
+        options: object | None = None,
+    ) -> ProcessResult:
+        nonlocal active_started
+        del options
+        with lock:
+            active_started += 1
+            shard_index = active_started
+            if shard_index == 2:
+                second_shard_started.set()
+        if shard_index == 1:
+            assert second_shard_started.wait(timeout=0.5), (
+                "expected fast pytest shards to run concurrently"
+            )
+        return ProcessResult(
+            command=(command, *tuple(args)),
+            returncode=0,
+            stdout=f"shard {shard_index}\n",
+            stderr="",
+        )
+
+    original_run_process = verify_module.run_process
+    try:
+        verify_module.run_process = fake_run_process
+        result = verify_module._default_runner(
+            "uv", verify_module._VERIFY_PYTEST_ARGS, cwd=tmp_path, timeout=123
+        )
+    finally:
+        verify_module.run_process = original_run_process
+
+    assert result.returncode == 0
+    assert active_started > 1
+    assert "shard 1" in result.stdout
+    assert "shard 2" in result.stdout
 
 
 def test_main_marks_budget_exhaustion_when_pytest_times_out(

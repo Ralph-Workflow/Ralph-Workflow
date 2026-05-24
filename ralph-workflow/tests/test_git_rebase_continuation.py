@@ -22,6 +22,8 @@ from ralph.git.subprocess_runner import GitRunResult
 if TYPE_CHECKING:
     from pathlib import Path
 
+pytestmark = pytest.mark.subprocess_e2e
+
 _CONTINUE_OK = GitRunResult(
     args=("git", "rebase", "--continue"), returncode=0, stdout="", stderr=""
 )

@@ -923,6 +923,7 @@ def _git_diff(workspace_root: Path) -> str:
     This is correct whether the user commits once per dev cycle or once per
     individual dev iteration within a cycle.
     """
+    repo: Repo | None = None
     try:
         repo = Repo(workspace_root)
         baseline_sha = read_cycle_baseline(workspace_root)
@@ -934,20 +935,34 @@ def _git_diff(workspace_root: Path) -> str:
         return _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
     except Exception:
         return "(no diff available)"
+    finally:
+        close = cast("Callable[[], None] | None", getattr(repo, "close", None))
+        if close is not None:
+            close()
 def _pending_diff(workspace_root: Path) -> str:
     """Return the pending (staged but not committed) diff for a workspace."""
+    repo: Repo | None = None
     try:
         repo = Repo(workspace_root)
         return _sanitize_surrogates(cast("str", repo.git.diff("HEAD"))) or "(no diff available)"
     except Exception:
         return "(no diff available)"
+    finally:
+        close = cast("Callable[[], None] | None", getattr(repo, "close", None))
+        if close is not None:
+            close()
 def _commit_phase_diff(workspace_root: Path) -> str:
     diff = _pending_diff(workspace_root).strip()
+    repo: Repo | None = None
     try:
         repo = Repo(workspace_root)
         untracked = cast("str", repo.git.ls_files("--others", "--exclude-standard")).strip()
     except Exception:
         untracked = ""
+    finally:
+        close = cast("Callable[[], None] | None", getattr(repo, "close", None))
+        if close is not None:
+            close()
     if not untracked:
         return diff or "(no diff available)"
     if diff == "(no diff available)":

@@ -63,7 +63,7 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
     invoked_phases: list[str] = []
 
@@ -122,7 +122,7 @@ def test_default_run_propagates_display_subscriber(
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
     real_init = pd_module.ParallelDisplay.__init__
 
@@ -189,7 +189,7 @@ def test_width_refresher_updates_live_display_context(
     monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
     monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
     stop_called: list[bool] = []
 

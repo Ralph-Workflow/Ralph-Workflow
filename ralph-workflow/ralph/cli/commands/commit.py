@@ -298,9 +298,14 @@ def _commit_drain_agent_supported(registry: AgentRegistry, agent_name: str) -> b
 
 def _working_tree_diff(repo_root: Path) -> str:
     repo = Repo(repo_root)
-    if repo.head.is_valid():
-        return _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
-    return _sanitize_surrogates(cast("str", repo.git.diff("--cached")))
+    try:
+        if repo.head.is_valid():
+            return _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
+        return _sanitize_surrogates(cast("str", repo.git.diff("--cached")))
+    finally:
+        close = cast("typing.Callable[[], None] | None", getattr(repo, "close", None))
+        if close is not None:
+            close()
 
 
 def _commit_submit_artifact_tool_names(

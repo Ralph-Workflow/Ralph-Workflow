@@ -6,7 +6,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from rich.console import Console
@@ -311,7 +311,7 @@ class TestPipelineRunnerLoop:
         result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
-        ckpt_save.assert_called_once_with(state)
+        ckpt_save.assert_called_once_with(state, ANY)
         assert reducer_events == [PipelineEvent.CHECKPOINT_SAVED]
         # Verify success message was printed (among other display calls)
         printed = captured_console.export_text()
@@ -354,7 +354,7 @@ class TestPipelineRunnerLoop:
 
         assert result == INTERRUPT_EXIT_CODE
         state.copy_with.assert_called_once_with(interrupted_by_user=True)
-        ckpt_save.assert_called_once_with(interrupted_state)
+        ckpt_save.assert_called_once_with(interrupted_state, ANY)
 
     def test_run_converts_system_exit_during_effect_execution_into_recovery(
         self, monkeypatch: pytest.MonkeyPatch
@@ -396,7 +396,9 @@ class TestPipelineRunnerLoop:
             lambda *args, **kwargs: args[1],
         )
 
-        def record_saved_state(saved_state: PipelineState) -> None:
+        def record_saved_state(
+            saved_state: PipelineState, *_args: object, **_kwargs: object
+        ) -> None:
             saved_states.append(saved_state)
 
         monkeypatch.setattr(runner_module.ckpt, "save", record_saved_state)
@@ -407,7 +409,9 @@ class TestPipelineRunnerLoop:
         assert saved_states
         recovered_state = saved_states[0]
         assert recovered_state.phase == "planning"
-        assert recovered_state.chain_for_phase("planning").retries == 1
+        recovered_chain = recovered_state.chain_for_phase("planning")
+        assert recovered_chain is not None
+        assert recovered_chain.retries == 1
         assert recovered_state.recovery_epoch == 0
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
@@ -493,7 +497,9 @@ class TestPipelineRunnerLoop:
                 raise result
             return result
 
-        def record_saved_state(saved_state: PipelineState) -> None:
+        def record_saved_state(
+            saved_state: PipelineState, *_args: object, **_kwargs: object
+        ) -> None:
             saved_states.append(saved_state)
 
         monkeypatch.setattr(runner_module, "call_determine_effect_from_policy", determine_effect)
@@ -510,7 +516,9 @@ class TestPipelineRunnerLoop:
         assert saved_states
         recovered_state = saved_states[0]
         assert recovered_state.phase == "planning"
-        assert recovered_state.chain_for_phase("planning").retries == 1
+        recovered_chain = recovered_state.chain_for_phase("planning")
+        assert recovered_chain is not None
+        assert recovered_chain.retries == 1
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
         assert "determine blew up" in recovered_state.last_error
@@ -525,7 +533,9 @@ class TestPipelineRunnerLoop:
         effects = iter([PreparePromptEffect(phase="planning", iteration=0), ExitSuccessEffect()])
         saved_states: list[PipelineState] = []
 
-        def record_saved_state(saved_state: PipelineState) -> None:
+        def record_saved_state(
+            saved_state: PipelineState, *_args: object, **_kwargs: object
+        ) -> None:
             saved_states.append(saved_state)
 
         monkeypatch.setattr(
@@ -551,7 +561,9 @@ class TestPipelineRunnerLoop:
         assert saved_states
         recovered_state = saved_states[0]
         assert recovered_state.phase == "planning"
-        assert recovered_state.chain_for_phase("planning").retries == 1
+        recovered_chain = recovered_state.chain_for_phase("planning")
+        assert recovered_chain is not None
+        assert recovered_chain.retries == 1
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
         assert "prompt blew up" in recovered_state.last_error
@@ -575,7 +587,9 @@ class TestPipelineRunnerLoop:
         )
         saved_states: list[PipelineState] = []
 
-        def record_saved_state(saved_state: PipelineState) -> None:
+        def record_saved_state(
+            saved_state: PipelineState, *_args: object, **_kwargs: object
+        ) -> None:
             saved_states.append(saved_state)
 
         monkeypatch.setattr(
@@ -601,7 +615,9 @@ class TestPipelineRunnerLoop:
         assert saved_states
         recovered_state = saved_states[0]
         assert recovered_state.phase == "development"
-        assert recovered_state.chain_for_phase("development").retries == 1
+        recovered_chain = recovered_state.chain_for_phase("development")
+        assert recovered_chain is not None
+        assert recovered_chain.retries == 1
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
         assert "fanout blew up" in recovered_state.last_error
@@ -685,7 +701,7 @@ class TestPipelineRunnerLoop:
         )
         execute_effect.assert_not_called()
         reducer.assert_not_called()
-        ckpt_save.assert_called_once_with(advanced_state)
+        ckpt_save.assert_called_once_with(advanced_state, ANY)
 
     def test_invoke_agent_effect_materializes_prompt_before_execution(
         self, monkeypatch: pytest.MonkeyPatch

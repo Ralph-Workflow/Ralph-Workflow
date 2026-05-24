@@ -100,7 +100,7 @@ def _patch_common_runner_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         runner_module, "handle_phase", lambda *_args, **_kwargs: [PipelineEvent.AGENT_SUCCESS]
     )
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
 
 def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -359,7 +359,7 @@ def test_handle_inline_effect_notifies_dashboard_subscriber_after_prepare_prompt
             "materialize_prepared_prompt",
             lambda *_args, **_kwargs: None,
         )
-        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
         new_state = runner_module.handle_inline_effect(
             effect=effect,
             state=state,

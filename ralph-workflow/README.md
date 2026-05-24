@@ -28,7 +28,9 @@ ralph --help
 
 ## Baseline capabilities
 
-Ralph Workflow ships DuckDuckGo-backed web search, built-in `visit_url` text retrieval, a 17-skill baseline bundle installed by `ralph --init`, and docs-aware guidance that turns on when `arabold/docs-mcp-server` is reachable on `localhost:6280`. Prompts show a short setup hint when docs-mcp is absent. See [Web Search](docs/mcp/web-search.md), [Web Visit](docs/mcp/web-visit.md), and [MCP Servers](docs/mcp/mcp-servers.md).
+Ralph Workflow ships a built-in local work surface for workspace and file operations, git read/status/diff/log operations, artifact submission, plan-reading, and media-read support. `ralph --init` sets up or repairs the baseline capability bundle so the default workflow is ready on first run and can recover from degraded helpers. `ralph --diagnose` reports capability health before you start work so you can spot missing, unreachable, degraded, or outdated pieces early.
+
+It also ships DuckDuckGo-backed web search, built-in `visit_url` single-page retrieval with SSRF-safe defaults, a 17-skill baseline bundle installed by `ralph --init`, and docs-aware guidance that turns on when `arabold/docs-mcp-server` is reachable on `localhost:6280`. When docs-mcp is absent, prompts show a short setup hint instead of pretending docs lookup is available. See [Web Search](docs/mcp/web-search.md), [Web Visit](docs/mcp/web-visit.md), and [MCP Servers](docs/mcp/mcp-servers.md).
 
 ## Deeper material
 

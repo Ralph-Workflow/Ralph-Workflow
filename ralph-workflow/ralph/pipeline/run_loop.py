@@ -448,6 +448,7 @@ def _handle_keyboard_interrupt(
     _runner_module.save_checkpoint_or_log(
         interrupted_state,
         message="Checkpoint save failed while handling interrupt in phase={phase}: {err}",
+        path=_runner_module._checkpoint_path(loop_ctx.workspace_scope),
     )
     return 130
 

@@ -4,6 +4,7 @@ import builtins
 import importlib
 import runpy
 import sys
+import types
 
 import pytest
 
@@ -46,7 +47,9 @@ def test_ralph_mcp_server_entrypoint_calls_main(monkeypatch: pytest.MonkeyPatch)
     def fake_main() -> None:
         called.append("called")
 
-    monkeypatch.setattr("ralph.mcp.server.runtime.main", fake_main)
+    fake_runtime = types.ModuleType("ralph.mcp.server.runtime")
+    fake_runtime.main = fake_main
+    monkeypatch.setitem(sys.modules, "ralph.mcp.server.runtime", fake_runtime)
 
     _run_entrypoint("ralph.mcp.server.__main__")
 

@@ -141,7 +141,11 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
         raise KeyboardInterrupt
 
     monkeypatch.setattr(runner_module, "determine_effect_from_policy", raise_keyboard_interrupt)
-    monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
+    monkeypatch.setattr(
+        runner_module.ckpt,
+        "save",
+        lambda state, *_args, **_kwargs: saved_states.append(state),
+    )
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     monkeypatch.setattr(
         runner_module, "load_policy_or_die", lambda _path: load_policy(defaults_dir)

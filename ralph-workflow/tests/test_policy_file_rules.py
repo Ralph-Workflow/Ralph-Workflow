@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import functools
 import io
+import re
 import tokenize
 import tomllib
 from pathlib import Path
@@ -142,7 +143,10 @@ def _count_lines(path: Path) -> int:
 
 def _top_level_classes(path: Path) -> list[str]:
     """Return names of top-level classes at module level."""
-    return _scan_class_structure(_read_path(path))
+    src = _read_path(path)
+    if re.search(r"(?m)^class\b", src) is None:
+        return []
+    return _scan_class_structure(src)
 
 
 def _private_ralph_imports(path: Path) -> list[tuple[str, list[str]]]:
@@ -254,6 +258,8 @@ def test_no_type_ignore_or_noqa_in_maintained_source() -> None:
 
 def _nested_classes_in_class_body(path: Path) -> list[tuple[int, str, str]]:
     src = _read_path(path)
+    if re.search(r"(?m)^class\b", src) is None:
+        return []
     results: list[tuple[int, str, str]] = []
     indent_level = 0
     class_stack: list[tuple[str, int]] = []
@@ -296,18 +302,31 @@ def _nested_classes_in_class_body(path: Path) -> list[tuple[int, str, str]]:
     return results
 
 
-def test_no_nested_classes_in_class_body() -> None:
-    """No class definitions nested inside another class body in ralph/ or tests/."""
+def _assert_no_nested_classes_in_paths(paths: tuple[Path, ...]) -> None:
     violations = []
-    for base in (RALPH_DIR, TESTS_DIR):
-        for path in _all_py_files(base):
-            rel = str(path.relative_to(REPO_ROOT))
-            for lineno, outer, inner in _nested_classes_in_class_body(path):
-                violations.append(f"{rel}:{lineno}: {outer}.{inner}")
+    for path in paths:
+        rel = str(path.relative_to(REPO_ROOT))
+        for lineno, outer, inner in _nested_classes_in_class_body(path):
+            violations.append(f"{rel}:{lineno}: {outer}.{inner}")
     assert not violations, (
         f"Nested class definitions found ({len(violations)} violations):\n"
         + "\n".join(sorted(violations))
     )
+
+
+def test_no_nested_classes_in_ralph_sources() -> None:
+    """No class definitions nested inside another class body in ralph/."""
+    _assert_no_nested_classes_in_paths(_all_py_files(RALPH_DIR))
+
+
+def test_no_nested_classes_in_tests_sources() -> None:
+    """No class definitions nested inside another class body in tests/."""
+    _assert_no_nested_classes_in_paths(_all_py_files(TESTS_DIR))
+
+
+def test_no_nested_classes_in_repo_root_standalone_files() -> None:
+    """No class definitions nested inside repo-root standalone files."""
+    _assert_no_nested_classes_in_paths(_REPO_ROOT_STANDALONE_FILES)
 
 
 def test_mypy_ini_has_no_ignore_missing_imports() -> None:

@@ -27,14 +27,17 @@ The server is launched by ``ralph.process.manager`` via the
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import uuid
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loguru import logger
+from pydantic import BaseModel, ConfigDict, create_model
 
 from ralph import __version__
 from ralph.config.mcp_loader import load_mcp_config
@@ -63,7 +66,7 @@ from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine, Mapping, Sequence
+    from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 
     from mcp.server.fastmcp.tools.base import Tool as ToolClass
 
@@ -136,28 +139,30 @@ if TYPE_CHECKING:
             """Construct a FastMCP server instance."""
             ...
 
+    class CreateModelFactoryLike(Protocol):
+        """Protocol for pydantic create_model-like factories."""
+
+        def __call__(self, *args: object, **kwargs: object) -> type[BaseModel]:
+            """Create a BaseModel subclass."""
+            ...
+
+    class ModelConstructLike(Protocol):
+        """Protocol for BaseModel.model_construct-like callables."""
+
+        def __call__(self, *args: object, **kwargs: object) -> ToolBuilderLike:
+            """Construct a tool instance."""
+            ...
+
 
 try:
     _fastmcp_module = import_module("mcp.server.fastmcp")
     _tool_module = import_module("mcp.server.fastmcp.tools.base")
-    _FastMCP = cast("object", _fastmcp_module.FastMCP)
-    _Tool = cast("object", _tool_module.Tool)
 except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback tests
-    _FastMCP = cast("object | None", None)
-    _Tool = cast("object | None", None)
-
-FastMCP = _FastMCP
-Tool = _Tool
-
-_SCHEMA_ANNOTATIONS: dict[str, object] = {
-    "string": str,
-    "boolean": bool,
-    "integer": int,
-    "number": float,
-    "array": list[object],
-    "object": dict[str, object],
-}
-
+    FastMCP = cast("object | None", None)
+    Tool = cast("object | None", None)
+else:
+    FastMCP = cast("object | None", _fastmcp_module.FastMCP)
+    Tool = cast("object | None", _tool_module.Tool)
 
 @dataclass(frozen=True)
 class McpServerExtras:
@@ -169,6 +174,90 @@ class McpServerExtras:
 
 
 FallbackStandaloneServer = _FallbackStandaloneServer
+
+
+def _make_tool_argument_model(
+    *,
+    required: set[str],
+    property_types: Mapping[str, str | None],
+) -> type[BaseModel]:
+    """Create a lightweight argument model for FastMCP tool wrappers."""
+
+    fields: dict[str, tuple[type[object], object]] = {}
+    for name in property_types:
+        fields[name] = (object, ... if name in required else None)
+    create_model_factory = cast("CreateModelFactoryLike", create_model)
+    return create_model_factory(
+        "ToolArgumentModel",
+        __config__=ConfigDict(extra="allow"),
+        **fields,
+    )
+
+
+def _make_tool_metadata(
+    *,
+    required: set[str],
+    property_types: Mapping[str, str | None],
+) -> object:
+    """Create FastMCP-compatible metadata without dynamic Pydantic model generation."""
+
+    arg_model = _make_tool_argument_model(required=required, property_types=property_types)
+
+    def pre_parse_json(data: dict[str, object]) -> dict[str, object]:
+        new_data = data.copy()
+        for data_key, data_value in data.items():
+            schema_type = property_types.get(data_key)
+            if not isinstance(data_value, str) or schema_type == "string":
+                continue
+            try:
+                loaded: object = json.loads(data_value)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(loaded, (str, int, float)):
+                continue
+            new_data[data_key] = loaded
+        return new_data
+
+    async def call_fn_with_arg_validation(
+        fn: ToolHandlerLike,
+        fn_is_async: bool,
+        arguments_to_validate: dict[str, object],
+        arguments_to_pass_directly: dict[str, object] | None,
+    ) -> object:
+        arguments_pre_parsed = pre_parse_json(arguments_to_validate)
+        missing = sorted(required.difference(arguments_pre_parsed))
+        if missing:
+            raise ValueError(f"Missing required tool arguments: {', '.join(missing)}")
+        arguments_parsed_model = arg_model.model_validate(arguments_pre_parsed)
+        arguments_parsed_dict = cast("dict[str, object]", arguments_parsed_model.model_dump())
+        arguments_parsed_dict |= arguments_to_pass_directly or {}
+        result = fn(**arguments_parsed_dict)
+        if fn_is_async:
+            return await cast("Awaitable[object]", result)
+        return result
+
+    def convert_result(result: object) -> object:
+        from mcp.server.fastmcp.utilities.func_metadata import _convert_to_content
+
+        if (
+            isinstance(result, dict)
+            and "content" in result
+            and ("isError" in result or "is_error" in result)
+        ):
+            return result
+        if hasattr(result, "isError") and hasattr(result, "content"):
+            return result
+        return _convert_to_content(result)
+
+    return SimpleNamespace(
+        arg_model=arg_model,
+        output_schema=None,
+        output_model=None,
+        wrap_output=False,
+        pre_parse_json=pre_parse_json,
+        call_fn_with_arg_validation=call_fn_with_arg_validation,
+        convert_result=convert_result,
+    )
 
 
 def build_standalone_http_server(
@@ -230,67 +319,48 @@ def _all_capability_values() -> set[str]:
     return values
 
 
-def _annotation_for_schema(schema: object) -> object:
-    if not isinstance(schema, dict):
-        return object
-
-    schema_type = cast("str | None", schema.get("type"))
-    return _SCHEMA_ANNOTATIONS.get(schema_type or "", object)
-
-
-def _tool_signature_parts(definition: ToolDefinition) -> tuple[list[str], dict[str, object]]:
-    schema = definition.input_schema
-    properties = cast("dict[str, dict[str, object]]", schema.get("properties", {}))
-    required = set(cast("list[str]", schema.get("required", [])))
-    parameter_parts: list[str] = []
-    annotations: dict[str, object] = {"return": object}
-
-    for name, property_schema in properties.items():
-        if not name.isidentifier():
-            raise ValueError(f"Unsupported MCP parameter name: {name}")
-        annotations[name] = _annotation_for_schema(property_schema)
-        if name in required:
-            parameter_parts.append(f"{name}: __annotations__[{name!r}]")
-        else:
-            parameter_parts.append(f"{name}: __annotations__[{name!r}] = None")
-
-    return parameter_parts, annotations
-
-
 def _build_tool_handler(registry: ToolBridge, definition: ToolDefinition) -> ToolHandlerLike:
-    parameter_parts, annotations = _tool_signature_parts(definition)
-
     def _dispatch(**kwargs: object) -> object:
         params = {key: value for key, value in kwargs.items() if value is not None}
         raw_result = registry.dispatch(definition.name, params)
-        to_dict = cast("_ToDict | None", getattr(raw_result, "to_dict", None))
-        return to_dict() if callable(to_dict) else raw_result
+        to_dict = cast("Callable[[], object] | None", getattr(raw_result, "to_dict", None))
+        if callable(to_dict):
+            return to_dict()
+        return raw_result
 
-    params_src = ", ".join(parameter_parts)
-    call_args = ", ".join(f"{name}={name}" for name in annotations if name != "return")
-    signature_src = f"*, {params_src}" if params_src else ""
-    function_src = f"def handler({signature_src}):\n    return _dispatch({call_args})\n"
-    namespace = {
-        "_dispatch": _dispatch,
-        "__annotations__": annotations,
-    }
-    exec(function_src, namespace)
-    handler = cast("ToolHandlerLike", namespace["handler"])
+    def handler(**kwargs: object) -> object:
+        return _dispatch(**kwargs)
+
     handler.__name__ = f"ralph_tool_{definition.name}"
     handler.__doc__ = definition.description
     return handler
 
 
 def _create_tool(registry: ToolBridge, definition: ToolDefinition) -> ToolBuilderLike:
-    tool_factory = cast("ToolFactoryLike", Tool)
-    tool = tool_factory.from_function(
-        _build_tool_handler(registry, definition),
+    schema = definition.input_schema
+    properties = cast("dict[str, dict[str, object]]", schema.get("properties", {}))
+    required = set(cast("list[str]", schema.get("required", [])))
+    property_types = {
+        name: cast("str | None", property_schema.get("type"))
+        for name, property_schema in properties.items()
+    }
+    metadata = _make_tool_metadata(required=required, property_types=property_types)
+    handler = _build_tool_handler(registry, definition)
+    tool_cls = cast("type[BaseModel]", Tool)
+    model_construct = cast("ModelConstructLike", cast("object", tool_cls.model_construct))
+    return model_construct(
+        fn=handler,
         name=definition.name,
+        title=None,
         description=definition.description,
-        structured_output=False,
+        parameters=definition.input_schema,
+        fn_metadata=metadata,
+        is_async=False,
+        context_kwarg=None,
+        annotations=None,
+        icons=None,
+        meta=None,
     )
-    tool.parameters = definition.input_schema
-    return tool
 
 
 def build_fastmcp_server(
@@ -303,6 +373,8 @@ def build_fastmcp_server(
 ) -> FastMcpServerLike:
     """Build a standalone FastMCP server exposing Ralph tools over HTTP."""
     _extras = extras or McpServerExtras()
+    fastmcp_cls = FastMCP
+    tool_cls = Tool
     effective_session = (
         session
         or _extras.session
@@ -335,7 +407,7 @@ def build_fastmcp_server(
         upstream_registry=upstream_reg,
         mcp_config=mcp_cfg,
     )
-    if FastMCP is None or Tool is None:
+    if fastmcp_cls is None or tool_cls is None:
         return cast(
             "FastMcpServerLike",
             FallbackStandaloneServer(host, port, McpServer(effective_session, workspace, registry)),
@@ -344,7 +416,7 @@ def build_fastmcp_server(
         "list[ToolClass]",
         [_create_tool(registry, definition) for definition in registry.list_definitions()],
     )
-    fastmcp_constructor = cast("FastMcpConstructorLike", FastMCP)
+    fastmcp_constructor = cast("FastMcpConstructorLike", fastmcp_cls)
     return fastmcp_constructor(
         "ralph-mcp",
         host=host,

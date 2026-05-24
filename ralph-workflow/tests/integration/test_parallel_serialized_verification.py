@@ -115,7 +115,7 @@ class TestSerializedPostFanoutVerification:
         )
         monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
-        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
         runner_module.execute_fan_out_sync(
             effect=effect,
@@ -181,7 +181,7 @@ class TestSerializedPostFanoutVerification:
         )
         monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
-        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
         runner_module.execute_fan_out_sync(
             effect=effect,
@@ -245,7 +245,7 @@ class TestSerializedPostFanoutVerification:
         )
         monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
-        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
         runner_module.execute_fan_out_sync(
             effect=effect,
@@ -330,7 +330,7 @@ class TestSerializedPostFanoutVerification:
             "ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out_with_failure
         )
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
-        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
         runner_module.execute_fan_out_sync(
             effect=effect,
@@ -407,7 +407,7 @@ class TestSerializedPostFanoutVerification:
         )
         monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
-        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
         final_state = runner_module.execute_fan_out_sync(
             effect=effect,
@@ -493,7 +493,7 @@ class TestSerializedPostFanoutVerification:
         )
         monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
-        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
         runner_module.execute_fan_out_sync(
             effect=effect,

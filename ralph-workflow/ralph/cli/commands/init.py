@@ -133,7 +133,9 @@ def init_command(
         all_results = global_results + local_results
 
         # Show welcome banner if anything was created/regenerated
-        created_or_regenerated = [r for r in all_results if r.action in {"created", "regenerated"}]
+        created_or_regenerated = [
+            r for r in all_results if r.action in {"created", "regenerated"}
+        ]
         if created_or_regenerated:
             registry = _try_load_registry()
             emit_first_run_welcome(
@@ -142,11 +144,10 @@ def init_command(
                 agent_registry=registry,
                 display_context=ctx,
             )
+            _ensure_baseline_capabilities(display_context=ctx)
         else:
             # All skipped - show fallback next steps
             _print_fallback_next_steps(target, display_context=ctx)
-
-        _ensure_baseline_capabilities(display_context=ctx)
 
 
 def _try_load_registry() -> AgentRegistry | None:

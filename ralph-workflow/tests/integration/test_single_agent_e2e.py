@@ -103,7 +103,7 @@ def test_run_completes_in_serial_mode_without_fan_out(
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
-    def _save_state(state: PipelineState) -> None:
+    def _save_state(state: PipelineState, *_args: object, **_kwargs: object) -> None:
         saved_states.append(state)
 
     monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
@@ -187,7 +187,7 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
-    def _save_state(state: PipelineState) -> None:
+    def _save_state(state: PipelineState, *_args: object, **_kwargs: object) -> None:
         saved_states.append(state)
 
     monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
@@ -322,7 +322,10 @@ def test_development_phase_receives_multimodal_handoff_metadata(
         "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
-    monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
+    def _save_state(state: PipelineState, *_args: object, **_kwargs: object) -> None:
+        saved_states.append(state)
+
+    monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
     monkeypatch.setattr(
         runner_module,
         "_execute_effect_with_optional_display",
@@ -459,7 +462,10 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
         "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
-    monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
+    def _save_state(state: PipelineState, *_args: object, **_kwargs: object) -> None:
+        saved_states.append(state)
+
+    monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
     monkeypatch.setattr(
         runner_module,
         "_execute_effect_with_optional_display",
