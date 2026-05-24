@@ -9,7 +9,6 @@ from ralph.mcp.tools import coordination as coordination_module
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     ToolContent,
-    _write_completion_sentinel,
     handle_coordinate,
     handle_declare_complete,
     handle_read_env,
@@ -20,20 +19,19 @@ from tests.coordination_mock_session import MockSession
 from tests.coordination_mock_workspace import MockWorkspace
 
 
-class _SpyWorkspace:
-    def __init__(self) -> None:
-        self.requested_paths: list[str] = []
-
-    def absolute_path(self, path: str) -> str:
-        self.requested_paths.append(path)
-        return f"/abs/{path}"
-
-
 def test_declare_complete_writes_sentinel_with_correct_run_id() -> None:
+    class _SpyWorkspace:
+        def __init__(self) -> None:
+            self.requested_paths: list[str] = []
+
+        def absolute_path(self, path: str) -> str:
+            self.requested_paths.append(path)
+            return f"/abs/{path}"
+
     workspace = _SpyWorkspace()
     seen: list[tuple[str, str]] = []
 
-    _write_completion_sentinel(
+    coordination_module._write_completion_sentinel(
         workspace,
         "run-sentinel-id",
         _write_fn=lambda path, payload: seen.append((path, payload)),

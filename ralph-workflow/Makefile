@@ -2,6 +2,7 @@
 
 PYTEST_WORKERS ?= 8
 PYTEST_WORKERS_C_AH ?= 4
+PYTEST_WORKERS_CONFIG ?= 4
 PYTEST_WORKERS_C_IL ?= 8
 PYTEST_WORKERS_C_MO ?= 4
 PYTEST_WORKERS_C_PZ ?= 4
@@ -130,7 +131,7 @@ install-dev: dev
 test:
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_AGENT_PATHS) -q -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_AGENT_PATHS_2) -q -m "not subprocess_e2e"
-	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_CONFIG_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_CONFIG_PATHS) -q -n $(PYTEST_WORKERS_CONFIG) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_CONTEXT_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_MODE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_PHASE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"

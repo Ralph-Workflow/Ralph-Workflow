@@ -46,6 +46,15 @@ _MCP_FIXTURE_FILES = {
     "test_custom_mcp_roundtrip.py",
 }
 
+RALPH_PY_FILES = tuple(sorted(RALPH_ROOT.rglob("*.py")))
+TEST_PY_FILES = tuple(
+    sorted(
+        py_file
+        for py_file in TESTS_ROOT.rglob("*.py")
+        if not py_file.is_relative_to(RALPH_ROOT)
+    )
+)
+
 
 def _allowed(rel_path: str) -> bool:
     return any(rel_path == path for path, _ in ALLOWLIST)
@@ -54,7 +63,7 @@ def _allowed(rel_path: str) -> bool:
 def test_no_direct_subprocess_calls_outside_process_manager() -> None:
     """Assert no production file under ralph/ uses subprocess directly except manager.py."""
     violations: list[str] = []
-    for py_file in sorted(RALPH_ROOT.rglob("*.py")):
+    for py_file in RALPH_PY_FILES:
         rel = py_file.relative_to(RALPH_ROOT).as_posix()
         if rel == "process/manager/__init__.py" or _allowed(rel):
             continue
@@ -77,7 +86,7 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
     """
     all_patterns = FORBIDDEN_PATTERNS + POSIX_FORBIDDEN
     violations: list[str] = []
-    for py_file in sorted(TESTS_ROOT.rglob("*.py")):
+    for py_file in TEST_PY_FILES:
         if py_file.is_relative_to(RALPH_ROOT):
             continue
         if py_file.name in TESTS_ALLOWLIST:

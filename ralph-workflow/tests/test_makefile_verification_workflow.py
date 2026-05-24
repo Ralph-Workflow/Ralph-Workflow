@@ -75,6 +75,7 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
 
     assert len(unit_body) == UNIT_TEST_SHARD_COUNT
     assert len(integration_body) == 1
+    assert "PYTEST_WORKERS_CONFIG ?= 4" in MAKEFILE_PATH.read_text(encoding="utf-8")
     _assert_all_contains(
         unit_body,
         [
