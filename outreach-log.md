@@ -1,5 +1,20 @@
 # Outreach Log
 
+## 2026-05-24 (Sunday) — Reddit monitoring (11:15 UTC / 13:15 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-24_1315.md`
+- **Scan summary:** **11** directly revalidated in this pass, **5** credible discussion opportunities, **0-1** honest RalphWorkflow mention fits.
+- **Coverage note:** a direct local run of `agents/marketing/reddit_monitor.py` at **2026-05-24 13:14 CEST** returned **cooldown_skip** with **0 scanned / 0 shortlisted**, so this pass treated the built-in path as runtime state rather than telemetry and used fresh web-backed rescue for the actual research layer. Coverage remains **partial visibility**, not full Reddit access.
+- **Current verdict:** still not a zero-opportunity day, but still not a posting day. The strongest current surfaces are production-failure, visible-finish-state, and review-tax discussions rather than honest RalphWorkflow mention targets.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
+  - `r/AIAgentsInAction` — "Everyone says they have AI agents in production. Nobody can clearly answer ‘how do you know it’s actually working’"
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AI_Agents` — "What do you actually look for in the first 60 seconds of a PR review? (Specifically for AI-generated PRs)"
+  - `r/SoftwareEngineering` — "How is your team reviewing all the AI generated code?"
+- **Repeated pains worth tracking:** workflow that looks done without actually finishing, proof of what changed / what passed, review tax, stale state / sync failure, and morning-after visible state.
+- **Self-improving fix surfaced:** keep a hard **cooldown-vs-telemetry split** for forced cron passes, plus a stronger **cross-post / duplicate-thread collapse gate** so workflow-continuity mirrors do not fake shortlist breadth.
+- **Posting note:** No posting attempted. Fail closed while coverage remains partial and honest mention-fit stays at **0-1**.
+
 ## 2026-05-24 (Sunday) — Reddit monitoring (08:09 UTC / 10:09 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-24_1009.md`
 - **Scan summary:** **18** surfaced across fresh web-backed search plus recent carry-forward validation; **5** credible discussion opportunities; **0-1** honest RalphWorkflow mention fits.
@@ -6092,3 +6107,7 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### StackOverflow answer lane
 - **When:** 2026-05-24 12:47:02
 - **Note:** StackOverflow answer lane ran: found 1 questions, scored 1, drafted 0 answers, skipped 1 recent duplicate candidates; refreshed canonical handoff packet from the best existing draft for manual-ready follow-through. Top question: How should I structure autonomous AI agent workflows for production reliability .
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 13:24:32
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T14:18:33.348137.

@@ -1,0 +1,25 @@
+Hi TIMEWELL team,
+
+I read your April 24, 2026 benchmark, “AI Coding Tools Compared [Latest 2026],” and I think there’s one open-source workflow layer your comparison readers would likely want on the radar: Ralph Workflow.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator for developers and technical teams who need a workflow instead of a chat session.
+
+The reason it fits this comparison is that it optimizes for a different finish line than most coding tools: not just an agent claiming it is done, but a reviewable result with finished code, checks, and explicit open decisions after longer unattended runs.
+
+Primary repo (Codeberg):
+https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+GitHub mirror:
+https://github.com/Ralph-Workflow/Ralph-Workflow
+
+A useful evaluator page for the workflow angle:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/when-to-use-ralph-workflow.md
+
+If you update this benchmark or publish a follow-up comparison, I think Ralph Workflow would be a strong fit alongside the current Claude Code / Cursor / Codex / Aider discussion.
+
+If helpful, here is a one-line listing format:
+- Ralph Workflow — free and open-source composable loop framework and AI orchestrator for structured unattended coding workflows
+
+Best,
+Ralph Workflow
+ken@hireaegis.com

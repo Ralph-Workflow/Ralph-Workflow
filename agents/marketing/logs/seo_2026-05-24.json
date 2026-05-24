@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-24T09:54:15.231492",
+  "timestamp": "2026-05-24T13:41:20.495999",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6409,
+      "word_count": 6359,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -128,7 +128,7 @@
     "cursor.com": {
       "status": 200,
       "ok": true,
-      "title": "Cursor: The best way to code with AI"
+      "title": "Cursor: The best coding agent"
     },
     "github.com/features/copilot": {
       "status": 200,

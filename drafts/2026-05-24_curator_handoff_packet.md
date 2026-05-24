@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Execution Handoff Packet
-Generated: 2026-05-24T10:57:00
+Generated: 2026-05-24T13:12:12
 
 ## Why this exists now
 - Prepared curator targets already exist, but the loop kept rediscovering/resetting instead of consolidating the best ready-to-execute items.
@@ -34,15 +34,7 @@ Generated: 2026-05-24T10:57:00
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/03_built-in-claude-code-vs-codex-vs-cursor-vs-github-copilot.md
 - Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
 
-### 3. TIMEWELL benchmark — AI Coding Tools Compared [Latest 2026]
-- Status: prepared
-- Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026
-- Review due: 2026-06-07
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_timewell-benchmark-ai-coding-tools-compared-latest-2026.md
-- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
-
-### 4. nandhakt/awesome-ai-coding-resources
+### 3. nandhakt/awesome-ai-coding-resources
 - Status: prepared
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
 - URL: https://github.com/nandhakt/awesome-ai-coding-resources
@@ -50,12 +42,20 @@ Generated: 2026-05-24T10:57:00
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_nandhakt-awesome-ai-coding-resources.md
 - Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
 
-### 5. TIMEWELL benchmark — AI Coding Tools Compared [Latest 2026]
+### 4. VibeCoders tool directory
 - Status: prepared
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026
-- Review due: 2026-06-07
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_timewell-benchmark-ai-coding-tools-compared-latest-2026.md
+- URL: https://vibecoders.sh/
+- Review due: 2026-06-06
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/02_vibecoders-tool-directory.md
+- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
+
+### 5. VibeFactory directory
+- Status: prepared
+- Priority: HIGH — fresh reset target, not yet prepared elsewhere
+- URL: https://www.vibefactory.dev/directory
+- Review due: 2026-06-06
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/03_vibefactory-directory.md
 - Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
 
 ## Process rule now in force

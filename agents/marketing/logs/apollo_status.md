@@ -1,6 +1,6 @@
 # Apollo.io Channel Status
 
-**Last checked:** 2026-05-22 09:18 (Europe/Berlin)
+**Last checked:** 2026-05-24 13:29 (Europe/Berlin)
 **Status:** ✅ Login Succeeded
 
 ## Blocker State
@@ -8,8 +8,8 @@ None — Apollo is accessible and downstream-ready.
 
 ## Details
 - Cloudflare protection: not triggered
-- Auth endpoint: 200 OK
+- Login attempted: no (session was already authenticated)
 - Final URL: https://app.apollo.io/#/home
 
 ## Notes
-Apollo login completed successfully. Channel is actionable.
+Apollo was already on an authenticated app surface. Channel is actionable — no mailbox verification or login blockers present.

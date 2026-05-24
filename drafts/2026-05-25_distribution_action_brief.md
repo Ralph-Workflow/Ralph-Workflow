@@ -1,18 +1,15 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-24T13:41:20
+Generated: 2026-05-25T09:00:00
 Chosen lane: **measurement_hold**
 
 ## Why this lane
 - The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 10 directory submissions already shipped in the last 24 hours.
-- 17 curator contact attempts already shipped in the last 24 hours.
-- 14 live external marketing action(s) already shipped in the last 6 hours.
+- 3 curator contact attempts already shipped in the last 24 hours.
 - Active repair window says to pause net-new directory submissions until current approval windows mature.
 - Active repair window says to hold another same-family curator-contact burst and use a different lane.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
-- Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
 - Apollo already has an active measurement window until 2026-05-30T00:14:49.075391+02:00, so do not spend this run repackaging the same outbound lane.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
@@ -25,9 +22,7 @@ Chosen lane: **measurement_hold**
 - GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
-- Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.
 - Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
-- A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.

@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-05-24T11:12:30.743106+00:00",
+  "action_type": "marketing_process_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "target": "curator_queue_truthfulness_and_execution_board_refresh",
+  "summary": "Persist normalized curator queue statuses from live outreach logs, infer email sends from recipient-only payloads, refresh dependent handoff/board artifacts, and verify with targeted tests.",
+  "expected_outcome": "Future marketing runs stop re-treating already-contacted curator/publisher targets as fresh prepared work, reducing fake progress and improving lane selection.",
+  "supporting_artifacts": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_outreach_queue_latest.json",
+    "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
+    "/home/mistlight/.openclaw/workspace/drafts/curator_handoff_packet_latest.md"
+  ],
+  "verification": {
+    "command": "python3 -m unittest /home/mistlight/.openclaw/workspace/agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py",
+    "result": "passed",
+    "details": "12 tests passed after adding persistence + recipient-only email inference coverage."
+  },
+  "replacement_condition": "If future live outreach logs still leave stale prepared/waiting states in shared queue artifacts, extend normalization to the remaining queue families and add the corresponding regression tests."
+}

@@ -48,6 +48,23 @@ Body here.
 
 
 class MarketingPathTests(unittest.TestCase):
+    def test_workflow_audit_normalizes_dict_action_payloads(self):
+        payload = {
+            'type': 'stack_overflow_post_cooldown_truthfulness_repair',
+            'status': 'executed',
+            'ok': True,
+            'action': {
+                'lane_command': 'python3 agents/marketing/stackoverflow_answer_lane.py',
+                'lane_result': {'drafts_created': 0},
+            },
+        }
+
+        normalized = marketing_workflow_audit.normalize_marketing_action(payload, Path('/tmp/marketing_stackoverflow_truthfulness.json'))
+
+        self.assertEqual(normalized['chosen_action']['type'], 'stack_overflow_post_cooldown_truthfulness_repair')
+        self.assertEqual(normalized['chosen_action']['title'], 'stack overflow post cooldown truthfulness repair')
+        self.assertTrue(normalized['result']['ok'])
+
     def test_default_outreach_logs_live_at_workspace_root(self):
         expected = Path('/home/mistlight/.openclaw/workspace/outreach-log.md')
         self.assertEqual(distribution_lane_selector.OUTREACH_LOG_PATH, expected)

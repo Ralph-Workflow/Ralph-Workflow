@@ -60,8 +60,47 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', queue_path):
                 rows = distribution_lane_executor._load_curator_queue_rows()
 
+            persisted = json.loads(queue_path.read_text(encoding='utf-8'))
+
         self.assertEqual(rows[0]['status'], 'sent_via_form')
         self.assertEqual(rows[1]['status'], 'waiting_review')
+        self.assertEqual(persisted['targets'][0]['status'], 'sent_via_form')
+        self.assertEqual(persisted['targets'][1]['status'], 'waiting_review')
+
+    def test_curator_queue_rows_infer_email_status_from_recipient_only_payload(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            queue_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'SitePoint — AI Coding Tools Comparison 2026',
+                        'url': 'https://www.sitepoint.com/ai-coding-tools-comparison-2026/',
+                        'status': 'waiting_review',
+                    },
+                ],
+            }), encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_sitepoint_publisher_outreach.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T10:46:12+02:00',
+                    'action_type': 'publisher_email_outreach',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                    'target': 'SitePoint — AI Coding Tools Comparison 2026',
+                    'recipient': 'support@sitepoint.com',
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', queue_path):
+                rows = distribution_lane_executor._load_curator_queue_rows()
+
+        self.assertEqual(rows[0]['status'], 'sent_via_email_fallback')
+        self.assertEqual(rows[0]['last_contact_path'], 'email:support@sitepoint.com')
 
     def test_active_measurement_hold_becomes_follow_through_not_new_hold(self):
         now = datetime(2026, 5, 24, 5, 20, 0)
