@@ -1,5 +1,20 @@
 # Outreach Log
 
+## 2026-05-24 (Sunday) — Reddit monitoring (16:23 UTC / 18:23 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-24_1823.md`
+- **Scan summary:** forced-refresh local monitor returned **12 scanned / 2 shortlisted** with **ok=1 / reddit_ip_blocked=5 / time_budget_exceeded=1**.
+- **Coverage note:** the forced-refresh repair worked — this pass did **not** collapse into `cooldown_skip` — but direct Reddit coverage was still heavily degraded. A same-run web rescue confirmed this was **partial visibility**, not a true low-opportunity evening.
+- **Current verdict:** still **not** a posting pass. Honest RalphWorkflow mention fit stayed low, and the strongest surfaces were still better as research than as distribution.
+- **Fresh discussion surfaces confirmed across the forced run + web rescue:**
+  - `r/AI_Agents` — "6 months running AI agents in production for clients. The \"non-technical\" stuff broke way more than the model"
+  - `r/AIAgentsInAction` — "Everyone says they have AI agents in production. Nobody can clearly answer ‘how do you know it’s actually working’"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+  - `r/AI_Agents` / mirrors — "What do you actually look for in the first 60 seconds of a PR review? (Specifically for AI-generated PRs)"
+  - `r/AI_Agents` — "How are you managing multiple coding agents in parallel without things getting messy?"
+- **Repeated pains worth tracking:** production failure, review tax, visible finish state, proof-of-run, and parallel shared-state drift.
+- **Self-improving lesson:** the new forced-refresh path is now working correctly, so the next retrieval bottleneck is broader provider blocking. Keep failing closed on posting when direct coverage collapses below a healthy multi-family sample, and keep collapsing mirrored PR-evidence threads across adjacent communities before counting breadth.
+- **Posting note:** No posting attempted. Fail closed while coverage remains partial.
+
 ## 2026-05-24 (Sunday) — Reddit monitor duplicate-cluster + forced-refresh repair (15:09 UTC / 17:09 CEST)
 - **What I executed:** patched `agents/marketing/reddit_monitor.py` to collapse mirrored **review-artifact / PR-evidence** thread clusters in addition to the existing workflow-continuity collapse, and patched `agents/marketing/marketing_loop_runner.py` so forced cron evaluation always calls `reddit_monitor.py --force-refresh`.
 - **Why this action:** recent monitor passes kept reporting the same adjacent-community PR-evidence prompts as separate opportunities, which flattered shortlist breadth. The loop also still allowed runner-level cooldown reuse to mask fresh research intent.
@@ -6258,4 +6273,8 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-24 18:02:36
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T18:44:33.494765.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 18:19:39
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T18:44:33.494765.

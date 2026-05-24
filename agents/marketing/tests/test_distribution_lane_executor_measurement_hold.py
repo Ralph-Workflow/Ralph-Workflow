@@ -311,6 +311,9 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('canonical codeberg-first execution packet', execution.summary.lower())
         self.assertIn('ctxt.dev / Signum', artifact_text)
         self.assertIn('## Execute these first', artifact_text)
+        self.assertIn('Ready-to-send email draft', artifact_text)
+        self.assertIn('Short contact-form version', artifact_text)
+        self.assertIn('plan → build → verify loop', artifact_text)
 
     def test_measurement_hold_refresh_skips_recently_contacted_publishers(self):
         now = datetime(2026, 5, 24, 8, 33, 0)

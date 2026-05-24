@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-24T17:47:16.331894",
+  "timestamp": "2026-05-24T18:48:35.242829",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "Autonomous coding workflow CLI \u2014 Ralph Workflow",
-      "meta_description": "Free open-source AI agent orchestration CLI for unattended coding: plan, build, test, and fix one backlog task overnight, then review it in the morning.",
+      "title": "Vendor-neutral AI coding workflow CLI \u2014 Ralph Workflow",
+      "meta_description": "Free open-source vendor-neutral AI coding workflow orchestration CLI with policy-driven structure and checkpoint/resume for unattended coding: plan, build, test, verify, and resume one backlog task overnight with Claude Code, Codex CLI, or OpenCode.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Free open-source AI agent orchestration CLI for unattended coding: plan, build, test, and fix one backlog task overnight, then review it in the morning.",
-        "title": "Autonomous coding workflow CLI",
+        "description": "Free open-source vendor-neutral AI coding workflow orchestration CLI with policy-driven structure and checkpoint/resume for unattended coding: plan, build, test, verify, and resume one backlog task overnight with Claude Code, Codex CLI, or OpenCode.",
+        "title": "Vendor-neutral AI coding workflow CLI",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6359,
+      "word_count": 6415,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -56,9 +56,15 @@
     }
   },
   "onpage": {
-    "score": 100,
+    "score": 90,
     "grade": "A",
-    "issues": [],
+    "issues": [
+      {
+        "severity": "warning",
+        "item": "Meta description too long",
+        "detail": "Keep between 150-160 characters"
+      }
+    ],
     "recommendations": []
   },
   "ranks": {

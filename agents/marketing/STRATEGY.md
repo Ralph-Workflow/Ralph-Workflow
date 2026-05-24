@@ -416,7 +416,7 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 ## Weekly Review — 2026-05-24
 
 ### SEO Health
-**SEO Score:** 100/100 (A) | Ranked keywords: 0 | Backlinks: 0 | DR: None
+**SEO Score:** 90/100 (A) | Ranked keywords: 0 | Backlinks: 2 | DR: None
 **Trends:** ranks 0.0
 
 ### Content Performance
@@ -430,8 +430,6 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 ### Weekly Decisions
 - **[HIGH]** MARK AS FAILING: Current content/distribution tactics are not driving repo adoption. — Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)
 - **[INFO]** Do not infer a winning owned-content format yet. — Current content-performance logs show zero measurable views, so format recommendations would be guesswork.
-- **[HIGH]** Build backlinks — submit to directories and pursue guest post opportunities. — Zero backlinks detected. Link acquisition is the highest-leverage SEO activity right now.
-- **[MEDIUM]** Build backlinks: submit to directories, guest post, earn citations — Identified by daily SEO analysis as a top priority.
 - **[MEDIUM]** Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move. — Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes.
 - **[MEDIUM]** Ship comparison-led backlink outreach packets whenever the curator queue is already full. — A follow-through note is not enough when the queue is saturated; the loop needs a fresh executable distribution asset tied to existing comparison pages.
 - **[MEDIUM]** Leverage competitor comparison pages in content and outreach. — Monitoring 8 competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked.
@@ -439,4 +437,3 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 
 ### Priority Actions (from SEO analysis)
 - Create content targeting: Claude Code unattended, AI agent workflow composer
-- Build backlinks: submit to directories, guest post, earn citations

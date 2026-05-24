@@ -262,7 +262,38 @@ class PrimaryRepoFlatTruthfulnessTests(unittest.TestCase):
             text = artifact.read_text(encoding='utf-8')
             self.assertIn('marketing_workflow_audit_latest.json', text)
             self.assertIn('email: contact@axme.ai', text)
+            self.assertIn('## Angle to lead with', text)
+            self.assertIn('Ready-to-send email draft', text)
+            self.assertIn('Short contact-form version', text)
+            self.assertIn('plan → build → verify loop', text)
+            self.assertIn('https://codeberg.org/RalphWorkflow/Ralph-Workflow', text)
             self.assertNotIn('primary_repo_flat_repair.md', text)
+
+    def test_primary_repo_flat_actionable_findings_include_public_contact_paths(self):
+        now = datetime(2026, 5, 24, 18, 15, 0)
+        payload = {
+            'targets': [
+                {
+                    'target': 'ctxt.dev / Signum',
+                    'channels': [
+                        {'type': 'website', 'value': 'https://ctxt.dev/contact', 'label': 'common contact/about path'},
+                        {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
+                    ],
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            discovery = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery.write_text(json.dumps(payload), encoding='utf-8')
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery):
+                findings = distribution_lane_executor._current_primary_repo_flat_actionable_findings(now)
+
+        self.assertEqual([row['target'] for row in findings], ['ctxt.dev / Signum'])
 
 
 class DistributionLaneSelectorTests(unittest.TestCase):
@@ -300,6 +331,39 @@ class DistributionLaneSelectorTests(unittest.TestCase):
                 count = distribution_lane_selector._recent_live_action_family_count(now, hours=24, family='curator_outreach')
 
             self.assertEqual(count, 0)
+
+    def test_primary_repo_flat_targets_waiting_include_public_contact_paths(self):
+        payload = {
+            'targets': [
+                {
+                    'target': 'ctxt.dev / Signum',
+                    'channels': [
+                        {'type': 'website', 'value': 'https://ctxt.dev/contact', 'label': 'common contact/about path'},
+                        {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
+                    ],
+                },
+                {
+                    'target': 'No Contact Yet',
+                    'channels': [
+                        {'type': 'website', 'value': 'https://example.com/blog', 'label': 'website'},
+                    ],
+                },
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            discovery = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery.write_text(json.dumps(payload), encoding='utf-8')
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery):
+                waiting = distribution_lane_selector._primary_repo_flat_contact_targets_waiting_for_execution()
+                non_exec = distribution_lane_selector._primary_repo_flat_non_executable_targets_waiting_for_execution()
+
+        self.assertEqual(waiting, ['ctxt.dev / Signum'])
+        self.assertEqual(non_exec, ['No Contact Yet'])
 
     def test_recent_executed_action_type_counts_repo_conversion_quickstart_patch_as_proof_asset(self):
         now = datetime(2026, 5, 24, 1, 47, 0)
