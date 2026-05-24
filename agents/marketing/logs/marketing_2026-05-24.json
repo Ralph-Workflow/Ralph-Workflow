@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-24T01:23:46.711982",
+  "timestamp": "2026-05-24T02:53:19.967943",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -63,11 +63,6 @@
       "is_failing_signal": true
     },
     {
-      "priority": "high",
-      "action": "Fix on-page SEO issues before investing in new content.",
-      "reason": "SEO score is 70/100 \u2014 technical foundation needs attention."
-    },
-    {
       "priority": "info",
       "action": "Do not infer a winning owned-content format yet.",
       "reason": "Current content-performance logs show zero measurable views, so format recommendations would be guesswork."
@@ -79,7 +74,7 @@
     },
     {
       "priority": "medium",
-      "action": "Fix top on-page SEO issues (current score: 70/100)",
+      "action": "Build backlinks: submit to directories, guest post, earn citations",
       "reason": "Identified by daily SEO analysis as a top priority."
     },
     {
@@ -112,7 +107,7 @@
     "producthunt": "Protected flow / manual launch required"
   },
   "seo": {
-    "score": "70/100 (C)",
+    "score": "100/100 (A)",
     "ranked_keywords": 0,
     "backlinks_approx": 0,
     "domain_rating": null,
@@ -124,8 +119,7 @@
       "prev_avg_bl": 0.0
     },
     "priority_actions": [
-      "Fix top on-page SEO issues (current score: 70/100)",
-      "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+      "Create content targeting: unattended coding agent, spec-driven AI agent, AI coding workflow automation",
       "Build backlinks: submit to directories, guest post, earn citations"
     ],
     "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-05-24.md",
@@ -202,7 +196,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-23T23:54:23.403148",
+    "timestamp": "2026-05-24T02:52:17.648916",
     "metrics": [
       {
         "platform": "GitHub",
@@ -414,16 +408,18 @@
     "reason": "Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
-      "16 directory submissions already shipped in the last 24 hours.",
+      "17 directory submissions already shipped in the last 24 hours.",
       "46 curator contact attempts already shipped in the last 24 hours.",
+      "Active repair window says to pause net-new directory submissions until current approval windows mature.",
+      "Active repair window says to hold another same-family curator-contact burst and use a different lane.",
       "Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
       "Apollo already has an active measurement window until 2026-05-30T00:14:49.075391+02:00, so do not spend this run repackaging the same outbound lane.",
-      "8 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "11 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "15 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
-      "8 prepared curator targets still need a canonical execution handoff packet.",
-      "Manual-contact-only curator targets are still waiting for execution (vivy-yi/awesome-agent-orchestration), so the loop should use the existing contact-discovery asset before inventing new reset work.",
+      "11 prepared curator targets still need a canonical execution handoff packet.",
+      "Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.",
       "The manual-contact execution packet is already current for the waiting targets and was already delivered in this review window, so selecting it again would be fake progress.",
       "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
       "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",

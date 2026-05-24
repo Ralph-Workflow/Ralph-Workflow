@@ -14,6 +14,10 @@ class BacklinkStatusTests(unittest.TestCase):
             backlink_status.SUBMISSIONS["ToolWise"]["listing_url"],
             "https://toolwise.ai/tools/ralph-workflow",
         )
+        self.assertEqual(
+            backlink_status.SUBMISSIONS["Claudetory"]["listing_url"],
+            "https://claudetory.com/tools/ralph-workflow",
+        )
 
     def test_check_listing_status_preserves_status_note(self):
         result = backlink_status.check_listing_status(
@@ -81,6 +85,9 @@ class BacklinkStatusTests(unittest.TestCase):
         self.assertTrue(quality["has_product_marker"])
         self.assertEqual(quality["negative_markers"], [])
         self.assertEqual(quality["transient_markers"], [])
+
+    def test_search_queries_include_claudetory_after_submission(self):
+        self.assertIn("ralph workflow claudetory", backlink_status.SEARCH_QUERIES)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,21 @@
+Hi Shuwei,
+
+I’m reaching out with a suggestion for awesome-terminals-ai.
+
+Ralph Workflow looks like a strong fit for the AI Coding Assistants & Agents / Provider-Native Coding CLIs part of the list. It’s a free and open-source workflow layer for autonomous coding that runs with the agent CLIs developers already use, with a strong bias toward finished, tested code that is ready to review instead of another long transcript.
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Suggested entry:
+- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free and open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary
+
+Why it fits your list:
+- terminal-first developer workflow
+- strong Claude Code / Codex / multi-agent adjacency
+- open-source and practical for repo-native coding work
+
+If a shorter list-ready blurb is easier for your format, I can send that next.
+
+Best,
+Ralph Workflow

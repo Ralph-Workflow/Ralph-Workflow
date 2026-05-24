@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-24T01:23:46.756333",
+  "timestamp": "2026-05-24T02:53:20.011330",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "Composable loop framework for autonomous coding \u2014 Ralph Workflow",
-      "meta_description": "Ralph Workflow is the operating system for autonomous coding: a free open-source composable loop framework for unattended coding pipelines, multi-agent orchestration, and reviewable morning-after code handoffs.",
+      "title": "Autonomous coding workflow CLI \u2014 Ralph Workflow",
+      "meta_description": "Free open-source AI agent orchestration CLI for unattended coding: plan, build, test, and fix one backlog task overnight, then review it in the morning.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Ralph Workflow is the operating system for autonomous coding: a free open-source composable loop framework for unattended coding pipelines, multi-agent orchestration, and reviewable morning-after code handoffs.",
-        "title": "Composable loop framework for autonomous coding",
+        "description": "Free open-source AI agent orchestration CLI for unattended coding: plan, build, test, and fix one backlog task overnight, then review it in the morning.",
+        "title": "Autonomous coding workflow CLI",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6239,
+      "word_count": 6401,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -56,22 +56,10 @@
     }
   },
   "onpage": {
-    "score": 70,
-    "grade": "C",
-    "issues": [
-      {
-        "severity": "error",
-        "item": "Title too long"
-      },
-      {
-        "severity": "warning",
-        "item": "Meta description too long",
-        "detail": "Keep between 150-160 characters"
-      }
-    ],
-    "recommendations": [
-      "Keep title under 60 characters (current: 64 chars)"
-    ]
+    "score": 100,
+    "grade": "A",
+    "issues": [],
+    "recommendations": []
   },
   "ranks": {
     "unattended coding agent": {
@@ -125,7 +113,7 @@
   },
   "backlinks": {
     "count_approx": 0,
-    "error": "HTTP Error 429: Too Many Requests"
+    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data"
   },
   "domain_rating": {
     "dr": null,
@@ -161,7 +149,6 @@
   "content_gap": {
     "gaps": [
       "unattended coding agent",
-      "AI agent orchestration CLI",
       "spec-driven AI agent",
       "AI coding workflow automation",
       "Claude Code automation",
@@ -169,17 +156,19 @@
       "AI agent workflow composer"
     ],
     "covered": [
+      "AI agent orchestration CLI",
       "Ralph Workflow"
     ],
-    "coverage_pct": 12.5
+    "coverage_pct": 25.0
   },
   "serp": {
-    "error": "HTTP Error 429: Too Many Requests",
+    "position": null,
+    "people_also_ask": false,
+    "related_searches": false,
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
-    "Fix top on-page SEO issues (current score: 70/100)",
-    "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+    "Create content targeting: unattended coding agent, spec-driven AI agent, AI coding workflow automation",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]
 }

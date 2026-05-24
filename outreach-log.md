@@ -1,5 +1,15 @@
 # Outreach Log
 
+## 2026-05-24 (Sunday) — Ralph-Site homepage conversion repair deployed (00:33 UTC / 02:33 CEST)
+- **What I executed:** shipped the already-prepared **Ralph-Site homepage** upgrade live at `https://ralphworkflow.com`, including a sharper title/description (**"Autonomous coding workflow CLI"**) and a new search-intent proof section that explicitly answers: **"Looking for an unattended coding agent, a spec-driven AI agent, or an AI agent orchestration CLI?"**. The section keeps **Codeberg** as the primary evaluator path and GitHub as the mirror.
+- **Verification:** `bundle exec rspec spec/requests/pages_spec.rb spec/requests/seo_spec.rb spec/system/home_page_spec.rb` passed (**135 examples, 0 failures**) after aligning the homepage request spec with the intentional new positioning. `bundle exec cap production deploy:check` passed, `bundle exec cap production deploy` succeeded, and a live fetch of `https://ralphworkflow.com` now returns the title **"Autonomous coding workflow CLI — Ralph Workflow"** plus the new search-intent section text.
+- **Why this action:** this is **EXECUTED / CONVERSION_REPAIR**. The freshest audit still names `distribution_and_message_to_primary_repo_conversion` as the bottleneck, while the last 24 hours already saturated same-family directory submissions and curator emails. This was the strongest executable different-family move available right now: repair the live site layer so qualified traffic understands the exact job faster and reaches the **Codeberg-first** evaluator path more cleanly.
+- **Shared findings reused:** `MARKETING_WORKFLOW_PRINCIPLES.md`, `FOUR_MARKETING_QUESTIONS.md`, `ADOPTION_FUNNEL_NEXT.md`, `adoption_metrics_latest.md`, `market_intelligence_latest.json`, and `marketing_workflow_audit_latest.json`.
+- **Artifacts:** `agents/marketing/logs/marketing_2026-05-24_homepage_search_intent_deploy.json`, Ralph-Site commit `258f708` (`Sharpen homepage search-intent proof path`)
+- **Expected outcome:** better search-intent match on the live homepage, a clearer Codeberg-first evaluator path, and eventually more qualified repo inspection/adoption behavior from visitors already reaching the site.
+- **Measurement window:** watch for evidence through **2026-06-07**; if Codeberg is still flat by then, treat this as helpful but insufficient and move the next fresh run to another demand-capture or third-party citation lane rather than another homepage-only pass.
+- **Type:** **EXECUTED / CONVERSION_REPAIR**
+
 ## 2026-05-23 (Saturday) — Reddit monitoring (19:31 UTC / 21:31 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-23_2131.md`
 - **Scan summary:** **4** same-day rescue-backed discussion opportunities re-validated; **0-1** honest RalphWorkflow mention fits.

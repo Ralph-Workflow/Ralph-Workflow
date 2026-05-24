@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T22:05:05.448000+00:00",
+  "generated_at": "2026-05-24T01:19:51.137264+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -230,85 +230,122 @@
       ],
       "listing_live": false,
       "status_note": "Submitted 2026-05-23 via headless browser; HTTP 200 success; pending review."
+    },
+    "Claudetory": {
+      "directory": "Claudetory",
+      "listing_url": "https://claudetory.com/tools/ralph-workflow",
+      "submit_url": "https://claudetory.com/submit",
+      "check_results": [
+        {
+          "url": "https://claudetory.com/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submitted 2026-05-24 via the public /api/submit-resource endpoint; treat as pending review until the public tool page resolves."
     }
   },
   "google_index": {
     "site:codeberg.org RalphWorkflow": {
       "query": "site:codeberg.org RalphWorkflow",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "site:github.com RalphWorkflow Ralph Workflow": {
       "query": "site:github.com RalphWorkflow Ralph Workflow",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralphworkflow.com": {
       "query": "ralphworkflow.com",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": true,
+      "found_urls": [
+        "ralphworkflow.com"
+      ],
+      "status": 200
     },
     "ralph workflow aitoolsindex": {
       "query": "ralph workflow aitoolsindex",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow toolshelf": {
       "query": "ralph workflow toolshelf",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow saashub": {
       "query": "ralph workflow saashub",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow toolwise": {
       "query": "ralph workflow toolwise",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow indie stack": {
       "query": "ralph workflow indie stack",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow listyourtool": {
       "query": "ralph workflow listyourtool",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow nav-ai": {
       "query": "ralph workflow nav-ai",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow openagents": {
       "query": "ralph workflow openagents",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow toolscout": {
       "query": "ralph workflow toolscout",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow vbwebtools": {
       "query": "ralph workflow vbwebtools",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow the toolify": {
       "query": "ralph workflow the toolify",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow claudetory": {
+      "query": "ralph workflow claudetory",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     }
   },
   "summary": {
     "directories_with_live_listings": 2,
-    "queries_indexed": 0,
-    "queries_unavailable": 14,
-    "total_queries": 14,
+    "queries_indexed": 1,
+    "queries_unavailable": 0,
+    "total_queries": 15,
     "check_urls": [
       "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
       "https://github.com/Ralph-Workflow/Ralph-Workflow",

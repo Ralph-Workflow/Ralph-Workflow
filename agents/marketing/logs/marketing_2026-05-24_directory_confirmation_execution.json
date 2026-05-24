@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-24T03:19:50+02:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "directory_confirmation_execution",
+    "channel": "directory_confirmation",
+    "title": "Distribution lane execution: directory_confirmation",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_directory_confirmation_execution.md"
+  },
+  "why_this_action": {
+    "summary": "Refreshed live directory-listing and backlink evidence after the latest submission burst so the loop can reuse real approvals (2 live listing(s)) instead of stacking more low-intent submissions.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "targets_prepared": [
+      "SaaSHub",
+      "ToolWise"
+    ],
+    "safe_runtime_fix": "Patched backlink_status.py to track Claudetory submissions in the live confirmation snapshot and added coverage in test_backlink_status.py."
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": [],
+    "live_listings": [
+      "SaaSHub",
+      "ToolWise"
+    ],
+    "search_queries_indexed": 1,
+    "search_queries_total": 15
+  }
+}
