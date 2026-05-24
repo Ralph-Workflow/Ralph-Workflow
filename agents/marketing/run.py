@@ -94,6 +94,39 @@ LIVE_EXTERNAL_STATUSES = {
 }
 
 
+def _write_distribution_execution_log(*, distribution_lane: Any, execution: Any, now: datetime) -> Path:
+    """Write a first-class per-lane execution log so audits don't have to infer runtime state
+    from the daily bundle only.
+    """
+    safe_action = re.sub(r'[^a-z0-9_]+', '_', (getattr(execution, 'action_type', '') or 'distribution_execution').lower()).strip('_') or 'distribution_execution'
+    path = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d_%H%M%S')}_{safe_action}.json"
+    payload = {
+        'timestamp': now.isoformat(),
+        'run_type': 'marketing-distribution-execution',
+        'chosen_action': {
+            'type': getattr(execution, 'action_type', ''),
+            'channel': getattr(distribution_lane, 'lane', ''),
+            'title': f"Distribution lane execution: {getattr(distribution_lane, 'lane', '')}",
+            'draft': getattr(execution, 'artifact_path', None),
+        },
+        'why_this_action': {
+            'summary': getattr(distribution_lane, 'reason', ''),
+            'supporting_reasons': list(getattr(distribution_lane, 'reasons', []) or []),
+            'shared_findings_used': list(getattr(execution, 'shared_findings_used', []) or []),
+        },
+        'result': {
+            'status': getattr(execution, 'status', ''),
+            'ok': getattr(execution, 'status', '') in LIVE_EXTERNAL_STATUSES or getattr(execution, 'status', '') in {'prepared', 'executed', 'skipped_repair'},
+            'summary': getattr(execution, 'summary', ''),
+            'targets_prepared': list(getattr(execution, 'targets_prepared', []) or []),
+            'live_external_action': bool(getattr(execution, 'live_external_action', False)),
+            'blocking_factors': list(getattr(execution, 'blocking_factors', []) or []),
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2, default=str), encoding='utf-8')
+    return path
+
+
 def _repair_counts_as_live_outcome_repair(execution: Any) -> bool:
     return bool(getattr(execution, 'live_external_action', False)) or getattr(execution, 'action_type', '') in STRUCTURAL_REPLACEMENT_ACTION_TYPES
 
@@ -867,7 +900,13 @@ def main() -> int:
             )
 
     distribution_execution = execute_distribution_lane(distribution_lane, now)
+    distribution_execution_log = _write_distribution_execution_log(
+        distribution_lane=distribution_lane,
+        execution=distribution_execution,
+        now=now,
+    )
     print(f"[run.py] Chosen distribution lane: {distribution_lane.lane}", flush=True)
+    print(f"[run.py] Distribution execution log: {distribution_execution_log}", flush=True)
     if distribution_execution.artifact_path:
         print(f"[run.py] Distribution execution artifact: {distribution_execution.artifact_path}", flush=True)
 
@@ -938,6 +977,7 @@ def main() -> int:
         "market_intelligence": market_intelligence,
         "distribution_lane": distribution_lane.__dict__,
         "distribution_execution": distribution_execution.__dict__,
+        "distribution_execution_log": str(distribution_execution_log),
         "failure_signals": [d["action"] for d in decisions if d.get("is_failing_signal")],
         "marketing_status": "failing" if any(d.get("is_failing_signal") for d in decisions) else "mixed" if decisions else "initial",
         "content_generation": {

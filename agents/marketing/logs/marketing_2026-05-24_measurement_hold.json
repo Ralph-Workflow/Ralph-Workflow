@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-24T05:30:30",
+  "timestamp": "2026-05-24T05:46:00",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -18,8 +18,8 @@
     "reasoning": "Several fresh external actions already shipped in the short review window, and the other executable lanes are still inside measurement or handoff windows; hold for follow-through instead of inventing another reset.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
-      "20 directory submissions already shipped in the last 24 hours.",
-      "39 curator contact attempts already shipped in the last 24 hours.",
+      "21 directory submissions already shipped in the last 24 hours.",
+      "38 curator contact attempts already shipped in the last 24 hours.",
       "5 live external marketing action(s) already shipped in the last 6 hours.",
       "Active repair window says to pause net-new directory submissions until current approval windows mature.",
       "Active repair window says to hold another same-family curator-contact burst and use a different lane.",

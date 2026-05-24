@@ -4027,6 +4027,58 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
 
             self.assertEqual(payload['chosen_action']['type'], 'apollo_people_list_creation')
 
+    def test_load_latest_marketing_action_can_read_daily_bundle_distribution_execution(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            bundle = out_dir / 'marketing_2026-05-24.json'
+            bundle.write_text(json.dumps({
+                'distribution_lane': {'lane': 'measurement_hold'},
+                'distribution_execution': {
+                    'action_type': 'measurement_hold_follow_through',
+                    'status': 'executed',
+                    'artifact_path': '/tmp/hold.md',
+                    'summary': 'Active hold respected.',
+                    'live_external_action': False,
+                    'blocking_factors': [],
+                },
+            }), encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir):
+                payload = marketing_workflow_audit.load_latest_marketing_action(prefer_meaningful=False)
+
+            self.assertEqual(payload['chosen_action']['type'], 'measurement_hold_follow_through')
+            self.assertEqual(payload['chosen_action']['channel'], 'measurement_hold')
+            self.assertEqual(payload['result']['status'], 'executed')
+
+    def test_load_latest_marketing_action_keeps_latest_activity_separate_from_latest_meaningful_execution(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            live = out_dir / 'marketing_2026-05-24_050000_aiagents_directory_submission.json'
+            bundle = out_dir / 'marketing_2026-05-24.json'
+            live.write_text(json.dumps({
+                'chosen_action': {'type': 'aiagents_directory_submission', 'channel': 'directory_submission'},
+                'result': {'ok': True, 'status': 'executed', 'live_external_action': True},
+            }), encoding='utf-8')
+            bundle.write_text(json.dumps({
+                'distribution_lane': {'lane': 'measurement_hold'},
+                'distribution_execution': {
+                    'action_type': 'measurement_hold_follow_through',
+                    'status': 'executed',
+                    'artifact_path': '/tmp/hold.md',
+                    'summary': 'Active hold respected.',
+                    'live_external_action': False,
+                    'blocking_factors': [],
+                },
+            }), encoding='utf-8')
+            bundle.touch()
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir):
+                latest_meaningful = marketing_workflow_audit.load_latest_marketing_action()
+                latest_activity = marketing_workflow_audit.load_latest_marketing_action(prefer_meaningful=False)
+
+            self.assertEqual(latest_meaningful['chosen_action']['type'], 'aiagents_directory_submission')
+            self.assertEqual(latest_activity['chosen_action']['type'], 'measurement_hold_follow_through')
+
     def test_audit_treats_curator_redesign_as_shipped_and_drops_duplicate_architecture_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

@@ -38,16 +38,39 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 json.dumps(existing_hold), encoding='utf-8'
             )
 
+            stackoverflow_latest = {
+                'cooldown_active': True,
+                'next_retry_at': '2026-05-24T11:24:37.256862',
+                'top_questions': [
+                    {
+                        'title': 'How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?',
+                        'url': 'https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability',
+                    }
+                ],
+            }
+            (log_dir / 'stackoverflow_answer_lane_latest.json').write_text(json.dumps(stackoverflow_latest), encoding='utf-8')
+            (drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md').write_text('# packet\n', encoding='utf-8')
+
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'STACKOVERFLOW_LATEST_PATH', log_dir / 'stackoverflow_answer_lane_latest.json'), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
                  patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
                 mock_run.return_value.returncode = 1
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
 
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+
         self.assertEqual(execution.action_type, 'measurement_hold_follow_through')
         self.assertEqual(execution.status, 'executed')
         self.assertIn('active measurement-hold cooldown', execution.summary.lower())
+        self.assertIn('StackOverflow handoff asset', execution.summary)
+        self.assertEqual(
+            execution.targets_prepared,
+            ['How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?'],
+        )
+        self.assertIn('Best human-executable demand-capture asset still waiting', artifact_text)
+        self.assertIn('stackoverflow_answer_handoff_packet_latest.md', artifact_text)
 
 
 if __name__ == '__main__':

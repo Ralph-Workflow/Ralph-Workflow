@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T03:36:46.492824+00:00",
+  "generated_at": "2026-05-24T03:46:02.628170+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -301,6 +301,37 @@
       ],
       "listing_live": false,
       "status_note": "Submitted 2026-05-24 via the public /api/submit endpoint; track the workflows category and the likely slug until the public entry resolves."
+    },
+    "AiAgentsDirectory": {
+      "directory": "AiAgentsDirectory",
+      "listing_url": "https://aiagents.directory/ralph-workflow/",
+      "submit_url": "https://aiagents.directory/submit/",
+      "check_results": [
+        {
+          "url": "https://aiagents.directory/ralph-workflow/",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        },
+        {
+          "url": "https://aiagents.directory/categories/open-source/",
+          "status": 200,
+          "ok": true,
+          "has_product_marker": false,
+          "negative_markers": [],
+          "transient_markers": []
+        },
+        {
+          "url": "https://aiagents.directory/categories/developer-tools/",
+          "status": 200,
+          "ok": true,
+          "has_product_marker": false,
+          "negative_markers": [],
+          "transient_markers": []
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submitted 2026-05-24 via the public Django form on /submit/ with Codeberg as the primary URL; treat as pending review until a public listing resolves."
     }
   },
   "google_index": {
@@ -407,13 +438,19 @@
       "indexed": false,
       "found_urls": [],
       "status": 200
+    },
+    "ralph workflow aiagents.directory": {
+      "query": "ralph workflow aiagents.directory",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     }
   },
   "summary": {
     "directories_with_live_listings": 2,
     "queries_indexed": 1,
     "queries_unavailable": 0,
-    "total_queries": 17,
+    "total_queries": 18,
     "check_urls": [
       "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
       "https://github.com/Ralph-Workflow/Ralph-Workflow",

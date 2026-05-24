@@ -18,6 +18,10 @@ class BacklinkStatusTests(unittest.TestCase):
             backlink_status.SUBMISSIONS["Claudetory"]["listing_url"],
             "https://claudetory.com/tools/ralph-workflow",
         )
+        self.assertEqual(
+            backlink_status.SUBMISSIONS["AiAgentsDirectory"]["submit_url"],
+            "https://aiagents.directory/submit/",
+        )
 
     def test_check_listing_status_preserves_status_note(self):
         result = backlink_status.check_listing_status(
@@ -88,6 +92,9 @@ class BacklinkStatusTests(unittest.TestCase):
 
     def test_search_queries_include_claudetory_after_submission(self):
         self.assertIn("ralph workflow claudetory", backlink_status.SEARCH_QUERIES)
+
+    def test_search_queries_include_aiagents_directory_after_submission(self):
+        self.assertIn("ralph workflow aiagents.directory", backlink_status.SEARCH_QUERIES)
 
 
 if __name__ == "__main__":
