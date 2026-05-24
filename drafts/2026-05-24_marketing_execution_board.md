@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-24T13:41:20
+Generated: 2026-05-24T14:17:06
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -10,15 +10,10 @@ Generated: 2026-05-24T13:41:20
 - Apollo next review: 2026-05-30T00:14:49.075391+02:00
 - Apollo launch review: 2026-05-30T00:14:49.075391+02:00
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
+- Same-family curator outreach is paused in the active repair window; do not treat prepared curator packets as do-now assets until that hold ages out or the lane map changes.
 
 ## Best executable assets still waiting
-### 1. Curator handoff packet
-- When: Do now only if the manual-contact and publisher-contact packets are already exhausted
-- Packet: /home/mistlight/.openclaw/workspace/drafts/curator_handoff_packet_latest.md
-- Targets: AI Resources, Built In — Claude Code vs. Codex vs. Cursor vs. GitHub Copilot, nandhakt/awesome-ai-coding-resources
-- Why this matters: Prepared curator assets already exist; this is follow-through work, not a discovery problem.
-
-### 2. Comparison backlink packet
+### 1. Comparison backlink packet
 - When: Do after fresh publisher / curator contacts are sent
 - Packet: /home/mistlight/.openclaw/workspace/drafts/comparison_backlink_handoff_packet_latest.md
 - Targets: Aider, Claude Code, Conductor (Teams)

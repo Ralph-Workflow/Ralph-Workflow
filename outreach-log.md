@@ -14,6 +14,27 @@
 - **Repeated pains worth tracking:** workflow that looks done without actually finishing, proof of what changed / what passed, review tax, stale state / sync failure, and morning-after visible state.
 - **Self-improving fix surfaced:** keep a hard **cooldown-vs-telemetry split** for forced cron passes, plus a stronger **cross-post / duplicate-thread collapse gate** so workflow-continuity mirrors do not fake shortlist breadth.
 - **Posting note:** No posting attempted. Fail closed while coverage remains partial and honest mention-fit stays at **0-1**.
+- **Claude Stack** — directory submission sent
+  - Submit URL: https://www.claudestack.dev/submit
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+  - Log: `agents/marketing/logs/marketing_2026-05-24_040259_claudestack_submission.json`
+  - Review by: 2026-06-07
+- **AI Dev Setup** — directory submission sent
+  - Submit URL: https://aidevsetup.com/contact
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-24_ai_dev_setup_contact_submission.json`
+  - Review by: 2026-06-07
+- **AiAgents.Directory** — directory submission sent
+  - Submit URL: https://aiagents.directory/submit/
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-24_aiagents_directory_submission.json`
+  - Review by: 2026-06-07
+- **Claudetory** — directory submission sent
+  - Submit URL: https://claudetory.com/submit
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-24_claudetory_submission.json`
+  - Review by: 2026-06-07
+
 
 ## 2026-05-24 (Sunday) — Reddit monitoring (08:09 UTC / 10:09 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-24_1009.md`
@@ -52,6 +73,62 @@
   - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
 - **Self-improving fix surfaced:** treat `reddit_monitor.py` **cooldown_skip** as runtime state, not telemetry, whenever cron explicitly asks for a fresh research pass; if a later direct-provider pass is weaker than an earlier same-day indexed-web rescue pass, reuse the rescue report as fallback truth instead of collapsing to a fake zero-opportunity result.
 - **Posting note:** No posting attempted. Fail closed while coverage remains degraded.
+- **AI for Code** — directory submission sent
+  - Submit URL: https://aiforcode.io/
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_aiforcode_submission.json`
+  - Review by: 2026-06-06
+- **AI Marketing Directory** — directory submission sent
+  - Submit URL: https://www.aimarketing.directory/submit
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_aimarketing_directory_submission.json`
+  - Review by: 2026-06-06
+- **AIToolboard** — directory submission sent
+  - Submit URL: https://aitoolboard.com/submit
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_aitoolboard_submission.json`
+  - Review by: 2026-06-06
+- **AI Tools Magic** — directory submission sent
+  - Submit URL: https://aitoolsmagic.com/submit-tool
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_aitoolsmagic_submission.json`
+  - Review by: 2026-06-06
+- **B2B SaaS Market** — directory submission sent
+  - Submit URL: https://b2bsaasmarket.com/submit
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_b2bsaasmarket_submission.json`
+  - Review by: 2026-06-06
+- **IndieStack** — directory submission sent
+  - Submit URL: https://indiestack.ai/submit
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_indiestack_submission.json`
+  - Review by: 2026-06-06
+- **ListYourTool.com** — directory submission sent
+  - Submit URL: https://www.listyourtool.com/submit-tool
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_listyourtool_submission.json`
+  - Review by: 2026-06-06
+- **MadeWithStack** — directory submission sent
+  - Submit URL: https://www.madewithstack.com/submit
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_madewithstack_submission.json`
+  - Review by: 2026-06-06
+- **The Toolify** — directory submission sent
+  - Submit URL: https://submit.thetoolify.dev/
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_thetoolify_submission.json`
+  - Review by: 2026-06-06
+- **ToolScout** — directory submission sent
+  - Submit URL: https://toolscout.ai/submit
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_toolscout_submission.json`
+  - Review by: 2026-06-06
+- **VB Web AI Tools** — directory submission sent
+  - Submit URL: https://www.vbwebtools.com/submit-tool/
+  - Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+  - Log: `agents/marketing/logs/marketing_2026-05-23_vbwebtools_submission.json`
+  - Review by: 2026-06-06
+
 
 ## 2026-05-23 (Saturday) — Reddit monitoring (13:32 UTC / 15:32 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-23_1532.md`
@@ -6111,3 +6188,19 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-24 13:24:32
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T14:18:33.348137.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 13:53:31
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 14:03:10
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T15:02:54.154239.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 14:03:21
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T15:02:54.154239.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 14:11:42
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T15:02:54.154239.

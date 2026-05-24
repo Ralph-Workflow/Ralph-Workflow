@@ -1,6 +1,6 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-24 05:25 UTC
+Timestamp: 2026-05-24 12:11 UTC
 
 ## ralph-docs-watchdog
 - Status: error
@@ -26,7 +26,7 @@ Timestamp: 2026-05-24 05:25 UTC
   - runner failed after checker failure
   - independent verifier failed after remediation
   - checker still failing after remediation/verifier pass
-- Checker: `MARKETING_LOOP_FAIL: runner artifact is stale relative to marketing_momentum_watchdog.json; rerun the full runner bundle before certifying health`
+- Checker: `MARKETING_LOOP_FAIL: unexpected watch actions: measurement_hold_active`
 - Checker after repair: `MARKETING_LOOP_FAIL: unexpected watch actions: measurement_hold_active`
 
 ## ralph-site-owner-loop

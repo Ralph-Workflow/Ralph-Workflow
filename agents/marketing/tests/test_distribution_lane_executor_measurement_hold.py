@@ -525,6 +525,91 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertNotIn('Curator manual-contact packet', board_text)
 
+    def test_execution_board_hides_curator_handoff_while_faster_packets_are_still_waiting(self):
+        now = datetime(2026, 5, 24, 10, 40, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'generated_at': '2026-05-24T10:30:00+02:00',
+                    'targets': [
+                        {
+                            'target': 'PrimeDev.Tools',
+                            'channels': [{'type': 'email', 'value': 'hello@primedev.tools'}],
+                        }
+                    ],
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'curator_outreach_queue_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'AI Resources',
+                            'status': 'prepared',
+                            'priority': 'HIGH',
+                        }
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n', encoding='utf-8')
+            (drafts_dir / 'curator_handoff_packet_latest.md').write_text('# curator packet\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('Primary-repo-flat publisher contact packet', board_text)
+        self.assertNotIn('Curator handoff packet', board_text)
+
+    def test_execution_board_hides_curator_handoff_during_same_family_outreach_hold(self):
+        now = datetime(2026, 5, 24, 14, 11, 30)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'curator_outreach_queue_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'AI Resources',
+                            'status': 'prepared',
+                            'priority': 'HIGH',
+                        }
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'curator_handoff_packet_latest.md').write_text('# curator packet\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, True)):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('Same-family curator outreach is paused', board_text)
+        self.assertNotIn('Curator handoff packet', board_text)
+
     def test_execution_board_surfaces_scheduled_stackoverflow_run(self):
         now = datetime(2026, 5, 24, 10, 40, 0)
 

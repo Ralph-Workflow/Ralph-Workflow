@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-24T13:37:52.891477",
+  "ts": "2026-05-24T14:06:42.480061",
   "jobs_checked": 20,
-  "issues_found": 6,
+  "issues_found": 8,
   "issues": [
     {
       "job_id": "__artifacts__",
@@ -14,11 +14,20 @@
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
-      "category": "stale_artifact",
+      "category": "loop_verification_fail",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 355.59,
-      "max_age_minutes": 240,
-      "likely_cause": "Required runtime artifact is stale"
+      "verdict": "fail",
+      "required_verdict": "pass",
+      "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
+      "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
     },
     {
       "job_id": "__artifacts__",
@@ -35,8 +44,8 @@
       "name": "docs_verifier_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=26",
-      "repeats_in_recent_history": 26,
+      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=31",
+      "repeats_in_recent_history": 31,
       "owner_domain": "docs",
       "incident_key": "docs_verifier::artifact_contract_fail",
       "escalation_level": "critical",
@@ -46,11 +55,25 @@
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:stale_artifact repeat_count=15",
-      "repeats_in_recent_history": 15,
+      "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=149",
+      "repeats_in_recent_history": 149,
       "owner_domain": "marketing",
-      "incident_key": "marketing_independent_verification::stale_artifact",
+      "incident_key": "marketing_independent_verification::loop_verification_fail",
+      "escalation_level": "critical",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
+      "category": "escalation_required",
+      "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=67",
+      "repeats_in_recent_history": 67,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin::review_followup_required",
       "escalation_level": "critical",
       "blocked_by": [
         "marketing_independent_verification"
@@ -61,8 +84,8 @@
       "name": "docs_verifier_stability_escalation",
       "category": "escalation_required",
       "last_error": "latest docs verifier verdict is not pass: 'fail'",
-      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=28",
-      "repeats_in_recent_history": 28,
+      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=33",
+      "repeats_in_recent_history": 33,
       "owner_domain": "docs",
       "incident_key": "docs_verifier_stability::loop_verification_fail",
       "escalation_level": "critical",
@@ -71,28 +94,40 @@
   ],
   "repairs_attempted": [
     {
-      "type": "rerun_docs_verifier_for_stability",
-      "job": "docs_verifier_stability",
+      "type": "immediate_review_followup_owner_action",
+      "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779624381124:96\"\n}"
+    },
+    {
+      "type": "rerun_docs_verifier",
+      "job": "docs_agentic_review",
       "ok": false,
       "detail": "SKIP: another Ralph docs loop process already holds the global lock"
     },
     {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
+      "type": "immediate_review_followup_owner_action",
+      "job": "docs_agentic_review_mustFix_reviewable-output-md-has-a-duplicated-this-page",
       "ok": true,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
+      "type": "immediate_review_followup_owner_action",
+      "job": "docs_agentic_review_mustFix_the-identical-opening-paragraph-across-all-sphin",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-24T13:37:37.174381+02:00\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
+      "type": "immediate_review_followup_owner_action",
+      "job": "docs_agentic_review_mustFix_the-convention-over-configuration-and-batteries",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "rerun_docs_verifier_for_stability",
+      "job": "docs_verifier_stability",
+      "ok": false,
+      "detail": "SKIP: another Ralph docs loop process already holds the global lock"
     },
     {
       "type": "owner_loop_escalation",
@@ -104,19 +139,25 @@
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779622663735:91\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779624391429:97\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779624393718:98\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_verifier_stability_escalation",
       "ok": true,
       "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     }
   ]
 }

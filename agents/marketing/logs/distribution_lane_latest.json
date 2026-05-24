@@ -3,9 +3,9 @@
   "reason": "The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
-    "10 directory submissions already shipped in the last 24 hours.",
+    "9 directory submissions already shipped in the last 24 hours.",
     "17 curator contact attempts already shipped in the last 24 hours.",
-    "14 live external marketing action(s) already shipped in the last 6 hours.",
+    "10 live external marketing action(s) already shipped in the last 6 hours.",
     "Active repair window says to pause net-new directory submissions until current approval windows mature.",
     "Active repair window says to hold another same-family curator-contact burst and use a different lane.",
     "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
