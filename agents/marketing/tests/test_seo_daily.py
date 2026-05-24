@@ -182,6 +182,65 @@ class SitemapUrlCountTests(unittest.TestCase):
 
 # ── Trend computation ───────────────────────────────────────────────────────────
 
+class BacklinkTruthfulnessTests(unittest.TestCase):
+
+    def test_check_backlinks_google_reuses_verified_live_listing_floor(self):
+        from agents.marketing import seo_daily
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            (log_dir / 'backlink_status_latest.json').write_text(json.dumps({
+                'summary': {'directories_with_live_listings': 2},
+                'directories': {
+                    'SaaSHub': {'listing_live': True},
+                    'ToolWise': {'listing_live': True},
+                    'AIToolboard': {'listing_live': False},
+                },
+            }), encoding='utf-8')
+
+            html = '<a href="https://ralphworkflow.com">self</a>'
+
+            class _Resp:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+                def read(self):
+                    return html.encode('utf-8')
+
+            with patch.object(seo_daily, 'LOG_DIR', log_dir), \
+                 patch.object(seo_daily.urllib.request, 'urlopen', return_value=_Resp()):
+                result = seo_daily.check_backlinks_google()
+
+        self.assertEqual(result['count_approx'], 2)
+        self.assertEqual(result['google_count_approx'], 1)
+        self.assertEqual(result['verified_live_listings'], 2)
+        self.assertEqual(result['verified_live_listing_directories'], ['SaaSHub', 'ToolWise'])
+
+    def test_check_backlinks_google_falls_back_to_verified_live_listings_on_google_error(self):
+        from agents.marketing import seo_daily
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            (log_dir / 'backlink_status_latest.json').write_text(json.dumps({
+                'summary': {'directories_with_live_listings': 2},
+                'directories': {
+                    'SaaSHub': {'listing_live': True},
+                    'ToolWise': {'listing_live': True},
+                },
+            }), encoding='utf-8')
+
+            with patch.object(seo_daily, 'LOG_DIR', log_dir), \
+                 patch.object(seo_daily.urllib.request, 'urlopen', side_effect=RuntimeError('blocked')):
+                result = seo_daily.check_backlinks_google()
+
+        self.assertEqual(result['count_approx'], 2)
+        self.assertEqual(result['verified_live_listings'], 2)
+        self.assertIn('truthful backlink floor', result['note'])
+
+
 class TrendComputationTests(unittest.TestCase):
 
     def test_compute_trends_reads_ranks_from_nested_path(self):

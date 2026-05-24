@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-24T15:33:03
+Generated: 2026-05-24T18:01:15
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -11,13 +11,12 @@ Generated: 2026-05-24T15:33:03
 - Apollo launch review: 2026-05-30T00:14:49.075391+02:00
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Same-family curator outreach is paused in the active repair window; do not treat prepared curator packets as do-now assets until that hold ages out or the lane map changes.
-- Primary-repo-flat publisher contact packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 
 ## Best executable assets still waiting
 - No do-now handoff packet is currently truthful in this review window.
+- Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.
 - Fresh publisher outreach already shipped in the current review window for: AXME Code, Bollwerk / Werkstatt, WyeWorks.
-- Primary-repo-flat publisher contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator handoff packet exists, but same-family curator outreach is paused during the active repair window.
 - Comparison backlink packet exists, but it was already manually delivered in the current review window.

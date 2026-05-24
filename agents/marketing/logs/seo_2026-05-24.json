@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-24T16:21:24.973630",
+  "timestamp": "2026-05-24T17:47:16.331894",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -112,8 +112,16 @@
     }
   },
   "backlinks": {
-    "count_approx": 0,
-    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data"
+    "count_approx": 2,
+    "google_count_approx": 0,
+    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data",
+    "verified_live_listings": 2,
+    "verified_live_listing_source": "backlink_status_latest.json",
+    "verified_live_listing_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_status_latest.json",
+    "verified_live_listing_directories": [
+      "SaaSHub",
+      "ToolWise"
+    ]
   },
   "domain_rating": {
     "dr": null,
@@ -168,7 +176,6 @@
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
-    "Create content targeting: Claude Code unattended, AI agent workflow composer",
-    "Build backlinks: submit to directories, guest post, earn citations"
+    "Create content targeting: Claude Code unattended, AI agent workflow composer"
   ]
 }

@@ -135,6 +135,97 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
         self.assertEqual(waiting, 0)
         self.assertTrue(delivered)
 
+    def test_stackoverflow_post_cooldown_surface_marks_empty_latest_run_as_exhausted(self):
+        now = datetime(2026, 5, 24, 17, 54, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            latest_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            latest_path.write_text(json.dumps({
+                'generated_at': '2026-05-24T15:59:44.626446',
+                'cooldown_active': False,
+                'drafts_created': 0,
+                'drafts': [],
+                'reused_existing_draft': None,
+                'top_questions': [
+                    {
+                        'title': 'How can I get more useful results from ai coding agents',
+                        'url': 'https://stackoverflow.com/questions/79913508/how-can-i-get-more-useful-results-from-ai-coding-agents',
+                    }
+                ],
+                'exhausted_question_urls': [
+                    'https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability',
+                ],
+            }), encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_stackoverflow_post_cooldown_cron.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T08:47:43+02:00',
+                    'status': 'scheduled',
+                    'ok': True,
+                    'verification': {'scheduled_run_at': '2026-05-24T11:30:00+02:00'},
+                    'chosen_action': {'type': 'stackoverflow_post_cooldown_cron'},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', latest_path):
+                exhausted = distribution_lane_selector._stack_overflow_post_cooldown_surface_exhausted(now)
+
+        self.assertTrue(exhausted)
+
+    def test_stackoverflow_measurement_pending_ignores_stale_draft_after_exhausted_rerun(self):
+        now = datetime(2026, 5, 24, 17, 54, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            stackoverflow_dir = drafts_dir / 'stackoverflow'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            stackoverflow_dir.mkdir()
+
+            latest_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            latest_path.write_text(json.dumps({
+                'generated_at': '2026-05-24T15:59:44.626446',
+                'cooldown_active': False,
+                'drafts_created': 0,
+                'drafts': [],
+                'reused_existing_draft': None,
+                'top_questions': [
+                    {
+                        'title': 'How can I get more useful results from ai coding agents',
+                        'url': 'https://stackoverflow.com/questions/79913508/how-can-i-get-more-useful-results-from-ai-coding-agents',
+                    }
+                ],
+                'exhausted_question_urls': [
+                    'https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability',
+                ],
+            }), encoding='utf-8')
+            (stackoverflow_dir / 'so_answer_2026-05-23_existing.md').write_text('# stale answer still on disk\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_stackoverflow_post_cooldown_cron.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T08:47:43+02:00',
+                    'status': 'scheduled',
+                    'ok': True,
+                    'verification': {'scheduled_run_at': '2026-05-24T11:30:00+02:00'},
+                    'chosen_action': {'type': 'stackoverflow_post_cooldown_cron'},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', latest_path):
+                pending = distribution_lane_selector._stack_overflow_measurement_pending(now)
+
+        self.assertFalse(pending)
+
     def test_pauses_curator_outreach_when_same_family_repair_window_is_active(self):
         now = datetime(2026, 5, 24, 1, 54, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}

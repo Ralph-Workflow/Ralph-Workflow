@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-05-24T17:47:30+02:00",
+  "action": "backlink_truthfulness_floor_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "summary": "Patched seo_daily.py so verified live directory listings become the truthful backlink floor instead of being overwritten by zero-result Google approximations.",
+  "shared_findings_used": [
+    "agents/marketing/logs/backlink_status_latest.json",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json"
+  ],
+  "files_changed": [
+    "agents/marketing/seo_daily.py",
+    "agents/marketing/tests/test_seo_daily.py"
+  ],
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_seo_daily.BacklinkTruthfulnessTests agents.marketing.tests.test_seo_daily.TrendComputationTests -v",
+    "seo_daily_backlinks_approx": 2,
+    "run_py_backlinks_approx": 2,
+    "run_py_backlinks_delta": 1.8
+  },
+  "expected_outcome": "Future marketing runs reuse truthful live-listing proof, avoid false zero-backlink diagnoses, and make cleaner measurement-hold and distribution decisions."
+}

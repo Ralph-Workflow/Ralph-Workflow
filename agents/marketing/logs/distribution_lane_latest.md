@@ -1,12 +1,12 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-24T17:15:04
-Chosen lane: **directory_confirmation**
+Generated: 2026-05-24T18:01:15
+Chosen lane: **measurement_hold**
 
 ## Why this lane
-- Directory submissions are paused and live listing proof already exists, so refresh approval/backlink evidence and reuse it in the next higher-intent lane instead of inventing another reset.
+- The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 9 directory submissions already shipped in the last 24 hours.
-- 12 curator contact attempts already shipped in the last 24 hours.
+- 11 curator contact attempts already shipped in the last 24 hours.
 - 3 live external marketing action(s) already shipped in the last 6 hours.
 - Active repair window says to pause net-new directory submissions until current approval windows mature.
 - Active repair window says to hold another same-family curator-contact burst and use a different lane.
@@ -26,10 +26,10 @@ Chosen lane: **directory_confirmation**
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.
 - Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
+- A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
-- A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
-- The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
+- The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
 
 ## Shared findings reused
@@ -39,8 +39,8 @@ Chosen lane: **directory_confirmation**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate directory confirmation work
-- Re-run `agents/marketing/backlink_status.py` and reuse `backlink_status_latest.json` as the canonical live-listing snapshot
-- Treat live listings as proof assets to reuse in curator/comparison packets instead of pretending all submissions are still pending black boxes
-- Identify which approved listings already route to Codeberg first and which still need follow-up or evidence capture
-- Do not count another net-new directory submission as progress until this confirmation pass is refreshed
+## Immediate measurement-hold work
+- Do not ship another fresh outreach/reset action in this short review window
+- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
+- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
+- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map

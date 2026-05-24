@@ -6,8 +6,7 @@ Generated: 2026-05-12T09:00:00
 - This file now reflects the truthful current state instead of leaving stale already-contacted targets in the latest packet.
 
 ## Current state
-- Recently contacted executable targets already inside the active review window: AXME Code, Bollwerk / Werkstatt, WyeWorks
-- Remaining discovered targets without runtime-executable send paths: ctxt.dev / Signum
+- Recently contacted executable targets already inside the active review window: AXME Code, Bollwerk / Werkstatt, HidsTech, PairCoder, SitePoint — AI Coding Tools Comparison 2026
 - Do not use this packet for a fresh send until a new executable publisher target appears or a current target exits review.
 
 ## Process rule now in force

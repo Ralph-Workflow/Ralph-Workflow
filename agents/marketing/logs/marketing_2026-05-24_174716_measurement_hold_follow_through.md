@@ -1,11 +1,11 @@
 # Measurement Hold Follow-Through
-Generated: 2026-05-12T09:00:00
+Generated: 2026-05-24T17:47:16
 
 An active measurement-hold cooldown is already in force.
 - Hold started at: 2026-05-24T17:44:33.494765
 - Hold ends at: 2026-05-24T18:44:33.494765
 - Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_measurement_hold_execution.json
-- Consolidated execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-12_marketing_execution_board.md
+- Consolidated execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-24_marketing_execution_board.md
 
 Do not reset the hold window by emitting another measurement_hold_execution.
 Use the existing queue, handoff packets, and live measurement windows as the source of truth until the cooldown expires or a new live external action lands.
@@ -18,7 +18,7 @@ Use the existing queue, handoff packets, and live measurement windows as the sou
 
 ## Same-run hold repairs applied
 - Refreshed stale manual execution packets so the live prepared queues stay actionable during the cooldown instead of drifting out of sync.
-- primary-repo-flat publisher contact packet status → /home/mistlight/.openclaw/workspace/drafts/2026-05-12_primary_repo_flat_contact_handoff_packet.md
+- primary-repo-flat publisher contact packet status → /home/mistlight/.openclaw/workspace/drafts/2026-05-24_primary_repo_flat_contact_handoff_packet.md
 
 Shared findings reused:
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate

@@ -1,20 +1,19 @@
 {
-  "timestamp": "2026-05-12T09:00:00",
+  "timestamp": "2026-05-24T17:47:16.263812",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "measurement_hold_follow_through",
     "channel": "measurement_hold",
     "title": "Distribution lane execution: measurement_hold",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-12_090000_measurement_hold_follow_through.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_174716_measurement_hold_follow_through.md"
   },
   "why_this_action": {
     "summary": "Several fresh external actions already shipped in the short review window, and the other executable lanes are still inside measurement or handoff windows; hold for follow-through instead of inventing another reset.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
-      "2 owned-content posts already shipped in the last 36 hours.",
-      "20 directory submissions already shipped in the last 24 hours.",
-      "62 curator contact attempts already shipped in the last 24 hours.",
-      "106 live external marketing action(s) already shipped in the last 6 hours.",
+      "9 directory submissions already shipped in the last 24 hours.",
+      "12 curator contact attempts already shipped in the last 24 hours.",
+      "3 live external marketing action(s) already shipped in the last 6 hours.",
       "Active repair window says to pause net-new directory submissions until current approval windows mature.",
       "Active repair window says to hold another same-family curator-contact burst and use a different lane.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
@@ -38,7 +37,6 @@
       "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
       "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.",
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
-      "A post-cooldown StackOverflow run is already scheduled in the current review window, so another pre-cooldown packet refresh would be fake progress.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
     ],
     "shared_findings_used": [

@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-24T16:44:52.565921
+- Generated: 2026-05-24T17:49:18.461641
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -13,7 +13,7 @@
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 9 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
 - 14 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
-- The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains curator_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
+- The most recent runtime activity was backlink_truthfulness_floor_repair, but the latest meaningful external/replacement execution remains curator_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (curator_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 

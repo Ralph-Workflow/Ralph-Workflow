@@ -9,32 +9,15 @@ Generated: 2026-05-12T09:00:00
 ## Active review windows
 - Apollo next review: 2026-05-30T00:14:49.075391+02:00
 - Apollo launch review: 2026-05-30T00:14:49.075391+02:00
-- StackOverflow retry opens: 2026-05-24T11:24:37.256862
+- Same-family curator outreach is paused in the active repair window; do not treat prepared curator packets as do-now assets until that hold ages out or the lane map changes.
+- Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 
 ## Best executable assets still waiting
 ### 1. StackOverflow demand-capture packet
-- When: After 2026-05-24T11:24:37.256862
+- When: Scheduled for 2026-05-24T11:30:00+02:00
 - Packet: /home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md
-- Targets: How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?
+- Targets: How can I get more useful results from ai coding agents
 - Why this matters: Highest-intent Q&A asset already exists and should be reused before another search pass.
-
-### 2. Curator manual-contact packet
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/curator_contact_handoff_packet_latest.md
-- Targets: vivy-yi/awesome-agent-orchestration
-- Why this matters: These prepared curator targets already have non-GitHub contact paths, so execution matters more than more discovery.
-
-### 3. Curator handoff packet
-- When: Do now only if the manual-contact and publisher-contact packets are already exhausted
-- Packet: /home/mistlight/.openclaw/workspace/drafts/curator_handoff_packet_latest.md
-- Targets: AI Resources, Built In — Claude Code vs. Codex vs. Cursor vs. GitHub Copilot, HidsTech — AI Coding Tools in 2026
-- Why this matters: Prepared curator assets already exist; this is follow-through work, not a discovery problem.
-
-### 4. Comparison backlink packet
-- When: Do after fresh publisher / curator contacts are sent
-- Packet: /home/mistlight/.openclaw/workspace/drafts/comparison_backlink_handoff_packet_latest.md
-- Targets: Aider, Claude Code, Conductor (Teams)
-- Why this matters: Comparison proof is already prepared and should be reused instead of redrafted.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing

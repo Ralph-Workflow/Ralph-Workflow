@@ -836,6 +836,58 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertNotIn('### 1. StackOverflow demand-capture packet', board_text)
         self.assertIn('StackOverflow demand-capture packet is exhausted for this review window', board_text)
 
+    def test_execution_board_hides_stale_stackoverflow_packet_when_latest_run_has_no_manual_ready_asset(self):
+        now = datetime(2026, 5, 24, 17, 47, 16)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'apollo_sequence_status_latest.json').write_text(
+                json.dumps({'next_review_at': '2026-05-30T00:14:49.075391+02:00', 'launch_review_at': '2026-05-30T00:14:49.075391+02:00'}),
+                encoding='utf-8',
+            )
+            (log_dir / 'stackoverflow_answer_lane_latest.json').write_text(
+                json.dumps({
+                    'generated_at': '2026-05-24T15:59:44.626446',
+                    'status': 'ok',
+                    'cooldown_active': False,
+                    'drafts_created': 0,
+                    'manual_follow_through': False,
+                    'reused_existing_draft': None,
+                    'top_questions': [
+                        {
+                            'title': 'How can I get more useful results from ai coding agents',
+                            'url': 'https://stackoverflow.com/questions/79913508/how-can-i-get-more-useful-results-from-ai-coding-agents',
+                        }
+                    ],
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md').write_text(
+                '**Question:** How should I structure autonomous AI agent workflows for production reliability?\n**URL:** https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'STACKOVERFLOW_LATEST_PATH', log_dir / 'stackoverflow_answer_lane_latest.json'), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', log_dir / 'stackoverflow_answer_lane_latest.json'), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('StackOverflow demand-capture packet', board_text)
+        self.assertIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+
     def test_execution_board_explains_why_no_do_now_packet_is_truthful(self):
         now = datetime(2026, 5, 24, 14, 21, 0)
 
