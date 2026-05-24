@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-24T22:53:20
+Generated: 2026-05-24T23:58:47
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -19,7 +19,6 @@ Generated: 2026-05-24T22:53:20
 ## Best executable assets still waiting
 - No do-now handoff packet is currently truthful in this review window.
 - Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.
-- Fresh publisher outreach already shipped in the current review window for: AXME Code, Bollwerk / Werkstatt, WyeWorks.
 - Primary-repo-flat publisher contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator handoff packet exists, but same-family curator outreach is paused during the active repair window.

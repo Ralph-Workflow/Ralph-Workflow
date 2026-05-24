@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-05-25T00:14:00+02:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "publisher_executability_truthfulness_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Publisher executability truthfulness repair",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_001400_publisher_executability_truthfulness_repair.md"
+  },
+  "why_this_action": {
+    "summary": "Tightened publisher executability truth so the active hold window does not pretend generic public pages are a real Codeberg-first outreach lane.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg remains flat and is still the primary outcome gate",
+      "distribution_lane_latest.json: current lane is measurement_hold until 2026-05-25T02:05:05",
+      "marketing_execution_board_latest.md: no truthful do-now packet exists in the active review window",
+      "primary_repo_flat_contact_discovery_latest.json: ctxt.dev / Signum does not expose a runtime-sendable publisher path here",
+      "apollo_sequence_status_latest.json: Apollo remains in its active measurement window until 2026-05-30T00:14:49.075391+02:00",
+      "reddit_post_analysis_latest.json: repetition risk is already elevated"
+    ],
+    "targets_prepared": []
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": []
+  },
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause agents.marketing.tests.test_distribution_lane_executor_measurement_hold agents.marketing.tests.test_marketing_system",
+    "board_path": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md"
+  }
+}

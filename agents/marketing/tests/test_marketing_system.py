@@ -269,7 +269,7 @@ class PrimaryRepoFlatTruthfulnessTests(unittest.TestCase):
             self.assertIn('https://codeberg.org/RalphWorkflow/Ralph-Workflow', text)
             self.assertNotIn('primary_repo_flat_repair.md', text)
 
-    def test_primary_repo_flat_actionable_findings_include_public_contact_paths(self):
+    def test_primary_repo_flat_actionable_findings_exclude_generic_public_pages_without_verified_forms(self):
         now = datetime(2026, 5, 24, 18, 15, 0)
         payload = {
             'targets': [
@@ -293,7 +293,7 @@ class PrimaryRepoFlatTruthfulnessTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery):
                 findings = distribution_lane_executor._current_primary_repo_flat_actionable_findings(now)
 
-        self.assertEqual([row['target'] for row in findings], ['ctxt.dev / Signum'])
+        self.assertEqual(findings, [])
 
 
 class DistributionLaneSelectorTests(unittest.TestCase):
@@ -332,7 +332,7 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
             self.assertEqual(count, 0)
 
-    def test_primary_repo_flat_targets_waiting_include_public_contact_paths(self):
+    def test_primary_repo_flat_targets_waiting_exclude_generic_public_pages_without_verified_forms(self):
         payload = {
             'targets': [
                 {
@@ -362,8 +362,8 @@ class DistributionLaneSelectorTests(unittest.TestCase):
                 waiting = distribution_lane_selector._primary_repo_flat_contact_targets_waiting_for_execution()
                 non_exec = distribution_lane_selector._primary_repo_flat_non_executable_targets_waiting_for_execution()
 
-        self.assertEqual(waiting, ['ctxt.dev / Signum'])
-        self.assertEqual(non_exec, ['No Contact Yet'])
+        self.assertEqual(waiting, [])
+        self.assertEqual(non_exec, ['ctxt.dev / Signum', 'No Contact Yet'])
 
     def test_recent_executed_action_type_counts_repo_conversion_quickstart_patch_as_proof_asset(self):
         now = datetime(2026, 5, 24, 1, 47, 0)

@@ -12,7 +12,7 @@ from agents.marketing import distribution_lane_executor
 
 
 class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
-    def test_execution_board_surfaces_primary_repo_flat_packet_for_contact_page_only_target(self):
+    def test_execution_board_blocks_primary_repo_flat_packet_for_contact_page_only_target(self):
         now = datetime(2026, 5, 24, 15, 10, 0)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -45,9 +45,8 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             board_text = board_path.read_text(encoding='utf-8')
 
-        self.assertIn('### 1. Primary-repo-flat publisher contact packet', board_text)
-        self.assertIn('Targets: ctxt.dev / Signum', board_text)
-        self.assertIn('human-executable via verified public contact paths', board_text)
+        self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertIn('Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.', board_text)
 
     def test_curator_queue_rows_normalize_recent_live_actions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -249,15 +248,22 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             board_text = board_path.read_text(encoding='utf-8')
             cron_log = json.loads((log_dir / 'marketing_2026-05-24_215700_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+            reentry_contract = (drafts_dir / 'post_hold_distribution_reentry_latest.md').read_text(encoding='utf-8')
 
         self.assertEqual(execution.action_type, 'measurement_hold_follow_through')
         self.assertIn('Post-hold marketer rerun scheduled', artifact_text)
+        self.assertIn('Post-hold re-entry contract', artifact_text)
         self.assertIn('2026-05-25T02:05:05', artifact_text)
         self.assertIn('cron-123', artifact_text)
         self.assertIn('Short review-window congestion clears at: 2026-05-25T02:05:05', board_text)
         self.assertIn('Post-hold marketer rerun scheduled: 2026-05-25T02:05:05', board_text)
+        self.assertIn('distribution_architecture_repair instead of another measurement_hold', reentry_contract)
         self.assertEqual(cron_log['type'], 'measurement_hold_release_cron')
         self.assertEqual(cron_log['cron_job']['id'], 'cron-123')
+        self.assertEqual(
+            cron_log['verification']['reentry_contract_path'],
+            str(drafts_dir / 'post_hold_distribution_reentry_latest.md'),
+        )
 
     def test_measurement_hold_execution_schedules_post_hold_rerun(self):
         now = datetime(2026, 5, 24, 21, 57, 0)
@@ -297,12 +303,15 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             board_text = board_path.read_text(encoding='utf-8')
             cron_log = json.loads((log_dir / 'marketing_2026-05-24_215700_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+            reentry_contract = (drafts_dir / 'post_hold_distribution_reentry_latest.md').read_text(encoding='utf-8')
 
         self.assertEqual(execution.action_type, 'measurement_hold_execution')
         self.assertIn('Post-hold marketer rerun scheduled', artifact_text)
+        self.assertIn('Post-hold re-entry contract', artifact_text)
         self.assertIn('cron-first-hold', artifact_text)
         self.assertIn('Short review-window congestion clears at: 2026-05-25T02:05:05', artifact_text)
         self.assertIn('Post-hold marketer rerun scheduled: 2026-05-25T02:05:05', board_text)
+        self.assertIn('Treat another idle hold as a process failure.', reentry_contract)
         self.assertEqual(cron_log['cron_job']['id'], 'cron-first-hold')
 
     def test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_when_post_cooldown_run_is_already_scheduled(self):
@@ -481,13 +490,11 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
 
-        self.assertEqual(execution.action_type, 'primary_repo_flat_contact_handoff_packet_execution')
-        self.assertIn('canonical codeberg-first execution packet', execution.summary.lower())
-        self.assertIn('ctxt.dev / Signum', artifact_text)
-        self.assertIn('## Execute these first', artifact_text)
-        self.assertIn('Ready-to-send email draft', artifact_text)
-        self.assertIn('Short contact-form version', artifact_text)
-        self.assertIn('plan → build → verify loop', artifact_text)
+        self.assertEqual(execution.action_type, 'primary_repo_flat_contact_handoff_follow_through')
+        self.assertIn('non-runtime-executable channels', execution.summary.lower())
+        self.assertNotIn('## Execute these first', artifact_text)
+        self.assertNotIn('Ready-to-send email draft', artifact_text)
+        self.assertNotIn('Short contact-form version', artifact_text)
 
     def test_measurement_hold_refresh_skips_recently_contacted_publishers(self):
         now = datetime(2026, 5, 24, 8, 33, 0)

@@ -1,0 +1,13 @@
+Act as the always-on RalphWorkflow marketer.
+
+This is the post-measurement-hold re-entry run. The short review window has expired, so choose the single highest-leverage marketing action you can actually do right now, execute it, and log the result.
+
+Mandatory rules:
+- read and reuse the latest market_intelligence, adoption, distribution-lane, audit, and execution-board artifacts first
+- read /home/mistlight/.openclaw/workspace/drafts/post_hold_distribution_reentry_latest.md first; it contains the current blocked-lane truth and the post-hold re-entry contract
+- prefer Codeberg traffic/adoption first and GitHub second
+- do the action, not just recommend it
+- avoid fake progress, duplicate packet delivery, and repeated cooldown-lane churn
+- do not select another measurement_hold just because Apollo/comparison/review windows are still open after the short hold cleared
+- if no truthful external/manual lane remains, spend this run on a concrete runtime/process repair that improves the next executable slot
+- if a safe runtime repair still blocks truthful execution, fix it in the same run
