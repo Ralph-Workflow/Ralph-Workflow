@@ -204,6 +204,67 @@ class MarketingDecisionTests(unittest.TestCase):
         self.assertEqual([p["title"] for p in filtered], ["recent"])
 
 
+class PrimaryRepoFlatTruthfulnessTests(unittest.TestCase):
+    def test_primary_repo_flat_contact_discovery_output_uses_live_audit_not_stale_repair_memo(self):
+        from agents.marketing import primary_repo_flat_contact_discovery
+
+        now = datetime(2026, 5, 24, 15, 0, 0)
+        findings = [{
+            'target': 'AXME Code',
+            'hook': 'Agent-native durability',
+            'article_url': 'https://code.axme.ai/',
+            'root_url': 'https://code.axme.ai/',
+            'recommended_next_step': 'email/contact send path is now identified',
+            'outreach_subject': 'RalphWorkflow as a complementary workflow layer to durable agent runs',
+            'channels': [{'type': 'email', 'value': 'contact@axme.ai', 'label': 'email'}],
+        }]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            with patch.object(primary_repo_flat_contact_discovery, 'LOG_DIR', log_dir), \
+                 patch.object(primary_repo_flat_contact_discovery, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(primary_repo_flat_contact_discovery, 'LATEST_JSON', log_dir / 'primary_repo_flat_contact_discovery_latest.json'), \
+                 patch.object(primary_repo_flat_contact_discovery, 'LATEST_MD', drafts_dir / 'primary_repo_flat_contact_discovery_latest.md'):
+                primary_repo_flat_contact_discovery.write_outputs(now, findings)
+
+            text = (drafts_dir / 'primary_repo_flat_contact_discovery_latest.md').read_text(encoding='utf-8')
+            self.assertIn('adoption_metrics_latest.json', text)
+            self.assertNotIn('primary_repo_flat_repair.md', text)
+
+    def test_primary_repo_flat_contact_packet_cites_live_audit_and_keeps_sendable_email_visible(self):
+        now = datetime(2026, 5, 24, 15, 5, 0)
+        finding = {
+            'target': 'AXME Code',
+            'article_url': 'https://code.axme.ai/',
+            'root_url': 'https://code.axme.ai/',
+            'hook': 'Agent-native durability',
+            'reason': 'Adjacent reliability problem from the workflow side.',
+            'outreach_subject': 'RalphWorkflow as a complementary workflow layer to durable agent runs',
+            'recommended_next_step': 'email/contact send path is now identified',
+            'channels': [
+                {'type': 'email', 'value': 'contact@axme.ai', 'label': 'email'},
+                {'type': 'website', 'value': 'https://code.axme.ai', 'label': 'website'},
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            drafts_dir.mkdir()
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_live_listing_proof_rows', return_value=[]):
+                artifact, _ = distribution_lane_executor._write_primary_repo_flat_contact_handoff_packet(now, [finding])
+
+            text = artifact.read_text(encoding='utf-8')
+            self.assertIn('marketing_workflow_audit_latest.json', text)
+            self.assertIn('email: contact@axme.ai', text)
+            self.assertNotIn('primary_repo_flat_repair.md', text)
+
+
 class DistributionLaneSelectorTests(unittest.TestCase):
     def test_recent_live_action_family_count_counts_sent_curator_email(self):
         now = datetime(2026, 5, 23, 18, 0, 0)

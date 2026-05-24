@@ -523,7 +523,54 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             board_text = board_path.read_text(encoding='utf-8')
 
-        self.assertNotIn('Curator manual-contact packet', board_text)
+        self.assertNotIn('### 1. Curator manual-contact packet', board_text)
+
+    def test_execution_board_hides_comparison_packet_after_manual_delivery_in_active_review_window(self):
+        now = datetime(2026, 5, 24, 14, 21, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'comparison_backlink_queue_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'slug': 'aider',
+                            'name': 'Aider',
+                            'status': 'prepared',
+                            'comparison_path': '/tmp/aider.md',
+                            'review_due_date': '2026-06-05',
+                            'artifact_path': '/tmp/aider-outreach.md',
+                        }
+                    ]
+                }), encoding='utf-8')
+            (drafts_dir / 'comparison_backlink_handoff_packet_latest.md').write_text(
+                '# Ralph Workflow Comparison Backlink Execution Handoff Packet\n\n### 1. Aider\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-24_comparison_backlink_manual_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T06:06:00+02:00',
+                    'chosen_action': {'type': 'comparison_backlink_manual_delivery'},
+                    'measurement_window': {'review_at': '2026-05-31T06:06:00+02:00'},
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('### 1. Comparison backlink packet', board_text)
+        self.assertIn('Comparison backlink packet was already manually delivered in the current review window', board_text)
 
     def test_execution_board_hides_curator_handoff_while_faster_packets_are_still_waiting(self):
         now = datetime(2026, 5, 24, 10, 40, 0)
@@ -608,7 +655,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             board_text = board_path.read_text(encoding='utf-8')
 
         self.assertIn('Same-family curator outreach is paused', board_text)
-        self.assertNotIn('Curator handoff packet', board_text)
+        self.assertNotIn('### 1. Curator handoff packet', board_text)
 
     def test_execution_board_surfaces_scheduled_stackoverflow_run(self):
         now = datetime(2026, 5, 24, 10, 40, 0)
@@ -707,6 +754,145 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertNotIn('### 1. StackOverflow demand-capture packet', board_text)
         self.assertIn('StackOverflow demand-capture packet is exhausted for this review window', board_text)
+
+    def test_execution_board_explains_why_no_do_now_packet_is_truthful(self):
+        now = datetime(2026, 5, 24, 14, 21, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'ctxt.dev / Signum',
+                            'channels': [{'type': 'telegram', 'value': 'https://t.me/ctxtdev'}],
+                        },
+                        {
+                            'target': 'AXME Code',
+                            'channels': [{'type': 'email', 'value': 'contact@axme.ai'}],
+                        },
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-24_axme_publisher_outreach.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T08:10:00',
+                    'action_type': 'publisher_email_outreach',
+                    'target': 'AXME Code',
+                    'status': 'executed',
+                    'ok': True,
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'curator_outreach_queue_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'vivy-yi/awesome-agent-orchestration',
+                            'status': 'email_invalid_manual_handoff_remaining',
+                            'priority': 'HIGH',
+                        },
+                        {
+                            'target': 'AI Resources',
+                            'status': 'prepared',
+                            'priority': 'HIGH',
+                        },
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'curator_contact_handoff_packet_latest.md').write_text('# packet\n', encoding='utf-8')
+            (drafts_dir / 'curator_handoff_packet_latest.md').write_text('# curator packet\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_curator_contact_handoff_packet_execution.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T09:00:00',
+                    'chosen_action': {'type': 'curator_contact_handoff_packet_execution'},
+                    'why_this_action': {'targets_prepared': ['vivy-yi/awesome-agent-orchestration']},
+                    'measurement_window': {'review_at': '2026-05-31T09:00:00'},
+                    'result': {'status': 'prepared', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'comparison_backlink_queue_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'slug': 'aider',
+                            'name': 'Aider',
+                            'status': 'prepared',
+                            'comparison_path': '/tmp/aider.md',
+                            'review_due_date': '2026-06-05',
+                            'artifact_path': '/tmp/aider-outreach.md',
+                        }
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'comparison_backlink_handoff_packet_latest.md').write_text('# comparison packet\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_comparison_backlink_manual_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T06:06:00+02:00',
+                    'chosen_action': {'type': 'comparison_backlink_manual_delivery'},
+                    'measurement_window': {'review_at': '2026-05-31T06:06:00+02:00'},
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'stackoverflow_answer_lane_latest.json').write_text(
+                json.dumps({
+                    'generated_at': '2026-05-24T12:47:02',
+                    'cooldown_active': False,
+                    'drafts_created': 0,
+                    'reused_existing_draft': {
+                        'question_title': 'How should I structure autonomous AI agent workflows for production reliability?',
+                        'question_url': 'https://stackoverflow.com/questions/79942291/example',
+                    },
+                    'top_questions': [
+                        {
+                            'title': 'How should I structure autonomous AI agent workflows for production reliability?',
+                            'url': 'https://stackoverflow.com/questions/79942291/example',
+                        }
+                    ],
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md').write_text('# stackoverflow packet\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_stackoverflow_post_cooldown_cron.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T08:48:19+02:00',
+                    'type': 'stackoverflow_post_cooldown_cron',
+                    'status': 'scheduled',
+                    'scheduled_run_at': '2026-05-24T11:30:00+02:00',
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'STACKOVERFLOW_LATEST_PATH', log_dir / 'stackoverflow_answer_lane_latest.json'), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, True)), \
+                 patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', log_dir / 'stackoverflow_answer_lane_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+        self.assertIn('Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.', board_text)
+        self.assertIn('Fresh publisher outreach already shipped in the current review window for: AXME Code.', board_text)
+        self.assertIn('Curator manual-contact packet already exists but was already delivered in the current review window', board_text)
+        self.assertIn('Curator handoff packet exists, but same-family curator outreach is paused', board_text)
+        self.assertIn('Comparison backlink packet exists, but it was already manually delivered in the current review window.', board_text)
+        self.assertIn('StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.', board_text)
 
     def test_stackoverflow_execution_counts_reused_existing_draft_as_prepared(self):
         now = datetime(2026, 5, 24, 11, 25, 0)

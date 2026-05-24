@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-05-24T14:21:00+02:00",
+  "run_type": "marketing-active-loop",
+  "chosen_action": {
+    "type": "execution_board_comparison_delivery_guard_repair",
+    "channel": "marketing_loop_runtime",
+    "title": "Hide already-delivered comparison backlink packet during its active review window",
+    "status": "executed",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md"
+  },
+  "shared_findings_used": [
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/logs/comparison_backlink_queue_latest.json",
+    "agents/marketing/logs/marketing_2026-05-24_comparison_backlink_manual_delivery.json"
+  ],
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "artifact_updated": true,
+    "verified_by": "PYTHONPATH=/home/mistlight/.openclaw/workspace python3 agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+  },
+  "summary": "Patched the execution board so it no longer advertises the comparison backlink handoff packet after that exact manual-delivery asset was already sent on 2026-05-24 and is still inside its review window. This closes a fake-progress loop during measurement hold.",
+  "expected_outcome": "Future hold-window runs stop resurfacing an already-delivered comparison packet and instead force a genuinely new lane or another process repair.",
+  "measurement_window": {
+    "review_at": "2026-05-31T06:06:00+02:00",
+    "success_metric": "marketing_execution_board_latest.md keeps the comparison packet hidden while the current manual-delivery window is active.",
+    "kill_condition": "If the board resurfaces the packet before the review window expires without a changed prepared set, repair the comparison delivery guard again."
+  }
+}

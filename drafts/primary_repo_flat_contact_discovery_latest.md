@@ -1,15 +1,15 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-24T04:38:41+00:00
+Generated: 2026-05-24T12:52:10+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
 - Same-family directory and curator bursts are already inside measurement windows.
-- The strongest remaining unblock was to turn the 2026-05-24 primary-repo-flat repair targets into actionable public contact routes.
+- The strongest remaining unblock was to turn the active primary-repo-flat repair into actionable public contact routes.
 
 ## Reused findings
 - marketing_workflow_audit_latest.json → primary bottleneck is still distribution + conversion to the primary repo
+- adoption_metrics_latest.json → Codeberg is still the primary success gate
 - market_intelligence_latest.json → comparison/positioning truth reused for outreach framing
-- primary_repo_flat_repair.md → fresh developer-native publication targets worth citing or contacting
 
 ## Contact-ready targets
 ### 1. ctxt.dev / Signum

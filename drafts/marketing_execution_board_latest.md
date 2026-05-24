@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-24T14:17:06
+Generated: 2026-05-24T14:57:37
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -11,13 +11,14 @@ Generated: 2026-05-24T14:17:06
 - Apollo launch review: 2026-05-30T00:14:49.075391+02:00
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Same-family curator outreach is paused in the active repair window; do not treat prepared curator packets as do-now assets until that hold ages out or the lane map changes.
+- Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 
 ## Best executable assets still waiting
-### 1. Comparison backlink packet
-- When: Do after fresh publisher / curator contacts are sent
-- Packet: /home/mistlight/.openclaw/workspace/drafts/comparison_backlink_handoff_packet_latest.md
-- Targets: Aider, Claude Code, Conductor (Teams)
-- Why this matters: Comparison proof is already prepared and should be reused instead of redrafted.
+### 1. Primary-repo-flat publisher contact packet
+- When: Do now
+- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
+- Targets: ctxt.dev / Signum
+- Why this matters: Fresh developer-native publisher contacts are already discovered for the flat-Codeberg repair lane.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
