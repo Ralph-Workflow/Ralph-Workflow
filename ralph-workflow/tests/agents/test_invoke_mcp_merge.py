@@ -276,6 +276,7 @@ def test_opencode_upstream_env_var_includes_mcp_toml_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
 
     list(

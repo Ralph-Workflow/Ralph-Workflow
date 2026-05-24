@@ -254,6 +254,12 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
             ".agent/artifacts/planning_analysis_decision.json",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
+        _write_artifact_files(
+            workspace,
+            "development_analysis_decision",
+            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
+        )
         effect = InvokeAgentEffect(
             agent_name="claude",
             phase="planning",
@@ -275,6 +281,57 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         assert not workspace.exists(".agent/PLAN.md")
         assert not workspace.exists(".agent/artifacts/planning_analysis_decision.json")
         assert not workspace.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
+        assert not workspace.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
+
+    def test_fresh_planning_entry_from_dev_final_commit_clears_dev_analysis(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        workspace = FsWorkspace(tmp_path)
+        workspace_scope = WorkspaceScope(tmp_path)
+        workspace.write("PROMPT.md", "Create a fresh plan")
+        workspace.write(
+            ".agent/tmp/planning_prompt.md",
+            "You are in PLANNING MODE. Create a detailed, structured execution plan.",
+        )
+        _write_artifact_files(workspace, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
+        _write_artifact_files(
+            workspace,
+            "planning_analysis_decision",
+            ".agent/artifacts/planning_analysis_decision.json",
+            ".agent/PLANNING_ANALYSIS_DECISION.md",
+        )
+        _write_artifact_files(
+            workspace,
+            "development_analysis_decision",
+            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
+        )
+        effect = InvokeAgentEffect(
+            agent_name="claude",
+            phase="planning",
+            prompt_file="PROMPT.md",
+            drain="planning",
+        )
+        state = PipelineState(phase="planning", previous_phase="development_final_commit")
+
+        result = _run_pipeline_step(
+            state=state,
+            effect=effect,
+            workspace_scope=workspace_scope,
+            monkeypatch=monkeypatch,
+            stub_materialize=True,
+        )
+
+        assert isinstance(result, PipelineState)
+        assert not workspace.exists(".agent/artifacts/plan.json")
+        assert not workspace.exists(".agent/PLAN.md")
+        assert not workspace.exists(".agent/artifacts/planning_analysis_decision.json")
+        assert not workspace.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
+        assert not workspace.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not workspace.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_fresh_development_commit_entry_clears_development_drains(
         self,

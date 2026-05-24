@@ -10,13 +10,15 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-    from pytest import MonkeyPatch
+    from pytest import CaptureFixture, MonkeyPatch
 
 
 class StubRunner:
     def __init__(self, results: list[ProcessResult]) -> None:
         self._results = list(results)
-        self.calls: list[tuple[str, tuple[str, ...], str | Path | None, float | None]] = []
+        self.calls: list[
+            tuple[str, tuple[str, ...], str | Path | None, float | None, bool]
+        ] = []
 
     def __call__(
         self,
@@ -26,38 +28,108 @@ class StubRunner:
         cwd: str | Path | None = None,
         env: dict[str, str] | None = None,
         timeout: float | None = None,
+        capture_output: bool = True,
     ) -> ProcessResult:
         del env
-        self.calls.append((command, tuple(args), cwd, timeout))
+        self.calls.append((command, tuple(args), cwd, timeout, capture_output))
         return self._results.pop(0)
 
 
 def _result(
     *,
-    args: tuple[str, ...],
+    command: tuple[str, ...],
     returncode: int,
     stdout: str = "",
     stderr: str = "",
 ) -> ProcessResult:
     return ProcessResult(
-        command=("make", *args),
+        command=command,
         returncode=returncode,
         stdout=stdout,
         stderr=stderr,
     )
 
 
+def test_pytest_commands_keep_makefile_glob_shards_for_helper_only_groups(tmp_path: Path) -> None:
+    helper = tmp_path / "tests/test_alpha_helper__fake.py"
+    helper.parent.mkdir(parents=True, exist_ok=True)
+    helper.write_text("VALUE = 1\n", encoding="utf-8")
+
+    assert verify_module._pytest_commands(tmp_path) == (
+        verify_module._pytest_args("tests/test_[aA]*.py"),
+    )
+
+
+def test_pytest_commands_mirror_makefile_shards_without_expanding_directories(
+    tmp_path: Path,
+) -> None:
+    for path in (
+        "tests/agents",
+        "tests/config",
+        "tests/display",
+        "tests/fixtures",
+        "tests/unit",
+        "tests/mcp",
+        "tests/pipeline",
+        "tests/recovery",
+        "tests/integration",
+    ):
+        (tmp_path / path).mkdir(parents=True, exist_ok=True)
+    for file_path in (
+        "tests/test_alpha.py",
+        "tests/test_bravo.py",
+        "tests/test_qcharlie.py",
+        "tests/test_tdelta.py",
+        "tests/test_pm_echo.py",
+    ):
+        path = tmp_path / file_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("def test_placeholder():\n    assert True\n", encoding="utf-8")
+
+    commands = verify_module._pytest_commands(tmp_path)
+
+    assert commands == (
+        verify_module._pytest_args(*verify_module._CORE_PATHS),
+        verify_module._pytest_args(*verify_module._RUNTIME_PATHS),
+        verify_module._pytest_args("tests/test_[aA]*.py"),
+        verify_module._pytest_args("tests/test_[bB]*.py"),
+        verify_module._pytest_args("tests/test_p[m-zM-Z]*.py"),
+        verify_module._pytest_args("tests/test_[q-sQ-S]*.py"),
+        verify_module._pytest_args("tests/test_[t-zT-Z]*.py"),
+        verify_module._pytest_args(*verify_module._INTEGRATION_PATHS),
+    )
+
+
 def test_main_runs_all_verify_steps_when_successful(
-    tmp_path: Path, capsys: object, monkeypatch: MonkeyPatch
+    tmp_path: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
 ) -> None:
     pytest_cmd_a = (
-        "-m", "pytest", "tests/agents", "-q", "-n", "4",
-        "--dist", "worksteal", "-m", "not subprocess_e2e",
+        "-m",
+        "pytest",
+        "tests/agents",
+        "tests/config",
+        "-q",
+        "-n",
+        "4",
+        "--dist",
+        "worksteal",
+        "-m",
+        "not subprocess_e2e",
     )
     pytest_cmd_b = (
-        "-m", "pytest", "tests/test_alpha.py", "-q", "-n", "2",
-        "--dist", "worksteal", "-m", "not subprocess_e2e",
+        "-m",
+        "pytest",
+        "tests/integration/",
+        "-q",
+        "-n",
+        "4",
+        "--dist",
+        "worksteal",
+        "-m",
+        "not subprocess_e2e",
     )
+    wrapped_a = verify_module._verify_timeout_pytest_args(pytest_cmd_a, timeout=30.0)
+    wrapped_b = verify_module._verify_timeout_pytest_args(pytest_cmd_b, timeout=30.0)
     monkeypatch.setattr(
         verify_module,
         "_pytest_commands",
@@ -65,20 +137,10 @@ def test_main_runs_all_verify_steps_when_successful(
     )
     runner = StubRunner(
         [
-            _result(args=("lint",), returncode=0, stdout="lint ok\n"),
-            _result(args=("typecheck",), returncode=0, stdout="typecheck ok\n"),
-            ProcessResult(
-                command=("python", *pytest_cmd_a),
-                returncode=0,
-                stdout="test shard a ok\n",
-                stderr="",
-            ),
-            ProcessResult(
-                command=("python", *pytest_cmd_b),
-                returncode=0,
-                stdout="test shard b ok\n",
-                stderr="",
-            ),
+            _result(command=("make", "lint"), returncode=0, stdout="lint ok\n"),
+            _result(command=("make", "typecheck"), returncode=0, stdout="typecheck ok\n"),
+            _result(command=("uv", *wrapped_a), returncode=0, stdout="test shard a ok\n"),
+            _result(command=("uv", *wrapped_b), returncode=0, stdout="test shard b ok\n"),
         ]
     )
 
@@ -89,21 +151,25 @@ def test_main_runs_all_verify_steps_when_successful(
     assert [call[:2] for call in runner.calls] == [
         ("make", ("lint",)),
         ("make", ("typecheck",)),
-        ("python", pytest_cmd_a),
-        ("python", pytest_cmd_b),
+        ("uv", wrapped_a),
+        ("uv", wrapped_b),
     ]
+    assert runner.calls[2][3] is None
+    assert runner.calls[2][4] is False
+    assert runner.calls[3][3] is None
+    assert runner.calls[3][4] is False
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
 
 
 def test_main_prints_agent_fix_banner_when_verify_step_fails(
-    tmp_path: Path, capsys: object
+    tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
     runner = StubRunner(
         [
-            _result(args=("lint",), returncode=0, stdout="lint ok\n"),
+            _result(command=("make", "lint"), returncode=0, stdout="lint ok\n"),
             _result(
-                args=("typecheck",),
+                command=("make", "typecheck"),
                 returncode=1,
                 stdout="",
                 stderr="mypy failure\n",
@@ -129,71 +195,60 @@ def test_main_prints_agent_fix_banner_when_verify_step_fails(
     assert "make typecheck" in captured.err
 
 
-def test_main_passes_remaining_budget_to_pytest(
-    tmp_path: Path, capsys: object, monkeypatch: MonkeyPatch
+def test_main_wraps_pytest_with_verify_timeout(
+    tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Verify pytest receives the full suite timeout budget."""
     pytest_cmd = (
-        "-m", "pytest", "tests/agents", "-q", "-n", "4",
-        "--dist", "worksteal", "-m", "not subprocess_e2e",
+        "-m",
+        "pytest",
+        "tests/agents",
+        "-q",
+        "-n",
+        "4",
+        "--dist",
+        "worksteal",
+        "-m",
+        "not subprocess_e2e",
     )
+    wrapped = verify_module._verify_timeout_pytest_args(pytest_cmd, timeout=30.0)
     monkeypatch.setattr(verify_module, "_pytest_commands", lambda _cwd: (pytest_cmd,))
     runner = StubRunner(
         [
-            _result(args=("lint",), returncode=0, stdout="lint ok\n"),
-            _result(args=("typecheck",), returncode=0, stdout="typecheck ok\n"),
-            ProcessResult(
-                command=("python", *pytest_cmd),
-                returncode=0,
-                stdout="test ok\n",
-                stderr="",
-            ),
+            _result(command=("make", "lint"), returncode=0, stdout="lint ok\n"),
+            _result(command=("make", "typecheck"), returncode=0, stdout="typecheck ok\n"),
+            _result(command=("uv", *wrapped), returncode=0, stdout="test ok\n"),
         ]
     )
 
     exit_code = main([], runner=runner, cwd=tmp_path)
 
     assert exit_code == 0
-    # Last call should be pytest with a positive timeout
     last_call = runner.calls[-1]
-    assert last_call[0] == "python"
-    assert last_call[1] == pytest_cmd
-    # Timeout should match the full suite budget.
-    assert last_call[3] is not None
-    assert last_call[3] == 30.0
+    assert last_call[0] == "uv"
+    assert last_call[1] == wrapped
+    assert last_call[3] is None
+    assert last_call[4] is False
 
 
-def test_main_still_runs_pytest_after_slow_precheck_steps(
-    tmp_path: Path, capsys: object, monkeypatch: MonkeyPatch
+def test_main_treats_no_tests_exit_as_non_failing_shard(
+    tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    pytest_cmd = (
-        "-m", "pytest", "tests/agents", "-q", "-n", "4",
-        "--dist", "worksteal", "-m", "not subprocess_e2e",
-    )
+    pytest_cmd = verify_module._pytest_args("tests/test_[aA]*.py")
+    wrapped = verify_module._verify_timeout_pytest_args(pytest_cmd, timeout=30.0)
     monkeypatch.setattr(verify_module, "_pytest_commands", lambda _cwd: (pytest_cmd,))
     runner = StubRunner(
         [
-            _result(args=("lint",), returncode=0, stdout="lint ok\n"),
-            _result(args=("typecheck",), returncode=0, stdout="typecheck ok\n"),
-            ProcessResult(
-                command=("python", *pytest_cmd),
-                returncode=0,
-                stdout="test ok\n",
-                stderr="",
-            ),
+            _result(command=("make", "lint"), returncode=0, stdout="lint ok\n"),
+            _result(command=("make", "typecheck"), returncode=0, stdout="typecheck ok\n"),
+            _result(command=("uv", *wrapped), returncode=5, stdout="no tests ran\n"),
         ]
     )
 
-    import time
-    from unittest.mock import patch
-
-    with patch.object(time, "monotonic", side_effect=[1000.0, 1031.0]):
-        exit_code = main([], runner=runner, cwd=tmp_path)
+    exit_code = main([], runner=runner, cwd=tmp_path)
 
     assert exit_code == 0
-    assert runner.calls[-1][0] == "python"
-    assert runner.calls[-1][1] == pytest_cmd
-    assert runner.calls[-1][3] == 30.0
 
-    captured = capsys.readouterr()
-    assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
+
+def test_suite_timeout_cli_value_avoids_decimal_noise() -> None:
+    assert verify_module._suite_timeout_cli_value(30.0) == "30"
+    assert verify_module._suite_timeout_cli_value(30.5) == "30.5"

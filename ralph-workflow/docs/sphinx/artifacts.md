@@ -176,7 +176,7 @@ In addition to the artifact history archive, Ralph Workflow can delete the prima
 
 ```toml
 [phases.planning]
-clear_drains_on_fresh_entry = ["planning", "planning_analysis"]
+clear_drains_on_fresh_entry = ["planning", "planning_analysis", "development_analysis"]
 
 [phases.development]
 clear_drains_on_fresh_entry = ["planning_analysis", "development", "development_analysis"]
@@ -193,7 +193,7 @@ Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes 
 
 **When clearing is suppressed:** Analysis loopbacks (planning_analysis → planning), same-phase retries, and resume (checkpoint restore).
 
-**Default pipeline behavior:** Fresh planning entry clears `planning` and `planning_analysis` drain artifacts. Fresh development entry clears `planning_analysis`, `development`, and `development_analysis` drain artifacts. Fresh `development_commit` and `development_final_commit` entries both clear `development` and `development_analysis` drain artifacts so each commit phase sees only current-cycle evidence.
+**Default pipeline behavior:** Fresh planning entry clears `planning`, `planning_analysis`, and `development_analysis` drain artifacts. Fresh development entry clears `planning_analysis`, `development`, and `development_analysis` drain artifacts. Fresh `development_commit` and `development_final_commit` entries both clear `development` and `development_analysis` drain artifacts so each commit phase sees only current-cycle evidence.
 
 ## Audit adapter
 
