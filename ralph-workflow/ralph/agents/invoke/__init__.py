@@ -16,6 +16,7 @@ import contextlib
 import os
 import shutil
 import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
@@ -77,7 +78,7 @@ from ralph.agents.invoke._types import (
 )
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.config.enums import AgentTransport
-from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.startup import (
     PreflightError,
     ensure_no_preflight_error,
@@ -154,6 +155,12 @@ def _stop_workspace_monitor(monitor: WorkspaceMonitor | None) -> None:
     """Stop workspace monitoring."""
     if monitor is not None:
         monitor.stop()
+
+
+def _clear_session_completion_sentinel(workspace_path: Path, run_id: str) -> None:
+    """Delete only the current run's completion sentinel."""
+    sentinel_path = workspace_path / f".agent/completion_seen_{run_id}.json"
+    sentinel_path.unlink(missing_ok=True)
 
 
 def _apply_upstream_env(
@@ -299,13 +306,20 @@ def invoke_agent(
             lines_iter = run_pty_and_read_lines(cmd, ctx, extras)
             yield from lines_iter
         elif transport == AgentTransport.AGY:
+            run_id = (opts.extra_env or {}).get(str(MCP_RUN_ID_ENV)) or str(uuid4())
+            if opts.workspace_path is not None:
+                _clear_session_completion_sentinel(opts.workspace_path, run_id)
             mcp_ctx = (
                 agy_workspace_mcp_endpoint(opts.workspace_path, runtime.mcp_endpoint)
                 if runtime.mcp_endpoint and opts.workspace_path
                 else contextlib.nullcontext()
             )
             with mcp_ctx:
-                yield from run_pty_and_read_lines(cmd, ctx, _PtyExtras())
+                yield from run_pty_and_read_lines(
+                    cmd,
+                    ctx,
+                    _PtyExtras(expected_session_id=run_id),
+                )
         else:
             yield from run_subprocess_and_read_lines(cmd, ctx)
 

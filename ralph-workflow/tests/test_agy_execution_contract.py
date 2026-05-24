@@ -128,6 +128,138 @@ def test_artifact_on_disk_satisfies_completion_contract(tmp_path: Path) -> None:
     )
 
 
+def test_sentinel_check_fn_true_prevents_invocation_error(tmp_path: Path) -> None:
+    strategy = strategy_for_transport(AgentTransport.AGY)
+    handle = _FakeHandle(returncode=0)
+
+    _check_process_result(
+        cast("ManagedProcess", handle),
+        "agy",
+        [],
+        _CompletionCheckOptions(
+            execution_strategy=strategy,
+            workspace_path=tmp_path,
+            required_artifact=RequiredArtifact(
+                phase="development",
+                artifact_type="development_result",
+                json_path=".agent/artifacts/development_result.json",
+                markdown_path=None,
+                normalizer=None,
+            ),
+            captured_session_id="captured-run-id",
+            _sentinel_check_fn=lambda workspace, run_id: (
+                workspace == tmp_path and run_id == "captured-run-id"
+            ),
+        ),
+    )
+
+
+def test_sentinel_check_fn_false_still_raises_invocation_error(tmp_path: Path) -> None:
+    strategy = strategy_for_transport(AgentTransport.AGY)
+    handle = _FakeHandle(returncode=0)
+
+    with pytest.raises(AgentInvocationError):
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "agy",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    json_path=".agent/artifacts/development_result.json",
+                    markdown_path=None,
+                    normalizer=None,
+                ),
+                captured_session_id="captured-run-id",
+                _sentinel_check_fn=lambda workspace, run_id: False,
+            ),
+        )
+
+
+def test_sentinel_check_fn_receives_captured_session_id(tmp_path: Path) -> None:
+    strategy = strategy_for_transport(AgentTransport.AGY)
+    handle = _FakeHandle(returncode=0)
+    seen: list[tuple[Path, str | None]] = []
+
+    def capture(workspace: Path, run_id: str | None) -> bool:
+        seen.append((workspace, run_id))
+        return True
+
+    _check_process_result(
+        cast("ManagedProcess", handle),
+        "agy",
+        [],
+        _CompletionCheckOptions(
+            execution_strategy=strategy,
+            workspace_path=tmp_path,
+            required_artifact=RequiredArtifact(
+                phase="development",
+                artifact_type="development_result",
+                json_path=".agent/artifacts/development_result.json",
+                markdown_path=None,
+                normalizer=None,
+            ),
+            captured_session_id="captured-run-id",
+            _sentinel_check_fn=capture,
+        ),
+    )
+
+    assert seen == [(tmp_path, "captured-run-id")]
+
+
+def test_sentinel_completion_without_pty_echo(tmp_path: Path) -> None:
+    strategy = strategy_for_transport(AgentTransport.AGY)
+    handle = _FakeHandle(returncode=0)
+    sentinel = tmp_path / ".agent" / "completion_seen_observable-run-001.json"
+    sentinel.parent.mkdir(parents=True)
+    sentinel.write_text('{"run_id": "observable-run-001"}', encoding="utf-8")
+
+    _check_process_result(
+        cast("ManagedProcess", handle),
+        "agy",
+        [],
+        _CompletionCheckOptions(
+            execution_strategy=strategy,
+            workspace_path=tmp_path,
+            required_artifact=RequiredArtifact(
+                phase="development",
+                artifact_type="development_result",
+                json_path=".agent/artifacts/development_result.json",
+                markdown_path=None,
+                normalizer=None,
+            ),
+            captured_session_id="observable-run-001",
+        ),
+    )
+
+
+def test_sentinel_absent_without_pty_echo_raises(tmp_path: Path) -> None:
+    strategy = strategy_for_transport(AgentTransport.AGY)
+    handle = _FakeHandle(returncode=0)
+
+    with pytest.raises(AgentInvocationError):
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "agy",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    json_path=".agent/artifacts/development_result.json",
+                    markdown_path=None,
+                    normalizer=None,
+                ),
+                captured_session_id="observable-run-001",
+            ),
+        )
+
+
 def test_agy_classify_activity_line_json_is_output_not_lifecycle() -> None:
     strategy = strategy_for_transport(AgentTransport.AGY)
     signal = strategy.classify_activity_line('{"type": "message_start"}')

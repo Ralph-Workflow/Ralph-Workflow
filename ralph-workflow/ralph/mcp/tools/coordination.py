@@ -6,9 +6,11 @@ completion declaration, workspace coordination, and environment reads.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
@@ -28,6 +30,7 @@ if TYPE_CHECKING:
 RUN_REPORT_PROGRESS_CAPABILITY = "run.report_progress"
 ARTIFACT_SUBMIT_CAPABILITY = "artifact.submit"
 ENV_READ_CAPABILITY = "env.read"
+_COMPLETION_SENTINEL_RELPATHFMT = ".agent/completion_seen_{run_id}.json"
 
 
 def _timestamp() -> int:
@@ -54,6 +57,25 @@ def _serialize_payload(payload: object) -> str:
         return str(payload)
     except ValueError:
         return str(payload)
+
+
+def _write_completion_sentinel(
+    workspace: WorkspaceLike | None,
+    run_id: str,
+    *,
+    _write_fn: Callable[[str, str], None] | None = None,
+) -> None:
+    """Write a run-scoped completion sentinel as best-effort evidence."""
+    if workspace is None:
+        return
+    sentinel_relpath = _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
+    sentinel_abspath = workspace.absolute_path(sentinel_relpath)
+    sentinel_payload: dict[str, str] = {"run_id": run_id}
+    payload = json.dumps(sentinel_payload, ensure_ascii=False)
+    if _write_fn is not None:
+        _write_fn(sentinel_abspath, payload)
+        return
+    Path(sentinel_abspath).write_text(payload, encoding="utf-8")
 
 
 def format_progress_text(status: str, note: str, timestamp: int) -> str:
@@ -93,7 +115,7 @@ def handle_report_progress(
 
 def handle_declare_complete(
     session: CoordinationSessionLike,
-    _workspace: WorkspaceLike,
+    workspace: WorkspaceLike,
     params: dict[str, object],
     *,
     now_fn: Callable[[], int] = _timestamp,
@@ -102,6 +124,8 @@ def handle_declare_complete(
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Task completion")
     summary_value = params.get("summary", "No summary provided")
     summary = summary_value if isinstance(summary_value, str) else "No summary provided"
+    with contextlib.suppress(OSError):
+        _write_completion_sentinel(workspace, session.run_id)
     message = (
         "Task declared complete: "
         f"session_id={session.session_id}, summary='{summary}', timestamp={now_fn()}\n"

@@ -7,6 +7,7 @@ PYTEST_WORKERS_C_MO ?= 4
 PYTEST_WORKERS_C_PZ ?= 4
 PYTEST_WORKERS_D ?= 4
 PYTEST_WORKERS_D_REST ?= 4
+PYTEST_WORKERS_G_H ?= 4
 PYTEST_WORKERS_MCP ?= 4
 PYTEST_WORKERS_A_HN_MISC ?= 4
 PYTEST_WORKERS_UNIT_DISPLAY ?= 4
@@ -15,7 +16,8 @@ PYTEST_WORKERS_A_OZ ?= 12
 PYTEST_WORKERS_AF_G ?= 8
 PYTEST_WORKERS_INTEGRATION ?= 8
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 30
-PYTEST_CORE_AGENT_PATHS = tests/agents
+PYTEST_CORE_AGENT_PATHS = tests/agents/test_idle_watchdog_1.py tests/agents/test_idle_watchdog_2.py tests/agents/test_post_exit_watchdog.py tests/agents/test_timeout_clock.py
+PYTEST_CORE_AGENT_PATHS_2 = tests/agents/test_invoke_mcp_merge.py tests/agents/test_invoke_timeout_integration.py
 PYTEST_CORE_CONFIG_PATHS = tests/config
 PYTEST_CORE_DISPLAY_CONTEXT_PATHS = tests/display/test_di_invariants.py
 PYTEST_CORE_DISPLAY_MODE_PATHS = tests/display/test_mode_adaptiveness.py
@@ -62,7 +64,7 @@ PYTEST_ROOT_PATHS_O = tests/test_[oO]*.py
 PYTEST_ROOT_PATHS_PA_PC = tests/test_package_markdown_docs_sync_package_mcp_docs.py tests/test_package_markdown_docs_sync_package_root_docs.py tests/test_package_release_classifier.py tests/test_parallel_coordinator.py tests/test_parallel_coordinator_helper_recordingdisplay.py tests/test_parallel_display.py tests/test_parallel_display_completion_panel.py tests/test_parallel_display_content_routing.py tests/test_parallel_display_output.py tests/test_parallel_display_subscriber_forwarding.py tests/test_parallel_display_transcript_regression.py tests/test_parallel_docs_no_worktree_language.py tests/test_parallel_mode_docs_banned_phrases_across_all_docs.py
 PYTEST_ROOT_PATHS_PA_PC_2 = tests/test_parallel_mode_docs_namespaced_payload_docs.py tests/test_parallel_multimodal_worker_collision.py tests/test_parallel_no_worktree_imports.py tests/test_parallel_partial_failure_handoff_analysis_handoff_wiring.py tests/test_parallel_partial_failure_handoff_combined_summary_honesty.py tests/test_parallel_public_api.py tests/test_parallel_stress.py tests/test_parallel_worker_runtime.py tests/test_parsers_1.py tests/test_parsers_2.py tests/test_payload_refs_surrogates.py tests/test_payload_section_macros_render_payload_path.py tests/test_payload_section_macros_render_payload_section.py
 PYTEST_ROOT_PATHS_PD_PF = tests/test_p[d-fD-F]*.py
-PYTEST_ROOT_PATHS_PG_PH = tests/display/test_phase_banner_modes.py tests/test_phase_*.py tests/test_phases_*.py tests/test_pipeline_iterations.py
+PYTEST_ROOT_PATHS_PG_PH = tests/display/test_phase_banner_modes.py tests/test_phase_*.py tests/test_phases_*.py tests/integration/test_pipeline_iterations.py
 PYTEST_ROOT_PATHS_PG_PI = tests/integration/test_pipeline_*.py tests/test_pipeline_*.py
 PYTEST_ROOT_PATHS_PJ_PL = tests/test_p[j-lJ-L]*.py
 PYTEST_ROOT_PATHS_PM_POLICY = tests/test_policy_*.py
@@ -127,6 +129,7 @@ install-dev: dev
 # Testing
 test:
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_AGENT_PATHS) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_AGENT_PATHS_2) -q -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_CONFIG_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_CONTEXT_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_MODE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
@@ -157,7 +160,7 @@ test:
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_D_CORE) -q -n $(PYTEST_WORKERS_D) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_D_DISPLAY) -q -n $(PYTEST_WORKERS_D) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_E_F) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_G_H) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_G_H) -q -n $(PYTEST_WORKERS_G_H) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_I_J) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_K_L) -q -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_M_A) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
@@ -187,6 +190,7 @@ test:
 
 test-unit:
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_AGENT_PATHS) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_AGENT_PATHS_2) -q -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_CONFIG_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_CONTEXT_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_MODE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
@@ -217,7 +221,7 @@ test-unit:
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_D_CORE) -q -n $(PYTEST_WORKERS_D) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_D_DISPLAY) -q -n $(PYTEST_WORKERS_D) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_E_F) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_G_H) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_G_H) -q -n $(PYTEST_WORKERS_G_H) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_I_J) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_K_L) -q -m "not subprocess_e2e"
 	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_M_A) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"

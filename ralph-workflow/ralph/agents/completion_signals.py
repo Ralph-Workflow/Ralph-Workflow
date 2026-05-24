@@ -25,11 +25,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.phases.required_artifacts import RequiredArtifact
 
 _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
+_COMPLETION_SENTINEL_RELPATHFMT = ".agent/completion_seen_{run_id}.json"
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,24 @@ def extract_explicit_completion(raw_output: list[str]) -> bool:
         True if the declare_complete marker is found in any output line.
     """
     return any(_EXPLICIT_COMPLETION_MARKER in line for line in raw_output)
+
+
+def _check_completion_sentinel(
+    workspace: Path,
+    run_id: str | None,
+    *,
+    _read_fn: Callable[[Path], str] | None = None,
+) -> bool:
+    """Return True when the run-scoped completion sentinel exists."""
+    if run_id is None:
+        return False
+    sentinel_path = workspace / _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
+    read_fn = _read_fn or (lambda path: path.read_text(encoding="utf-8"))
+    try:
+        read_fn(sentinel_path)
+    except (FileNotFoundError, OSError):
+        return False
+    return True
 
 
 def _artifact_is_schema_valid(artifact_path: Path) -> bool:

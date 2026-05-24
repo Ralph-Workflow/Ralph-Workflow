@@ -4,7 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 58
+UNIT_TEST_SHARD_COUNT = 59
 
 
 def _assert_all_contains(haystack: list[str], needles: list[str]) -> None:
@@ -81,6 +81,7 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
             "python -m ralph.verify_timeout",
             "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)",
             "$(PYTEST_CORE_AGENT_PATHS)",
+            "$(PYTEST_CORE_AGENT_PATHS_2)",
             "$(PYTEST_CORE_CONFIG_PATHS)",
             "$(PYTEST_CORE_DISPLAY_CONTEXT_PATHS)",
             "$(PYTEST_CORE_DISPLAY_MODE_PATHS)",
