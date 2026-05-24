@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
-from git import Repo
+from git import Actor, GitCommandError, Repo
 
 from ralph.git.operations import (
     GitOperationError,
@@ -136,6 +139,40 @@ def test_stage_all(tmp_git_repo: Path) -> None:
     assert len(staged) > 0
 
 
+def test_stage_all_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
+    lock_path = tmp_git_repo / ".git" / "index.lock"
+    lock_path.write_text("locked", encoding="utf-8")
+    stale_time = time.time() - 60
+    os.utime(lock_path, (stale_time, stale_time))
+
+    calls = {"count": 0}
+
+    class FakeGit:
+        def add(self, *args: object, **kwargs: object) -> None:
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise GitCommandError(
+                    ["git", "add", "-A"],
+                    128,
+                    stderr=(
+                        f"fatal: Unable to create '{lock_path}': File exists.\n\n"
+                        "Another git process seems to be running in this repository"
+                    ),
+                )
+
+    fake_repo = SimpleNamespace(git=FakeGit(), close=lambda: None)
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
+
+    try:
+        stage_all(tmp_git_repo)
+    finally:
+        monkeypatch.undo()
+
+    assert calls["count"] == 2
+    assert not lock_path.exists()
+
+
 def test_create_commit() -> None:
     """Test creating a commit."""
     captured: dict[str, object] = {}
@@ -174,6 +211,60 @@ def test_create_commit() -> None:
     assert captured["message"] == "Test commit message"
 
 
+def test_create_commit_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
+    lock_path = tmp_git_repo / ".git" / "index.lock"
+    lock_path.write_text("locked", encoding="utf-8")
+    stale_time = time.time() - 60
+    os.utime(lock_path, (stale_time, stale_time))
+    calls = {"count": 0}
+
+    class FakeCommit:
+        hexsha = "c" * FULL_SHA_LENGTH
+
+    class FakeConfig:
+        def get_value(self, section: str, key: str, default: str) -> str:
+            if (section, key) == ("user", "name"):
+                return "Test User"
+            if (section, key) == ("user", "email"):
+                return "test@example.com"
+            return default
+
+    class FakeIndex:
+        def commit(self, message: str, author: object, committer: object) -> FakeCommit:
+            del message, author, committer
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise GitCommandError(
+                    ["git", "commit", "-m", "Test commit message"],
+                    128,
+                    stderr=(
+                        f"fatal: Unable to create '{lock_path}': File exists.\n\n"
+                        "Another git process seems to be running in this repository"
+                    ),
+                )
+            return FakeCommit()
+
+    def fake_config_reader() -> FakeConfig:
+        return FakeConfig()
+
+    fake_repo = SimpleNamespace(
+        index=FakeIndex(),
+        config_reader=fake_config_reader,
+        close=lambda: None,
+    )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
+
+    try:
+        sha = create_commit(Path("/tmp/repo"), "Test commit message")
+    finally:
+        monkeypatch.undo()
+
+    assert sha == "c" * FULL_SHA_LENGTH
+    assert calls["count"] == 2
+    assert not lock_path.exists()
+
+
 def test_create_commit_with_author() -> None:
     """Test creating a commit with custom author."""
     captured: dict[str, object] = {}
@@ -202,7 +293,7 @@ def test_create_commit_with_author() -> None:
     finally:
         monkeypatch.undo()
 
-    author = captured["author"]
+    author = cast("Actor", captured["author"])
     assert sha == "b" * FULL_SHA_LENGTH
     assert captured["message"] == "Custom author commit"
     assert author.name == "Custom User"

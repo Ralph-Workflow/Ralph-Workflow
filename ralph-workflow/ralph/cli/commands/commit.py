@@ -220,8 +220,8 @@ def _handle_agent_commit_generation(
     render_commit_message(repo_root, ctx)
 
     if apply:
-        stage_all(repo_root)
         try:
+            stage_all(repo_root)
             sha = create_commit(
                 repo_root,
                 persisted_message,

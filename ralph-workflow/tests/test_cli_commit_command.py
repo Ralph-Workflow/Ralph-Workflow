@@ -16,13 +16,15 @@ from ralph.agents.invoke import build_invoke_options_from_config
 from ralph.agents.parsers import AgentOutputLine
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands.commit import (
+    CommitAgentResult,
     CommitAttemptContext,
     collect_commit_agent_output,
     invoke_commit_agent_attempt,
 )
 from ralph.config.enums import AgentTransport, JsonParserType
-from ralph.config.models import AgentConfig, GeneralConfig
+from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.git.operations import GitOperationError
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
 
 _OUTPUT_BATCH = 400
@@ -203,3 +205,49 @@ def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() 
     assert resume_session_id == "sess-early"
     assert len(raw_output) < _OUTPUT_BATCH
     assert len(parsed_output) < _OUTPUT_BATCH
+
+
+def test_handle_agent_commit_generation_reports_stage_failure_without_traceback(
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    display_context = make_display_context(
+        console=Console(file=output, force_terminal=False, color_system=None, width=120)
+    )
+    config = UnifiedConfig()
+
+    with (
+        patch("ralph.cli.commands.commit.working_tree_diff", return_value="diff --git a/x b/x"),
+        patch("ralph.cli.commands.commit.AgentRegistry.from_config", return_value=object()),
+        patch("ralph.cli.commands.commit._resolve_commit_message_agents", return_value=["claude"]),
+        patch("ralph.cli.commands.commit.resolve_workspace_scope", return_value=object()),
+        patch(
+            "ralph.cli.commands.commit.load_agents_policy_for_workspace_scope",
+            return_value=object(),
+        ),
+        patch(
+            "ralph.cli.commands.commit._generate_commit_message_with_chain",
+            return_value=CommitAgentResult(message="fix: recover stale git lock"),
+        ),
+        patch(
+            "ralph.cli.commands.commit.read_commit_message_artifact",
+            return_value="fix: recover stale git lock",
+        ),
+        patch("ralph.cli.commands.commit.render_commit_message"),
+        patch(
+            "ralph.cli.commands.commit.stage_all",
+            side_effect=GitOperationError("stage_all", "stale git lock remained active"),
+        ),
+        patch("ralph.cli.commands.commit.create_commit"),
+        patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
+    ):
+        commit_module._handle_agent_commit_generation(
+            repo_root=tmp_path,
+            config=config,
+            options=commit_module.CommitPlumbingOptions(generate_commit=True),
+            display_context=display_context,
+        )
+
+    rendered = output.getvalue()
+    assert "Commit failed" in rendered
+    assert "stale git lock remained active" in rendered

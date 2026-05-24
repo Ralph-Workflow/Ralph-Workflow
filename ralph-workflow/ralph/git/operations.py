@@ -6,14 +6,21 @@ wrapping GitPython to provide the functionality needed by the pipeline.
 
 from __future__ import annotations
 
+import re
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from git import Actor, InvalidGitRepositoryError, Repo
+from git.exc import GitCommandError
 from loguru import logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+_LOCK_PATH_PATTERN = re.compile(r"Unable to create '([^']+\.lock)'")
+_RECOVERABLE_GIT_LOCK_FILES = frozenset({"index.lock", "HEAD.lock", "packed-refs.lock"})
+_STALE_GIT_LOCK_AGE_SECONDS = 10.0
 
 
 class GitOperationError(Exception):
@@ -40,6 +47,61 @@ def _close_repo(repo: Repo | None) -> None:
     close = cast("Callable[[], object] | None", getattr(repo, "close", None))
     if callable(close):
         close()
+
+
+def _parse_lock_path_from_error(error_text: str) -> Path | None:
+    match = _LOCK_PATH_PATTERN.search(error_text)
+    if match is None:
+        return None
+    lock_path = Path(match.group(1))
+    if lock_path.name not in _RECOVERABLE_GIT_LOCK_FILES:
+        return None
+    return lock_path
+
+
+def _recover_stale_git_lock(
+    operation: str,
+    error: Exception,
+    *,
+    stale_lock_age_seconds: float = _STALE_GIT_LOCK_AGE_SECONDS,
+) -> bool:
+    error_text = str(error)
+    lock_path = _parse_lock_path_from_error(error_text)
+    if lock_path is None:
+        return False
+    if lock_path.exists():
+        age_seconds = time.time() - lock_path.stat().st_mtime
+        if age_seconds < stale_lock_age_seconds:
+            return False
+        try:
+            lock_path.unlink()
+        except OSError:
+            return False
+        logger.warning(
+            "Recovered stale git lock for {} by removing {} (age={:.1f}s)",
+            operation,
+            lock_path,
+            age_seconds,
+        )
+        return True
+    logger.warning(
+        "Retrying {} after transient git lock contention; lock path already disappeared: {}",
+        operation,
+        lock_path,
+    )
+    return True
+
+
+def _run_git_operation_with_stale_lock_recovery[T](
+    operation: str,
+    action: Callable[[], T],
+) -> T:
+    try:
+        return action()
+    except GitCommandError as exc:
+        if not _recover_stale_git_lock(operation, exc):
+            raise
+        return action()
 
 
 def find_repo_root(start: Path | str = Path()) -> Path:
@@ -184,8 +246,14 @@ def stage_all(repo_root: Path | str) -> None:
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
-        repo.git.add(A=True)
+
+        def _stage() -> None:
+            _ = cast("str", repo.git.add(A=True))
+
+        _run_git_operation_with_stale_lock_recovery("stage_all", _stage)
         logger.debug("Staged all changes in {}", repo_root)
+    except Exception as exc:
+        raise GitOperationError("stage_all", str(exc)) from exc
     finally:
         _close_repo(repo)
 
@@ -202,8 +270,16 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
-        repo.git.add("--all", "--", *files)
+
+        def _stage() -> None:
+            _ = cast("str", repo.git.add("--all", "--", *files))
+
+        _run_git_operation_with_stale_lock_recovery(
+            "stage_files", _stage
+        )
         logger.debug("Staged {} selected paths in {}", len(files), repo_root)
+    except Exception as exc:
+        raise GitOperationError("stage_files", str(exc)) from exc
     finally:
         _close_repo(repo)
 
@@ -242,7 +318,10 @@ def create_commit(
                 author_email = author_email or "ralph@ai"
 
         actor = Actor(author_name, author_email)
-        commit = repo.index.commit(message, author=actor, committer=actor)
+        commit = _run_git_operation_with_stale_lock_recovery(
+            "create_commit",
+            lambda: repo.index.commit(message, author=actor, committer=actor),
+        )
         logger.info(
             "Created commit {}: {}",
             commit.hexsha[:8],
