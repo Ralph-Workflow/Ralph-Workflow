@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-05-24T09:59:38+02:00",
+  "action_type": "publisher_email_outreach",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "target": "HidsTech",
+  "recipient": "hello@hidstech.co.uk",
+  "subject": "Ralph Workflow for HidsTech",
+  "hook": "AI coding tools comparison framed around practical team use and reviewable outcomes",
+  "primary_repo_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "supporting_artifacts": [
+    "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/04_hidstech-ai-coding-tools-in-2026.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_targets_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/adoption_metrics_latest.md",
+    "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_hidstech_publisher_outreach_email.txt",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_075932_hidstech_publisher_email.json"
+  ],
+  "smtp_delivery": {
+    "server": "smtp.ionos.com",
+    "port": 587,
+    "tls": true,
+    "accepted_by_server": true
+  },
+  "expected_outcome": "Publisher awareness and possible comparison/citation mention that sends practical workflow evaluators to Codeberg first.",
+  "review_window": {
+    "reply_review_at": "2026-05-31T09:59:38+02:00",
+    "citation_review_at": "2026-06-07T09:59:38+02:00"
+  },
+  "replacement_condition": "If no reply or public mention signal appears by the review window, switch the next publisher-contact slot to another untouched comparison target instead of resending HidsTech immediately."
+}

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-24T06:52:32.916383",
+  "timestamp": "2026-05-24T09:54:15.231492",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6401,
+      "word_count": 6409,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -148,18 +148,18 @@
   },
   "content_gap": {
     "gaps": [
-      "unattended coding agent",
-      "spec-driven AI agent",
-      "AI coding workflow automation",
-      "Claude Code automation",
       "Claude Code unattended",
       "AI agent workflow composer"
     ],
     "covered": [
+      "unattended coding agent",
       "AI agent orchestration CLI",
+      "spec-driven AI agent",
+      "AI coding workflow automation",
+      "Claude Code automation",
       "Ralph Workflow"
     ],
-    "coverage_pct": 25.0
+    "coverage_pct": 75.0
   },
   "serp": {
     "position": null,
@@ -168,7 +168,7 @@
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
-    "Create content targeting: unattended coding agent, spec-driven AI agent, AI coding workflow automation",
+    "Create content targeting: Claude Code unattended, AI agent workflow composer",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]
 }

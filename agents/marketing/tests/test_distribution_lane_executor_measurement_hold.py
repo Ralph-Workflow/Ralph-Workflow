@@ -10,6 +10,58 @@ from agents.marketing import distribution_lane_executor
 
 
 class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
+    def test_curator_queue_rows_normalize_recent_live_actions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            queue_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'AI Dev Setup',
+                        'url': 'https://aidevsetup.com/',
+                        'status': 'prepared',
+                    },
+                    {
+                        'target': 'AI for Code',
+                        'url': 'https://aiforcode.io/',
+                        'status': 'prepared',
+                    },
+                ],
+            }), encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_ai_dev_setup_contact_submission.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T04:44:21+02:00',
+                    'target': 'AI Dev Setup',
+                    'channel': 'high_intent_contact_form',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                    'submit_url': 'https://aidevsetup.com/contact',
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-23_aiforcode_submission.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-23T20:36:08+02:00',
+                    'target': 'AI for Code',
+                    'channel': 'directory_submission',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                    'submit_url': 'https://aiforcode.io/',
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', queue_path):
+                rows = distribution_lane_executor._load_curator_queue_rows()
+
+        self.assertEqual(rows[0]['status'], 'sent_via_form')
+        self.assertEqual(rows[1]['status'], 'waiting_review')
+
     def test_active_measurement_hold_becomes_follow_through_not_new_hold(self):
         now = datetime(2026, 5, 24, 5, 20, 0)
         decision = LaneDecision(

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T02:47:15.881073",
+  "generated_at": "2026-05-24T09:54:15.172118",
   "targets": [
     {
       "target": "1. ai-for-developers/awesome-ai-coding-tools",
@@ -262,8 +262,11 @@
       "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
       "subject": "Ralph Workflow for AI for Code",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/01_ai-for-code.md",
-      "status": "prepared",
-      "review_due_date": "2026-06-06"
+      "status": "waiting_review",
+      "review_due_date": "2026-06-06",
+      "last_contact_at": "2026-05-23T20:36:08+02:00",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aiforcode_submission.json",
+      "last_contact_path": "directory_submission:https://aiforcode.io/"
     },
     {
       "target": "VibeCoders tool directory",
@@ -292,8 +295,11 @@
       "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
       "subject": "Ralph Workflow for AI Dev Setup",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_ai-dev-setup.md",
-      "status": "prepared",
-      "review_due_date": "2026-06-06"
+      "status": "sent_via_form",
+      "review_due_date": "2026-06-06",
+      "last_contact_at": "2026-05-24T04:44:21+02:00",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_ai_dev_setup_contact_submission.json",
+      "last_contact_path": "high_intent_contact_form:https://aidevsetup.com/contact"
     },
     {
       "target": "Claude Code Alternatives",
@@ -302,8 +308,10 @@
       "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
       "subject": "Ralph Workflow for Claude Code Alternatives",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_claude-code-alternatives.md",
-      "status": "prepared",
-      "review_due_date": "2026-06-07"
+      "status": "waiting_review",
+      "review_due_date": "2026-06-07",
+      "last_contact_at": "2026-05-24T03:24:58+02:00",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_claude_code_alternatives_submission.json"
     },
     {
       "target": "AI Coding Stack",
@@ -325,6 +333,59 @@
       "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
       "subject": "Ralph Workflow for AI Resources",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/03_ai-resources.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-07"
+    },
+    {
+      "target": "TIMEWELL benchmark \u2014 AI Coding Tools Compared [Latest 2026]",
+      "url": "https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for TIMEWELL benchmark",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_timewell-benchmark-ai-coding-tools-compared-latest-2026.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-07"
+    },
+    {
+      "target": "Kingy AI \u2014 Cursor / Cursor SDK vs. Claude Code vs. Codex",
+      "url": "https://kingy.ai/ai/cursor-cursor-sdk-vs-claude-code-vs-codex-the-deepest-practical-comparison-of-modern-ai-coding-tools/",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for Kingy AI",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/02_kingy-ai-cursor-cursor-sdk-vs-claude-code-vs-codex.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-07"
+    },
+    {
+      "target": "Built In \u2014 Claude Code vs. Codex vs. Cursor vs. GitHub Copilot",
+      "url": "https://builtin.com/articles/claude-code-codex-cursor-github-copilot-comparison",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for Built In",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/03_built-in-claude-code-vs-codex-vs-cursor-vs-github-copilot.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-07"
+    },
+    {
+      "target": "HidsTech \u2014 AI Coding Tools in 2026",
+      "url": "https://www.hidstech.co.uk/blog/ai-coding-tools-cursor-claude-code",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for HidsTech",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/04_hidstech-ai-coding-tools-in-2026.md",
+      "status": "sent_via_email_fallback",
+      "review_due_date": "2026-06-07",
+      "last_contact_at": "2026-05-24T09:59:32+02:00",
+      "last_contact_path": "email:hello@hidstech.co.uk",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_hidstech_publisher_outreach.json"
+    },
+    {
+      "target": "SitePoint \u2014 AI Coding Tools Comparison 2026",
+      "url": "https://www.sitepoint.com/ai-coding-tools-comparison-2026/",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for SitePoint",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_sitepoint-ai-coding-tools-comparison-2026.md",
       "status": "prepared",
       "review_due_date": "2026-06-07"
     }

@@ -747,6 +747,12 @@ def main() -> int:
     if hold_window is not None:
         skip_log = _write_measurement_hold_skip_log(now, hold_window)
 
+        # Measurement hold should pause external pushes, not internal learning.
+        seo_current = run_seo_daily()
+        seo_history = load_seo_trends(days=14)
+        seo_trends = compute_trends(seo_current, seo_history)
+        seo_insights_path = write_seo_insights(seo_current, [])
+
         AUDIT_PATH = LOG_DIR / "marketing_workflow_audit_latest.json"
         audit: dict[str, Any] = {}
         pending_repairs: list[dict[str, Any]] = []
@@ -792,6 +798,9 @@ def main() -> int:
                 "live_external_action": bool(distribution_execution.live_external_action),
                 "blocking_factors": list(distribution_execution.blocking_factors or []),
             },
+            "seo": seo_current,
+            "seo_trends": seo_trends,
+            "seo_insights_path": str(seo_insights_path),
             "content_generation": {
                 "returncode": 0,
                 "stdout": "skipped: active measurement-hold cooldown",

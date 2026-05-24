@@ -1,8 +1,8 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-24T07:42:15.026467
+- Generated: 2026-05-24T09:28:16.668178
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
-- Owned articles logged: **0**
+- Owned articles logged: **6**
 - Reddit posts analyzed: **6**
 
 ## Why this is the bottleneck
@@ -11,10 +11,9 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- 20 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
-- 38 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
-- The most recent runtime activity was measurement_hold_follow_through, but the latest meaningful external/replacement execution remains curator_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (curator_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.
+- 16 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
+- 36 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
+- The most recent marketing artifact (repo_conversion_asset) was preparation/follow-through work, not a live external execution, so it should not be mistaken for outcome movement.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
 ## Observed risks
@@ -34,7 +33,7 @@
 
 ## Repair actions (execute in this run)
 - **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
-  - Repair state: needs_execution
+  - Repair state: pending_measurement
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
 - **same_family_distribution_overlap** (tactic) → PAUSE net-new low-intent directory submissions for now. Let the existing listing approvals mature, then use the next run on higher-intent demand capture or conversion-moving lanes such as StackOverflow answers, manual curator/contact execution packets, or direct comparison-backlink follow-through.
@@ -46,19 +45,18 @@
   - Kill condition: Another audit adds more same-family curator outreach before the existing reply/backlink windows have materially aged or produced evidence
   - Success metric: Next execution lane advances a different family or executes an existing manual-contact packet instead of starting another same-day curator burst
 - **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
-  - Repair state: needs_execution
+  - Repair state: pending_measurement
   - Kill condition: N/A (mirror, not primary)
   - Success metric: GitHub mirror shows any adoption delta
 - No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
-- Measurement-pending reasons: same_family_distribution_overlap, same_family_outreach_overlap
+- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, same_family_distribution_overlap, same_family_outreach_overlap
 
 ## Latest executed marketing action
-- Type: curator_email_outreach
-- Title: AI Coding Stack inclusion request
+- Type: repo_conversion_asset
+- Title: Published Codeberg-first Claude Code comparison page in repo docs
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_ai_coding_stack_curator_execution.json
-- URL: https://aicodingstack.io/docs/getting-started
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_claude_code_comparison_conversion_asset.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

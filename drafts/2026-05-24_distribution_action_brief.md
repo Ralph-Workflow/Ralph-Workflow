@@ -1,27 +1,29 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-24T08:22:00
-Chosen lane: **measurement_hold**
+Generated: 2026-05-24T09:54:15
+Chosen lane: **distribution_reset**
 
 ## Why this lane
-- Several fresh external actions already shipped in the short review window, and the other executable lanes are still inside measurement or handoff windows; hold for follow-through instead of inventing another reset.
+- Curator outreach is paused by the active repair window, so use a different lane instead of promoting fresh reset targets into another same-family burst.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 19 directory submissions already shipped in the last 24 hours.
-- 34 curator contact attempts already shipped in the last 24 hours.
-- 4 live external marketing action(s) already shipped in the last 6 hours.
+- 15 directory submissions already shipped in the last 24 hours.
+- 22 curator contact attempts already shipped in the last 24 hours.
+- 1 live external marketing action(s) already shipped in the last 6 hours.
 - Active repair window says to pause net-new directory submissions until current approval windows mature.
 - Active repair window says to hold another same-family curator-contact burst and use a different lane.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
+- HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
 - Apollo already has an active measurement window until 2026-05-30T00:14:49.075391+02:00, so do not spend this run repackaging the same outbound lane.
-- 7 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
-- 19 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
-- 7 prepared curator targets still need a canonical execution handoff packet.
+- 8 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
+- 22 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
+- 8 prepared curator targets still need a canonical execution handoff packet.
 - Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.
 - The manual-contact execution packet is already current for the waiting targets and was already delivered in this review window, so selecting it again would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, Bollwerk / Werkstatt, WyeWorks), so those targets should not be re-queued immediately.
 - Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum), so they should not keep this lane looking actionable until a sendable path exists.
 - All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.
 - GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.
+- 1 fresh distribution-reset targets are waiting to be turned into real outreach assets.
 - The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
@@ -42,8 +44,8 @@ Chosen lane: **measurement_hold**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate measurement-hold work
-- Do not ship another fresh outreach/reset action in this short review window
-- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
-- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
-- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map
+## Immediate queue-reset work
+- Do not count curator or comparison queue follow-through alone as a fresh repair
+- Reuse `market_intelligence_latest.json` and current queue logs to define the next untouched target classes
+- Add genuinely new third-party citation/backlink targets before the next outreach-prep execution
+- Keep Codeberg as the only primary CTA while expanding the target universe

@@ -126,6 +126,58 @@ class RedditMonitorTests(unittest.TestCase):
         self.assertEqual(attempts[0].status, 'ok')
         self.assertEqual(attempts[1].status, 'time_budget_exceeded')
 
+    def test_shortlist_diversifies_query_families_before_filling_duplicates(self):
+        candidates = [
+            Candidate(
+                title=f'Production thread {i}',
+                url=f'https://www.reddit.com/r/AI_Agents/comments/prod{i}/example/',
+                community='r/AI_Agents',
+                snippet='production continuity and ready to review',
+                query_family='production_failure',
+                query='workflow continuity ai agents reddit',
+                score=20 - i,
+                freshness='during this pass',
+                mention_fit='medium',
+                reason='content-family match: production_failure',
+                direct_reply_fit='high',
+            )
+            for i in range(4)
+        ] + [
+            Candidate(
+                title='Approval thread',
+                url='https://www.reddit.com/r/ClaudeCode/comments/approval/example/',
+                community='r/ClaudeCode',
+                snippet='approval loop and babysitting',
+                query_family='approval_drag',
+                query='approval loop coding agent reddit',
+                score=17,
+                freshness='during this pass',
+                mention_fit='medium',
+                reason='content-family match: approval_drag',
+                direct_reply_fit='medium-high',
+            ),
+            Candidate(
+                title='Unattended thread',
+                url='https://www.reddit.com/r/programming/comments/unattended/example/',
+                community='r/programming',
+                snippet='run overnight and close the laptop',
+                query_family='unattended',
+                query='run overnight Claude Code reddit',
+                score=16,
+                freshness='during this pass',
+                mention_fit='medium',
+                reason='content-family match: unattended',
+                direct_reply_fit='medium-high',
+            ),
+        ]
+
+        shortlisted, _rejected = reddit_monitor.shortlist(candidates)
+
+        families = [candidate.query_family for candidate in shortlisted]
+        self.assertIn('approval_drag', families)
+        self.assertIn('unattended', families)
+        self.assertLessEqual(families.count('production_failure'), 2)
+
     def test_watchdog_skips_partial_visibility_report_when_looking_for_healthy_one(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             seo_dir = Path(tmpdir)

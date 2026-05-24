@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-24T04:33:28.909225",
+  "timestamp": "2026-05-24T09:54:15.172118",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "distribution_reset_execution",
@@ -8,7 +8,7 @@
     "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_distribution_reset_execution.md"
   },
   "why_this_action": {
-    "summary": "Shipped a queue-reset/discovery packet so the loop expands into new targets instead of logging saturated follow-through as progress.",
+    "summary": "Promoted fresh distribution-reset targets into real curator-ready assets instead of stopping at discovery.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -17,14 +17,7 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "targets_prepared": [
-      "Hermes Agent",
-      "Conductor OSS",
-      "Conductor (Teams)",
-      "Aider",
-      "Continue",
-      "Cursor",
-      "Claude Code",
-      "GitHub Copilot"
+      "SitePoint \u2014 AI Coding Tools Comparison 2026"
     ]
   },
   "result": {

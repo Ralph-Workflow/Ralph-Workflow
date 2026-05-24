@@ -48,8 +48,8 @@ Body here.
 
 
 class MarketingPathTests(unittest.TestCase):
-    def test_default_outreach_logs_live_under_agents_marketing(self):
-        expected = Path('/home/mistlight/.openclaw/workspace/agents/marketing/outreach-log.md')
+    def test_default_outreach_logs_live_at_workspace_root(self):
+        expected = Path('/home/mistlight/.openclaw/workspace/outreach-log.md')
         self.assertEqual(distribution_lane_selector.OUTREACH_LOG_PATH, expected)
         self.assertEqual(distribution_lane_executor.OUTREACH_LOG_PATH, expected)
         self.assertEqual(apollo_sequence_launcher.OUTREACH_LOG, expected)
@@ -3606,6 +3606,67 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             self.assertIn('Agent-Analytics/awesome-multi-agent-orchestrators', artifact_text)
             self.assertNotIn('hesreallyhim/awesome-claude-code', execution.targets_prepared)
 
+    def test_distribution_reset_execution_skips_when_no_fresh_targets_exist(self):
+        now = datetime(2026, 5, 23, 7, 15, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='distribution_reset',
+            reason='Curator and comparison queues are both saturated; only proceed if fresh discovery exists.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': 'hermes-agent', 'name': 'Hermes Agent', 'path': '/tmp/hermes-agent.md'},
+                {'slug': 'claude-code', 'name': 'Claude Code', 'path': '/tmp/claude-code.md'},
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('HN/Lobsters blocker noted.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            curator_queue = log_dir / 'curator_outreach_queue_latest.json'
+            curator_queue.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            comparison_queue = log_dir / 'comparison_backlink_queue_latest.json'
+            comparison_queue.write_text(json.dumps({'targets': [
+                {'slug': 'hermes-agent', 'name': 'Hermes Agent', 'url': 'https://example.com/hermes', 'status': 'prepared'},
+                {'slug': 'claude-code', 'name': 'Claude Code', 'url': 'https://example.com/claude-code', 'status': 'prepared'},
+            ]}), encoding='utf-8')
+            reset_log_path = log_dir / 'distribution_reset_execution_log.md'
+            reset_log_path.write_text('# Distribution Reset Execution Log\n\nNo fresh discovery in this pass.\n', encoding='utf-8')
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', tmp / 'seo-reports'), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', curator_queue), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue), \
+                 patch.object(distribution_lane_executor, 'DISTRIBUTION_RESET_LOG_PATH', reset_log_path), \
+                 patch.object(distribution_lane_executor, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'distribution_reset_execution')
+            self.assertEqual(execution.status, 'skipped')
+            self.assertEqual(execution.targets_prepared, [])
+            self.assertIn('no genuinely new targets', execution.summary.lower())
+            self.assertEqual(
+                execution.blocking_factors,
+                ['No fresh reset-discovered targets were available; discover new third-party targets before rerunning distribution_reset.'],
+            )
+            self.assertFalse(reset_queue_path.exists())
+
     def test_curator_execution_promotes_distribution_reset_log_targets_when_queue_file_is_empty(self):
         now = datetime(2026, 5, 23, 7, 15, 0)
         decision = distribution_lane_selector.LaneDecision(
@@ -4078,6 +4139,56 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
 
             self.assertEqual(latest_meaningful['chosen_action']['type'], 'aiagents_directory_submission')
             self.assertEqual(latest_activity['chosen_action']['type'], 'measurement_hold_follow_through')
+
+    def test_normalize_marketing_action_coerces_string_chosen_action_for_conversion_asset_logs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            path = out_dir / 'marketing_2026-05-24_claude_code_comparison_conversion_asset.json'
+            payload = {
+                'timestamp': '2026-05-24T08:59:52+02:00',
+                'type': 'repo_conversion_asset',
+                'title': 'Published Codeberg-first Claude Code comparison page in repo docs',
+                'status': 'executed',
+                'ok': True,
+                'live_external_action': False,
+                'outcome_ready': True,
+                'chosen_action': 'Create a high-intent comparison page for evaluators searching Claude Code alternatives and route them into the Codeberg-first first-task path.',
+            }
+            path.write_text(json.dumps(payload), encoding='utf-8')
+
+            normalized = marketing_workflow_audit.normalize_marketing_action(payload, path)
+
+            self.assertEqual(normalized['chosen_action']['type'], 'repo_conversion_asset')
+            self.assertEqual(normalized['chosen_action']['title'], 'Published Codeberg-first Claude Code comparison page in repo docs')
+            self.assertFalse(normalized['result']['live_external_action'])
+            self.assertTrue(normalized['result']['outcome_ready'])
+
+    def test_load_latest_marketing_action_accepts_newer_internal_conversion_asset_as_meaningful(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            live = out_dir / 'marketing_2026-05-24_061857_aicodingstack_curator_email.json'
+            conversion = out_dir / 'marketing_2026-05-24_claude_code_comparison_conversion_asset.json'
+            live.write_text(json.dumps({
+                'chosen_action': {'type': 'curator_email_outreach', 'channel': 'email'},
+                'result': {'ok': True, 'status': 'executed', 'live_external_action': True},
+            }), encoding='utf-8')
+            conversion.write_text(json.dumps({
+                'timestamp': '2026-05-24T08:59:52+02:00',
+                'type': 'repo_conversion_asset',
+                'title': 'Published Codeberg-first Claude Code comparison page in repo docs',
+                'status': 'executed',
+                'ok': True,
+                'live_external_action': False,
+                'outcome_ready': True,
+                'chosen_action': 'Create a high-intent comparison page for evaluators searching Claude Code alternatives and route them into the Codeberg-first first-task path.',
+            }), encoding='utf-8')
+            conversion.touch()
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir):
+                latest_meaningful = marketing_workflow_audit.load_latest_marketing_action()
+
+            self.assertEqual(latest_meaningful['chosen_action']['type'], 'repo_conversion_asset')
+            self.assertEqual(latest_meaningful['result']['status'], 'executed')
 
     def test_audit_treats_curator_redesign_as_shipped_and_drops_duplicate_architecture_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:

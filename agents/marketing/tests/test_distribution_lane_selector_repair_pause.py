@@ -10,6 +10,48 @@ from agents.marketing import distribution_lane_selector
 
 
 class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
+    def test_normalized_curator_queue_rows_hide_stale_prepared_targets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            queue_path.write_text(json.dumps({
+                'targets': [
+                    {'target': 'AI Dev Setup', 'status': 'prepared'},
+                    {'target': 'AI for Code', 'status': 'prepared'},
+                    {'target': 'AI Resources', 'status': 'prepared'},
+                ],
+            }), encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_ai_dev_setup_contact_submission.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T04:44:21+02:00',
+                    'target': 'AI Dev Setup',
+                    'channel': 'high_intent_contact_form',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-23_aiforcode_submission.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-23T20:36:08+02:00',
+                    'target': 'AI for Code',
+                    'channel': 'directory_submission',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', queue_path):
+                names = distribution_lane_selector._prepared_curator_target_names(datetime(2026, 5, 24, 8, 48, 0))
+
+        self.assertEqual(names, ['AI Resources'])
+
     def test_pauses_curator_outreach_when_same_family_repair_window_is_active(self):
         now = datetime(2026, 5, 24, 1, 54, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}

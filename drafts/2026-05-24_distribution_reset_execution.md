@@ -1,8 +1,8 @@
 # Ralph Workflow Distribution Reset Packet
-Generated: 2026-05-24T04:33:28
+Generated: 2026-05-24T09:54:15
 
 ## Why this exists now
-- Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet.
+- Curator outreach is paused by the active repair window, so use a different lane instead of promoting fresh reset targets into another same-family burst.
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
 - Both live outreach queues are saturated, so another follow-through note would be fake activity.
 - This packet resets the lane toward new target discovery while preserving Codeberg-first proof and current measurement windows.
@@ -21,10 +21,9 @@ Generated: 2026-05-24T04:33:28
 - finished code
 - tested code
 - ready to review
-- graceful downgrade paths
 
 ## Queue snapshot
-- Live curator targets: 27
+- Live curator targets: 31
 - Live comparison targets: 8
 
 ## Next untouched target classes to create
@@ -50,3 +49,9 @@ Generated: 2026-05-24T04:33:28
 ## Measurement contract
 - Expected outcome: at least 3 newly identified third-party backlink/citation targets before the next outreach-prep execution
 - Review window: next audit run should show a fresh executable lane instead of follow-through-only status
+
+## Promoted curator target files
+- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24
+
+## Curator contact discovery
+- /home/mistlight/.openclaw/workspace/drafts/2026-05-24_curator_contact_discovery.md

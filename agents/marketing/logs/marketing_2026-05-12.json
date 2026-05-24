@@ -1,50 +1,68 @@
 {
   "timestamp": "2026-05-12T09:00:00",
   "weekly_mode": false,
-  "site_health": {
-    "homepage": {
-      "ok": true,
-      "status": 200
-    },
-    "robots": {
-      "ok": true,
-      "status": 200
-    },
-    "sitemap": {
-      "ok": true,
-      "status": 200
-    }
+  "marketing_status": "measurement_hold",
+  "measurement_hold": {
+    "active": true,
+    "hold_started_at": "2026-05-24T08:33:00",
+    "hold_until": "2026-05-24T09:33:00",
+    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_measurement_hold_execution.json",
+    "reason": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions."
   },
-  "totals": {
-    "posts_last_30d": 0,
-    "views_last_30d": 0
+  "distribution_lane": {
+    "lane": "measurement_hold",
+    "reason": "Several fresh external actions already shipped in the short review window, and the other executable lanes are still inside measurement or handoff windows; hold for follow-through instead of inventing another reset.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-12_distribution_action_brief.md"
   },
-  "content_summary": {},
-  "decisions": [],
-  "blocked_channels": {
-    "dev.to": "Needs API key or OAuth",
-    "twitter": "Login/session blocked",
-    "reddit": "Needs account + karma",
-    "hackernews": "Needs account",
-    "lobsters": "Needs invite/account",
-    "producthunt": "Protected flow / manual launch required"
+  "distribution_execution": {
+    "action_type": "measurement_hold_follow_through",
+    "status": "executed",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-12_090000_measurement_hold_follow_through.md",
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
+    "targets_prepared": [
+      "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+      "vivy-yi/awesome-agent-orchestration",
+      "AI Resources",
+      "Built In \u2014 Claude Code vs. Codex vs. Cursor vs. GitHub Copilot",
+      "HidsTech \u2014 AI Coding Tools in 2026",
+      "Aider",
+      "Claude Code",
+      "Conductor (Teams)"
+    ],
+    "live_external_action": false,
+    "blocking_factors": []
   },
   "seo": {
-    "score": "N/A",
-    "ranked_keywords": 0,
-    "backlinks_approx": 0,
-    "domain_rating": null,
-    "trends": {
-      "rank_delta": 0.0,
-      "backlinks_delta": -1.0,
-      "domain_rating": null,
-      "prev_avg_ranks": 0.0,
-      "prev_avg_bl": 1.0
+    "ranks": {},
+    "backlinks": {
+      "count_approx": 0
     },
-    "priority_actions": [],
-    "report": "",
-    "seo_daily_error": "",
-    "sitemap_urls": 0,
-    "competitor_analysis": null
-  }
+    "domain_rating": null,
+    "content_gap": {
+      "gaps": [],
+      "covered": [],
+      "coverage_pct": 0
+    },
+    "priority_actions": []
+  },
+  "seo_trends": {
+    "rank_delta": 0.0,
+    "backlinks_delta": -1.0,
+    "domain_rating": null,
+    "prev_avg_ranks": 0.0,
+    "prev_avg_bl": 1.0
+  },
+  "seo_insights_path": "/tmp/x",
+  "content_generation": {
+    "returncode": 0,
+    "stdout": "skipped: active measurement-hold cooldown",
+    "stderr": ""
+  },
+  "posting": {
+    "returncode": 0,
+    "stdout": "skipped: active measurement-hold cooldown",
+    "stderr": ""
+  },
+  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-12_090000_measurement_hold_skip.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-12_090000_measurement_hold_follow_through.json"
 }

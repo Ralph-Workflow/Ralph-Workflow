@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Execution Handoff Packet
-Generated: 2026-05-24T06:27:28
+Generated: 2026-05-24T08:48:00
 
 ## Why this exists now
 - Prepared curator targets already exist, but the loop kept rediscovering/resetting instead of consolidating the best ready-to-execute items.
@@ -13,23 +13,7 @@ Generated: 2026-05-24T06:27:28
 - /home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md → keep current pain-language tied to real workflow failures
 
 ## Execute these first
-### 1. AI Dev Setup
-- Status: prepared
-- Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://aidevsetup.com/
-- Review due: 2026-06-06
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_ai-dev-setup.md
-- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
-
-### 2. AI for Code
-- Status: prepared
-- Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://aiforcode.io/
-- Review due: 2026-06-06
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/01_ai-for-code.md
-- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
-
-### 3. AI Resources
+### 1. AI Resources
 - Status: prepared
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
 - URL: https://airesources.dev/category/agents/
@@ -37,20 +21,28 @@ Generated: 2026-05-24T06:27:28
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/03_ai-resources.md
 - Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
 
-### 4. Claude Code Alternatives
-- Status: prepared
-- Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://claude-code-alternatives.com/tool/create/
-- Review due: 2026-06-07
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_claude-code-alternatives.md
-- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
-
-### 5. nandhakt/awesome-ai-coding-resources
+### 2. nandhakt/awesome-ai-coding-resources
 - Status: prepared
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
 - URL: https://github.com/nandhakt/awesome-ai-coding-resources
 - Review due: 2026-06-06
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_nandhakt-awesome-ai-coding-resources.md
+- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
+
+### 3. VibeCoders tool directory
+- Status: prepared
+- Priority: HIGH — fresh reset target, not yet prepared elsewhere
+- URL: https://vibecoders.sh/
+- Review due: 2026-06-06
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/02_vibecoders-tool-directory.md
+- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
+
+### 4. VibeFactory directory
+- Status: prepared
+- Priority: HIGH — fresh reset target, not yet prepared elsewhere
+- URL: https://www.vibefactory.dev/directory
+- Review due: 2026-06-06
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/03_vibefactory-directory.md
 - Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
 
 ## Process rule now in force

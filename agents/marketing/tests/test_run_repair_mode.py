@@ -262,6 +262,33 @@ class RunRepairModeTests(unittest.TestCase):
             finally:
                 run.LOG_DIR = original_log_dir
 
+    def test_latest_measurement_hold_window_tolerates_string_metadata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_payload = {
+                    'timestamp': '2026-05-24T08:00:00',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'why_this_action': 'measurement hold is active',
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }
+                malformed_recent_payload = {
+                    'timestamp': '2026-05-24T08:10:00',
+                    'chosen_action': 'Create a comparison page',
+                    'why_this_action': 'comparison page shipped',
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-24_measurement_hold_execution.json').write_text(json.dumps(hold_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-24_malformed_recent_log.json').write_text(json.dumps(malformed_recent_payload), encoding='utf-8')
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 24, 8, 20, 0))
+
+                self.assertIsNotNone(hold)
+                self.assertEqual(hold['reason'], 'measurement hold is active')
+            finally:
+                run.LOG_DIR = original_log_dir
+
     def test_main_runs_lightweight_follow_through_during_active_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR

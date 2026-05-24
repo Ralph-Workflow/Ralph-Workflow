@@ -1,0 +1,58 @@
+{
+  "timestamp": "2026-05-24T08:48:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "curator_queue_truthfulness_repair",
+    "channel": "internal_marketing_repair",
+    "title": "Curator queue truthfulness repair",
+    "target": "curator_outreach_queue_latest.json"
+  },
+  "why_this_action": {
+    "summary": "Prepared curator assets were stale: already-contacted targets were still marked prepared, which made the execution board and curator handoff packet advertise fake next steps during a flat-adoption window.",
+    "shared_findings_used": [
+      "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+      "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+      "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+      "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+      "agents/marketing/logs/market_intelligence_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.md",
+      "agents/marketing/logs/curator_outreach_queue_latest.json",
+      "agents/marketing/outreach-log.md"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "artifacts_updated": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_outreach_queue_latest.json",
+      "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_curator_handoff_packet.md",
+      "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_marketing_execution_board.md",
+      "/home/mistlight/.openclaw/workspace/drafts/curator_handoff_packet_latest.md",
+      "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md"
+    ],
+    "prepared_targets_remaining": [
+      "AI Resources",
+      "nandhakt/awesome-ai-coding-resources",
+      "VibeCoders tool directory",
+      "VibeFactory directory"
+    ],
+    "execution_board_targets": [
+      "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+      "vivy-yi/awesome-agent-orchestration",
+      "AI Resources",
+      "nandhakt/awesome-ai-coding-resources",
+      "VibeCoders tool directory",
+      "Aider",
+      "Claude Code",
+      "Conductor (Teams)"
+    ]
+  },
+  "expected_outcome": "Future lane selection and follow-through artifacts stop pointing at already-contacted curator targets, so the next marketing run is more likely to take a genuinely new Codeberg-moving action.",
+  "measurement_window": {
+    "review_at": "2026-05-31T08:48:00+02:00",
+    "success_metric": "AI Dev Setup and AI for Code no longer appear as prepared curator targets; execution board only shows still-actionable assets.",
+    "kill_condition": "If stale prepared curator targets reappear without a new send, patch the queue generator itself instead of relying on load-time normalization alone."
+  }
+}

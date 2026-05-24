@@ -1,77 +1,53 @@
 {
-  "generated_at": "2026-05-24T02:47:15.881073",
+  "generated_at": "2026-05-24T09:54:15.172118",
   "targets": [
     {
-      "target": "Claude Code Alternatives",
-      "url": "https://claude-code-alternatives.com/tool/create/",
-      "why_it_fits": "high-intent Claude Code alternative directory with a live submit form and direct adjacency to CLI agent comparison intent that already matches Ralph Workflow's comparison pages.",
-      "status": "executed_elsewhere",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery.md",
-      "next_path": "wait for listing/review evidence instead of resubmitting during the current measurement window",
-      "promoted_at": "2026-05-24T02:47:15.881073",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_claude-code-alternatives.md",
-      "reconciled_at": "2026-05-24T03:24:58+02:00",
-      "reconciled_by": "marketing-active-loop"
-    },
-    {
-      "target": "AI IDE",
-      "url": "https://aiide.dev/",
-      "why_it_fits": "AI coding tools directory with developer-facing discovery intent and a visible curator email in page HTML, making it a clean codeberg-first listing candidate outside the saturated queue.",
-      "status": "executed_elsewhere",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery.md",
-      "next_path": "curator email or listing suggestion to support@aiide.dev in a later non-overlap run",
-      "reconciled_at": "2026-05-24T02:12:10",
-      "reconciled_by": "distribution_lane_selector"
-    },
-    {
-      "target": "AI Coding Stack",
-      "url": "https://aicodingstack.io/docs/getting-started",
-      "why_it_fits": "community-maintained AI coding metadata directory with explicit contribution docs and a linked GitHub repo, making it a strong third-party citation target tied to CLI/tool discovery intent.",
+      "target": "TIMEWELL benchmark \u2014 AI Coding Tools Compared [Latest 2026]",
+      "url": "https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026",
+      "why_it_fits": "Fresh AI coding benchmark page with direct Claude Code/Cursor/Codex comparison intent, strong workflow-selection context, and visible TIMEWELL contact surfaces for a Codeberg-first citation/update request.",
       "status": "promoted_to_curator_queue",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery.md",
-      "next_path": "prepare PR/manual handoff for manifest addition when GitHub-auth path is available",
-      "promoted_at": "2026-05-24T02:47:15.881073",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/02_ai-coding-stack.md"
+      "source": "marketing-active-loop web discovery 2026-05-24",
+      "contact_hint": "https://timewell.jp/en/contact",
+      "promoted_at": "2026-05-24T09:49:42.659239",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_timewell-benchmark-ai-coding-tools-compared-latest-2026.md"
     },
     {
-      "target": "AI Resources",
-      "url": "https://airesources.dev/category/agents/",
-      "why_it_fits": "third-party AI resources directory with an agents category and a linked GitHub repo, so it can accept a clean new listing path without reusing the current saturated queues.",
+      "target": "Kingy AI \u2014 Cursor / Cursor SDK vs. Claude Code vs. Codex",
+      "url": "https://kingy.ai/ai/cursor-cursor-sdk-vs-claude-code-vs-codex-the-deepest-practical-comparison-of-modern-ai-coding-tools/",
+      "why_it_fits": "Recent long-form AI coding comparison aimed at teams evaluating agentic coding workflows; adjacent to Ralph Workflow's reviewable-handoff positioning and paired with a visible contact route on Kingy AI.",
       "status": "promoted_to_curator_queue",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery.md",
-      "next_path": "prepare PR/manual handoff for new agent entry when GitHub-auth path is available",
-      "promoted_at": "2026-05-24T02:47:15.881073",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/03_ai-resources.md"
+      "source": "marketing-active-loop web discovery 2026-05-24",
+      "contact_hint": "https://kingy.ai/contact-us/",
+      "promoted_at": "2026-05-24T09:49:42.659239",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/02_kingy-ai-cursor-cursor-sdk-vs-claude-code-vs-codex.md"
     },
     {
-      "target": "built4claude",
-      "url": "https://builtforclaude.com/submit",
-      "why_it_fits": "Claude-focused community directory with explicit Developer Tools, Agents, and Workflows categories that match Ralph Workflow's Claude Code and autonomous-coding positioning.",
-      "status": "executed_elsewhere",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery_round2.md",
-      "next_path": "manual submission or scripted form execution in a later non-overlap run",
-      "reconciled_at": "2026-05-24T02:47:27",
-      "reconciled_by": "distribution_lane_selector"
+      "target": "Built In \u2014 Claude Code vs. Codex vs. Cursor vs. GitHub Copilot",
+      "url": "https://builtin.com/articles/claude-code-codex-cursor-github-copilot-comparison",
+      "why_it_fits": "High-intent comparison article published in May 2026 on a mainstream developer publication, making it a meaningful third-party citation/update target for Codeberg-first workflow positioning instead of another generic directory listing.",
+      "status": "promoted_to_curator_queue",
+      "source": "marketing-active-loop web discovery 2026-05-24",
+      "promoted_at": "2026-05-24T09:49:42.659239",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/03_built-in-claude-code-vs-codex-vs-cursor-vs-github-copilot.md"
     },
     {
-      "target": "Claudetory",
-      "url": "https://claudetory.com/submit",
-      "why_it_fits": "Claude Code resource directory with a direct submit flow for tools and workflows, making it a high-fit citation surface for Ralph Workflow as a reviewable coding workflow.",
-      "status": "executed_elsewhere",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery_round2.md",
-      "next_path": "manual submission or scripted form execution in a later non-overlap run",
-      "reconciled_at": "2026-05-24T02:47:27",
-      "reconciled_by": "distribution_lane_selector"
+      "target": "HidsTech \u2014 AI Coding Tools in 2026",
+      "url": "https://www.hidstech.co.uk/blog/ai-coding-tools-cursor-claude-code",
+      "why_it_fits": "Workflow-oriented comparison page that already frames Claude Code vs Cursor vs Copilot for practical team use and exposes a direct booking/contact path, which makes it a cleaner publisher outreach target than another saturated curator list.",
+      "status": "promoted_to_curator_queue",
+      "source": "marketing-active-loop web discovery 2026-05-24",
+      "contact_hint": "https://www.hidstech.co.uk/book",
+      "promoted_at": "2026-05-24T09:49:42.659239",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/04_hidstech-ai-coding-tools-in-2026.md"
     },
     {
-      "target": "AiAgents.Directory",
-      "url": "https://aiagents.directory/submit/",
-      "why_it_fits": "AI agent directory with open-source and developer-tools adjacency plus a live submit form, giving Ralph Workflow a broader agent-discovery surface without reusing already-contacted domains.",
-      "status": "executed_elsewhere",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery_round2.md",
-      "next_path": "manual submission or scripted form execution in a later non-overlap run",
-      "reconciled_at": "2026-05-24T02:47:27",
-      "reconciled_by": "distribution_lane_selector"
+      "target": "SitePoint \u2014 AI Coding Tools Comparison 2026",
+      "url": "https://www.sitepoint.com/ai-coding-tools-comparison-2026/",
+      "why_it_fits": "Recognizable developer publication with a dedicated 2026 AI coding comparison, giving Ralph Workflow a fresh editorial citation target close to evaluator intent even though direct contact resolution may require manual follow-up.",
+      "status": "promoted_to_curator_queue",
+      "source": "marketing-active-loop web discovery 2026-05-24",
+      "promoted_at": "2026-05-24T09:54:15.172118",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_sitepoint-ai-coding-tools-comparison-2026.md"
     }
   ]
 }

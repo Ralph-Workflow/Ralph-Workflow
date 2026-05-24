@@ -424,6 +424,41 @@ class RetroactiveAnalysisTests(unittest.TestCase):
 
 # ── Homepage fetch / on-page scoring ───────────────────────────────────────────
 
+class ContentGapAnalysisTests(unittest.TestCase):
+
+    def test_content_gap_analysis_uses_visible_body_copy_not_just_metadata(self):
+        from agents.marketing import seo_daily
+
+        homepage = """
+        <html>
+          <head>
+            <title>Autonomous coding workflow CLI — Ralph Workflow</title>
+            <meta name='description' content='Start the job and close the laptop.'>
+          </head>
+          <body>
+            <main>
+              <p>Looking for an unattended coding agent, a spec-driven AI agent, or an AI agent orchestration CLI?</p>
+              <p>Ralph Workflow is built for Claude Code automation and broader AI coding workflow automation.</p>
+            </main>
+          </body>
+        </html>
+        """
+
+        keywords = [
+            "unattended coding agent",
+            "AI agent orchestration CLI",
+            "spec-driven AI agent",
+            "AI coding workflow automation",
+            "Claude Code automation",
+        ]
+
+        with patch.object(seo_daily, "http_get", return_value=(200, homepage)):
+            result = seo_daily.content_gap_analysis(keywords, [])
+
+        self.assertEqual(result["gaps"], [])
+        self.assertEqual(result["coverage_pct"], 100.0)
+
+
 class HomepageFetchTests(unittest.TestCase):
 
     def test_fetch_homepage_retries_when_first_response_is_suspiciously_thin(self):
