@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-24T22:54:46.949997+02:00",
+    "checked_at": "2026-05-24T23:26:13.340174+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus current owner-loop artifacts",
     "live_jobs_checked": 21,
     "live_jobs_enabled": 21,
@@ -35,15 +35,7 @@
       "ralph-workflow-full-house-docs-audit",
       "stackoverflow-post-cooldown-run-check"
     ],
-    "live_running_job_names": [
-      "Push research findings to git repo",
-      "repo-adoption-tracker",
-      "system-health-monitor",
-      "ralph-site-owner-loop",
-      "reddit-pipeline-watchdog",
-      "marketing-momentum-watchdog",
-      "agent-architecture-watchdog"
-    ],
+    "live_running_job_names": [],
     "live_last_error_job_names": [],
     "live_last_error_details": {},
     "inspected_roots": [
@@ -145,23 +137,23 @@
     },
     {
       "severity": "medium",
-      "title": "Architecture audit metadata had drifted from live cron topology and was refreshed",
-      "mechanism": "previous artifact recorded 20 live jobs while the live scheduler currently has 21 enabled jobs.",
+      "title": "Architecture audit metadata is refreshed against the current live cron topology",
+      "mechanism": "live runtime currently reports 21 enabled jobs with zero live-disabled entries and zero last-error residue.",
       "source_layer": "runtime cron topology",
-      "root_cause": "The audit artifact lagged a live scheduler change.",
+      "root_cause": "Architecture health depends on live cron truth instead of persisted-history conflation.",
       "evidence_refs": [
         "/tmp/agent_arch_cron_live_now.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ],
       "confidence": 0.99,
-      "recommended_fix": "Refresh architecture artifacts from live cron state before verifier signoff."
+      "recommended_fix": "Keep refreshing architecture artifacts from live cron state before verifier signoff."
     },
     {
       "severity": "medium",
-      "title": "Misrouted one-shot delivery route was repaired before hold release",
-      "mechanism": "The temporary marketing-measurement-hold-release job was configured with announce->last and no resolvable target; its delivery route was updated to an explicit Matrix room before execution.",
+      "title": "One-shot measurement-release routing remains explicitly targeted",
+      "mechanism": "The temporary marketing-measurement-hold-release job now resolves to an explicit Matrix room target instead of an unresolvable implicit route.",
       "source_layer": "runtime cron topology",
-      "root_cause": "The one-shot release job inherited a non-resolvable delivery target instead of an explicit channel.",
+      "root_cause": "One-shot delivery needs explicit routing to avoid fail-closed execution.",
       "evidence_refs": [
         "/tmp/agent_arch_cron_live_now.json"
       ],
@@ -170,8 +162,8 @@
     },
     {
       "severity": "low",
-      "title": "Live scheduler is currently clean",
-      "mechanism": "21 live jobs, 21 enabled, 0 disabled, no running jobs, no last-error residue.",
+      "title": "Live scheduler is otherwise clean",
+      "mechanism": "21 live jobs, 21 enabled, 0 disabled, no last-error residue.",
       "source_layer": "runtime cron topology",
       "root_cause": "Current cron state is stable at inspection time.",
       "evidence_refs": [
@@ -185,8 +177,8 @@
     {
       "order": 1,
       "goal": "Keep architecture artifacts aligned with live scheduler topology and delivery reality",
-      "why_now": "This run found and repaired an actual fail-closed one-shot delivery target before execution.",
-      "expected_effect": "Prevents a false-negative follow-up run and keeps topology evidence truthful."
+      "why_now": "This run refreshed topology evidence and revalidated explicit one-shot delivery routing.",
+      "expected_effect": "Prevents false signoff drift and keeps topology evidence truthful."
     },
     {
       "order": 2,
@@ -203,29 +195,29 @@
   ],
   "repairs_applied_this_run": [
     {
-      "status": "repaired_one_shot_delivery_route",
-      "target": "marketing-measurement-hold-release cron job",
-      "change": "Replaced announce->last fail-closed delivery with an explicit Matrix room target.",
+      "status": "refreshed_architecture_audit_artifacts",
+      "target": "agent_architecture_latest.json/md",
+      "change": "Refreshed the architecture audit summary from current live cron state plus latest owner-loop artifacts.",
+      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md"
+      ]
+    },
+    {
+      "status": "revalidated_live_topology_and_route",
+      "target": "live cron topology / marketing-measurement-hold-release",
+      "change": "Rechecked live job counts, zero last-error residue, and explicit Matrix delivery target for the one-shot release job.",
       "proof": [
         "/tmp/agent_arch_cron_live_now.json"
       ]
     },
     {
-      "status": "refreshed_architecture_signoff",
-      "target": "agent_architecture_independent_verification.json / agent_architecture_verifier_latest.md",
-      "change": "Reran independent verification and the architecture verifier against the current live topology.",
+      "status": "refreshed_independent_verification_stack",
+      "target": "architecture independent verifier + verifier markdown",
+      "change": "Reran architecture independent verification and verifier markdown after the audit refresh.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
-      ]
-    },
-    {
-      "status": "updated_architecture_audit_artifacts",
-      "target": "agent_architecture_latest.json/md",
-      "change": "Refreshed the architecture audit summary from the current live cron state plus latest owner-loop artifacts.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md"
       ]
     },
     {
@@ -242,7 +234,7 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-24T22:53:07.944185+02:00",
+    "checked_at": "2026-05-24T23:25:28.804210+02:00",
     "verdict": "qualified_pass"
   },
   "what_still_needs_independent_verification": [
@@ -250,7 +242,7 @@
   ],
   "highest_risk_unresolved_issue": {
     "title": "Marketing remains red on outcome evidence",
-    "why": "The architecture path can only localize this blocker; it cannot certify marketing healthy until the primary-repo measurement window produces a real delta or new failure evidence."
+    "why": "The architecture path can localize this blocker, but it cannot certify marketing healthy until the primary-repo measurement window produces a real delta or new failure evidence."
   },
   "runtime_assertions": {
     "ownership_boundaries_ok": true,
@@ -261,9 +253,9 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-05-24T22:54:46.950084",
+    "architecture_verifier_checked_at": "2026-05-24T23:25:28.804210+02:00",
     "loop_integrity_statuses": {
-      "ralph-docs-watchdog": "error",
+      "ralph-docs-watchdog": "ok",
       "autonomous-marketing-stack": "error",
       "ralph-site-owner-loop": "owner_only",
       "system-health-monitor": "monitor_only",
@@ -280,15 +272,7 @@
       "marketing_independent_verification_escalation",
       "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation"
     ],
-    "live_running_job_names": [
-      "Push research findings to git repo",
-      "repo-adoption-tracker",
-      "system-health-monitor",
-      "ralph-site-owner-loop",
-      "reddit-pipeline-watchdog",
-      "marketing-momentum-watchdog",
-      "agent-architecture-watchdog"
-    ],
+    "live_running_job_names": [],
     "live_last_error_job_names": [],
     "marketing_bottleneck": "distribution_and_message_to_primary_repo_conversion",
     "marketing_repair_window_status": "measurement_pending",
@@ -316,8 +300,8 @@
   "notes": [
     "Architecture green here means architecture-owned verification is healthy and correctly localizing blockers; it does not mean the full system is globally green.",
     "Persisted disabled jobs are history only; live disabled jobs are zero.",
-    "Docs is currently green again; marketing remains the only live owner-loop red domain.",
-    "Architecture verifier and independent signoff are currently fresh and passing; the remaining blocker is external to the architecture loop.",
-    "This run repaired the misrouted marketing-measurement-hold-release delivery target before the one-shot fires."
+    "Docs is green; marketing remains the only live owner-loop red domain.",
+    "Independent signoff was rerun after the live topology check in this watchdog pass.",
+    "The one-shot marketing measurement release job still holds an explicit Matrix room delivery target."
   ]
 }

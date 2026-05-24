@@ -741,6 +741,32 @@ def _write_measurement_hold_skip_log(now: datetime, hold_window: dict[str, Any])
     return path
 
 
+def _latest_measurement_hold_follow_through(hold_window: dict[str, Any]) -> dict[str, Any] | None:
+    hold_started_at = hold_window.get("hold_started_at")
+    if not isinstance(hold_started_at, datetime):
+        return None
+
+    for path, payload, timestamp in _recent_marketing_log_payloads():
+        if timestamp <= hold_started_at:
+            continue
+        chosen_action = payload.get("chosen_action") if isinstance(payload.get("chosen_action"), dict) else {}
+        action_type = str(chosen_action.get("type") or payload.get("action_type") or "").strip()
+        if action_type != "measurement_hold_follow_through":
+            continue
+        result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+        return {
+            "timestamp": timestamp,
+            "log_path": str(path),
+            "artifact_path": chosen_action.get("draft") or payload.get("artifact_path") or "",
+            "status": str(result.get("status") or "executed"),
+            "summary": str(result.get("summary") or "Reused existing measurement-hold follow-through artifact."),
+            "targets_prepared": list(result.get("targets_prepared") or []),
+            "live_external_action": bool(result.get("live_external_action", False)),
+            "blocking_factors": list(result.get("blocking_factors") or []),
+        }
+    return None
+
+
 def main() -> int:
     now = datetime.now()
     weekday = now.weekday()
@@ -766,15 +792,41 @@ def main() -> int:
             except (json.JSONDecodeError, OSError):
                 audit = {}
 
-        distribution_lane = choose_distribution_lane(now)
-        if pending_repairs:
-            distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs)
-        distribution_execution = execute_distribution_lane(distribution_lane, now)
-        distribution_execution_log = _write_distribution_execution_log(
-            distribution_lane=distribution_lane,
-            execution=distribution_execution,
-            now=now,
-        )
+        recent_follow_through = _latest_measurement_hold_follow_through(hold_window)
+        reused_existing_follow_through = recent_follow_through is not None
+
+        if reused_existing_follow_through:
+            lane_name = "measurement_hold"
+            lane_reason = hold_window["reason"]
+            lane_artifact_path = recent_follow_through.get("artifact_path", "")
+            execution_action_type = "measurement_hold_follow_through"
+            execution_status = recent_follow_through.get("status", "executed")
+            execution_artifact_path = recent_follow_through.get("artifact_path", "")
+            execution_summary = recent_follow_through.get("summary", "Reused existing measurement-hold follow-through artifact.")
+            execution_targets_prepared = list(recent_follow_through.get("targets_prepared") or [])
+            execution_live_external_action = bool(recent_follow_through.get("live_external_action", False))
+            execution_blocking_factors = list(recent_follow_through.get("blocking_factors") or [])
+            distribution_execution_log = Path(recent_follow_through["log_path"])
+        else:
+            distribution_lane = choose_distribution_lane(now)
+            if pending_repairs:
+                distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs)
+            distribution_execution = execute_distribution_lane(distribution_lane, now)
+            distribution_execution_log = _write_distribution_execution_log(
+                distribution_lane=distribution_lane,
+                execution=distribution_execution,
+                now=now,
+            )
+            lane_name = distribution_lane.lane
+            lane_reason = distribution_lane.reason
+            lane_artifact_path = getattr(distribution_lane, "artifact_path", "")
+            execution_action_type = distribution_execution.action_type
+            execution_status = distribution_execution.status
+            execution_artifact_path = distribution_execution.artifact_path
+            execution_summary = distribution_execution.summary
+            execution_targets_prepared = list(distribution_execution.targets_prepared or [])
+            execution_live_external_action = bool(distribution_execution.live_external_action)
+            execution_blocking_factors = list(distribution_execution.blocking_factors or [])
 
         payload = {
             "timestamp": now.isoformat(),
@@ -788,18 +840,19 @@ def main() -> int:
                 "reason": hold_window["reason"],
             },
             "distribution_lane": {
-                "lane": distribution_lane.lane,
-                "reason": distribution_lane.reason,
-                "artifact_path": getattr(distribution_lane, "artifact_path", ""),
+                "lane": lane_name,
+                "reason": lane_reason,
+                "artifact_path": lane_artifact_path,
             },
             "distribution_execution": {
-                "action_type": distribution_execution.action_type,
-                "status": distribution_execution.status,
-                "artifact_path": distribution_execution.artifact_path,
-                "summary": distribution_execution.summary,
-                "targets_prepared": list(distribution_execution.targets_prepared or []),
-                "live_external_action": bool(distribution_execution.live_external_action),
-                "blocking_factors": list(distribution_execution.blocking_factors or []),
+                "action_type": execution_action_type,
+                "status": execution_status,
+                "artifact_path": execution_artifact_path,
+                "summary": execution_summary,
+                "targets_prepared": execution_targets_prepared,
+                "live_external_action": execution_live_external_action,
+                "blocking_factors": execution_blocking_factors,
+                "reused_existing_follow_through": reused_existing_follow_through,
             },
             "seo": seo_current,
             "seo_trends": seo_trends,
@@ -819,11 +872,14 @@ def main() -> int:
         }
         log_file = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d')}.json"
         log_file.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-        print(f"[run.py] Active measurement hold until {hold_window['hold_until'].isoformat()} — running lightweight follow-through only.", flush=True)
-        print(f"[run.py] Chosen distribution lane during hold: {distribution_lane.lane}", flush=True)
+        if reused_existing_follow_through:
+            print(f"[run.py] Active measurement hold until {hold_window['hold_until'].isoformat()} — reusing existing follow-through artifact.", flush=True)
+        else:
+            print(f"[run.py] Active measurement hold until {hold_window['hold_until'].isoformat()} — running lightweight follow-through only.", flush=True)
+        print(f"[run.py] Chosen distribution lane during hold: {lane_name}", flush=True)
         print(f"[run.py] Distribution execution log: {distribution_execution_log}", flush=True)
-        if distribution_execution.artifact_path:
-            print(f"[run.py] Distribution execution artifact: {distribution_execution.artifact_path}", flush=True)
+        if execution_artifact_path:
+            print(f"[run.py] Distribution execution artifact: {execution_artifact_path}", flush=True)
         print(json.dumps(payload, indent=2))
         return 0
 

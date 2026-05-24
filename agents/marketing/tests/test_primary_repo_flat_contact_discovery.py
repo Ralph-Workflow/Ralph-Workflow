@@ -1,4 +1,7 @@
 import unittest
+from datetime import datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from agents.marketing import primary_repo_flat_contact_discovery as discovery
 
@@ -54,6 +57,38 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
             {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
             enriched['channels'],
         )
+
+    def test_recent_contact_targets_omits_recent_live_publisher_outreach(self):
+        with TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            (log_dir / 'marketing_recent.json').write_text(
+                '{\n'
+                '  "timestamp": "2026-05-24T08:09:00+02:00",\n'
+                '  "target": "Bollwerk / Werkstatt",\n'
+                '  "type": "publisher_email_outreach",\n'
+                '  "status": "sent",\n'
+                '  "ok": true\n'
+                '}\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_old.json').write_text(
+                '{\n'
+                '  "timestamp": "2026-05-10T08:09:00+02:00",\n'
+                '  "target": "AXME Code",\n'
+                '  "type": "publisher_email_outreach",\n'
+                '  "status": "sent",\n'
+                '  "ok": true\n'
+                '}\n',
+                encoding='utf-8',
+            )
+
+            recent = discovery._recent_contact_targets(
+                datetime(2026, 5, 24, 22, 0, 0),
+                log_dir=log_dir,
+            )
+
+        self.assertIn('Bollwerk / Werkstatt', recent)
+        self.assertNotIn('AXME Code', recent)
 
 
 if __name__ == '__main__':

@@ -330,7 +330,53 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertEqual(payload['marketing_status'], 'measurement_hold')
                 self.assertEqual(payload['distribution_execution']['action_type'], 'measurement_hold_follow_through')
                 self.assertEqual(payload['distribution_execution']['targets_prepared'], ['Example target'])
+                self.assertFalse(payload['distribution_execution']['reused_existing_follow_through'])
                 self.assertIn('distribution_execution_log', payload)
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_main_reuses_existing_follow_through_during_same_active_hold(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_window = {
+                    'hold_started_at': datetime(2026, 5, 24, 6, 52, 32),
+                    'hold_until': datetime(2026, 5, 24, 7, 52, 32),
+                    'source_log': '/tmp/marketing_2026-05-24_measurement_hold_execution.json',
+                    'reason': 'Existing hold still active.',
+                }
+                prior_log = run.LOG_DIR / 'marketing_2026-05-24_070000_measurement_hold_follow_through.json'
+                prior_log.write_text(json.dumps({
+                    'timestamp': '2026-05-24T07:00:00',
+                    'chosen_action': {
+                        'type': 'measurement_hold_follow_through',
+                        'channel': 'measurement_hold',
+                        'draft': '/tmp/existing_hold.md',
+                    },
+                    'result': {
+                        'status': 'executed',
+                        'summary': 'Active hold respected and follow-through surfaced.',
+                        'targets_prepared': ['Existing target'],
+                        'live_external_action': False,
+                        'blocking_factors': [],
+                    },
+                }), encoding='utf-8')
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
+                     patch.object(run, 'choose_distribution_lane') as choose_mock, \
+                     patch.object(run, 'execute_distribution_lane') as execute_mock:
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                choose_mock.assert_not_called()
+                execute_mock.assert_not_called()
+                daily_log = run.LOG_DIR / 'marketing_2026-05-24.json'
+                payload = json.loads(daily_log.read_text(encoding='utf-8'))
+                self.assertTrue(payload['distribution_execution']['reused_existing_follow_through'])
+                self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_hold.md')
+                self.assertEqual(payload['distribution_execution']['targets_prepared'], ['Existing target'])
+                self.assertEqual(payload['distribution_execution_log'], str(prior_log))
             finally:
                 run.LOG_DIR = original_log_dir
 
