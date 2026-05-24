@@ -74,6 +74,10 @@ def _top_level_classes(path: Path) -> list[str]:
 
 def _private_ralph_imports(path: Path) -> list[tuple[str, list[str]]]:
     """Return (module, [private_names]) for imports of private names from ralph.*."""
+    src = _read_path(path)
+    if "from ralph" not in src or " import _" not in src:
+        return []
+
     tree = _parse_ast(path)
     if tree is None:
         return []
@@ -197,6 +201,10 @@ def test_no_type_ignore_or_noqa_in_maintained_source() -> None:
 
 
 def _nested_classes_in_class_body(path: Path) -> list[tuple[int, str, str]]:
+    src = _read_path(path)
+    if not re.search(r"^\s+class\s+", src, re.M):
+        return []
+
     tree = _parse_ast(path)
     if tree is None:
         return []

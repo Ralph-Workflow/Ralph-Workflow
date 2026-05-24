@@ -194,6 +194,7 @@ def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
     assert state == AgentExecutionState.WAITING_ON_CHILD
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_invoke_agent_without_session_scope_ignores_unrelated_agent_labels(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

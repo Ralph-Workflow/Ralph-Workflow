@@ -4,7 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 48
+UNIT_TEST_SHARD_COUNT = 58
 
 
 def _assert_all_contains(haystack: list[str], needles: list[str]) -> None:
@@ -94,15 +94,18 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
             "$(PYTEST_RUNTIME_PIPELINE_PATHS)",
             "$(PYTEST_RUNTIME_RECOVERY_PATHS)",
             "$(PYTEST_ROOT_PATHS_A_AC)",
-            "$(PYTEST_ROOT_PATHS_AD_E)",
             "$(PYTEST_ROOT_PATHS_AF_G)",
             "$(PYTEST_ROOT_PATHS_A_HN_CONTEXT)",
             "$(PYTEST_ROOT_PATHS_A_HN_ITERATION)",
+            "$(PYTEST_ROOT_PATHS_A_HN_ITERATION_2)",
+            "$(PYTEST_ROOT_PATHS_A_HN_ITERATION_3)",
             "$(PYTEST_ROOT_PATHS_A_HN_MISC)",
             "$(PYTEST_ROOT_PATHS_A_OZ)",
             "$(PYTEST_ROOT_PATHS_B)",
-            "$(PYTEST_ROOT_PATHS_C_AH)",
+            "$(PYTEST_ROOT_PATHS_C_AH_1)",
+            "$(PYTEST_ROOT_PATHS_C_AH_2)",
             "$(PYTEST_ROOT_PATHS_C_IL)",
+            "$(PYTEST_ROOT_PATHS_C_IL_2)",
             "$(PYTEST_ROOT_PATHS_C_MO)",
             "$(PYTEST_ROOT_PATHS_C_PZ)",
             "$(PYTEST_ROOT_PATHS_D_CORE)",
@@ -121,13 +124,20 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
             "$(PYTEST_ROOT_PATHS_N)",
             "$(PYTEST_ROOT_PATHS_O)",
             "$(PYTEST_ROOT_PATHS_PA_PC)",
+            "$(PYTEST_ROOT_PATHS_PA_PC_2)",
             "$(PYTEST_ROOT_PATHS_PD_PF)",
+            "$(PYTEST_ROOT_PATHS_PG_PH)",
             "$(PYTEST_ROOT_PATHS_PG_PI)",
             "$(PYTEST_ROOT_PATHS_PJ_PL)",
             "$(PYTEST_ROOT_PATHS_PM_PZ)",
             "$(PYTEST_ROOT_PATHS_Q_S)",
+            "$(PYTEST_ROOT_PATHS_Q_S_2)",
+            "$(PYTEST_ROOT_PATHS_Q_S_3)",
             "$(PYTEST_ROOT_PATHS_T_U)",
+            "$(PYTEST_ROOT_PATHS_T_U_2)",
+            "$(PYTEST_ROOT_PATHS_T_U_3)",
             "$(PYTEST_ROOT_PATHS_V_W)",
+            "$(PYTEST_ROOT_PATHS_V_W_2)",
         ],
     )
     _assert_all_contains(
@@ -144,7 +154,7 @@ def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
     e2e_body = _target_body("test-subprocess-e2e")
 
     assert e2e_body == [
-        "uv run python -m ralph.verify_timeout "
+        ".venv/bin/python -m ralph.verify_timeout "
         "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
         "python -m pytest tests/ -q -n 1 -m subprocess_e2e"
     ]

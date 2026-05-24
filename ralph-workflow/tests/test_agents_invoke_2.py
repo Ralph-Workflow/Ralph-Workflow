@@ -257,6 +257,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr(
         "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
@@ -747,6 +748,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     )
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

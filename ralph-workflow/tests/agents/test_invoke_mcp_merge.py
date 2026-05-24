@@ -251,6 +251,7 @@ def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_and_read_lines)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))

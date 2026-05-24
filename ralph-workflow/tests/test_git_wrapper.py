@@ -32,6 +32,7 @@ def test_start_agent_phase_sets_hooks_path(tmp_git_repo: Path) -> None:
 
     expected = str(Path(repo.git_dir) / "ralph" / "hooks")
     assert read_hooks_path(repo) == expected
+    repo.git.clear_cache()
 
 
 def test_detect_unauthorized_commit_detects_new_commit(tmp_git_repo: Path) -> None:
@@ -46,6 +47,7 @@ def test_detect_unauthorized_commit_detects_new_commit(tmp_git_repo: Path) -> No
     repo.index.commit("unauthorized commit")
 
     assert detect_unauthorized_commit(tmp_git_repo) is True
+    repo.git.clear_cache()
 
 
 def test_end_agent_phase_restores_hooks_path(tmp_git_repo: Path) -> None:
@@ -57,3 +59,4 @@ def test_end_agent_phase_restores_hooks_path(tmp_git_repo: Path) -> None:
 
     with pytest.raises(GitCommandError):
         read_hooks_path(repo)
+    repo.git.clear_cache()

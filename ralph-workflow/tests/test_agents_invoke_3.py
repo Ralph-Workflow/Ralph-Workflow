@@ -696,6 +696,7 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
 
     list(
         invoke_agent(
