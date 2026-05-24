@@ -1,0 +1,45 @@
+{
+  "timestamp": "2026-05-24T10:37:07+02:00",
+  "type": "stack_overflow_lane_repair",
+  "status": "executed",
+  "ok": true,
+  "lane": "stackoverflow_demand_capture",
+  "why_now": [
+    "The post-cooldown StackOverflow run is already scheduled for 2026-05-24T11:30:00+02:00.",
+    "The current lane was still burning Stack Exchange quota after finding the same strong unanswered candidate.",
+    "Reducing avoidable quota burn is the strongest same-run repair that improves the odds of a real post-cooldown execution without repeating a handoff packet."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+    "drafts/stackoverflow_answer_handoff_packet_latest.md",
+    "agents/marketing/logs/reddit_posts.jsonl",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/adoption_metrics_latest.json"
+  ],
+  "changes": {
+    "files": [
+      "agents/marketing/stackoverflow_answer_lane.py",
+      "agents/marketing/tests/test_stackoverflow_answer_lane.py"
+    ],
+    "summary": [
+      "Added an early-exit quota guard so the lane stops searching once it finds a strong unanswered or reusable StackOverflow candidate.",
+      "Reused recent-draft knowledge during the search phase so the lane can preserve quota for the live scheduled attempt instead of rediscovering the same packet.",
+      "Added a regression test that proves the search loop stops after the first strong candidate."
+    ]
+  },
+  "verification": {
+    "tests_command": "python3 -m unittest agents.marketing.tests.test_stackoverflow_answer_lane",
+    "tests_result": "passed",
+    "tests_ran": 12,
+    "diff_checked": true
+  },
+  "expected_outcome": "The scheduled 2026-05-24 11:30 CEST StackOverflow run should reach the existing high-intent candidate without wasting quota on lower-priority searches.",
+  "review_window": {
+    "scheduled_run_at": "2026-05-24T11:30:00+02:00",
+    "run_check_at": "2026-05-24T11:45:00+02:00"
+  },
+  "replacement_condition": "If the scheduled run still cannot produce a real StackOverflow action after this quota repair, stop iterating on the same packet and switch the next demand-capture slot to a different executable high-intent lane."
+}

@@ -99,6 +99,20 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
 
         self.assertEqual(urls, {"https://stackoverflow.com/questions/123/example"})
 
+    def test_find_recent_draft_for_url_returns_matching_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft_dir = Path(tmp)
+            draft = draft_dir / "so_answer_2026-05-23_example.md"
+            draft.write_text(
+                "# StackOverflow Answer Draft\n\n**Question:** Example\n**URL:** https://stackoverflow.com/questions/123/example\n\n---\n\nBody",
+                encoding="utf-8",
+            )
+            now = datetime.fromtimestamp(draft.stat().st_mtime)
+            with patch.object(stackoverflow_answer_lane, "DRAFT_DIR", draft_dir):
+                found = stackoverflow_answer_lane.find_recent_draft_for_url("https://stackoverflow.com/questions/123/example", now=now)
+
+        self.assertEqual(found, draft)
+
     def test_main_skips_recent_duplicate_candidate(self):
         question = {
             "title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
@@ -108,17 +122,33 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
             "votes": 0,
             "body_snippet": "Need checkpoints, verification, and reviewable unattended runs.",
         }
-        with patch.object(stackoverflow_answer_lane, "SO_SEARCH_SPECS", [{"label": "workflow"}]), \
-             patch.object(stackoverflow_answer_lane, "so_search_site", return_value=[question]), \
-             patch.object(stackoverflow_answer_lane, "fetch_question_detail", return_value=question), \
-             patch.object(stackoverflow_answer_lane, "load_recent_drafted_question_urls", return_value={question["url"]}), \
-             patch.object(stackoverflow_answer_lane, "append_outreach_log"):
-            rc = stackoverflow_answer_lane.main()
+        with tempfile.TemporaryDirectory() as tmp:
+            draft_dir = Path(tmp) / "drafts"
+            draft_dir.mkdir(parents=True, exist_ok=True)
+            draft = draft_dir / "so_answer_2026-05-23_example.md"
+            draft.write_text(
+                "# StackOverflow Answer Draft\n\n**Question:** Example\n**URL:** https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability\n\n---\n\nReusable body",
+                encoding="utf-8",
+            )
+            packet_path = Path(tmp) / "stackoverflow_answer_handoff_packet_latest.md"
+            log_path = Path(tmp) / "stackoverflow_answer_lane_latest.json"
+            with patch.object(stackoverflow_answer_lane, "SO_SEARCH_SPECS", [{"label": "workflow"}]), \
+                 patch.object(stackoverflow_answer_lane, "SO_LOG", log_path), \
+                 patch.object(stackoverflow_answer_lane, "so_search_site", return_value=[question]), \
+                 patch.object(stackoverflow_answer_lane, "fetch_question_detail", return_value=question), \
+                 patch.object(stackoverflow_answer_lane, "load_recent_drafted_question_urls", return_value={question["url"]}), \
+                 patch.object(stackoverflow_answer_lane, "find_recent_draft_for_url", return_value=draft), \
+                 patch.object(stackoverflow_answer_lane, "HANDOFF_PACKET_LATEST", packet_path), \
+                 patch.object(stackoverflow_answer_lane, "append_outreach_log"):
+                rc = stackoverflow_answer_lane.main()
+            payload = stackoverflow_answer_lane.json.loads(log_path.read_text(encoding="utf-8"))
+            packet_exists = packet_path.exists()
 
         self.assertEqual(rc, 0)
-        payload = stackoverflow_answer_lane.json.loads(stackoverflow_answer_lane.SO_LOG.read_text(encoding="utf-8"))
         self.assertEqual(payload["drafts_created"], 0)
         self.assertEqual(payload["skipped_existing_drafts"], 1)
+        self.assertEqual(payload["reused_existing_draft"]["draft_file"], str(draft))
+        self.assertTrue(packet_exists)
 
     def test_main_preserves_previous_state_when_rate_limited(self):
         previous = {
@@ -171,6 +201,40 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
         self.assertEqual(payload["status"], "rate_limit_cooldown_reused_previous")
         self.assertTrue(payload["cooldown_active"])
         self.assertEqual(payload["top_questions"], previous["top_questions"])
+
+    def test_main_stops_search_after_strong_early_candidate(self):
+        question = {
+            "title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+            "url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
+            "tags": ["openai-api"],
+            "answers": 0,
+            "votes": 0,
+            "body_snippet": "Need checkpoints, verification, and reviewable unattended runs.",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            draft_dir = Path(tmp) / "drafts"
+            draft_dir.mkdir(parents=True, exist_ok=True)
+            log_path = Path(tmp) / "stackoverflow_answer_lane_latest.json"
+            packet_path = Path(tmp) / "stackoverflow_answer_handoff_packet_latest.md"
+            search_calls = []
+
+            def fake_search(spec):
+                search_calls.append(spec["label"])
+                return [dict(question)]
+
+            with patch.object(stackoverflow_answer_lane, "SO_LOG", log_path), \
+                 patch.object(stackoverflow_answer_lane, "SO_SEARCH_SPECS", [{"label": "production-reliability"}, {"label": "claude-autonomous"}]), \
+                 patch.object(stackoverflow_answer_lane, "DRAFT_DIR", draft_dir), \
+                 patch.object(stackoverflow_answer_lane, "HANDOFF_PACKET_LATEST", packet_path), \
+                 patch.object(stackoverflow_answer_lane, "so_search_site", side_effect=fake_search), \
+                 patch.object(stackoverflow_answer_lane, "fetch_question_detail", return_value=dict(question)), \
+                 patch.object(stackoverflow_answer_lane, "append_outreach_log"):
+                rc = stackoverflow_answer_lane.main()
+                payload = stackoverflow_answer_lane.json.loads(log_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(search_calls, ["production-reliability"])
+        self.assertEqual(payload["total_questions_found"], 1)
 
 
 if __name__ == "__main__":

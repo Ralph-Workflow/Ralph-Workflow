@@ -1,6 +1,6 @@
 # Agent Architecture Independent Verification
 
-- Checked: 2026-05-24T08:57:01.161210
+- Checked: 2026-05-24T10:08:40.891487
 - Status: independently verified fail
 - Independent artifact: `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`
 - Independent check time: 2026-05-24T07:22:56.724834+02:00
@@ -9,4 +9,4 @@
 
 ## Verification result
 
-- independent verification artifact predates newer runtime evidence (market_intelligence_latest.json); rerun independent verification after the latest architecture/runtime refresh
+- independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh

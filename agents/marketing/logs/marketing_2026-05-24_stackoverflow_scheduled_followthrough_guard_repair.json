@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-05-24T10:33:00+02:00",
+  "chosen_action": {
+    "type": "stackoverflow_scheduled_followthrough_guard_repair",
+    "channel": "measurement_hold",
+    "title": "Guard scheduled StackOverflow follow-through from duplicate pre-cooldown resurfacing"
+  },
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "summary": "Patched the distribution selector so a queued post-cooldown StackOverflow run counts as active follow-through, preventing another pre-cooldown handoff refresh from being selected in the same review window.",
+  "why_this_action": [
+    "The StackOverflow lane already had a current draft, a current handoff packet, and a scheduled post-cooldown run.",
+    "Without a selector-level guard, active-loop runs could still burn slots repeating the same packet during cooldown.",
+    "A code-level guard is more durable than another one-off manual note."
+  ],
+  "files_changed": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_marketing_system.py"
+  ],
+  "verification": {
+    "targeted_test": "python3 -m unittest agents.marketing.tests.test_marketing_system -k stackoverflow",
+    "full_test": "python3 -m unittest agents.marketing.tests.test_marketing_system"
+  },
+  "artifacts": {
+    "log_md": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_stackoverflow_scheduled_followthrough_guard_repair.md"
+  }
+}

@@ -1,5 +1,20 @@
 # Outreach Log
 
+## 2026-05-24 (Sunday) — Reddit monitoring (08:09 UTC / 10:09 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-24_1009.md`
+- **Scan summary:** **18** surfaced across fresh web-backed search plus recent carry-forward validation; **5** credible discussion opportunities; **0-1** honest RalphWorkflow mention fits.
+- **Coverage note:** direct local execution of `agents/marketing/reddit_monitor.py` still returned **cooldown_skip**, so this pass treated the built-in path as runtime state rather than telemetry and used fresh web-backed rescue instead. Coverage remains **partial visibility**, not full Reddit access.
+- **Current verdict:** not a zero-opportunity day, but still not a posting day. The best current surfaces are stronger as research than as distribution.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
+  - `r/AIAgentsInAction` — "Everyone says they have AI agents in production. Nobody can clearly answer ‘how do you know it’s actually working’"
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/SoftwareEngineering` — "How is your team reviewing all the AI generated code?"
+  - `r/ExperiencedDevs` — "First time in a position reviewing pull requests and finding it difficult."
+- **Repeated pains worth tracking:** workflow that looks done without actually finishing, proof of what changed / what passed, review tax, giant AI PRs, and morning-after visible state.
+- **Self-improving fix surfaced:** add a hard **cross-post / duplicate-thread collapse gate** and a **query-family diversity gate** so one workflow-continuity cluster cannot dominate the shortlist and fake breadth.
+- **Posting note:** No posting attempted. Fail closed while coverage remains partial and honest mention-fit stays at **0-1**.
+
 ## 2026-05-24 (Sunday) — Ralph-Site homepage conversion repair deployed (00:33 UTC / 02:33 CEST)
 - **What I executed:** shipped the already-prepared **Ralph-Site homepage** upgrade live at `https://ralphworkflow.com`, including a sharper title/description (**"Autonomous coding workflow CLI"**) and a new search-intent proof section that explicitly answers: **"Looking for an unattended coding agent, a spec-driven AI agent, or an AI agent orchestration CLI?"**. The section keeps **Codeberg** as the primary evaluator path and GitHub as the mirror.
 - **Verification:** `bundle exec rspec spec/requests/pages_spec.rb spec/requests/seo_spec.rb spec/system/home_page_spec.rb` passed (**135 examples, 0 failures**) after aligning the homepage request spec with the intentional new positioning. `bundle exec cap production deploy:check` passed, `bundle exec cap production deploy` succeeded, and a live fetch of `https://ralphworkflow.com` now returns the title **"Autonomous coding workflow CLI — Ralph Workflow"** plus the new search-intent section text.
@@ -6049,3 +6064,7 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### WyeWorks publisher outreach
 - **When:** 2026-05-24 07:46:21 CEST
 - **Note:** Sent tailored publisher outreach email to `hello@wyeworks.com` referencing the May 13, 2026 WyeWorks article “The Workflow Is the Product: Building Specialized Pipelines for Coding Agents” and pointing to the Codeberg primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 10:25:49
+- **Note:** Momentum check found: no_recent_reddit_post, outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, same_family_distribution_overlap, same_family_outreach_overlap. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.

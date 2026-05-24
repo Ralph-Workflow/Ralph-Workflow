@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-24T08:48:00
+Generated: 2026-05-24T10:07:51
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -27,7 +27,7 @@ Generated: 2026-05-24T08:48:00
 ### 3. Curator handoff packet
 - When: Do now only if the manual-contact and publisher-contact packets are already exhausted
 - Packet: /home/mistlight/.openclaw/workspace/drafts/curator_handoff_packet_latest.md
-- Targets: AI Resources, nandhakt/awesome-ai-coding-resources, VibeCoders tool directory
+- Targets: AI Resources, Built In — Claude Code vs. Codex vs. Cursor vs. GitHub Copilot, Kingy AI — Cursor / Cursor SDK vs. Claude Code vs. Codex
 - Why this matters: Prepared curator assets already exist; this is follow-through work, not a discovery problem.
 
 ### 4. Comparison backlink packet

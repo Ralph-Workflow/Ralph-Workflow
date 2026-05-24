@@ -10,6 +10,38 @@ from agents.marketing import distribution_lane_selector
 
 
 class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
+    def test_recent_live_external_action_count_includes_top_level_flag(self):
+        now = datetime(2026, 5, 24, 10, 0, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            (log_dir / 'marketing_2026-05-24_hidstech_publisher_outreach.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T09:59:38',
+                    'action_type': 'publisher_email_outreach',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-24_aiagents_directory_submission.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T05:43:30',
+                    'action_type': 'aiagents_directory_submission',
+                    'status': 'executed',
+                    'ok': True,
+                    'result': {'live_external_action': True},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir):
+                total = distribution_lane_selector._recent_live_external_action_count(now, hours=6)
+
+        self.assertEqual(total, 2)
+
     def test_normalized_curator_queue_rows_hide_stale_prepared_targets(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
