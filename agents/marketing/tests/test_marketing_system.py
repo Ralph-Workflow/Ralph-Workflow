@@ -267,6 +267,7 @@ class PrimaryRepoFlatTruthfulnessTests(unittest.TestCase):
             self.assertIn('Short contact-form version', text)
             self.assertIn('plan → build → verify loop', text)
             self.assertIn('https://codeberg.org/RalphWorkflow/Ralph-Workflow', text)
+            self.assertNotIn('Ralph Workflow is Ralph Workflow is', text)
             self.assertNotIn('primary_repo_flat_repair.md', text)
 
     def test_primary_repo_flat_actionable_findings_exclude_generic_public_pages_without_verified_forms(self):

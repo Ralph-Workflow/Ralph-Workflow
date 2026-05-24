@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-25T00:14:00
+Generated: 2026-05-25T00:26:00
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -18,6 +18,7 @@ Generated: 2026-05-25T00:14:00
 ## Best executable assets still waiting
 - No do-now handoff packet is currently truthful in this review window.
 - Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.
+- A refreshed primary-repo-flat publisher packet now exists for the new target set, but the short review window is still active; hold manual delivery until that congestion clears.
 - Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator handoff packet exists, but same-family curator outreach is paused during the active repair window.
 - Comparison backlink packet exists, but it was already manually delivered in the current review window.

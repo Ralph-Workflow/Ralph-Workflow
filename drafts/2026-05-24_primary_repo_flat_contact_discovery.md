@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-24T21:33:05+00:00
+Generated: 2026-05-24T22:35:25+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -22,5 +22,27 @@ Generated: 2026-05-24T21:33:05+00:00
 - Discovered channels:
   - work with me page: https://ctxt.dev/work-with-me
   - about page: https://ctxt.dev/about
-  - contact page: https://ctxt.dev/contact
+  - advertise page: https://ctxt.dev/advertise
   - Telegram: https://t.me/ctxtdev
+
+### 2. ToolChase
+- Hook: AI coding tools comparison page already covering Claude Code, Codex, Cursor, and Aider
+- Article/root: https://toolchase.com/blog/best-ai-coding-tools-2026/ / https://toolchase.com/
+- Recommended next step: email/contact send path is now identified
+- Suggested subject: Ralph Workflow for your next AI coding tools comparison refresh
+- Discovered channels:
+  - email: hello@toolchase.com
+  - contact page: https://toolchase.com/about
+  - contact page: https://toolchase.com/advertise
+  - contact page: https://toolchase.com/contact
+  - X/Twitter: https://x.com/ToolChase
+
+### 3. Beam
+- Hook: Claude Code vs Cursor vs Codex comparison for terminal-first builders
+- Article/root: https://getbeam.dev/blog/ai-coding-agents-comparison-2026.html / https://getbeam.dev/
+- Recommended next step: email/contact send path is now identified
+- Suggested subject: Ralph Workflow as a workflow-system reference for your coding agents comparison
+- Discovered channels:
+  - email: frank@nextuptechnologies.co
+  - contact page: https://getbeam.dev/blog/claude-code-agent-teams-guide.html
+  - website: https://getbeam.dev

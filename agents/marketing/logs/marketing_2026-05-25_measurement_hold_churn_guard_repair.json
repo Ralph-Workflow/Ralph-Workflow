@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-25T00:43:00+02:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "measurement_hold_churn_guard_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Measurement-hold churn guard repair",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_004300_measurement_hold_churn_guard_repair.md"
+  },
+  "why_this_action": {
+    "summary": "Escalated repeated measurement-hold churn into an architecture guard so active-loop runs stop pretending duplicate follow-through is new progress once the prompt repair, re-entry contract repair, and scheduled post-hold rerun are already in place.",
+    "shared_findings_used": [
+      "distribution_lane_latest.json: short review-window release remains 2026-05-25T02:05:05",
+      "marketing_execution_board_latest.md: no truthful do-now packet exists in the active review window",
+      "marketing_2026-05-24_234934_active_loop_prompt_repair.json: prompt repair already shipped inside this hold window",
+      "marketing_2026-05-24_235759_post_hold_reentry_contract_repair.json: re-entry contract repair already shipped inside this hold window",
+      "recent measurement_hold_execution / measurement_hold_follow_through logs: repeat-hold churn crossed the escalation threshold"
+    ],
+    "targets_prepared": []
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": [
+      "short review-window congestion remains active until 2026-05-25T02:05:05"
+    ]
+  },
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold",
+    "changed_files": [
+      "agents/marketing/distribution_lane_executor.py",
+      "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+    ],
+    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md"
+  }
+}

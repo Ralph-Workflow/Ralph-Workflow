@@ -10,18 +10,22 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
     def test_extract_channels_keeps_same_site_and_telegram_but_drops_noise(self):
         html = ' '.join([
             '<a href="/contact#main-content">Contact</a>',
+            '<a href="/advertise">Advertise</a>',
             '<a href="https://schema.org">Schema</a>',
             '<a href="https://t.me/example">Telegram</a>',
-            '<a href="mailto:test@example.com">Email</a>',
+            '<a href="mailto:test@ctxt.dev">Email</a>',
+            '<a href="mailto:you@example.com">Placeholder</a>',
             '<a href="https://other.example/contact">Offsite</a>',
         ])
 
         channels = discovery.extract_channels('https://ctxt.dev/about', html)
         values = {(row['type'], row['value']) for row in channels}
 
-        self.assertIn(('email', 'test@example.com'), values)
+        self.assertIn(('email', 'test@ctxt.dev'), values)
+        self.assertNotIn(('email', 'you@example.com'), values)
         self.assertIn(('telegram', 'https://t.me/example'), values)
         self.assertIn(('website', 'https://ctxt.dev/contact'), values)
+        self.assertIn(('website', 'https://ctxt.dev/advertise'), values)
         self.assertNotIn(('website', 'https://schema.org'), values)
         self.assertNotIn(('website', 'https://other.example/contact'), values)
 
@@ -55,6 +59,45 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         self.assertEqual(enriched['channels'][0]['label'], 'work with me page')
         self.assertIn(
             {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
+            enriched['channels'],
+        )
+
+    def test_enrich_target_finds_real_email_and_drops_placeholder_on_publisher_site(self):
+        target = discovery.Target(
+            name='ToolChase',
+            article_url='https://toolchase.com/blog/best-ai-coding-tools-2026/',
+            root_url='https://toolchase.com/',
+            hook='Hook',
+            reason='Fit',
+            outreach_subject='Subject',
+        )
+
+        def fake_get(url: str, timeout: int = 20) -> str:
+            normalized = url.rstrip('/')
+            if normalized == 'https://toolchase.com/blog/best-ai-coding-tools-2026':
+                return '<a href="/contact/">Contact</a><a href="mailto:hello@toolchase.com">Email</a>'
+            if normalized == 'https://toolchase.com':
+                return '<a href="/advertise/">Advertise</a><a href="mailto:you@example.com">Placeholder</a>'
+            if normalized == 'https://toolchase.com/contact':
+                return '<a href="mailto:hello@toolchase.com">Email</a>'
+            if normalized == 'https://toolchase.com/advertise':
+                return '<p>Partnerships</p><a href="mailto:hello@toolchase.com">hello@toolchase.com</a>'
+            return ''
+
+        original = discovery.http_get
+        discovery.http_get = fake_get
+        try:
+            enriched = discovery.enrich_target(target)
+        finally:
+            discovery.http_get = original
+
+        self.assertEqual(enriched['recommended_next_step'], 'email/contact send path is now identified')
+        self.assertIn(
+            {'type': 'email', 'value': 'hello@toolchase.com', 'label': 'email'},
+            enriched['channels'],
+        )
+        self.assertNotIn(
+            {'type': 'email', 'value': 'you@example.com', 'label': 'email'},
             enriched['channels'],
         )
 

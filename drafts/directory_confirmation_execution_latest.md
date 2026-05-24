@@ -1,7 +1,8 @@
 # Ralph Workflow directory confirmation execution
-Generated: 2026-05-24T17:15:04
-- Backlink snapshot refreshed: 2026-05-24T15:15:09.164530+00:00
+Generated: 2026-05-24T23:07:53+00:00
+- Backlink snapshot refreshed: 2026-05-24T23:07:53.353894+00:00
 - Live directory listings detected: 2
+- Live listings routing to Codeberg first: 1
 - Search queries indexed: 1 / 18
 
 ## Why this run exists
@@ -11,7 +12,9 @@ Generated: 2026-05-24T17:15:04
 
 ## Live listings to reuse now
 - **SaaSHub** — https://saashub.com/ralph-workflow
+  - Route: GitHub-only listing
 - **ToolWise** — https://toolwise.ai/tools/ralph-workflow
+  - Route: Routes to Codeberg first
   - Note: Existing ToolWise listing already live and pointing to the primary Codeberg repo.
 
 ## Pending / still reviewing

@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-24T22:53:20
-Chosen lane: **measurement_hold**
+Generated: 2026-05-25T00:55:00
+Chosen lane: **directory_confirmation**
 
 ## Why this lane
-- The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.
+- Directory submissions are paused and live listing proof already exists, so refresh approval/backlink evidence and reuse it in the next higher-intent lane instead of inventing another reset.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 6 directory submissions already shipped in the last 24 hours.
 - 7 curator contact attempts already shipped in the last 24 hours.
@@ -23,12 +23,13 @@ Chosen lane: **measurement_hold**
 - Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.
 - The manual-contact execution packet is already current for the waiting targets and was already delivered in this review window, so selecting it again would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, Bollwerk / Werkstatt, HidsTech), so those targets should not be re-queued immediately.
+- Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum), so they should not keep this lane looking actionable until a sendable path exists.
 - The primary-repo-flat publisher contact packet is already current for the remaining untouched target set, so the loop should enforce follow-through instead of pretending a fresh packet is needed.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.
 - Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
-- A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.
+- The directory-confirmation snapshot is stale relative to the current submission burst, so refresh live listing/backlink evidence before adding more low-intent distribution.
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
@@ -41,8 +42,8 @@ Chosen lane: **measurement_hold**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate measurement-hold work
-- Do not ship another fresh outreach/reset action in this short review window
-- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
-- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
-- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map
+## Immediate directory confirmation work
+- Re-run `agents/marketing/backlink_status.py` and reuse `backlink_status_latest.json` as the canonical live-listing snapshot
+- Treat live listings as proof assets to reuse in curator/comparison packets instead of pretending all submissions are still pending black boxes
+- Identify which approved listings already route to Codeberg first and which still need follow-up or evidence capture
+- Do not count another net-new directory submission as progress until this confirmation pass is refreshed

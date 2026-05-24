@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T15:15:09.164530+00:00",
+  "generated_at": "2026-05-24T23:07:53.353894+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -21,6 +21,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submission was confirmed via the public .org API on 2026-05-20; treat as submitted/in-review unless a live listing appears."
     },
     "ToolShelf": {
@@ -35,7 +39,11 @@
           "error": "<urlopen error timed out>"
         }
       ],
-      "listing_live": false
+      "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown"
     },
     "SaaSHub": {
       "directory": "SaaSHub",
@@ -50,10 +58,18 @@
           "negative_markers": [],
           "transient_markers": [
             "loading..."
-          ]
+          ],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": true,
+          "has_site_link": true,
+          "preferred_repo_target": "github_only"
         }
       ],
-      "listing_live": true
+      "listing_live": true,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": true,
+      "has_site_link": true,
+      "preferred_repo_target": "github_only"
     },
     "ToolWise": {
       "directory": "ToolWise",
@@ -66,10 +82,18 @@
           "ok": true,
           "has_product_marker": true,
           "negative_markers": [],
-          "transient_markers": []
+          "transient_markers": [],
+          "has_codeberg_repo_link": true,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "codeberg_primary"
         }
       ],
       "listing_live": true,
+      "has_codeberg_repo_link": true,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "codeberg_primary",
       "status_note": "Existing ToolWise listing already live and pointing to the primary Codeberg repo."
     },
     "MadeWithStack": {
@@ -85,6 +109,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submission returned slug ralph-workflow-1 with UNDER_EDITORIAL_REVIEW on 2026-05-23; treat as submitted/in-review until the public listing resolves."
     },
     "DevToolCenter": {
@@ -100,6 +128,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submission returned 201 pending on 2026-05-23 via the public devshelf-backend.onrender.com API; treat as submitted/in-review until the public listing resolves."
     },
     "AIToolboard": {
@@ -116,10 +148,18 @@
             "tool not found",
             "not found"
           ],
-          "transient_markers": []
+          "transient_markers": [],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": true,
+          "preferred_repo_target": "unknown"
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-23 via API; slug=ralph-workflow; pending editorial review."
     },
     "IndieStack": {
@@ -135,6 +175,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-23; confirmation page confirmed; pending editorial review."
     },
     "ListYourTool": {
@@ -150,6 +194,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-23 via API; tool_id=e27adedd-3faa-432b-ab35-000a8bf66121; pending review."
     },
     "NavAI": {
@@ -165,10 +213,18 @@
           "negative_markers": [],
           "transient_markers": [
             "loading..."
-          ]
+          ],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "unknown"
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-23 via Supabase REST API; HTTP 201; pending review."
     },
     "OpenAgents": {
@@ -184,6 +240,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-23 via Formspree; HTTP 200 ok=true; pending review."
     },
     "ToolScout": {
@@ -199,6 +259,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-23 via Bubble form; success screen rendered; pending review."
     },
     "VBWebTools": {
@@ -214,6 +278,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-23 via WordPress AJAX endpoint; HTTP 200; pending 2-3 day review."
     },
     "TheToolify": {
@@ -229,6 +297,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-23 via headless browser; HTTP 200 success; pending review."
     },
     "Claudetory": {
@@ -244,6 +316,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-24 via the public /api/submit-resource endpoint; treat as pending review until the public tool page resolves."
     },
     "ClaudeCodeAlternatives": {
@@ -277,6 +353,10 @@
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-24; initial POST returned HTTP 302 and an immediate second attempt said the Codeberg URL was already taken, so treat as recorded/pending until a public listing resolves."
     },
     "ClaudeStack": {
@@ -296,10 +376,18 @@
           "ok": true,
           "has_product_marker": false,
           "negative_markers": [],
-          "transient_markers": []
+          "transient_markers": [],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "unknown"
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-24 via the public /api/submit endpoint; track the workflows category and the likely slug until the public entry resolves."
     },
     "AiAgentsDirectory": {
@@ -319,7 +407,11 @@
           "ok": true,
           "has_product_marker": false,
           "negative_markers": [],
-          "transient_markers": []
+          "transient_markers": [],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "unknown"
         },
         {
           "url": "https://aiagents.directory/categories/developer-tools/",
@@ -327,10 +419,18 @@
           "ok": true,
           "has_product_marker": false,
           "negative_markers": [],
-          "transient_markers": []
+          "transient_markers": [],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "unknown"
         }
       ],
       "listing_live": false,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
       "status_note": "Submitted 2026-05-24 via the public Django form on /submit/ with Codeberg as the primary URL; treat as pending review until a public listing resolves."
     }
   },
@@ -448,6 +548,9 @@
   },
   "summary": {
     "directories_with_live_listings": 2,
+    "live_listings_pointing_to_codeberg": 1,
+    "live_listings_pointing_to_github_only": 1,
+    "live_listings_with_unknown_repo_target": 0,
     "queries_indexed": 1,
     "queries_unavailable": 0,
     "total_queries": 18,

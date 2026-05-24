@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T21:33:05.248759+00:00",
+  "generated_at": "2026-05-24T22:35:25.758867+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -21,8 +21,8 @@
         },
         {
           "type": "website",
-          "value": "https://ctxt.dev/contact",
-          "label": "contact page"
+          "value": "https://ctxt.dev/advertise",
+          "label": "advertise page"
         },
         {
           "type": "telegram",
@@ -31,6 +31,68 @@
         }
       ],
       "recommended_next_step": "Telegram consulting contact path is explicitly confirmed"
+    },
+    {
+      "target": "ToolChase",
+      "article_url": "https://toolchase.com/blog/best-ai-coding-tools-2026/",
+      "root_url": "https://toolchase.com/",
+      "hook": "AI coding tools comparison page already covering Claude Code, Codex, Cursor, and Aider",
+      "reason": "Direct comparison/discovery audience already evaluating AI coding tools and adjacent workflow choices.",
+      "outreach_subject": "Ralph Workflow for your next AI coding tools comparison refresh",
+      "channels": [
+        {
+          "type": "email",
+          "value": "hello@toolchase.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://toolchase.com/about",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://toolchase.com/advertise",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://toolchase.com/contact",
+          "label": "contact page"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/ToolChase",
+          "label": "X/Twitter"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "Beam",
+      "article_url": "https://getbeam.dev/blog/ai-coding-agents-comparison-2026.html",
+      "root_url": "https://getbeam.dev/",
+      "hook": "Claude Code vs Cursor vs Codex comparison for terminal-first builders",
+      "reason": "Highly adjacent audience already thinking about agent autonomy, workflow fit, and terminal-native execution.",
+      "outreach_subject": "Ralph Workflow as a workflow-system reference for your coding agents comparison",
+      "channels": [
+        {
+          "type": "email",
+          "value": "frank@nextuptechnologies.co",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://getbeam.dev/blog/claude-code-agent-teams-guide.html",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://getbeam.dev",
+          "label": "website"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
     }
   ],
   "omitted_recent_targets": [

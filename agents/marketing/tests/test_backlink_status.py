@@ -90,6 +90,45 @@ class BacklinkStatusTests(unittest.TestCase):
         self.assertEqual(quality["negative_markers"], [])
         self.assertEqual(quality["transient_markers"], [])
 
+    def test_listing_targets_detects_codeberg_primary(self):
+        targets = backlink_status._listing_targets([
+            "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+            "https://ralphworkflow.com",
+        ])
+        self.assertTrue(targets["has_codeberg_repo_link"])
+        self.assertFalse(targets["has_github_repo_link"])
+        self.assertTrue(targets["has_site_link"])
+        self.assertEqual(targets["preferred_repo_target"], "codeberg_primary")
+
+    def test_check_listing_status_aggregates_repo_target(self):
+        with patch.object(
+            backlink_status,
+            "check_url_status",
+            return_value={
+                "url": "https://toolwise.ai/tools/ralph-workflow",
+                "status": 200,
+                "ok": True,
+                "has_product_marker": True,
+                "negative_markers": [],
+                "transient_markers": [],
+                "has_codeberg_repo_link": True,
+                "has_github_repo_link": False,
+                "has_site_link": True,
+                "preferred_repo_target": "codeberg_primary",
+            },
+        ):
+            result = backlink_status.check_listing_status(
+                "ToolWise",
+                {
+                    "submit_url": "https://toolwise.ai/submit-tool",
+                    "listing_url": "https://toolwise.ai/tools/ralph-workflow",
+                    "known_check_urls": ["https://toolwise.ai/tools/ralph-workflow"],
+                },
+            )
+        self.assertTrue(result["listing_live"])
+        self.assertEqual(result["preferred_repo_target"], "codeberg_primary")
+        self.assertTrue(result["has_codeberg_repo_link"])
+
     def test_search_queries_include_claudetory_after_submission(self):
         self.assertIn("ralph workflow claudetory", backlink_status.SEARCH_QUERIES)
 

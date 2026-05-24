@@ -36,7 +36,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 }),
                 encoding='utf-8',
             )
-            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n', encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n\n### 1. AXME Code\n', encoding='utf-8')
 
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
@@ -47,6 +47,42 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
         self.assertIn('Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.', board_text)
+
+    def test_execution_board_hides_stale_primary_repo_flat_packet_until_refreshed(self):
+        now = datetime(2026, 5, 25, 0, 20, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'ToolChase',
+                            'channels': [{'type': 'email', 'value': 'hello@toolchase.com'}],
+                        }
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text(
+                '# stale packet\n\n### 1. AXME Code\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertIn('canonical handoff packet is stale', board_text)
 
     def test_curator_queue_rows_normalize_recent_live_actions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -264,6 +300,82 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             cron_log['verification']['reentry_contract_path'],
             str(drafts_dir / 'post_hold_distribution_reentry_latest.md'),
         )
+
+    def test_repeated_measurement_hold_with_existing_repairs_escalates_to_churn_guard(self):
+        now = datetime(2026, 5, 25, 0, 43, 0)
+        decision = LaneDecision(
+            lane='measurement_hold',
+            reason='Hold while overlapping review windows clear.',
+            reasons=['fresh external actions already shipped'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+            short_review_window_release_at='2026-05-25T02:05:05',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            active_hold = {
+                'hold_started_at': datetime(2026, 5, 24, 22, 4, 30),
+                'hold_until': datetime(2026, 5, 25, 2, 5, 5),
+                'source_log': str(log_dir / 'marketing_2026-05-24_220430_measurement_hold_execution.json'),
+            }
+            repeated_logs = [
+                ('marketing_2026-05-24_220430_measurement_hold_execution.json', '2026-05-24T22:04:30.752497', 'measurement_hold_execution'),
+                ('marketing_2026-05-24_220547_measurement_hold_follow_through.json', '2026-05-24T22:05:47.263709', 'measurement_hold_follow_through'),
+                ('marketing_2026-05-24_221832_measurement_hold_follow_through.json', '2026-05-24T22:18:32.431437', 'measurement_hold_follow_through'),
+                ('marketing_2026-05-24_234934_active_loop_prompt_repair.json', '2026-05-24T23:49:34.370467', 'active_loop_prompt_repair'),
+                ('marketing_2026-05-24_235759_post_hold_reentry_contract_repair.json', '2026-05-24T23:57:59.977354+02:00', 'post_hold_reentry_contract_repair'),
+                ('marketing_2026-05-25_000001_measurement_hold_release_cron.json', '2026-05-25T00:00:01+02:00', 'measurement_hold_release_cron'),
+            ]
+            for filename, timestamp, action_type in repeated_logs:
+                (log_dir / filename).write_text(
+                    json.dumps({
+                        'timestamp': timestamp,
+                        'chosen_action': {'type': action_type},
+                        'review_window': {'scheduled_run_at': '2026-05-25T02:05:05'} if action_type == 'measurement_hold_release_cron' else {},
+                        'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                    }),
+                    encoding='utf-8',
+                )
+
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'short_review_window_release_at': '2026-05-25T02:05:05'}),
+                encoding='utf-8',
+            )
+            (log_dir / 'apollo_sequence_status_latest.json').write_text(json.dumps({}), encoding='utf-8')
+            (log_dir / 'curator_outreach_queue_latest.json').write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (log_dir / 'comparison_backlink_queue_latest.json').write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (log_dir / 'curator_contact_discovery_latest.json').write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md').write_text('# packet\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'), \
+                 patch.object(distribution_lane_executor, 'CURATOR_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'curator_contact_discovery_latest.json'), \
+                 patch.object(distribution_lane_executor, 'latest_measurement_hold_window', return_value=active_hold), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.return_value.returncode = 1
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+
+        self.assertEqual(execution.action_type, 'measurement_hold_churn_guard_repair')
+        self.assertEqual(execution.status, 'executed')
+        self.assertIn('Repeat-hold churn guard now active', artifact_text)
+        self.assertIn('prompt and post-hold re-entry repairs are already in place', artifact_text)
+        self.assertIn('suppress duplicate follow-through', execution.summary)
 
     def test_measurement_hold_execution_schedules_post_hold_rerun(self):
         now = datetime(2026, 5, 24, 21, 57, 0)
@@ -572,15 +684,16 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         now = datetime(2026, 5, 24, 19, 20, 0)
         findings = [
             {
-                'target': 'ctxt.dev / Signum',
-                'article_url': 'https://ctxt.dev/posts/en/tasks-are-not-goals',
-                'root_url': 'https://ctxt.dev/',
-                'hook': 'Tasks Are Not Goals',
-                'reason': 'Strong overlap with contract-first workflow audiences.',
-                'outreach_subject': 'RalphWorkflow for your next contract-first workflow roundup',
-                'recommended_next_step': 'Use the site contact path first',
+                'target': 'ToolChase',
+                'article_url': 'https://toolchase.com/blog/best-ai-coding-tools-2026/',
+                'root_url': 'https://toolchase.com/',
+                'hook': 'AI coding tools comparison page already covering Claude Code, Codex, Cursor, and Aider',
+                'reason': 'Direct comparison/discovery audience already evaluating AI coding tools and adjacent workflow choices.',
+                'outreach_subject': 'Ralph Workflow for your next AI coding tools comparison refresh',
+                'recommended_next_step': 'email/contact send path is now identified',
                 'channels': [
-                    {'type': 'website', 'value': 'https://ctxt.dev/contact', 'label': 'contact page'},
+                    {'type': 'email', 'value': 'hello@toolchase.com'},
+                    {'type': 'website', 'value': 'https://toolchase.com/contact', 'label': 'contact page'},
                 ],
             }
         ]
@@ -591,6 +704,13 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             log_dir = tmp / 'logs'
             drafts_dir.mkdir()
             log_dir.mkdir()
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text(
+                '# Ralph Workflow Primary-Repo-Flat Publisher Contact Packet\n\n'
+                '## Live third-party proof to reuse\n'
+                '- SaaSHub — https://saashub.com/ralph-workflow\n\n'
+                '### 1. ToolChase\n',
+                encoding='utf-8',
+            )
             (log_dir / 'marketing_2026-05-24_primary_repo_flat_delivery.json').write_text(
                 json.dumps({
                     'timestamp': '2026-05-24T18:18:26',
@@ -894,13 +1014,13 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 }),
                 encoding='utf-8',
             )
-            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n', encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n\n### 1. AXME Code\n', encoding='utf-8')
             (log_dir / 'marketing_2026-05-24_primary_repo_flat_contact_manual_delivery.json').write_text(
                 json.dumps({
                     'timestamp': '2026-05-24T07:33:00+02:00',
                     'chosen_action': {
                         'type': 'primary_repo_flat_contact_manual_delivery',
-                        'packet': '/tmp/2026-05-24_primary_repo_flat_contact_handoff_packet.md',
+                        'packet': str(drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'),
                     },
                     'measurement_window': {'review_at': '2026-05-31T07:33:00+02:00'},
                     'result': {'status': 'executed', 'ok': True},
@@ -999,7 +1119,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 }),
                 encoding='utf-8',
             )
-            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n', encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n\n### 1. PrimeDev.Tools\n', encoding='utf-8')
             (drafts_dir / 'curator_handoff_packet_latest.md').write_text('# curator packet\n', encoding='utf-8')
 
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
