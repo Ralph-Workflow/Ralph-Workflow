@@ -35,6 +35,18 @@ if TYPE_CHECKING:
 _MAX_WORKSPACE_CHANGED_FILES = 512
 
 
+def _make_change_tracker(monitor: WorkspaceMonitor) -> object:
+    class _ChangeTrackerHandler:
+        def dispatch(self, event: object) -> None:
+            self.on_any_event(event)
+
+        def on_any_event(self, event: object) -> None:
+            if isinstance(event, _HasSrcPath):
+                monitor.record_event(event.src_path)
+
+    return _ChangeTrackerHandler()
+
+
 def _create_watchdog_observer() -> _ObserverProtocol | None:
     """Construct a watchdog observer when the optional dependency is installed."""
     try:
@@ -71,18 +83,7 @@ class WorkspaceMonitor:
         if observer is None:
             return
 
-        class ChangeTracker:
-            def __init__(self, monitor: WorkspaceMonitor) -> None:
-                self._monitor = monitor
-
-            def dispatch(self, event: object) -> None:
-                self.on_any_event(event)
-
-            def on_any_event(self, event: object) -> None:
-                if isinstance(event, _HasSrcPath):
-                    self._monitor.record_event(event.src_path)
-
-        handler = ChangeTracker(self)
+        handler = _make_change_tracker(self)
         self._observer = observer
         self._observer.schedule(handler, str(self._workspace), recursive=True)
         self._observer.start()

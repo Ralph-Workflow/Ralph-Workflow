@@ -6,25 +6,35 @@ PYTEST_WORKERS_C_IL ?= 4
 PYTEST_WORKERS_C_MO ?= 4
 PYTEST_WORKERS_C_PZ ?= 4
 PYTEST_WORKERS_D ?= 4
-PYTEST_WORKERS_PM_PZ ?= 2
+PYTEST_WORKERS_PM_PZ ?= 4
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 30
 PYTEST_CORE_AGENT_PATHS = tests/agents
 PYTEST_CORE_CONFIG_PATHS = tests/config
-PYTEST_CORE_DISPLAY_PATHS = tests/display
+PYTEST_CORE_DISPLAY_CONTEXT_PATHS = tests/display/test_di_invariants.py
+PYTEST_CORE_DISPLAY_MODE_PATHS = tests/display/test_mode_adaptiveness.py
+PYTEST_CORE_DISPLAY_PHASE_PATHS = tests/display/test_phase_banner_modes.py tests/display/test_plain_renderer_waiting.py
+PYTEST_CORE_DISPLAY_REST_PATHS = tests/display/test_subscriber.py tests/display/test_supervising_subscriber.py
 PYTEST_CORE_FIXTURES_PATHS = tests/fixtures
 PYTEST_CORE_UNIT_AGENT_PATHS = tests/unit/agents
 PYTEST_CORE_UNIT_DISPLAY_PATHS = tests/unit/display
 PYTEST_CORE_UNIT_PIPELINE_PATHS = tests/unit/pipeline
-PYTEST_RUNTIME_PATHS = tests/mcp tests/pipeline tests/recovery
-PYTEST_ROOT_PATHS_A_AG = tests/test_a[a-gA-G]*.py
-PYTEST_ROOT_PATHS_A_HN = tests/test_a[h-nH-N]*.py
+PYTEST_RUNTIME_MCP_PATHS = tests/mcp
+PYTEST_RUNTIME_PIPELINE_PATHS = tests/pipeline
+PYTEST_RUNTIME_RECOVERY_PATHS = tests/recovery
+PYTEST_ROOT_PATHS_A_AC = tests/test_a[a-cA-C]*.py
+PYTEST_ROOT_PATHS_AD_E = tests/test_a[d-eD-E]*.py
+PYTEST_ROOT_PATHS_AF_G = tests/test_a[f-gF-G]*.py
+PYTEST_ROOT_PATHS_A_HN_CONTEXT = tests/test_analysis_context_*.py tests/test_analysis_drain_mcp_tooling.py
+PYTEST_ROOT_PATHS_A_HN_ITERATION = tests/test_analysis_iteration*.py
+PYTEST_ROOT_PATHS_A_HN_MISC = tests/test_analysis_loop_policy_single_source.py tests/test_analysis_prompt_payload_*.py tests/test_analysis_template_paths_*.py
 PYTEST_ROOT_PATHS_A_OZ = tests/test_a[o-zO-Z]*.py
 PYTEST_ROOT_PATHS_B = tests/test_[bB]*.py
 PYTEST_ROOT_PATHS_C_AH = tests/test_c[a-hA-H]*.py
 PYTEST_ROOT_PATHS_C_IL = tests/test_c[i-lI-L]*.py
 PYTEST_ROOT_PATHS_C_MO = tests/test_c[m-oM-O]*.py
 PYTEST_ROOT_PATHS_C_PZ = tests/test_c[p-zP-Z]*.py
-PYTEST_ROOT_PATHS_D = tests/test_[dD]*.py
+PYTEST_ROOT_PATHS_D_CORE = tests/test_development_result*.py tests/test_diagnose_mcp.py tests/test_diagnostics*.py
+PYTEST_ROOT_PATHS_D_DISPLAY = tests/test_display*.py tests/test_docs*.py tests/test_documentation_command_sync.py
 PYTEST_ROOT_PATHS_E_F = tests/test_[e-fE-F]*.py
 PYTEST_ROOT_PATHS_G_H = tests/test_[g-hG-H]*.py
 PYTEST_ROOT_PATHS_I_J = tests/test_[i-jI-J]*.py
@@ -42,9 +52,11 @@ PYTEST_ROOT_PATHS_PA_PC = tests/test_p[a-cA-C]*.py
 PYTEST_ROOT_PATHS_PD_PF = tests/test_p[d-fD-F]*.py
 PYTEST_ROOT_PATHS_PG_PI = tests/test_p[g-iG-I]*.py
 PYTEST_ROOT_PATHS_PJ_PL = tests/test_p[j-lJ-L]*.py
-PYTEST_ROOT_PATHS_PM_PZ = tests/test_p[m-zM-Z]*.py
+PYTEST_ROOT_PATHS_PM_POLICY = tests/test_policy_*.py
+PYTEST_ROOT_PATHS_PM_PZ = tests/test_process_*.py tests/test_product_*.py tests/test_progress_*.py tests/test_prompt_*.py tests/test_prompts_*.py tests/test_post_*.py
 PYTEST_ROOT_PATHS_Q_S = tests/test_[q-sQ-S]*.py
-PYTEST_ROOT_PATHS_T_Z = tests/test_[t-zT-Z]*.py
+PYTEST_ROOT_PATHS_T_U = tests/test_[t-uT-U]*.py
+PYTEST_ROOT_PATHS_V_W = tests/test_[v-wV-W]*.py
 
 help:
 	@echo "Ralph Workflow - Makefile commands"
@@ -96,91 +108,114 @@ install-dev: dev
 
 # Testing
 test:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_AGENT_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_CONFIG_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_FIXTURES_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_AGENT_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_DISPLAY_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_PIPELINE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_RUNTIME_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_AG) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_HN) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_OZ) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_B) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_AH) -q -n $(PYTEST_WORKERS_C_AH) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_IL) -q -n $(PYTEST_WORKERS_C_IL) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_MO) -q -n $(PYTEST_WORKERS_C_MO) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_PZ) -q -n $(PYTEST_WORKERS_C_PZ) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_D) -q -n $(PYTEST_WORKERS_D) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_E_F) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_G_H) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_I_J) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_K_L) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_M_A) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_ARTIFACTS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_BRIDGE) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_CAPABILITY) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_MISC) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_SERVER) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MULTIMODAL) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_N) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_O) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PA_PC) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PD_PF) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PG_PI) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PJ_PL) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PM_PZ) -q -n $(PYTEST_WORKERS_PM_PZ) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_Q_S) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_T_Z) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_AGENT_PATHS) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_CONFIG_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_CONTEXT_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_MODE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_PHASE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_REST_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_FIXTURES_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_AGENT_PATHS) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_DISPLAY_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_PIPELINE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_RUNTIME_MCP_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_RUNTIME_PIPELINE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_RUNTIME_RECOVERY_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_AC) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_AD_E) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_AF_G) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_HN_CONTEXT) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_HN_ITERATION) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_HN_MISC) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_OZ) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_B) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_AH) -q -n $(PYTEST_WORKERS_C_AH) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_IL) -q -n $(PYTEST_WORKERS_C_IL) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_MO) -q -n $(PYTEST_WORKERS_C_MO) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_PZ) -q -n $(PYTEST_WORKERS_C_PZ) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_D_CORE) -q -n $(PYTEST_WORKERS_D) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_D_DISPLAY) -q -n $(PYTEST_WORKERS_D) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_E_F) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_G_H) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_I_J) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_K_L) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_M_A) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_ARTIFACTS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_BRIDGE) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_CAPABILITY) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_MISC) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_SERVER) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MULTIMODAL) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_N) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_O) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PA_PC) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PD_PF) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PG_PI) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PJ_PL) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PM_POLICY) -q -n $(PYTEST_WORKERS_PM_PZ) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PM_PZ) -q -n $(PYTEST_WORKERS_PM_PZ) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_Q_S) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_T_U) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_V_W) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 
 test-unit:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_AGENT_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_CONFIG_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_FIXTURES_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_AGENT_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_DISPLAY_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_PIPELINE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_RUNTIME_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_AG) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_HN) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_OZ) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_B) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_AH) -q -n $(PYTEST_WORKERS_C_AH) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_IL) -q -n $(PYTEST_WORKERS_C_IL) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_MO) -q -n $(PYTEST_WORKERS_C_MO) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_PZ) -q -n $(PYTEST_WORKERS_C_PZ) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_D) -q -n $(PYTEST_WORKERS_D) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_E_F) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_G_H) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_I_J) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_K_L) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_M_A) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_ARTIFACTS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_BRIDGE) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_CAPABILITY) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_MISC) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_SERVER) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MULTIMODAL) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_N) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_O) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PA_PC) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PD_PF) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PG_PI) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PJ_PL) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PM_PZ) -q -n $(PYTEST_WORKERS_PM_PZ) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_Q_S) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_T_Z) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_AGENT_PATHS) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_CONFIG_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_CONTEXT_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_MODE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_PHASE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_DISPLAY_REST_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_FIXTURES_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_AGENT_PATHS) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_DISPLAY_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_CORE_UNIT_PIPELINE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_RUNTIME_MCP_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_RUNTIME_PIPELINE_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_RUNTIME_RECOVERY_PATHS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_AC) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_AD_E) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_AF_G) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_HN_CONTEXT) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_HN_ITERATION) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_HN_MISC) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_A_OZ) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_B) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_AH) -q -n $(PYTEST_WORKERS_C_AH) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_IL) -q -n $(PYTEST_WORKERS_C_IL) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_MO) -q -n $(PYTEST_WORKERS_C_MO) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_C_PZ) -q -n $(PYTEST_WORKERS_C_PZ) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_D_CORE) -q -n $(PYTEST_WORKERS_D) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_D_DISPLAY) -q -n $(PYTEST_WORKERS_D) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_E_F) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_G_H) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_I_J) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_K_L) -q -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_M_A) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_ARTIFACTS) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_BRIDGE) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_CAPABILITY) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_MISC) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MCP_SERVER) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_MULTIMODAL) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_N) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_O) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PA_PC) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PD_PF) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PG_PI) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PJ_PL) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_PM_PZ) -q -n $(PYTEST_WORKERS_PM_PZ) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_Q_S) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_T_U) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest $(PYTEST_ROOT_PATHS_V_W) -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 
 test-integration:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 
 coverage: test-cov
 
 test-subprocess-e2e:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m subprocess_e2e
+	.venv/bin/python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m subprocess_e2e
 
 test-cov:
 	rm -f .coverage.pytest .coverage.pytest.*

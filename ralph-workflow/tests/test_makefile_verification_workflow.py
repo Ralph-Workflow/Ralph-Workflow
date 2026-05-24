@@ -4,7 +4,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 37
+UNIT_TEST_SHARD_COUNT = 48
+
+
+def _assert_all_contains(haystack: list[str], needles: list[str]) -> None:
+    for needle in needles:
+        assert any(needle in line for line in haystack)
 
 
 def _target_body(name: str) -> list[str]:
@@ -70,48 +75,69 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
 
     assert len(unit_body) == UNIT_TEST_SHARD_COUNT
     assert len(integration_body) == 1
-    assert all("python -m ralph.verify_timeout" in line for line in unit_body)
-    assert "python -m ralph.verify_timeout" in integration_body[0]
-    assert all("--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in line for line in unit_body)
-    assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
-    assert any("$(PYTEST_CORE_AGENT_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_CORE_CONFIG_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_CORE_DISPLAY_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_CORE_FIXTURES_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_CORE_UNIT_AGENT_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_CORE_UNIT_DISPLAY_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_CORE_UNIT_PIPELINE_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_RUNTIME_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_A_AG)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_A_HN)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_A_OZ)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_B)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_C_AH)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_C_IL)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_C_MO)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_C_PZ)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_D)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_E_F)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_G_H)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_I_J)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_K_L)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_M_A)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_MCP_ARTIFACTS)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_MCP_BRIDGE)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_MCP_CAPABILITY)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_MCP_MISC)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_MCP_SERVER)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_MULTIMODAL)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_N)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_O)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PA_PC)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PD_PF)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PG_PI)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PJ_PL)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PM_PZ)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_Q_S)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_T_Z)" in line for line in unit_body)
-    assert "python -m pytest tests/integration/ -q" in integration_body[0]
+    _assert_all_contains(
+        unit_body,
+        [
+            "python -m ralph.verify_timeout",
+            "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)",
+            "$(PYTEST_CORE_AGENT_PATHS)",
+            "$(PYTEST_CORE_CONFIG_PATHS)",
+            "$(PYTEST_CORE_DISPLAY_CONTEXT_PATHS)",
+            "$(PYTEST_CORE_DISPLAY_MODE_PATHS)",
+            "$(PYTEST_CORE_DISPLAY_PHASE_PATHS)",
+            "$(PYTEST_CORE_DISPLAY_REST_PATHS)",
+            "$(PYTEST_CORE_FIXTURES_PATHS)",
+            "$(PYTEST_CORE_UNIT_AGENT_PATHS)",
+            "$(PYTEST_CORE_UNIT_DISPLAY_PATHS)",
+            "$(PYTEST_CORE_UNIT_PIPELINE_PATHS)",
+            "$(PYTEST_RUNTIME_MCP_PATHS)",
+            "$(PYTEST_RUNTIME_PIPELINE_PATHS)",
+            "$(PYTEST_RUNTIME_RECOVERY_PATHS)",
+            "$(PYTEST_ROOT_PATHS_A_AC)",
+            "$(PYTEST_ROOT_PATHS_AD_E)",
+            "$(PYTEST_ROOT_PATHS_AF_G)",
+            "$(PYTEST_ROOT_PATHS_A_HN_CONTEXT)",
+            "$(PYTEST_ROOT_PATHS_A_HN_ITERATION)",
+            "$(PYTEST_ROOT_PATHS_A_HN_MISC)",
+            "$(PYTEST_ROOT_PATHS_A_OZ)",
+            "$(PYTEST_ROOT_PATHS_B)",
+            "$(PYTEST_ROOT_PATHS_C_AH)",
+            "$(PYTEST_ROOT_PATHS_C_IL)",
+            "$(PYTEST_ROOT_PATHS_C_MO)",
+            "$(PYTEST_ROOT_PATHS_C_PZ)",
+            "$(PYTEST_ROOT_PATHS_D_CORE)",
+            "$(PYTEST_ROOT_PATHS_D_DISPLAY)",
+            "$(PYTEST_ROOT_PATHS_E_F)",
+            "$(PYTEST_ROOT_PATHS_G_H)",
+            "$(PYTEST_ROOT_PATHS_I_J)",
+            "$(PYTEST_ROOT_PATHS_K_L)",
+            "$(PYTEST_ROOT_PATHS_M_A)",
+            "$(PYTEST_ROOT_PATHS_MCP_ARTIFACTS)",
+            "$(PYTEST_ROOT_PATHS_MCP_BRIDGE)",
+            "$(PYTEST_ROOT_PATHS_MCP_CAPABILITY)",
+            "$(PYTEST_ROOT_PATHS_MCP_MISC)",
+            "$(PYTEST_ROOT_PATHS_MCP_SERVER)",
+            "$(PYTEST_ROOT_PATHS_MULTIMODAL)",
+            "$(PYTEST_ROOT_PATHS_N)",
+            "$(PYTEST_ROOT_PATHS_O)",
+            "$(PYTEST_ROOT_PATHS_PA_PC)",
+            "$(PYTEST_ROOT_PATHS_PD_PF)",
+            "$(PYTEST_ROOT_PATHS_PG_PI)",
+            "$(PYTEST_ROOT_PATHS_PJ_PL)",
+            "$(PYTEST_ROOT_PATHS_PM_PZ)",
+            "$(PYTEST_ROOT_PATHS_Q_S)",
+            "$(PYTEST_ROOT_PATHS_T_U)",
+            "$(PYTEST_ROOT_PATHS_V_W)",
+        ],
+    )
+    _assert_all_contains(
+        integration_body,
+        [
+            "python -m ralph.verify_timeout",
+            "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)",
+            "python -m pytest tests/integration/ -q",
+        ],
+    )
 
 
 def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:

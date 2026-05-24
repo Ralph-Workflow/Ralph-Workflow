@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -104,6 +105,116 @@ def test_agy_invoke_writes_workspace_mcp_config_when_endpoint_present(
     assert not config_path.exists()
 
 
+def test_agy_invoke_completes_when_completion_signal_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = _write_prompt(tmp_path)
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    endpoint = "http://127.0.0.1:9999/mcp"
+    captured_explicit_completion_seen: list[bool] = []
+
+    class _FakeHandle:
+        pid = 123
+
+        def __enter__(self) -> _FakeHandle:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            return 0
+
+        def terminate(self, grace_period_s: float = 0.5) -> None:
+            del grace_period_s
+
+    class _FakeProcessManager:
+        def spawn_pty(self, *args: object, **kwargs: object) -> _FakeHandle:
+            del args, kwargs
+            return _FakeHandle()
+
+    class _FakePtyLineReader:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+
+        def read_lines(self) -> object:
+            yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+
+    class _FakePostExitWatchdog:
+        def __init__(self, policy: object, clock: object) -> None:
+            del policy, clock
+
+        def wait_for_process_exit(self, is_exited_fn: object) -> object:
+            del is_exited_fn
+            return object()
+
+    def fake_check_process_result(
+        handle: object,
+        agent_name: str,
+        parsed_output: list[str],
+        options: SimpleNamespace,
+        *,
+        _clock: object,
+    ) -> None:
+        del handle, agent_name, parsed_output, _clock
+        captured_explicit_completion_seen.append(options.explicit_completion_seen)
+
+    def fake_run_subprocess_and_read_lines(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise AssertionError("subprocess must not be called for AGY")
+
+    def fake_get_process_manager() -> _FakeProcessManager:
+        return _FakeProcessManager()
+
+    def fake_agy_workspace_mcp_endpoint(*_args: object, **_kwargs: object) -> object:
+        return contextlib.nullcontext()
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke._pty_runner.get_process_manager",
+        fake_get_process_manager,
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._pty_runner.PtyLineReader",
+        _FakePtyLineReader,
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._pty_runner.PostExitWatchdog",
+        _FakePostExitWatchdog,
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._pty_runner._check_process_result",
+        fake_check_process_result,
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke.agy_workspace_mcp_endpoint",
+        fake_agy_workspace_mcp_endpoint,
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke.run_subprocess_and_read_lines",
+        fake_run_subprocess_and_read_lines,
+    )
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke.load_existing_agy_upstream_servers", lambda _path: ())
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={str(MCP_ENDPOINT_ENV): endpoint},
+            ),
+        )
+    )
+
+    assert captured_explicit_completion_seen == [True]
+
+
 def test_agy_invoke_skips_mcp_context_when_no_endpoint(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -141,6 +252,7 @@ def test_agy_invoke_skips_mcp_context_when_no_endpoint(
     )
 
     assert not config_path.exists()
+
 
 
 def test_ansi_wrapped_completion_marker_detected(
