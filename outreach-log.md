@@ -6045,3 +6045,7 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 - **What the repair changed:** the monitor now prioritizes current high-value pain families before `review_tax`, rejects generic AI code-review shopping threads more aggressively, and references the correct outreach log path.
 - **Posting note:** No posting attempted. Research-first only while direct Reddit/provider coverage remains unreliable.
 - **Type:** **REPAIRED / RESEARCH**
+
+### WyeWorks publisher outreach
+- **When:** 2026-05-24 07:46:21 CEST
+- **Note:** Sent tailored publisher outreach email to `hello@wyeworks.com` referencing the May 13, 2026 WyeWorks article “The Workflow Is the Product: Building Specialized Pipelines for Coding Agents” and pointing to the Codeberg primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow

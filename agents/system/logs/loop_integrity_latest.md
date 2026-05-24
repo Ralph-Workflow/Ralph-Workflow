@@ -1,10 +1,19 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-24 00:53 UTC
+Timestamp: 2026-05-24 05:25 UTC
 
 ## ralph-docs-watchdog
-- Status: ok
-- Checker: `DOCS_QUALITY_OK`
+- Status: error
+- Repairs:
+  - checker failed; executed runner for remediation
+  - executed verifier after remediation
+- Errors:
+  - runner failed after checker failure
+  - verifier failed after remediation
+  - checker still failing after remediation/verifier pass
+  - verifier artifact missing required pass phrase
+- Checker: `DOCS_QUALITY_FAIL`
+- Checker after repair: `DOCS_QUALITY_FAIL`
 
 ## autonomous-marketing-stack
 - Status: error
@@ -17,8 +26,8 @@ Timestamp: 2026-05-24 00:53 UTC
   - runner failed after checker failure
   - independent verifier failed after remediation
   - checker still failing after remediation/verifier pass
-- Checker: `MARKETING_LOOP_FAIL: runner bundle still reports failure`
-- Checker after repair: `MARKETING_LOOP_FAIL: runner bundle still reports failure`
+- Checker: `MARKETING_LOOP_FAIL: runner artifact is stale relative to marketing_momentum_watchdog.json; rerun the full runner bundle before certifying health`
+- Checker after repair: `MARKETING_LOOP_FAIL: unexpected watch actions: measurement_hold_active`
 
 ## ralph-site-owner-loop
 - Status: owner_only

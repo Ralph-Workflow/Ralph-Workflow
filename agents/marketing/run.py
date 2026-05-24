@@ -746,6 +746,27 @@ def main() -> int:
     hold_window = _latest_measurement_hold_window(now)
     if hold_window is not None:
         skip_log = _write_measurement_hold_skip_log(now, hold_window)
+
+        AUDIT_PATH = LOG_DIR / "marketing_workflow_audit_latest.json"
+        audit: dict[str, Any] = {}
+        pending_repairs: list[dict[str, Any]] = []
+        if AUDIT_PATH.exists():
+            try:
+                audit = json.loads(AUDIT_PATH.read_text(encoding="utf-8"))
+                pending_repairs = _load_active_pending_repairs(audit)
+            except (json.JSONDecodeError, OSError):
+                audit = {}
+
+        distribution_lane = choose_distribution_lane(now)
+        if pending_repairs:
+            distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs)
+        distribution_execution = execute_distribution_lane(distribution_lane, now)
+        distribution_execution_log = _write_distribution_execution_log(
+            distribution_lane=distribution_lane,
+            execution=distribution_execution,
+            now=now,
+        )
+
         payload = {
             "timestamp": now.isoformat(),
             "weekly_mode": is_monday,
@@ -756,6 +777,20 @@ def main() -> int:
                 "hold_until": hold_window["hold_until"].isoformat(),
                 "source_log": hold_window["source_log"],
                 "reason": hold_window["reason"],
+            },
+            "distribution_lane": {
+                "lane": distribution_lane.lane,
+                "reason": distribution_lane.reason,
+                "artifact_path": getattr(distribution_lane, "artifact_path", ""),
+            },
+            "distribution_execution": {
+                "action_type": distribution_execution.action_type,
+                "status": distribution_execution.status,
+                "artifact_path": distribution_execution.artifact_path,
+                "summary": distribution_execution.summary,
+                "targets_prepared": list(distribution_execution.targets_prepared or []),
+                "live_external_action": bool(distribution_execution.live_external_action),
+                "blocking_factors": list(distribution_execution.blocking_factors or []),
             },
             "content_generation": {
                 "returncode": 0,
@@ -768,10 +803,15 @@ def main() -> int:
                 "stderr": "",
             },
             "skip_log": str(skip_log),
+            "distribution_execution_log": str(distribution_execution_log),
         }
         log_file = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d')}.json"
         log_file.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-        print(f"[run.py] Active measurement hold until {hold_window['hold_until'].isoformat()} — skipping heavy marketing loop work.", flush=True)
+        print(f"[run.py] Active measurement hold until {hold_window['hold_until'].isoformat()} — running lightweight follow-through only.", flush=True)
+        print(f"[run.py] Chosen distribution lane during hold: {distribution_lane.lane}", flush=True)
+        print(f"[run.py] Distribution execution log: {distribution_execution_log}", flush=True)
+        if distribution_execution.artifact_path:
+            print(f"[run.py] Distribution execution artifact: {distribution_execution.artifact_path}", flush=True)
         print(json.dumps(payload, indent=2))
         return 0
 

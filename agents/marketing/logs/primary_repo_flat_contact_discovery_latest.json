@@ -1,0 +1,139 @@
+{
+  "generated_at": "2026-05-24T04:38:41.269361+00:00",
+  "targets": [
+    {
+      "target": "ctxt.dev / Signum",
+      "article_url": "https://ctxt.dev/posts/en/tasks-are-not-goals",
+      "root_url": "https://ctxt.dev/",
+      "hook": "Tasks Are Not Goals (2026-05-22)",
+      "reason": "Contract-first, evidence-first agent workflow audience overlaps strongly with Ralph Workflow.",
+      "outreach_subject": "RalphWorkflow for your next contract-first agent workflow roundup",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://ctxt.dev/about",
+          "label": "common contact/about path"
+        },
+        {
+          "type": "website",
+          "value": "https://ctxt.dev/contact",
+          "label": "common contact/about path"
+        },
+        {
+          "type": "website",
+          "value": "https://ctxt.dev/contact-us",
+          "label": "common contact/about path"
+        },
+        {
+          "type": "telegram",
+          "value": "https://t.me/ctxtdev",
+          "label": "Telegram"
+        }
+      ],
+      "recommended_next_step": "public website contact path is now identified"
+    },
+    {
+      "target": "AXME Code",
+      "article_url": "https://code.axme.ai/",
+      "root_url": "https://code.axme.ai/",
+      "hook": "Agent-native durability and Claude Code memory/safety positioning",
+      "reason": "Adjacent reliability problem from the workflow side; likely receptive to comparative mention.",
+      "outreach_subject": "RalphWorkflow as a complementary workflow layer to durable agent runs",
+      "channels": [
+        {
+          "type": "email",
+          "value": "contact@axme.ai",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://code.axme.ai",
+          "label": "website"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "WyeWorks",
+      "article_url": "https://www.wyeworks.com/blog",
+      "root_url": "https://www.wyeworks.com/",
+      "hook": "Workflow-engineering positioning and AI delivery consulting audience",
+      "reason": "Publishes on AI workflow engineering and can plausibly cite open-source workflow systems.",
+      "outreach_subject": "RalphWorkflow might fit your workflow-engineering follow-up",
+      "channels": [
+        {
+          "type": "email",
+          "value": "hello@wyeworks.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://www.wyeworks.com/about-us",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://www.wyeworks.com",
+          "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://wyeworks.com",
+          "label": "website"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/wyeworks",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/wyeworks",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/wyeworks",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "Bollwerk / Werkstatt",
+      "article_url": "https://bollwerk.ai/blog/werkstatt-open-source/",
+      "root_url": "https://bollwerk.ai/",
+      "hook": "Werkstatt open-source workflow/skill discipline positioning",
+      "reason": "Adjacent coding-agent workflow audience; good fit for an adjacent-system mention or comparison.",
+      "outreach_subject": "RalphWorkflow as an adjacent workflow-system reference for Werkstatt readers",
+      "channels": [
+        {
+          "type": "email",
+          "value": "sales@bollwerk.ai",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://bollwerk.ai",
+          "label": "website"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/bollwerkai",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/BollwerkAI",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/bollwerkai",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    }
+  ]
+}

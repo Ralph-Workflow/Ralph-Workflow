@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-24T05:54:57.023864
+- Generated: 2026-05-24T07:42:15.026467
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **0**
 - Reddit posts analyzed: **6**
@@ -11,10 +11,10 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- 21 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
-- 42 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
-- The most recent runtime activity was measurement_hold_follow_through, but the latest meaningful external/replacement execution remains aiagents_directory_submission; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (aiagents_directory_submission), so the system is still shipping output even though outcome movement is not visible yet.
+- 20 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
+- 38 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
+- The most recent runtime activity was measurement_hold_follow_through, but the latest meaningful external/replacement execution remains curator_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
+- The active loop did execute a live marketing action recently (curator_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
 ## Observed risks
@@ -53,12 +53,12 @@
 - Measurement-pending reasons: same_family_distribution_overlap, same_family_outreach_overlap
 
 ## Latest executed marketing action
-- Type: aiagents_directory_submission
-- Title: aiagents directory submission
+- Type: curator_email_outreach
+- Title: AI Coding Stack inclusion request
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_aiagents_directory_submission.json
-- URL: https://aiagents.directory/submit/
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_ai_coding_stack_curator_execution.json
+- URL: https://aicodingstack.io/docs/getting-started
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

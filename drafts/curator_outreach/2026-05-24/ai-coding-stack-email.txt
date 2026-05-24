@@ -1,0 +1,24 @@
+Hi Pan,
+
+I’ve been reviewing AI Coding Stack’s CLI directory and thought Ralph Workflow might be a good fit for it.
+
+Ralph Workflow is a free and open-source workflow layer for autonomous coding runs. It is aimed at developers doing substantial repo work with coding agents and focuses on bringing back finished, tested code that is ready to review instead of another confident summary.
+
+If it looks useful for AI Coding Stack, here is a suggested CLI entry:
+
+Name: Ralph Workflow
+Website: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+Docs: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Description: Free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary.
+
+A few fit notes in case helpful:
+- free and open source
+- Codeberg is the primary repo, GitHub is the mirror
+- built for repo-native coding-agent workflows rather than just single-session chat
+- strongest fit is for teams that care about verification, handoff quality, and morning-after reviewability
+
+If you’d rather take submissions another way, I’m happy to match your preferred format.
+
+Best,
+Ralph Workflow

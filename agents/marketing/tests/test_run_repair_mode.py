@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from agents.marketing import run
 from agents.marketing.distribution_lane_selector import LaneDecision
@@ -258,6 +259,51 @@ class RunRepairModeTests(unittest.TestCase):
 
                 self.assertIsNotNone(hold)
                 self.assertEqual(hold['hold_started_at'], datetime(2026, 5, 24, 4, 51, 0))
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_main_runs_lightweight_follow_through_during_active_hold(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_window = {
+                    'hold_started_at': datetime(2026, 5, 24, 6, 52, 32),
+                    'hold_until': datetime(2026, 5, 24, 7, 52, 32),
+                    'source_log': '/tmp/marketing_2026-05-24_measurement_hold_execution.json',
+                    'reason': 'Existing hold still active.',
+                }
+                decision = LaneDecision(
+                    lane='measurement_hold',
+                    reason='Hold for follow-through.',
+                    reasons=['fresh external actions already shipped'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='',
+                )
+                execution = SimpleNamespace(
+                    action_type='measurement_hold_follow_through',
+                    status='executed',
+                    artifact_path='/tmp/hold.md',
+                    summary='Active hold respected and follow-through surfaced.',
+                    targets_prepared=['Example target'],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
+                     patch.object(run, 'choose_distribution_lane', return_value=decision), \
+                     patch.object(run, 'execute_distribution_lane', return_value=execution):
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                daily_log = run.LOG_DIR / 'marketing_2026-05-24.json'
+                payload = json.loads(daily_log.read_text(encoding='utf-8'))
+                self.assertEqual(payload['marketing_status'], 'measurement_hold')
+                self.assertEqual(payload['distribution_execution']['action_type'], 'measurement_hold_follow_through')
+                self.assertEqual(payload['distribution_execution']['targets_prepared'], ['Example target'])
+                self.assertIn('distribution_execution_log', payload)
             finally:
                 run.LOG_DIR = original_log_dir
 

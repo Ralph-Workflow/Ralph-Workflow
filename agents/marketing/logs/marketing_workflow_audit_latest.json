@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T05:54:57.023864",
+  "generated_at": "2026-05-24T07:42:15.026467",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 0,
   "reddit_posts_analyzed": 6,
@@ -116,10 +116,10 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "21 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.",
-    "42 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.",
-    "The most recent runtime activity was measurement_hold_follow_through, but the latest meaningful external/replacement execution remains aiagents_directory_submission; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (aiagents_directory_submission), so the system is still shipping output even though outcome movement is not visible yet.",
+    "20 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.",
+    "38 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.",
+    "The most recent runtime activity was measurement_hold_follow_through, but the latest meaningful external/replacement execution remains curator_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (curator_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
   "next_moves": [
@@ -153,7 +153,7 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_measurement_hold_execution.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_074102_measurement_hold_follow_through.json",
     "type": "measurement_hold_follow_through",
     "title": "Distribution lane execution: measurement_hold",
     "status": "executed",
@@ -164,18 +164,18 @@
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_aiagents_directory_submission.json",
-    "type": "aiagents_directory_submission",
-    "title": "aiagents directory submission",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_ai_coding_stack_curator_execution.json",
+    "type": "curator_email_outreach",
+    "title": "AI Coding Stack inclusion request",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
     "outcome_ready": true,
     "warning": null,
-    "url": "https://aiagents.directory/submit/"
+    "url": "https://aicodingstack.io/docs/getting-started"
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-24T05:41:09.246972+02:00",
+    "generated_at": "2026-05-24T06:52:44.750649+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",
