@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-05-24T02:00:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "distribution_selector_repair",
+    "channel": "marketing_loop_runtime",
+    "title": "Respect same-family pause windows in distribution lane selection",
+    "targets": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_distribution_lane_selector_repair_pause.py"
+    ]
+  },
+  "why_this_action": {
+    "summary": "The audit paused same-family directory and curator bursts, but the selector still pointed at curator_outreach. Repairing the selector is higher leverage than letting another run chase a lane the system already knows it should not repeat.",
+    "shared_findings_used": [
+      "ADOPTION_FUNNEL_NEXT.md",
+      "marketing_workflow_audit_latest.json",
+      "marketing_workflow_audit_latest.md",
+      "distribution_lane_latest.md",
+      "curator_outreach_queue_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "files_changed": 2,
+    "selector_output_after_fix": "distribution_reset"
+  },
+  "verification": {
+    "tests": [
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause agents.marketing.tests.test_run_repair_mode"
+    ],
+    "runtime_check": "distribution_lane_selector.choose_distribution_lane(datetime.fromisoformat('2026-05-24T01:54:00')) -> distribution_reset"
+  },
+  "expected_outcome": {
+    "primary_goal": "stop future marketing runs from reselecting saturated same-family curator/directory lanes during the active repair window",
+    "measurement_window": "effective immediately on the next lane-selection run",
+    "replacement_condition": "If the loop still drifts into saturated families, repair the executor/override layer next instead of trusting selector output alone"
+  }
+}

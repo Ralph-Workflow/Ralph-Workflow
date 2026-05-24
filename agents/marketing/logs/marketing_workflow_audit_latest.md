@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-24T00:57:49.262457
+- Generated: 2026-05-24T02:14:23.496645
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **0**
 - Reddit posts analyzed: **6**
@@ -12,8 +12,8 @@
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 16 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
-- 50 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
-- The active loop did execute a live marketing action recently (saashub_live_listing_correction), so the system is still shipping output even though outcome movement is not visible yet.
+- 51 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
+- The active loop did execute a live marketing action recently (fresh_curator_outreach), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
 ## Observed risks
@@ -52,11 +52,11 @@
 - Measurement-pending reasons: same_family_distribution_overlap, same_family_outreach_overlap
 
 ## Latest executed marketing action
-- Type: saashub_live_listing_correction
-- Title: saashub live listing correction
-- Status: executed (ok=True)
+- Type: fresh_curator_outreach
+- Title: Fresh distribution execution: AI IDE curator email
+- Status: sent (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_saashub_live_listing_correction.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_aiide_distribution_action.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

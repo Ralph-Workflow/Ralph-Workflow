@@ -1,12 +1,14 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-24T01:04:56
+Generated: 2026-05-24T02:14:23
 Chosen lane: **distribution_reset**
 
 ## Why this lane
-- Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet.
+- Curator outreach is paused by the active repair window, so use a different lane instead of promoting fresh reset targets into another same-family burst.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 16 directory submissions already shipped in the last 24 hours.
-- 46 curator contact attempts already shipped in the last 24 hours.
+- 47 curator contact attempts already shipped in the last 24 hours.
+- Active repair window says to pause net-new directory submissions until current approval windows mature.
+- Active repair window says to hold another same-family curator-contact burst and use a different lane.
 - Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
@@ -17,6 +19,7 @@ Chosen lane: **distribution_reset**
 - Manual-contact-only curator targets are still waiting for execution (vivy-yi/awesome-agent-orchestration), so the loop should use the existing contact-discovery asset before inventing new reset work.
 - The manual-contact execution packet is already current for the waiting targets and was already delivered in this review window, so selecting it again would be fake progress.
 - GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.
+- 3 fresh distribution-reset targets are waiting to be turned into real outreach assets.
 - The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.

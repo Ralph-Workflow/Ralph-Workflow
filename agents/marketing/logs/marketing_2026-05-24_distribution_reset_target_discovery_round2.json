@@ -1,0 +1,69 @@
+{
+  "timestamp": "2026-05-24T02:19:34+02:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "distribution_reset_target_discovery",
+    "channel": "distribution_reset",
+    "title": "Distribution reset target discovery (round 2)",
+    "artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery_round2.md"
+  },
+  "why_this_action": {
+    "summary": "Expanded the reset queue with fresh Claude-ecosystem and agent-directory targets because the audit still pauses overlapping directory and curator bursts while Codeberg adoption is flat.",
+    "shared_findings_used": [
+      "market_intelligence_latest.json: reuse Claude Code / AI-agent adjacency instead of inventing a new positioning frame",
+      "marketing_workflow_audit_latest.json: primary_repo_flat and same-family saturation remain the live constraints",
+      "distribution_lane_latest.md: reset lane still needs genuinely new target classes",
+      "outreach-log.md: verified these domains were not already contacted or submitted"
+    ],
+    "constraints_respected": [
+      "Skipped net-new overlapping directory execution during the current pause window",
+      "Skipped another curator-contact burst during active measurement windows",
+      "Kept Codeberg as the only primary CTA in discovered paths"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "outcome_ready": true,
+    "new_targets_count": 3,
+    "new_targets": [
+      {
+        "name": "built4claude",
+        "domain": "builtforclaude.com",
+        "target_type": "Claude ecosystem directory / direct listing",
+        "entry_path": "https://builtforclaude.com/submit",
+        "evidence": [
+          "Homepage explicitly lists Developer Tools, Agents, and Workflows categories",
+          "Live submit flow available at /submit"
+        ],
+        "next_path": "Manual submission or scripted form execution in a later non-overlap run",
+        "cta": "Codeberg primary, GitHub mirror"
+      },
+      {
+        "name": "Claudetory",
+        "domain": "claudetory.com",
+        "target_type": "Claude Code resource directory / direct listing",
+        "entry_path": "https://claudetory.com/submit",
+        "evidence": [
+          "Homepage markets itself as the Claude Code Directory",
+          "Live submit page collects title, description, resource type, link, and tags"
+        ],
+        "next_path": "Manual submission or scripted form execution in a later non-overlap run",
+        "cta": "Codeberg primary, GitHub mirror"
+      },
+      {
+        "name": "AiAgents.Directory",
+        "domain": "aiagents.directory",
+        "target_type": "AI agent directory / direct listing",
+        "entry_path": "https://aiagents.directory/submit/",
+        "evidence": [
+          "Browse surface shows Open Source and Developer Tools adjacency",
+          "Live submit form available at /submit/ and homepage exposes contact mailto:mo@aiagents.directory"
+        ],
+        "next_path": "Manual submission or scripted form execution in a later non-overlap run",
+        "cta": "Codeberg primary, GitHub mirror"
+      }
+    ]
+  }
+}

@@ -2,36 +2,39 @@
 
 ## Good first-task example
 
-**Task:** Add a small validation check to reject empty project names in the CLI create flow.
+**Task:** Add a billing history page with date filters and CSV export, without changing invoice creation or billing calculations.
 
 **Why this is a good first task:**
-- narrow scope
-- obvious expected behavior
-- easy to verify
-- low rollback risk
+- substantial enough that orchestration is justified
+- concrete enough to review honestly the next morning
+- easy to verify with real UI behavior and real checks
+- meaningful enough that a good result feels like actual progress, not a toy demo
 
 ## Copy-paste task spec
 
 ```md
 Change:
-Reject empty or whitespace-only project names in the CLI create flow.
+Add a billing history page with date-range filters and CSV export.
 
 Keep unchanged:
-Do not alter the rest of the creation flow or the generated file layout.
+Do not change invoice creation, billing calculations, or existing payment flows.
 
 Done means:
-Invalid names show a clear error and create no project.
+Users can open billing history, filter by date range, and export the currently filtered rows to CSV.
 
 Checks:
-Existing create-flow tests still pass and new validation tests pass.
+Relevant billing tests pass, any new billing-history tests pass, and the app build succeeds.
 ```
 
-## Why this is better than a vague demo
+## Why this is better than a tiny demo
 
-This gives you a fast yes/no evaluation:
-- did the validation land in the right place?
-- did the tests really run?
-- would you merge the result?
+This gives you a real yes/no evaluation:
+- did the workflow land a coherent product slice instead of scattered edits?
+- did the result stay inside the stated boundaries?
+- did the checks really run?
+- would you actually keep or merge the outcome?
+
+A tiny validation fix can be useful for smoke-testing the toolchain, but it is a weak first proof of what Ralph Workflow is for. The better first evaluation is one meaningful backlog task that is too big to babysit and still concrete enough to judge.
 
 ## After your first run
 

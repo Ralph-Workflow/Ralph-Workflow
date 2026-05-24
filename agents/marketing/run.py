@@ -452,7 +452,7 @@ def build_weekly_decisions(
             "priority": "high",
             "action": "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
             "reason": reason,
-            "repair": "Replace current content format/distribution approach. write.as is dead — use only Telegraph. Try: (a) direct repo README/CONTRIBUTING improvement, (b) SEO landing pages targeting repo-specific terms, (c) cross-post to Dev.to when API key is available, all with explicit Codeberg CTAs.",
+            "repair": "Replace stale owned-content-first repair. Hold homepage/owned-content volume at maintenance, push Codeberg-first conversion assets and third-party proof, and use only posting channels with current runtime proof instead of assuming a single default publication surface.",
             "is_failing_signal": True,
         })
 
@@ -544,8 +544,8 @@ def build_weekly_decisions(
     else:
         decisions.append({
             "priority": "ongoing",
-            "action": "Continue Telegraph posting. write.as is permanently blocked — do not use. Seek Dev.to API key for second platform.",
-            "reason": "Working distribution channel. Track ratio of views per post to gauge platform value.",
+            "action": "Continue only the owned/distribution channels that have current runtime proof, and keep Codeberg as the primary CTA.",
+            "reason": "When adoption is moving, scale the channels with live execution proof instead of relying on stale channel doctrine.",
         })
 
     # Competitor-driven decisions

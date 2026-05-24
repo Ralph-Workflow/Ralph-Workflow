@@ -1,41 +1,63 @@
 {
-  "generated_at": "2026-05-23T19:33:40.574696",
+  "generated_at": "2026-05-24T02:19:34+02:00",
   "targets": [
     {
-      "target": "AI for Code",
-      "url": "https://aiforcode.io/",
-      "why_it_fits": "developer-facing AI coding tools directory with explicit comparisons, methodology pages, and a homepage submission path. Their contact page explicitly welcomes tool suggestions and the site already covers workflow orchestration platforms, coding agents, and Claude Code-adjacent evaluations.",
-      "status": "promoted_to_curator_queue",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
-      "promoted_at": "2026-05-23T19:33:40.574696",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/01_ai-for-code.md"
+      "target": "Claude Code Alternatives",
+      "url": "https://claude-code-alternatives.com/tool/create/",
+      "why_it_fits": "high-intent Claude Code alternative directory with a live submit form and direct adjacency to CLI agent comparison intent that already matches Ralph Workflow's comparison pages.",
+      "status": "discovered",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery.md",
+      "next_path": "manual submission or scripted form execution in a later non-overlap run"
     },
     {
-      "target": "VibeCoders tool directory",
-      "url": "https://vibecoders.sh/",
-      "why_it_fits": "large vibe-coder community with a dedicated tool directory, visible \u201cSubmit a Tool to the Directory\u201d CTA, and explicit Claude Code / AI Agents audience overlap. Good qualified-traffic surface for developers actively comparing coding workflows.",
-      "status": "promoted_to_curator_queue",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
-      "promoted_at": "2026-05-23T19:33:40.574696",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/02_vibecoders-tool-directory.md"
+      "target": "AI IDE",
+      "url": "https://aiide.dev/",
+      "why_it_fits": "AI coding tools directory with developer-facing discovery intent and a visible curator email in page HTML, making it a clean codeberg-first listing candidate outside the saturated queue.",
+      "status": "executed_elsewhere",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery.md",
+      "next_path": "curator email or listing suggestion to support@aiide.dev in a later non-overlap run",
+      "reconciled_at": "2026-05-24T02:12:10",
+      "reconciled_by": "distribution_lane_selector"
     },
     {
-      "target": "VibeFactory directory",
-      "url": "https://www.vibefactory.dev/directory",
-      "why_it_fits": "190-tool vibe-coding directory with workflow-style categorization and adjacent entries like OpenClaw, AGENTS.md, Spec Kit, and coding-agent tools. Strong contextual fit for a Codeberg-first workflow/orchestration listing.",
-      "status": "promoted_to_curator_queue",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
-      "promoted_at": "2026-05-23T19:33:40.574696",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/03_vibefactory-directory.md"
+      "target": "AI Coding Stack",
+      "url": "https://aicodingstack.io/docs/getting-started",
+      "why_it_fits": "community-maintained AI coding metadata directory with explicit contribution docs and a linked GitHub repo, making it a strong third-party citation target tied to CLI/tool discovery intent.",
+      "status": "discovered",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery.md",
+      "next_path": "prepare PR/manual handoff for manifest addition when GitHub-auth path is available"
     },
     {
-      "target": "AI Dev Setup",
-      "url": "https://aidevsetup.com/",
-      "why_it_fits": "broad AI dev-tools directory with dedicated AI Agents, MCP, IDE, Coding, and compare-stack sections. The site is already organized around \"Build Your AI Dev Setup,\" which maps well to Ralph Workflow\u2019s default-workflow and composable-loop positioning.",
-      "status": "promoted_to_curator_queue",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
-      "promoted_at": "2026-05-23T19:33:40.574696",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_ai-dev-setup.md"
+      "target": "AI Resources",
+      "url": "https://airesources.dev/category/agents/",
+      "why_it_fits": "third-party AI resources directory with an agents category and a linked GitHub repo, so it can accept a clean new listing path without reusing the current saturated queues.",
+      "status": "discovered",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery.md",
+      "next_path": "prepare PR/manual handoff for new agent entry when GitHub-auth path is available"
+    },
+    {
+      "target": "built4claude",
+      "url": "https://builtforclaude.com/submit",
+      "why_it_fits": "Claude-focused community directory with explicit Developer Tools, Agents, and Workflows categories that match Ralph Workflow's Claude Code and autonomous-coding positioning.",
+      "status": "discovered",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery_round2.md",
+      "next_path": "manual submission or scripted form execution in a later non-overlap run"
+    },
+    {
+      "target": "Claudetory",
+      "url": "https://claudetory.com/submit",
+      "why_it_fits": "Claude Code resource directory with a direct submit flow for tools and workflows, making it a high-fit citation surface for Ralph Workflow as a reviewable coding workflow.",
+      "status": "discovered",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery_round2.md",
+      "next_path": "manual submission or scripted form execution in a later non-overlap run"
+    },
+    {
+      "target": "AiAgents.Directory",
+      "url": "https://aiagents.directory/submit/",
+      "why_it_fits": "AI agent directory with open-source and developer-tools adjacency plus a live submit form, giving Ralph Workflow a broader agent-discovery surface without reusing already-contacted domains.",
+      "status": "discovered",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery_round2.md",
+      "next_path": "manual submission or scripted form execution in a later non-overlap run"
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-24T01:04:56.374867",
+  "timestamp": "2026-05-24T01:23:46.711982",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -59,7 +59,7 @@
       "priority": "high",
       "action": "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
       "reason": "Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)",
-      "repair": "Replace current content format/distribution approach. write.as is dead \u2014 use only Telegraph. Try: (a) direct repo README/CONTRIBUTING improvement, (b) SEO landing pages targeting repo-specific terms, (c) cross-post to Dev.to when API key is available, all with explicit Codeberg CTAs.",
+      "repair": "Replace stale owned-content-first repair. Hold homepage/owned-content volume at maintenance, push Codeberg-first conversion assets and third-party proof, and use only posting channels with current runtime proof instead of assuming a single default publication surface.",
       "is_failing_signal": true
     },
     {

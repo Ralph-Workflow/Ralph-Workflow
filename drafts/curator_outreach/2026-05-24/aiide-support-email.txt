@@ -1,0 +1,24 @@
+Hi AI IDE team,
+
+I found AI IDE while looking for developer-facing AI coding directories, and Ralph Workflow seems like a strong fit for your audience.
+
+Ralph Workflow is a free and open-source operating system for autonomous coding: a composable loop framework and AI orchestrator for developers and technical teams who need a structured workflow instead of another chat session.
+
+Why it may fit AI IDE readers:
+- built for repo-scale coding work that is too big to babysit but still needs review discipline
+- composes planning, implementation, verification, and handoff into one workflow instead of stopping at code generation
+- works with tools developers already use, including Claude Code, Codex CLI, and OpenCode
+- gives teams a strong default workflow now, while staying extensible later
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Project site: https://ralphworkflow.com/
+
+Suggested one-line listing if useful:
+Ralph Workflow — free/open-source workflow layer for autonomous coding with plan-build-verify loops and reviewable repo-native handoffs.
+
+If it fits your directory, I’d love for you to consider adding it in the most relevant AI coding / workflow / agent category.
+
+Best,
+Ken
+Ralph Workflow

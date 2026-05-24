@@ -1,0 +1,58 @@
+{
+  "timestamp": "2026-05-24T01:09:34+02:00",
+  "action": "homepage_search_intent_patch",
+  "status": "executed",
+  "ok": true,
+  "primary_goal": "improve qualified search capture and Codeberg-first conversion on the live Ralph Workflow homepage",
+  "why_this_action": [
+    "The freshest SEO report marked on-page fixes and keyword coverage as priority work while Codeberg adoption stayed flat.",
+    "Same-family directory and curator bursts are already saturated, so a live homepage conversion/SEO repair is a cleaner lane than more overlapping outreach.",
+    "The adoption funnel says the bottleneck is still conversion from interest to free use, and the homepage is the highest-traffic owned surface that can be improved immediately."
+  ],
+  "shared_findings_reused": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_lane_latest.md",
+    "/home/mistlight/.openclaw/workspace/seo-reports/2026-05-24.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md"
+  ],
+  "actions_taken": [
+    {
+      "type": "site_copy_patch",
+      "target": "/home/mistlight/.openclaw/workspace/Ralph-Site/app/views/pages/home.html.erb",
+      "result": "updated",
+      "details": [
+        "shortened homepage title to keep the rendered title under the SEO length target",
+        "rewrote the meta description to ~152 characters",
+        "added a new search-intent section for unattended coding agent / AI agent orchestration CLI / spec-driven AI agent / Claude Code automation queries",
+        "kept Codeberg as the primary repo CTA inside the new section"
+      ]
+    }
+  ],
+  "evidence": {
+    "title_length": 30,
+    "description_length": 152,
+    "keywords_now_present": [
+      "unattended coding agent",
+      "AI agent orchestration CLI",
+      "spec-driven AI agent",
+      "AI coding workflow automation",
+      "Claude Code automation"
+    ],
+    "verification": [
+      "ruby -c app/helpers/application_helper.rb",
+      "ruby -c app/controllers/pages_controller.rb",
+      "bin/rails runner 'html = ApplicationController.render(template: \"pages/home\", assigns: {}); puts html.include?(\"Looking for an unattended coding agent\") && html.include?(\"Codeberg primary repo\") ? \"render_ok\" : \"render_missing\"'"
+    ],
+    "verification_result": "render_ok"
+  },
+  "expected_outcome": "Better search alignment and a clearer Codeberg-first evaluation path for qualified visitors who land on the homepage from unattended-coding, orchestration, or Claude Code automation queries.",
+  "review_window": "2026-05-31",
+  "replacement_condition": "If homepage CTR, repo traffic quality, or Codeberg adoption signals still show no movement after the next review window, treat this copy patch as insufficient and switch the next fresh move to a different demand-capture or third-party citation lane rather than iterating copy blindly."
+}

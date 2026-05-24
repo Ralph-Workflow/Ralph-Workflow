@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-24T00:44:11.229257",
+  "ts": "2026-05-24T01:48:25.831132",
   "jobs_checked": 20,
-  "issues_found": 12,
+  "issues_found": 10,
   "issues": [
     {
       "job_id": "__artifacts__",
@@ -47,19 +47,11 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "Workflow audit still has failing tactics without a live measurement-pending repair window.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Workflow audit still has failing tactics without a live measurement-pending repair window."
-    },
-    {
-      "job_id": "__artifacts__",
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=111",
-      "repeats_in_recent_history": 111,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=117",
+      "repeats_in_recent_history": 117,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification::loop_verification_fail",
       "escalation_level": "critical",
@@ -72,8 +64,8 @@
       "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
       "category": "escalation_required",
       "last_error": "Marketing runner bundle is not healthy.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=54",
-      "repeats_in_recent_history": 54,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=60",
+      "repeats_in_recent_history": 60,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
       "escalation_level": "critical",
@@ -86,8 +78,8 @@
       "name": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation",
       "category": "escalation_required",
       "last_error": "Momentum watchdog status is needs_attention with actions: primary_repo_adoption_flat, pending_repairs_detected.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=24",
-      "repeats_in_recent_history": 24,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=30",
+      "repeats_in_recent_history": 30,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with::review_followup_required",
       "escalation_level": "critical",
@@ -100,8 +92,8 @@
       "name": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair_escalation",
       "category": "escalation_required",
       "last_error": "Workflow audit still reports needs_repair.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required repeat_count=24",
-      "repeats_in_recent_history": 24,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required repeat_count=30",
+      "repeats_in_recent_history": 30,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair::review_followup_required",
       "escalation_level": "critical",
@@ -114,24 +106,10 @@
       "name": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g_escalation",
       "category": "escalation_required",
       "last_error": "Workflow audit shows the primary repo adoption goal is still flat in the current window without a live measurement-pending repair state.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g:review_followup_required repeat_count=24",
-      "repeats_in_recent_history": 24,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g:review_followup_required repeat_count=30",
+      "repeats_in_recent_history": 30,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g::review_followup_required",
-      "escalation_level": "critical",
-      "blocked_by": [
-        "marketing_independent_verification"
-      ]
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without_escalation",
-      "category": "escalation_required",
-      "last_error": "Workflow audit still has failing tactics without a live measurement-pending repair window.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without:review_followup_required repeat_count=24",
-      "repeats_in_recent_history": 24,
-      "owner_domain": "marketing",
-      "incident_key": "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without::review_followup_required",
       "escalation_level": "critical",
       "blocked_by": [
         "marketing_independent_verification"
@@ -164,12 +142,6 @@
       "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
-      "type": "immediate_review_followup_owner_action",
-      "job": "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
       "type": "rerun_independent_architecture_verification",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
@@ -179,13 +151,7 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-24T00:43:53.439176+02:00\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-24T01:48:11.370430+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
@@ -219,15 +185,9 @@
     },
     {
       "type": "owner_loop_escalation",
-      "job": "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without_escalation",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779580102048:15\"\n}"
     }
   ]
 }

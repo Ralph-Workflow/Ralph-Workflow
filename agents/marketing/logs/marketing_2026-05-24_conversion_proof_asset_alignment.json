@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-24T01:51:00+02:00",
+  "type": "conversion_proof_asset_alignment",
+  "title": "align first-task proof assets with meaningful backlog-task positioning",
+  "status": "executed",
+  "ok": true,
+  "highest_leverage_reason": [
+    "Adoption Funnel says the strongest next asset is a Start Here / first-task guide because the current bottleneck is conversion from interest to free use.",
+    "The existing example proof assets contradicted that positioning by using a tiny validation task as the flagship first example.",
+    "Fixing that contradiction improves repo conversion surfaces immediately without adding more same-family outreach or directory overlap during active measurement windows."
+  ],
+  "shared_artifacts_reused": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/adoption_metrics_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json"
+  ],
+  "files_changed": [
+    "/home/mistlight/.openclaw/workspace/content/examples/first_task_example.md",
+    "/home/mistlight/.openclaw/workspace/content/examples/review_bundle_example.md"
+  ],
+  "change_summary": [
+    "Replaced the tiny CLI validation example with a meaningful billing-history product slice that better matches Ralph Workflow's 'too big to babysit, still reviewable' positioning.",
+    "Aligned the review-bundle example to the same substantial task so evaluators see a coherent morning-after proof story instead of a toy change.",
+    "Kept Codeberg-first calls to action intact in both assets."
+  ],
+  "expected_outcome": "Higher-quality repo conversion by making the first proof assets support the product's real use case instead of underselling it with a trivial demo.",
+  "measurement_window": {
+    "start": "2026-05-24T01:51:00+02:00",
+    "review_at": "2026-05-31T01:51:00+02:00",
+    "success_metric": "Next adoption/content audit no longer flags trivial-first-task proof drift and Codeberg conversion surfaces remain aligned around meaningful first runs.",
+    "secondary_metric": "Any new distribution or site CTA can point to a stronger first-task example without contradicting README/START_HERE framing."
+  },
+  "replacement_condition": "If Codeberg adoption and evaluator movement remain flat after aligned proof assets and active distribution windows age in, stop treating first-task proof alignment as enough and switch the next run to a distinct external demand-capture lane with live placement.",
+  "live_external_action": false,
+  "outcome_ready": true
+}

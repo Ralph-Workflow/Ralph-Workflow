@@ -153,9 +153,28 @@ class MarketingDecisionTests(unittest.TestCase):
         }
         decisions = run.build_weekly_decisions(summary, seo_trends, seo_current, actions, adoption_data=adoption)
         actions_text = "\n".join(item["action"] for item in decisions)
+        repair_text = "\n".join(item.get("repair", "") for item in decisions)
         self.assertIn("Do not infer a winning owned-content format yet.", actions_text)
         self.assertIn("Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.", actions_text)
+        self.assertIn("current runtime proof", repair_text)
+        self.assertNotIn("write.as is dead", repair_text)
         self.assertNotIn("Keep publishing technical content.", actions_text)
+
+    def test_build_weekly_decisions_uses_runtime_proof_language_when_not_flat(self):
+        summary = {"technical": {"posts": 2, "views": 120, "avg_views": 60.0}}
+        seo_trends = {}
+        seo_current = {"onpage_score": "80/100"}
+        actions = []
+        adoption = {
+            "evaluation": {"failing_signals": []},
+            "recent_window": {"Codeberg": {"samples": 9, "stars_delta_window": 1, "watchers_delta_window": 0, "forks_delta_window": 0}},
+        }
+
+        decisions = run.build_weekly_decisions(summary, seo_trends, seo_current, actions, adoption_data=adoption)
+        actions_text = "\n".join(item["action"] for item in decisions)
+
+        self.assertIn("Continue only the owned/distribution channels that have current runtime proof, and keep Codeberg as the primary CTA.", actions_text)
+        self.assertNotIn("write.as is permanently blocked", actions_text)
 
     def test_recent_successful_posts_filters_old_or_failed_posts(self):
         now = datetime(2026, 5, 12, 9, 0, 0)
@@ -186,6 +205,31 @@ class DistributionLaneSelectorTests(unittest.TestCase):
                 count = distribution_lane_selector._recent_live_action_family_count(now, hours=24, family='curator_outreach')
 
             self.assertEqual(count, 1)
+
+    def test_recent_executed_action_type_counts_repo_conversion_quickstart_patch_as_proof_asset(self):
+        now = datetime(2026, 5, 24, 1, 47, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            (log_dir / 'marketing_2026-05-24_repo_conversion_quickstart_patch.json').write_text(json.dumps({
+                'timestamp': '2026-05-24T01:32:00+02:00',
+                'chosen_action': {
+                    'type': 'repo_conversion_quickstart_patch',
+                },
+                'result': {
+                    'status': 'executed',
+                    'ok': True,
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir):
+                seen = distribution_lane_selector._recent_executed_action_type(
+                    now,
+                    action_types=distribution_lane_selector.RECENT_PROOF_ASSET_ACTION_TYPES,
+                )
+
+            self.assertTrue(seen)
 
     def test_prefers_directory_submission_when_content_is_saturated_and_new_easy_channel_exists(self):
         now = datetime(2026, 5, 22, 6, 0, 0)
@@ -2370,6 +2414,43 @@ class MarketingWorkflowAuditBurstTests(unittest.TestCase):
             self.assertEqual(decision.lane, 'curator_outreach')
             self.assertIn('Fresh reset targets exist', decision.reason)
 
+    def test_distribution_reset_ready_count_ignores_targets_already_executed_elsewhere(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            reset_queue_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'AI IDE',
+                        'url': 'https://aiide.dev/',
+                        'status': 'discovered',
+                    }
+                ]
+            }), encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_aiide_distribution_action.json').write_text(json.dumps({
+                'timestamp': '2026-05-24T02:06:00+02:00',
+                'chosen_action': {
+                    'type': 'fresh_curator_outreach',
+                    'title': 'Fresh distribution execution: AI IDE curator email',
+                },
+                'result': {
+                    'status': 'sent',
+                    'ok': True,
+                    'live_external_action': True,
+                    'recipient': 'support@aiide.dev',
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path):
+                ready = distribution_lane_selector._distribution_reset_targets_ready()
+
+            self.assertEqual(ready, 0)
+            reconciled = json.loads(reset_queue_path.read_text(encoding='utf-8'))
+            self.assertEqual(reconciled['targets'][0]['status'], 'executed_elsewhere')
+
     def test_prefers_stackoverflow_when_only_internal_curator_work_remains_and_apollo_is_measuring(self):
         now = datetime(2026, 5, 23, 7, 56, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -3668,6 +3749,40 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             self.assertEqual(reset_payload['targets'][0]['status'], 'promoted_to_curator_queue')
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('Reset targets activated in this run', artifact_text)
+
+    def test_executor_load_distribution_reset_queue_rows_retires_live_executed_targets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            reset_queue = log_dir / 'distribution_reset_targets_latest.json'
+            reset_queue.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'AI IDE',
+                        'url': 'https://aiide.dev/',
+                        'status': 'discovered',
+                    }
+                ]
+            }), encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_aiide_distribution_action.json').write_text(json.dumps({
+                'timestamp': '2026-05-24T02:06:00+02:00',
+                'chosen_action': {'type': 'fresh_curator_outreach'},
+                'result': {
+                    'status': 'sent',
+                    'ok': True,
+                    'live_external_action': True,
+                    'recipient': 'support@aiide.dev',
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue):
+                rows = distribution_lane_executor._load_distribution_reset_queue_rows()
+
+            self.assertEqual(rows[0]['status'], 'executed_elsewhere')
+            reconciled = json.loads(reset_queue.read_text(encoding='utf-8'))
+            self.assertEqual(reconciled['targets'][0]['status'], 'executed_elsewhere')
 
     def test_curator_queue_dedupes_same_url_even_if_heading_changes(self):
         rows = [
