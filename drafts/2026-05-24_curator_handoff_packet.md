@@ -34,12 +34,12 @@ Generated: 2026-05-24T10:57:00
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/03_built-in-claude-code-vs-codex-vs-cursor-vs-github-copilot.md
 - Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
 
-### 3. Kingy AI — Cursor / Cursor SDK vs. Claude Code vs. Codex
+### 3. TIMEWELL benchmark — AI Coding Tools Compared [Latest 2026]
 - Status: prepared
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://kingy.ai/ai/cursor-cursor-sdk-vs-claude-code-vs-codex-the-deepest-practical-comparison-of-modern-ai-coding-tools/
+- URL: https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026
 - Review due: 2026-06-07
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/02_kingy-ai-cursor-cursor-sdk-vs-claude-code-vs-codex.md
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_timewell-benchmark-ai-coding-tools-compared-latest-2026.md
 - Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
 
 ### 4. nandhakt/awesome-ai-coding-resources

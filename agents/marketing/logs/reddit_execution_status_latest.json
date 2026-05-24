@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-05-24T12:26:00+02:00",
+  "status": "network_security_blocked",
+  "blocking_reason": "Reddit login/posting is blocked across both local headless Chromium and Browserless from this run.",
+  "evidence": {
+    "local_headless": {
+      "login_http_status": 403,
+      "detail": "Reddit returned 403 on /login from the host profile path."
+    },
+    "browserless": {
+      "login_http_status": 200,
+      "observed_page": "You've been blocked by network security.",
+      "detail": "Browserless reached Reddit but received Reddit's network-security block page instead of a usable login form."
+    }
+  },
+  "next_step": "Treat Reddit as non-executable for live posting until a different network/browser path produces a successful authenticated comment dry-run."
+}

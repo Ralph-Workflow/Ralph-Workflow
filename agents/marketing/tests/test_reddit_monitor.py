@@ -73,6 +73,29 @@ class RedditMonitorTests(unittest.TestCase):
                 payload = reddit_monitor._fresh_report_reuse_payload()
             self.assertIsNone(payload)
 
+    def test_force_refresh_requested_accepts_cli_flag_and_env(self):
+        self.assertTrue(reddit_monitor._force_refresh_requested(['--force-refresh']))
+        with patch.dict('os.environ', {'RALPH_MARKETING_FORCE_REFRESH': '1'}, clear=False):
+            self.assertTrue(reddit_monitor._force_refresh_requested([]))
+
+    def test_main_force_refresh_bypasses_cooldown_and_cache_reuse(self):
+        with patch.object(reddit_monitor, 'load_market_intelligence', return_value={}), \
+             patch.object(reddit_monitor, '_is_globally_cooled_down', return_value=True), \
+             patch.object(reddit_monitor, '_fresh_report_reuse_payload', return_value={'status': 'fresh_report_reused'}), \
+             patch.object(reddit_monitor, 'collect_candidates', return_value=([], [])), \
+             patch.object(reddit_monitor, 'shortlist', return_value=([], [])), \
+             patch.object(reddit_monitor, 'render_report', return_value='# report\n'), \
+             patch('builtins.print') as mock_print:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                search_dir = Path(tmpdir)
+                with patch.object(reddit_monitor, 'SEARCH_DIR', search_dir):
+                    rc = reddit_monitor.main(['--force-refresh'])
+        self.assertEqual(rc, 1)
+        printed = '\n'.join(call.args[0] for call in mock_print.call_args_list if call.args)
+        self.assertIn('search_provider_degraded', printed)
+        self.assertNotIn('cooldown_skip', printed)
+        self.assertNotIn('fresh_report_reused', printed)
+
     def test_score_candidate_rejects_non_software_tax_threads(self):
         score, _reason, direct_reply_fit, mention_fit = reddit_monitor.score_candidate(
             'AI to review tax returns?',

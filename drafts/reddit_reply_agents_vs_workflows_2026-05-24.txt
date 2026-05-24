@@ -1,0 +1,3 @@
+In practice most "agent systems" that hold up are still workflows with a few decision points, not free-roaming agents. The reason is boring but important: execution is cheap, reconstruction is expensive. If the run cannot tell you what changed, what passed, and whether to merge or re-run, it does not matter how smart the planner looked. That is the same bias I like in Ralph Workflow: simple workflow core first, agent choice only where the path is genuinely uncertain.
+
+I would draw the line like this: use a workflow when the phases and ownership are knowable ahead of time; use an agent loop only for local judgment inside a phase or for recovery when reality diverges from the happy path.

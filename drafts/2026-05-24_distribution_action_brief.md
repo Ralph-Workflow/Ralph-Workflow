@@ -1,23 +1,23 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-24T11:50:04
-Chosen lane: **measurement_hold**
+Generated: 2026-05-24T12:46:00
+Chosen lane: **curator_due_followup**
 
 ## Why this lane
-- The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.
+- At least one curator outreach review window is now due, so the highest-leverage move is a concrete follow-up packet instead of another reset or measurement hold.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 13 directory submissions already shipped in the last 24 hours.
-- 15 curator contact attempts already shipped in the last 24 hours.
+- 11 directory submissions already shipped in the last 24 hours.
+- 16 curator contact attempts already shipped in the last 24 hours.
 - 10 live external marketing action(s) already shipped in the last 6 hours.
 - Active repair window says to pause net-new directory submissions until current approval windows mature.
 - Active repair window says to hold another same-family curator-contact burst and use a different lane.
-- Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
 - Apollo already has an active measurement window until 2026-05-30T00:14:49.075391+02:00, so do not spend this run repackaging the same outbound lane.
-- 7 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
+- 6 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 24 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
-- 7 prepared curator targets still need a canonical execution handoff packet.
+- 6 prepared curator targets still need a canonical execution handoff packet.
+- Curator follow-ups are now due for 1 target(s) (ai-for-developers/awesome-ai-coding-tools), so the loop should not hide behind another measurement hold when real follow-through is ready.
 - Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.
 - The manual-contact execution packet is already current for the waiting targets and was already delivered in this review window, so selecting it again would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, Bollwerk / Werkstatt, HidsTech), so those targets should not be re-queued immediately.
@@ -42,8 +42,8 @@ Chosen lane: **measurement_hold**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate measurement-hold work
-- Do not ship another fresh outreach/reset action in this short review window
-- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
-- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
-- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map
+## Immediate curator due-follow-up work
+- Use the existing sent/waiting-review curator queue as the source of truth
+- Prepare one concrete follow-up packet for the overdue targets instead of opening a fresh outreach or reset lane
+- Keep the message short, publisher-native, and Codeberg-primary
+- Once the follow-up packet exists, wait for the next review window instead of looping on queue narration

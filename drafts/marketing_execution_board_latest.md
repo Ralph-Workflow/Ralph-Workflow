@@ -15,7 +15,7 @@ Generated: 2026-05-24T11:55:06
 ### 1. Curator handoff packet
 - When: Do now only if the manual-contact and publisher-contact packets are already exhausted
 - Packet: /home/mistlight/.openclaw/workspace/drafts/curator_handoff_packet_latest.md
-- Targets: AI Resources, Built In — Claude Code vs. Codex vs. Cursor vs. GitHub Copilot, Kingy AI — Cursor / Cursor SDK vs. Claude Code vs. Codex
+- Targets: AI Resources, Built In — Claude Code vs. Codex vs. Cursor vs. GitHub Copilot, TIMEWELL benchmark — AI Coding Tools Compared [Latest 2026]
 - Why this matters: Prepared curator assets already exist; this is follow-through work, not a discovery problem.
 
 ### 2. Comparison backlink packet

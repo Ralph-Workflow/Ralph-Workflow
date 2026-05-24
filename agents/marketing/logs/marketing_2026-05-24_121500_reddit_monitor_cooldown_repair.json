@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-05-24T12:15:00+02:00",
+  "run_type": "marketing-internal-repair",
+  "chosen_action": {
+    "type": "reddit_monitor_cooldown_repair",
+    "channel": "reddit_research_telemetry",
+    "title": "Bypass cooldown/reuse for forced Reddit research refresh"
+  },
+  "why_this_action": {
+    "summary": "Measurement-hold packets were already saturated, and the latest Reddit blocked-signal log showed forced refreshes collapsing into cooldown_skip instead of generating fresh telemetry.",
+    "supporting_reasons": [
+      "marketing_2026-05-24_reddit_ip_blocked_signal_report.json said forced refresh reused cooldown_skip runtime",
+      "REDDIT_LEARNINGS.md explicitly called for a durable cooldown-vs-telemetry split",
+      "A repaired fresh scan can reopen real demand-capture options without repeating another hold packet"
+    ],
+    "shared_findings_used": [
+      "market_intelligence_latest.json",
+      "marketing_workflow_audit_latest.json",
+      "distribution_lane_latest.json",
+      "reddit_post_analysis.md",
+      "adoption_metrics_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched reddit_monitor.py so --force-refresh / RALPH_MARKETING_FORCE_REFRESH=1 bypass cooldown and healthy-report cache reuse, added regression tests, then ran a fresh forced pass.",
+    "code_changes": [
+      "agents/marketing/reddit_monitor.py",
+      "agents/marketing/tests/test_reddit_monitor.py"
+    ],
+    "verification": {
+      "tests": "python3 -m unittest agents.marketing.tests.test_reddit_monitor",
+      "tests_ok": true,
+      "forced_run": "RALPH_MARKETING_FORCE_REFRESH=1 python3 agents/marketing/reddit_monitor.py --force-refresh",
+      "forced_run_ok": true
+    },
+    "fresh_report": {
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-24_1214.md",
+      "shortlisted": 2,
+      "scanned": 13,
+      "query_attempts": 8,
+      "search_diagnostics": {
+        "ok": 3,
+        "reddit_ip_blocked": 4,
+        "time_budget_exceeded": 1
+      }
+    },
+    "targets_prepared": [
+      "https://www.reddit.com/r/AI_Agents/comments/1sysynd/genuine_question_for_people_who_have_built",
+      "https://www.reddit.com/r/AI_Agents/comments/1syk8dy/agents_vs_workflows"
+    ],
+    "blocking_factors": [
+      "Reddit coverage is still partial: reddit_ip_blocked=4",
+      "This run repaired research telemetry, not posting execution"
+    ]
+  }
+}

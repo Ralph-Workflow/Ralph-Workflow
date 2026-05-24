@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-05-24T12:55:47+02:00",
+  "action": "ai_for_developers_curator_followup_email",
+  "type": "EXECUTED / DISTRIBUTION",
+  "lane": "curator_due_followup",
+  "status": "sent",
+  "target": {
+    "name": "AI for Developers",
+    "url": "https://github.com/ai-for-developers/awesome-ai-coding-tools",
+    "recipient": "info@aifordevelopers.org"
+  },
+  "shared_findings_reused": [
+    "curator_outreach_queue_latest.json",
+    "adoption_metrics_latest.json",
+    "market_intelligence_latest.json",
+    "backlink_status_latest.json",
+    "marketing_execution_board_latest.md"
+  ],
+  "why_this_action": "Codeberg adoption is still flat, same-family fresh curator bursts are on hold, and the active distribution brief named curator_due_followup as the highest-leverage executable lane. This target already had an open thread, so a proof-backed follow-up creates a real external move without muddying measurement with another new outreach batch.",
+  "message_asset": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_ai-for-developers_followup_email.txt",
+  "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_105547_ai_for_developers_followup_curator_email.json",
+  "proof_reused": [
+    "https://saashub.com/ralph-workflow",
+    "https://toolwise.ai/tools/ralph-workflow"
+  ],
+  "primary_repo": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "mirror_repo": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+  "expected_outcome": "Reply, list inclusion, or a qualified backlink/listing that sends evaluators to the Codeberg primary repo.",
+  "measurement_window": {
+    "followup_review_at": "2026-06-05",
+    "response_window_days": 14,
+    "backlink_window_days": 30
+  }
+}

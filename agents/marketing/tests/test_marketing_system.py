@@ -231,6 +231,27 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
             self.assertTrue(seen)
 
+    def test_recent_execution_block_marks_reddit_blocked_even_when_monitor_found_threads(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            report = tmp / 'reddit_monitor_latest.md'
+            report.write_text('**Shortlisted:** 2\n**Search diagnostics:** ok=3, reddit_ip_blocked=0\n', encoding='utf-8')
+            (log_dir / 'reddit_execution_status_latest.json').write_text(json.dumps({
+                'generated_at': datetime.now().isoformat(),
+                'status': 'network_security_blocked',
+                'blocking_reason': 'browserless_reddit_block_page',
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', report), \
+                 patch.object(distribution_lane_selector, 'REDDIT_EXECUTION_STATUS_PATH', log_dir / 'reddit_execution_status_latest.json'):
+                summary = distribution_lane_selector._load_recent_monitor_summary()
+
+            self.assertTrue(summary['reddit_blocked'])
+            self.assertEqual(summary['execution_status'], 'network_security_blocked')
+
     def test_prefers_directory_submission_when_content_is_saturated_and_new_easy_channel_exists(self):
         now = datetime(2026, 5, 22, 6, 0, 0)
         adoption = {
@@ -1149,6 +1170,76 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
             self.assertEqual(decision.lane, 'measurement_hold')
             self.assertIn('retire this packet for now', reasons)
             self.assertNotIn('A fresh StackOverflow answer draft already exists', reasons)
+
+    def test_running_post_cooldown_stackoverflow_cron_does_not_mark_lane_exhausted(self):
+        now = datetime(2026, 5, 24, 11, 46, 0)
+        tmpdir_ctx, patches = self._build_stackoverflow_repeat_guard_fixture(
+            now=now,
+            extra_logs=[(
+                'marketing_2026-05-24_stackoverflow_post_cooldown_cron.json',
+                {
+                    'timestamp': '2026-05-24T08:47:00+02:00',
+                    'status': 'scheduled',
+                    'chosen_action': {'type': 'stackoverflow_post_cooldown_cron'},
+                    'verification': {'scheduled_run_at': '2026-05-24T11:30:00+02:00'},
+                    'cron_job': {'id': 'job-123', 'name': 'stackoverflow-post-cooldown-demand-capture'},
+                },
+            )],
+            recent_proof_asset_shipped=True,
+        )
+        with tmpdir_ctx as tmpdir:
+            so_path = Path(tmpdir) / 'logs' / 'stackoverflow_answer_lane_latest.json'
+            so_path.write_text(json.dumps({
+                'generated_at': '2026-05-24T11:20:23+02:00',
+                'drafts_created': 0,
+                'reused_existing_draft': {
+                    'question_url': 'https://stackoverflow.com/questions/79942291/example'
+                },
+                'drafts': [],
+            }), encoding='utf-8')
+            with patch.object(distribution_lane_selector, '_cron_job_running_from_payload', return_value=True):
+                with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], patches[9], patches[10], patches[11], patches[12], patches[13], patches[14], patches[15]:
+                    decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            reasons = '\n'.join(decision.reasons)
+            self.assertEqual(decision.lane, 'measurement_hold')
+            self.assertIn('post-cooldown StackOverflow run is already scheduled', reasons)
+            self.assertNotIn('retire this packet for now', reasons)
+
+    def test_stale_running_post_cooldown_cron_flag_does_not_block_exhaustion(self):
+        now = datetime(2026, 5, 24, 11, 46, 0)
+        tmpdir_ctx, patches = self._build_stackoverflow_repeat_guard_fixture(
+            now=now,
+            extra_logs=[(
+                'marketing_2026-05-24_stackoverflow_post_cooldown_cron.json',
+                {
+                    'timestamp': '2026-05-24T08:47:00+02:00',
+                    'status': 'scheduled',
+                    'chosen_action': {'type': 'stackoverflow_post_cooldown_cron'},
+                    'verification': {'scheduled_run_at': '2026-05-24T11:30:00+02:00'},
+                    'cron_job': {'id': 'job-123', 'name': 'stackoverflow-post-cooldown-demand-capture'},
+                },
+            )],
+            recent_proof_asset_shipped=True,
+        )
+        with tmpdir_ctx as tmpdir:
+            so_path = Path(tmpdir) / 'logs' / 'stackoverflow_answer_lane_latest.json'
+            so_path.write_text(json.dumps({
+                'generated_at': '2026-05-24T11:45:23+02:00',
+                'drafts_created': 0,
+                'reused_existing_draft': {
+                    'question_url': 'https://stackoverflow.com/questions/79942291/example'
+                },
+                'drafts': [],
+            }), encoding='utf-8')
+            with patch.object(distribution_lane_selector, '_cron_job_running_from_payload', return_value=True):
+                with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], patches[9], patches[10], patches[11], patches[12], patches[13], patches[14], patches[15]:
+                    decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            reasons = '\n'.join(decision.reasons)
+            self.assertEqual(decision.lane, 'measurement_hold')
+            self.assertIn('retire this packet for now', reasons)
+            self.assertNotIn('post-cooldown StackOverflow run is already scheduled', reasons)
 
 
 class StackOverflowAnswerLaneTests(unittest.TestCase):
