@@ -1,10 +1,70 @@
+import io
+import json
+import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from agents.marketing import reddit_autopost, reddit_next_window_packet
 
 
 class RedditNextWindowPacketTests(unittest.TestCase):
+    def test_main_skips_packet_generation_when_reddit_execution_is_blocked(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / "drafts"
+            log_dir = tmp / "logs"
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            status_path = log_dir / "reddit_execution_status_latest.json"
+            status_path.write_text(json.dumps({
+                "status": "network_security_blocked",
+                "blocking_reason": "Reddit login/posting is blocked.",
+            }), encoding="utf-8")
+
+            with patch.object(reddit_next_window_packet, "DRAFTS_DIR", drafts_dir), \
+                 patch.object(reddit_next_window_packet, "LATEST_PATH", drafts_dir / "reddit_next_window_packets_latest.md"), \
+                 patch.object(reddit_next_window_packet, "REDDIT_EXECUTION_STATUS_PATH", status_path):
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    rc = reddit_next_window_packet.main()
+
+            payload = json.loads(stdout.getvalue())
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["status"], "channel_blocked_skip")
+        self.assertEqual(payload["entries"], 0)
+        self.assertEqual(payload["paths"], [])
+        self.assertFalse((drafts_dir / "reddit_next_window_packets_latest.md").exists())
+
+    def test_main_reports_no_actionable_entries_truthfully(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / "drafts"
+            log_dir = tmp / "logs"
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            report = tmp / "reddit_monitor_latest.md"
+            report.write_text("No opportunities here.\n", encoding="utf-8")
+
+            with patch.object(reddit_next_window_packet, "DRAFTS_DIR", drafts_dir), \
+                 patch.object(reddit_next_window_packet, "LATEST_PATH", drafts_dir / "reddit_next_window_packets_latest.md"), \
+                 patch.object(reddit_next_window_packet, "REDDIT_EXECUTION_STATUS_PATH", log_dir / "reddit_execution_status_latest.json"), \
+                 patch.object(reddit_next_window_packet.reddit_autopost, "latest_report", return_value=report), \
+                 patch.object(reddit_next_window_packet, "build_packet", return_value=("# empty\n", [])):
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    rc = reddit_next_window_packet.main()
+
+            payload = json.loads(stdout.getvalue())
+            latest_exists = (drafts_dir / "reddit_next_window_packets_latest.md").exists()
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["status"], "no_actionable_entries")
+        self.assertEqual(payload["entries"], 0)
+        self.assertTrue(latest_exists)
+
     def test_build_packet_prefers_unused_medium_plus_fit_threads(self):
         report = Path("/tmp/reddit_monitor_2026-05-18_2115.md")
         report.write_text(

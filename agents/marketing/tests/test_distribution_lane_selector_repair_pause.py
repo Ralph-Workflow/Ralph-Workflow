@@ -92,6 +92,49 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
 
         self.assertEqual(names, ['AI Resources'])
 
+    def test_prepared_curator_targets_waiting_for_handoff_ignores_current_packet(self):
+        now = datetime(2026, 5, 24, 8, 48, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            queue_path.write_text(json.dumps({
+                'targets': [
+                    {'target': 'AI Resources', 'status': 'prepared', 'priority': 'HIGH'},
+                    {'target': 'AgentOps Weekly', 'status': 'prepared', 'priority': 'MEDIUM'},
+                ],
+            }), encoding='utf-8')
+            handoff_path = drafts_dir / 'curator_handoff_packet_latest.md'
+            handoff_path.write_text(
+                '# Curator packet\n\n### 1. AI Resources\n\n### 2. AgentOps Weekly\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-24_curator_handoff_packet_execution.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T08:40:00',
+                    'chosen_action': {'type': 'curator_handoff_packet_execution'},
+                    'result': {'status': 'prepared', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', queue_path), \
+                 patch.object(distribution_lane_selector, 'CURATOR_HANDOFF_LATEST_PATH', handoff_path):
+                waiting = distribution_lane_selector._prepared_curator_targets_waiting_for_handoff(now)
+                delivered = distribution_lane_selector._curator_handoff_packet_current(
+                    now,
+                    ['AI Resources', 'AgentOps Weekly'],
+                )
+
+        self.assertEqual(waiting, 0)
+        self.assertTrue(delivered)
+
     def test_pauses_curator_outreach_when_same_family_repair_window_is_active(self):
         now = datetime(2026, 5, 24, 1, 54, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -519,7 +562,8 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
 
         self.assertNotEqual(decision.lane, 'primary_repo_flat_contact_handoff_packet')
         joined = '\n'.join(decision.reasons).lower()
-        self.assertIn('public contact paths', joined)
+        self.assertNotIn('package that codeberg-first outreach instead of ending at measurement hold', joined)
+        self.assertIn('non-runtime-executable channels', joined)
         self.assertIn('ctxt.dev / signum'.lower(), joined)
 
 

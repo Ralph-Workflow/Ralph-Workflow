@@ -1,5 +1,13 @@
 # Outreach Log
 
+## 2026-05-24 (Sunday) — Reddit monitor duplicate-cluster + forced-refresh repair (15:09 UTC / 17:09 CEST)
+- **What I executed:** patched `agents/marketing/reddit_monitor.py` to collapse mirrored **review-artifact / PR-evidence** thread clusters in addition to the existing workflow-continuity collapse, and patched `agents/marketing/marketing_loop_runner.py` so forced cron evaluation always calls `reddit_monitor.py --force-refresh`.
+- **Why this action:** recent monitor passes kept reporting the same adjacent-community PR-evidence prompts as separate opportunities, which flattered shortlist breadth. The loop also still allowed runner-level cooldown reuse to mask fresh research intent.
+- **Verification:** `python3 -m unittest agents.marketing.tests.test_reddit_monitor agents.marketing.tests.test_marketing_system.MarketingLoopRunnerTests -v` passed. A live forced run of `python3 agents/marketing/reddit_monitor.py --force-refresh` then generated `seo-reports/reddit_monitor_2026-05-24_1709.md` with **37 scanned / 4 shortlisted / ok=5 / reddit_ip_blocked=4 / time_budget_exceeded=1**, proving the pass bypassed cooldown state and stayed honest about partial coverage.
+- **Outcome:** runtime enforcement now matches the repeated learnings: duplicate mirrored PR-evidence threads no longer count as independent breadth, and forced research passes no longer collapse to cached cooldown state.
+- **Artifact:** `agents/marketing/logs/marketing_2026-05-24_reddit_monitor_duplicate_cluster_repair.json`
+- **Type:** **REPAIRED / MONITOR_ENFORCEMENT**
+
 ## 2026-05-24 (Sunday) — Reddit monitoring (13:26 UTC / 15:26 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-24_1526.md`
 - **Scan summary:** **13** directly revalidated in this pass, **5** credible discussion opportunities, **0-1** honest RalphWorkflow mention fits.
@@ -6239,3 +6247,7 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-24 16:03:33
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 16:54:42
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T17:21:24.912948.

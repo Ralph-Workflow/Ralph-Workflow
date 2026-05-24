@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-05-24T17:09:30+02:00",
+  "type": "REPAIRED / MONITOR_ENFORCEMENT",
+  "summary": "Extended reddit_monitor duplicate-collapse enforcement to mirrored review-artifact / PR-evidence threads and forced fresh reddit_monitor execution inside marketing_loop_runner.",
+  "why": [
+    "Recent Reddit monitor passes kept surfacing the same workflow-continuity and PR-evidence thread families across adjacent communities, which faked shortlist breadth.",
+    "Forced cron research passes were still vulnerable to runner-level cooldown reuse unless reddit_monitor.py was explicitly invoked with --force-refresh."
+  ],
+  "files_changed": [
+    "agents/marketing/reddit_monitor.py",
+    "agents/marketing/marketing_loop_runner.py",
+    "agents/marketing/tests/test_reddit_monitor.py",
+    "agents/marketing/tests/test_marketing_system.py"
+  ],
+  "runtime_enforcements": [
+    "shortlist now collapses mirrored review-artifact / PR-evidence clusters instead of counting them as separate opportunities",
+    "marketing_loop_runner now always calls reddit_monitor.py with --force-refresh so cron research passes do not silently reuse cooldown state"
+  ],
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_reddit_monitor agents.marketing.tests.test_marketing_system.MarketingLoopRunnerTests -v",
+    "forced_run": "python3 agents/marketing/reddit_monitor.py --force-refresh",
+    "forced_run_result": {
+      "status": "report_generated",
+      "report": "seo-reports/reddit_monitor_2026-05-24_1709.md",
+      "shortlisted": 4,
+      "scanned": 37,
+      "query_attempts": 10,
+      "search_diagnostics": {
+        "ok": 5,
+        "reddit_ip_blocked": 4,
+        "time_budget_exceeded": 1
+      }
+    }
+  },
+  "outcome": "The monitor now fails less flatteringly: it still reports partial Reddit coverage, but it no longer treats duplicate mirrored PR-evidence threads as independent breadth and it bypasses cooldown reuse during forced loop evaluation."
+}

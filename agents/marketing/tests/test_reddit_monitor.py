@@ -201,6 +201,43 @@ class RedditMonitorTests(unittest.TestCase):
         self.assertIn('unattended', families)
         self.assertLessEqual(families.count('production_failure'), 2)
 
+    def test_shortlist_collapses_mirrored_pr_evidence_threads(self):
+        candidates = [
+            Candidate(
+                title='What do you actually look for in the first 60 seconds of a PR review? (Specifically for AI-generated PRs)',
+                url='https://www.reddit.com/r/AI_Agents/comments/a1/example/',
+                community='r/AI_Agents',
+                snippet='finished code, tested code, touched surfaces, unresolved decisions',
+                query_family='review_tax',
+                query='ready to review coding agent merge PR reddit',
+                score=18,
+                freshness='during this pass',
+                mention_fit='medium',
+                reason='review-tax evidence surface',
+                direct_reply_fit='high',
+            ),
+            Candidate(
+                title='If an AI agent opened a PR for you, what would you want to see first?',
+                url='https://www.reddit.com/r/cursor/comments/b2/example/',
+                community='r/cursor',
+                snippet='AI-generated PR evidence and reviewer mental load',
+                query_family='review_tax',
+                query='AI written code review delay PR agent reddit',
+                score=17,
+                freshness='during this pass',
+                mention_fit='medium-low',
+                reason='review-tax mirrored prompt',
+                direct_reply_fit='medium-high',
+            ),
+        ]
+
+        shortlisted, rejected = reddit_monitor.shortlist(candidates)
+
+        self.assertEqual(len(shortlisted), 1)
+        self.assertEqual(len(rejected), 1)
+
+
+
     def test_watchdog_skips_partial_visibility_report_when_looking_for_healthy_one(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             seo_dir = Path(tmpdir)

@@ -284,6 +284,23 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
             self.assertEqual(count, 1)
 
+    def test_recent_live_action_family_count_ignores_prepared_curator_contact_packet(self):
+        now = datetime(2026, 5, 24, 18, 0, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            (log_dir / 'marketing_2026-05-24_curator_contact_handoff_packet_execution.json').write_text(json.dumps({
+                'timestamp': '2026-05-24T15:00:00+02:00',
+                'chosen_action': {'type': 'curator_contact_handoff_packet_execution'},
+                'result': {'ok': True, 'status': 'prepared', 'live_external_action': False},
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir):
+                count = distribution_lane_selector._recent_live_action_family_count(now, hours=24, family='curator_outreach')
+
+            self.assertEqual(count, 0)
+
     def test_recent_executed_action_type_counts_repo_conversion_quickstart_patch_as_proof_asset(self):
         now = datetime(2026, 5, 24, 1, 47, 0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -4194,7 +4211,8 @@ class MarketingLoopRunnerTests(unittest.TestCase):
             out = Path(tmpdir) / 'runner.json'
 
             def fake_run(cmd, capture_output=True, text=True):
-                return script_results[Path(cmd[-1]).name]
+                script_name = Path(cmd[1]).name
+                return script_results[script_name]
 
             with patch.object(marketing_loop_runner, 'OUT', out), \
                  patch.object(marketing_loop_runner.subprocess, 'run', side_effect=fake_run):
@@ -4205,6 +4223,24 @@ class MarketingLoopRunnerTests(unittest.TestCase):
             self.assertTrue(payload['ok'])
             self.assertTrue(payload['operational_ok'])
             self.assertFalse(payload['certification_ok'])
+
+    def test_runner_forces_fresh_reddit_monitor_pass(self):
+        reddit_cmds = []
+
+        def fake_run(cmd, capture_output=True, text=True):
+            if Path(cmd[1]).name == 'reddit_monitor.py':
+                reddit_cmds.append(cmd)
+            return SimpleNamespace(returncode=0, stdout='{}', stderr='')
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / 'runner.json'
+            with patch.object(marketing_loop_runner, 'OUT', out), \
+                 patch.object(marketing_loop_runner.subprocess, 'run', side_effect=fake_run):
+                rc = marketing_loop_runner.main()
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(reddit_cmds), 1)
+        self.assertEqual(reddit_cmds[0][-1], '--force-refresh')
 
 
 class MarketingMomentumWatchdogTests(unittest.TestCase):
@@ -4306,6 +4342,21 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
 
 
 class MarketingWorkflowAuditTests(unittest.TestCase):
+    def test_recent_live_action_family_count_ignores_prepared_handoff_packet(self):
+        now = datetime(2026, 5, 24, 18, 0, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            (out_dir / 'marketing_2026-05-24_curator_contact_handoff_packet_execution.json').write_text(json.dumps({
+                'timestamp': '2026-05-24T15:00:00+02:00',
+                'chosen_action': {'type': 'curator_contact_handoff_packet_execution'},
+                'result': {'ok': True, 'status': 'prepared', 'live_external_action': False},
+            }), encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir):
+                count = marketing_workflow_audit.recent_live_action_family_count(now, family='curator_outreach')
+
+            self.assertEqual(count, 0)
+
     def test_load_latest_marketing_action_prefers_execution_log_over_lane_switch_stub(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             out_dir = Path(tmpdir)
@@ -4407,6 +4458,32 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
 
             self.assertEqual(latest_meaningful['chosen_action']['type'], 'aiagents_directory_submission')
             self.assertEqual(latest_activity['chosen_action']['type'], 'measurement_hold_follow_through')
+
+    def test_load_latest_marketing_action_does_not_treat_internal_repair_as_live_external(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            live = out_dir / 'marketing_2026-05-24_050000_aiagents_directory_submission.json'
+            repair = out_dir / 'marketing_2026-05-24_stackoverflow_exhausted_candidate_repair.json'
+            live.write_text(json.dumps({
+                'chosen_action': {'type': 'aiagents_directory_submission', 'channel': 'directory_submission'},
+                'result': {'ok': True, 'status': 'submitted', 'live_external_action': True},
+            }), encoding='utf-8')
+            repair.write_text(json.dumps({
+                'timestamp': '2026-05-24T15:59:40+02:00',
+                'type': 'stackoverflow_exhausted_candidate_repair',
+                'status': 'executed',
+                'ok': True,
+                'summary': 'Retired an exhausted StackOverflow packet and tightened the search queries.',
+            }), encoding='utf-8')
+            repair.touch()
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir):
+                latest_meaningful = marketing_workflow_audit.load_latest_marketing_action()
+                latest_activity = marketing_workflow_audit.load_latest_marketing_action(prefer_meaningful=False)
+
+            self.assertEqual(latest_meaningful['chosen_action']['type'], 'aiagents_directory_submission')
+            self.assertEqual(latest_activity['chosen_action']['type'], 'stackoverflow_exhausted_candidate_repair')
+            self.assertFalse(latest_activity['result']['live_external_action'])
 
     def test_normalize_marketing_action_coerces_string_chosen_action_for_conversion_asset_logs(self):
         with tempfile.TemporaryDirectory() as tmpdir:

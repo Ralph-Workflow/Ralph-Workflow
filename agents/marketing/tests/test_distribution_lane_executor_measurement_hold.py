@@ -11,7 +11,7 @@ from agents.marketing import distribution_lane_executor
 
 
 class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
-    def test_execution_board_surfaces_primary_repo_flat_packet_for_contact_page_only_target(self):
+    def test_execution_board_hides_primary_repo_flat_packet_for_contact_page_only_target(self):
         now = datetime(2026, 5, 24, 15, 10, 0)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -44,8 +44,8 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             board_text = board_path.read_text(encoding='utf-8')
 
-        self.assertIn('### 1. Primary-repo-flat publisher contact packet', board_text)
-        self.assertNotIn('Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.', board_text)
+        self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertIn('Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.', board_text)
 
     def test_curator_queue_rows_normalize_recent_live_actions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
