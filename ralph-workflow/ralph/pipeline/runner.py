@@ -445,6 +445,28 @@ def _save_checkpoint_or_log(
         logger.exception(message, phase=state.phase, err=exc)
 
 
+def _maybe_clear_invoke_agent_entry_drains(
+    effect: Effect,
+    state: PipelineState,
+    workspace: FsWorkspace,
+    policy_bundle: PolicyBundle,
+) -> None:
+    if isinstance(effect, InvokeAgentEffect):
+        is_resume = (
+            state.phase == effect.phase
+            and state.previous_phase is None
+            and state.checkpoint_saved_count > 0
+        )
+        if not is_resume:
+            clear_phase_entry_drains(
+                workspace,
+                str(effect.phase),
+                state.previous_phase,
+                policy_bundle.pipeline,
+                policy_bundle.artifacts,
+            )
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -496,6 +518,12 @@ def _run_pipeline_step(
             workspace = FsWorkspace(
                 workspace_scope.root,
                 allowed_roots=workspace_scope.allowed_roots,
+            )
+            _maybe_clear_invoke_agent_entry_drains(
+                effect,
+                state,
+                workspace,
+                policy_bundle,
             )
             _mat_fn = (
                 materialize_prompt_for_phase

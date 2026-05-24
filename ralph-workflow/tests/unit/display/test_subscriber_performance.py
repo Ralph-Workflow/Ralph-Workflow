@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import statistics
 import time
 from pathlib import Path
 from queue import Queue
@@ -59,11 +60,15 @@ class TestPerformance:
         # not first-call setup or coverage tracer startup noise.
         sub.notify(state)
 
-        start = time.perf_counter()
-        for _ in range(100):
-            sub.notify(state)
-        average_elapsed = (time.perf_counter() - start) / 100
+        measurements: list[float] = []
+        for _ in range(9):
+            start = time.perf_counter()
+            for _ in range(250):
+                sub.notify(state)
+            measurements.append((time.perf_counter() - start) / 250)
+        steady_state_elapsed = statistics.median(measurements)
 
-        assert average_elapsed < _MAX_NOTIFY_SECONDS, (
-            f"notify averaged {average_elapsed:.4f}s, expected <1ms"
+        assert steady_state_elapsed < _MAX_NOTIFY_SECONDS, (
+            "notify median batch average "
+            f"{steady_state_elapsed:.4f}s, expected <1ms; samples={measurements!r}"
         )

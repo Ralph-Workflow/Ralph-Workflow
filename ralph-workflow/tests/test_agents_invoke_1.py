@@ -43,6 +43,11 @@ if TYPE_CHECKING:
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 
+@pytest.fixture(autouse=True)
+def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+
+
 def _json_object(raw: str) -> dict[str, object]:
     return cast("dict[str, object]", json.loads(raw))
 

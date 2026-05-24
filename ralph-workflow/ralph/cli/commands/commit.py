@@ -15,7 +15,6 @@ from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from git import Repo
 from rich.text import Text
 
 from ralph.agents.invoke import (
@@ -36,6 +35,7 @@ from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.artifact_renderer import render_commit_message
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.git.operations import (
     create_commit,
     find_repo_root,
@@ -73,6 +73,23 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.policy.models import AgentsPolicy
 
+
+class _RepoHeadProtocol(typing.Protocol):
+    def is_valid(self) -> bool: ...
+
+
+class _RepoGitProtocol(typing.Protocol):
+    def diff(self, *_args: object, **_kwargs: object) -> str: ...
+
+
+class _RepoProtocol(typing.Protocol):
+    head: _RepoHeadProtocol
+    git: _RepoGitProtocol
+
+
+class _RepoFactoryProtocol(typing.Protocol):
+    def __call__(self, *_args: object, **_kwargs: object) -> _RepoProtocol: ...
+
 # Maximum number of staged files to display in output
 _MAX_DISPLAY_FILES = 5
 _DEFAULT_COMMIT_AGENT = "claude"
@@ -82,6 +99,8 @@ _MAX_METADATA_PARTS = 5
 _MISSING_COMMIT_ARTIFACT_REASON = "agent completed without writing a commit_message artifact"
 _MAX_COMMIT_PARSED_OUTPUT_LINES = 128
 _MAX_COMMIT_RAW_OUTPUT_LINES = 256
+
+Repo: _RepoFactoryProtocol | None = None
 
 
 @dataclass(frozen=True)
@@ -297,10 +316,28 @@ def _commit_drain_agent_supported(registry: AgentRegistry, agent_name: str) -> b
 
 
 def _working_tree_diff(repo_root: Path) -> str:
-    repo = Repo(repo_root)
-    if repo.head.is_valid():
-        return _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
-    return _sanitize_surrogates(cast("str", repo.git.diff("--cached")))
+    if Repo is not None:
+        repo = Repo(repo_root)
+        if repo.head.is_valid():
+            return _sanitize_surrogates(repo.git.diff("HEAD")) or "(no diff available)"
+        return _sanitize_surrogates(repo.git.diff("--cached")) or "(no diff available)"
+
+    head_check = run_process(
+        "git",
+        ["rev-parse", "--verify", "HEAD"],
+        options=ProcessRunOptions(cwd=repo_root),
+    )
+    if head_check.returncode == 0:
+        result = run_process("git", ["diff", "HEAD"], options=ProcessRunOptions(cwd=repo_root))
+    else:
+        result = run_process(
+            "git",
+            ["diff", "--cached"],
+            options=ProcessRunOptions(cwd=repo_root),
+        )
+    if result.returncode != 0:
+        return "(no diff available)"
+    return _sanitize_surrogates(result.stdout) or "(no diff available)"
 
 
 def _commit_submit_artifact_tool_names(
