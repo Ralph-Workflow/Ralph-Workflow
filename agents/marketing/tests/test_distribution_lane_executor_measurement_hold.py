@@ -11,6 +11,42 @@ from agents.marketing import distribution_lane_executor
 
 
 class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
+    def test_execution_board_surfaces_primary_repo_flat_packet_for_contact_page_only_target(self):
+        now = datetime(2026, 5, 24, 15, 10, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'ctxt.dev / Signum',
+                            'channels': [
+                                {'type': 'website', 'value': 'https://ctxt.dev/contact', 'label': 'common contact/about path'},
+                                {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
+                            ],
+                        }
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertNotIn('Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.', board_text)
+
     def test_curator_queue_rows_normalize_recent_live_actions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -271,10 +307,10 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
 
-        self.assertEqual(execution.action_type, 'primary_repo_flat_contact_handoff_follow_through')
-        self.assertIn('non-runtime-executable channels', execution.summary.lower())
+        self.assertEqual(execution.action_type, 'primary_repo_flat_contact_handoff_packet_execution')
+        self.assertIn('canonical codeberg-first execution packet', execution.summary.lower())
         self.assertIn('ctxt.dev / Signum', artifact_text)
-        self.assertNotIn('## Execute these first', artifact_text)
+        self.assertIn('## Execute these first', artifact_text)
 
     def test_measurement_hold_refresh_skips_recently_contacted_publishers(self):
         now = datetime(2026, 5, 24, 8, 33, 0)
@@ -524,6 +560,51 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             board_text = board_path.read_text(encoding='utf-8')
 
         self.assertNotIn('### 1. Curator manual-contact packet', board_text)
+
+    def test_execution_board_hides_primary_repo_flat_packet_after_manual_delivery_in_active_review_window(self):
+        now = datetime(2026, 5, 24, 14, 21, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'AXME Code',
+                            'channels': [{'type': 'email', 'value': 'contact@axme.ai'}],
+                        }
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_primary_repo_flat_contact_manual_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T07:33:00+02:00',
+                    'chosen_action': {
+                        'type': 'primary_repo_flat_contact_manual_delivery',
+                        'packet': '/tmp/2026-05-24_primary_repo_flat_contact_handoff_packet.md',
+                    },
+                    'measurement_window': {'review_at': '2026-05-31T07:33:00+02:00'},
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertIn('Primary-repo-flat publisher contact packet was already manually delivered in the current review window', board_text)
 
     def test_execution_board_hides_comparison_packet_after_manual_delivery_in_active_review_window(self):
         now = datetime(2026, 5, 24, 14, 21, 0)

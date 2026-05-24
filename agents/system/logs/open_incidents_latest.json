@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-24T12:53:19.294350+00:00",
+  "updated_at": "2026-05-24T13:54:40.632955+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 57,
+      "repeat_count": 61,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -181,7 +181,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T12:53:17.532631+00:00",
+      "last_seen": "2026-05-24T13:54:38.832092+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
@@ -192,7 +192,7 @@
       "name": "marketing_independent_verification",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-22T23:28:25.701171+00:00",
-      "repeat_count": 152,
+      "repeat_count": 156,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -670,7 +670,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-24T12:53:17.532662+00:00",
+      "last_seen": "2026-05-24T13:54:38.832121+00:00",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -680,7 +680,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 96,
+      "repeat_count": 100,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1044,7 +1044,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T12:53:17.532681+00:00",
+      "last_seen": "2026-05-24T13:54:38.832144+00:00",
       "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-24T14:10:04.536606+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
@@ -1627,7 +1627,7 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T00:07:36.250195+00:00",
-      "repeat_count": 70,
+      "repeat_count": 74,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2120,13 +2120,41 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779627199255:100\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T13:10:31.171163+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779628231135:101\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T13:19:21.402687+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779628761358:102\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T13:34:05.623894+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779629645583:103\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T13:54:40.632943+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779630880590:104\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-24T12:53:17.532666+00:00",
+      "last_seen": "2026-05-24T13:54:38.832124+00:00",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -2153,7 +2181,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T05:06:09.078715+00:00",
-      "repeat_count": 17,
+      "repeat_count": 19,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2195,7 +2223,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T12:53:17.532669+00:00",
+      "last_seen": "2026-05-24T13:54:38.832127+00:00",
       "last_error": "status='fail'",
       "likely_cause": "Agentic review returned a contradictory pass artifact; contract normalization failed it closed.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
@@ -2206,7 +2234,7 @@
       "name": "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T05:06:09.078727+00:00",
-      "repeat_count": 3,
+      "repeat_count": 4,
       "owner_domain": "docs",
       "escalation_level": "owner",
       "owner_actions": [
@@ -2220,7 +2248,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-23T19:14:33.480903+00:00",
+      "last_seen": "2026-05-24T13:10:29.392809+00:00",
       "last_error": "Repair or replace the agentic review path so docs verification never stalls silently.",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Repair or replace the agentic review path so docs verification never stalls silently.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
@@ -2231,7 +2259,7 @@
       "name": "docs_agentic_review_mustFix_treat-agentic-review-execution-failure-as-an-exp",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T05:06:09.078736+00:00",
-      "repeat_count": 3,
+      "repeat_count": 4,
       "owner_domain": "docs",
       "escalation_level": "owner",
       "owner_actions": [
@@ -2245,7 +2273,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-23T19:14:33.480905+00:00",
+      "last_seen": "2026-05-24T13:10:29.392812+00:00",
       "last_error": "Treat agentic-review execution failure as an explicit verifier failure, not a pending state.",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Treat agentic-review execution failure as an explicit verifier failure, not a pending state.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
@@ -3980,7 +4008,7 @@
       "name": "docs_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-23T15:57:16.529082+00:00",
-      "repeat_count": 34,
+      "repeat_count": 38,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4043,7 +4071,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T12:53:17.532657+00:00",
+      "last_seen": "2026-05-24T13:54:38.832116+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
@@ -4101,7 +4129,7 @@
       "name": "docs_verifier_stability",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T15:57:16.529187+00:00",
-      "repeat_count": 36,
+      "repeat_count": 40,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4178,7 +4206,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T12:53:17.532678+00:00",
+      "last_seen": "2026-05-24T13:54:38.832141+00:00",
       "last_error": "latest docs verifier verdict is not pass: 'fail'",
       "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
@@ -4223,15 +4251,15 @@
       "name": "docs_agentic_review_mustFix_agentic-review-timed-out-after-180s-and-its-proc",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T19:14:33.480908+00:00",
-      "repeat_count": 1,
+      "repeat_count": 2,
       "owner_domain": "docs",
-      "escalation_level": "none",
+      "escalation_level": "owner",
       "owner_actions": [],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-23T19:14:33.480911+00:00",
-      "last_error": "Agentic review timed out after 180s and its process group was terminated. Partial output: [client] initialize (running)\n\n[client] session/new (running)\n\n[thinking] The user is asking me to perform a comprehensive audit of the Ralph Workflow public documentation system. They've provided:\n           \n           1. A positioning reference document\n           2. A documentation rubric\n           3. Multiple embedded public docs surfaces\n           \n           I need to judge the docs system holistically across multiple criteria and output a single JSON object.\n           \n           Let me analyze this systematically:\n           \n           1. **README -> START_HERE -> docs/README -> Sphinx journey**: Looking at the files, there's a clear route established:\n              - README points to START_HERE\n              - START_HERE points to docs/README\n              - docs/README points to Sphinx manual\n           \n           2. **Promoted next-click pages reinforcement**: The pages consistently reinforce the same journey and positioning.\n           \n           3. **Common end-user questions coverage**: \n              - Editing ralph-workflow.toml is directly answered in configuration.md\n              - Common config questions are routed clearly\n           \n           4. **Adva",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Agentic review timed out after 180s and its process group was terminated. Partial output: [client] initialize (running)\n\n[client] session/new (running)\n\n[thinking] The user is asking me to perform a comprehensive audit of the Ralph Workflow public documentation system. They've provided:\n           \n           1. A positioning reference document\n           2. A documentation rubric\n           3. Multiple embedded public docs surfaces\n           \n           I need to judge the docs system holistically across multiple criteria and output a single JSON object.\n           \n           Let me analyze this systematically:\n           \n           1. **README -> START_HERE -> docs/README -> Sphinx journey**: Looking at the files, there's a clear route established:\n              - README points to START_HERE\n              - START_HERE points to docs/README\n              - docs/README points to Sphinx manual\n           \n           2. **Promoted next-click pages reinforcement**: The pages consistently reinforce the same journey and positioning.\n           \n           3. **Common end-user questions coverage**: \n              - Editing ralph-workflow.toml is directly answered in configuration.md\n              - Common config questions are routed clearly\n           \n           4. **Adva",
+      "last_seen": "2026-05-24T13:10:29.392814+00:00",
+      "last_error": "Agentic review timed out after 180s and its process group was terminated. Partial output: [client] initialize (running)\n\n[client] session/new (running)\n\n[thinking] The user wants me to perform a comprehensive audit of the Ralph Workflow documentation system. Let me analyze the provided documentation against the rubric and positioning document.\n           \n           Let me break down the analysis:\n           \n           1. **README -> START_HERE -> docs/README -> Sphinx journey**\n              - The README is intentionally narrow and points to Codeberg primary repo\n              - START_HERE.md provides a clear first-run path\n              - docs/README acts as a docs switchboard\n              - Sphinx manual has clear routing\n           \n           2. **Positioning alignment**\n              - Good: Uses \"operating system for autonomous coding\", \"AI agent orchestrator\", \"simple Ralph-loop core\", \"strong default workflow\"\n              - Good: Emphasizes \"composable loop framework\"\n              - Good: Keeps proof pages secondary\n              - Good: Clearly states Codeberg is primary, GitHub is mirror\n           \n           3. **Page role separation**\n              - README: What it is, who it's for, next steps\n              - START_HERE...\n\n[tool] glob (pending)\n  in",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Agentic review timed out after 180s and its process group was terminated. Partial output: [client] initialize (running)\n\n[client] session/new (running)\n\n[thinking] The user wants me to perform a comprehensive audit of the Ralph Workflow documentation system. Let me analyze the provided documentation against the rubric and positioning document.\n           \n           Let me break down the analysis:\n           \n           1. **README -> START_HERE -> docs/README -> Sphinx journey**\n              - The README is intentionally narrow and points to Codeberg primary repo\n              - START_HERE.md provides a clear first-run path\n              - docs/README acts as a docs switchboard\n              - Sphinx manual has clear routing\n           \n           2. **Positioning alignment**\n              - Good: Uses \"operating system for autonomous coding\", \"AI agent orchestrator\", \"simple Ralph-loop core\", \"strong default workflow\"\n              - Good: Emphasizes \"composable loop framework\"\n              - Good: Keeps proof pages secondary\n              - Good: Clearly states Codeberg is primary, GitHub is mirror\n           \n           3. **Page role separation**\n              - README: What it is, who it's for, next steps\n              - START_HERE...\n\n[tool] glob (pending)\n  in",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
       "closed_at": "2026-05-23T19:31:08.550343+00:00"
     },
@@ -4905,11 +4933,44 @@
       "owner_domain": "docs",
       "escalation_level": "none",
       "owner_actions": [],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
       "last_seen": "2026-05-24T12:53:17.532675+00:00",
       "last_error": "reviewable-output.md has a duplicate disclaimer sentence in its opening paragraph block",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: reviewable-output.md has a duplicate disclaimer sentence in its opening paragraph block",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-24T13:10:29.392829+00:00"
+    },
+    "docs_agentic_review_mustFix_reviewable-output-md-lines-6-7-redundantly-repea::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_reviewable-output-md-lines-6-7-redundantly-repea::review_followup_required",
+      "name": "docs_agentic_review_mustFix_reviewable-output-md-lines-6-7-redundantly-repea",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-24T13:54:38.832130+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "open",
+      "blocked_by": [],
+      "last_seen": "2026-05-24T13:54:38.832133+00:00",
+      "last_error": "reviewable-output.md lines 6-7 redundantly repeat the 'supporting proof' framing already stated in lines 3-4; one of these should be removed.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: reviewable-output.md lines 6-7 redundantly repeat the 'supporting proof' framing already stated in lines 3-4; one of these should be removed.",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
+    },
+    "docs_agentic_review_mustFix_every-docs-level-supporting-page-ai-agent-orches::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_every-docs-level-supporting-page-ai-agent-orches::review_followup_required",
+      "name": "docs_agentic_review_mustFix_every-docs-level-supporting-page-ai-agent-orches",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-24T13:54:38.832137+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "open",
+      "blocked_by": [],
+      "last_seen": "2026-05-24T13:54:38.832139+00:00",
+      "last_error": "Every docs-level supporting page (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md, reviewable-output.md, first-task-guide.md) opens with the same 1-2 sentence definition. While intentional for consistency, the verbatim repetition across adjacent pages makes the docs feel like stacked templates rather than curated prose.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Every docs-level supporting page (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md, reviewable-output.md, first-task-guide.md) opens with the same 1-2 sentence definition. While intentional for consistency, the verbatim repetition across adjacent pages makes the docs feel like stacked templates rather than curated prose.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
     }
   }

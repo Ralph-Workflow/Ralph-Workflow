@@ -10,6 +10,14 @@ from agents.marketing import distribution_lane_selector
 
 
 class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
+    def test_primary_repo_flat_contact_path_counts_as_manual_executable(self):
+        self.assertTrue(distribution_lane_selector._publisher_target_has_manual_executable_channel([
+            {'type': 'website', 'value': 'https://ctxt.dev/contact', 'label': 'common contact/about path'},
+        ]))
+        self.assertFalse(distribution_lane_selector._publisher_target_has_manual_executable_channel([
+            {'type': 'website', 'value': 'https://ctxt.dev/', 'label': 'website'},
+        ]))
+
     def test_recent_live_external_action_count_includes_top_level_flag(self):
         now = datetime(2026, 5, 24, 10, 0, 0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -511,7 +519,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
 
         self.assertNotEqual(decision.lane, 'primary_repo_flat_contact_handoff_packet')
         joined = '\n'.join(decision.reasons).lower()
-        self.assertIn('non-runtime-executable channels', joined)
+        self.assertIn('public contact paths', joined)
         self.assertIn('ctxt.dev / signum'.lower(), joined)
 
 

@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-24T14:57:37
+Generated: 2026-05-24T15:33:03
 Chosen lane: **measurement_hold**
 
 ## Why this lane
@@ -11,6 +11,7 @@ Chosen lane: **measurement_hold**
 - Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.
 - Active repair window says to pause net-new directory submissions until current approval windows mature.
 - Active repair window says to hold another same-family curator-contact burst and use a different lane.
+- Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.

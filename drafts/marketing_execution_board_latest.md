@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-24T14:57:37
+Generated: 2026-05-24T15:33:03
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -11,15 +11,18 @@ Generated: 2026-05-24T14:57:37
 - Apollo launch review: 2026-05-30T00:14:49.075391+02:00
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Same-family curator outreach is paused in the active repair window; do not treat prepared curator packets as do-now assets until that hold ages out or the lane map changes.
+- Primary-repo-flat publisher contact packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 
 ## Best executable assets still waiting
-### 1. Primary-repo-flat publisher contact packet
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
-- Targets: ctxt.dev / Signum
-- Why this matters: Fresh developer-native publisher contacts are already discovered for the flat-Codeberg repair lane.
-
+- No do-now handoff packet is currently truthful in this review window.
+- Fresh publisher outreach already shipped in the current review window for: AXME Code, Bollwerk / Werkstatt, WyeWorks.
+- Primary-repo-flat publisher contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
+- Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
+- Curator handoff packet exists, but same-family curator outreach is paused during the active repair window.
+- Comparison backlink packet exists, but it was already manually delivered in the current review window.
+- StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.
+- If this board is still empty after one of these blockers clears, the lane architecture needs another repair.
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
 - adoption_metrics_latest.json → Codeberg movement remains the primary success gate
