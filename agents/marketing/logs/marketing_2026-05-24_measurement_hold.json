@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-24T05:55:00",
+  "timestamp": "2026-05-24T08:22:00",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -18,10 +18,9 @@
     "reasoning": "Several fresh external actions already shipped in the short review window, and the other executable lanes are still inside measurement or handoff windows; hold for follow-through instead of inventing another reset.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
-      "21 directory submissions already shipped in the last 24 hours.",
-      "37 curator contact attempts already shipped in the last 24 hours.",
-      "6 live external marketing action(s) already shipped in the last 6 hours.",
-      "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
+      "19 directory submissions already shipped in the last 24 hours.",
+      "34 curator contact attempts already shipped in the last 24 hours.",
+      "4 live external marketing action(s) already shipped in the last 6 hours.",
       "Active repair window says to pause net-new directory submissions until current approval windows mature.",
       "Active repair window says to hold another same-family curator-contact burst and use a different lane.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
@@ -32,8 +31,9 @@
       "7 prepared curator targets still need a canonical execution handoff packet.",
       "Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.",
       "The manual-contact execution packet is already current for the waiting targets and was already delivered in this review window, so selecting it again would be fake progress.",
-      "Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, WyeWorks), so those targets should not be re-queued immediately.",
-      "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (ctxt.dev / Signum, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
+      "Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, Bollwerk / Werkstatt, WyeWorks), so those targets should not be re-queued immediately.",
+      "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum), so they should not keep this lane looking actionable until a sendable path exists.",
+      "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
       "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
       "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",

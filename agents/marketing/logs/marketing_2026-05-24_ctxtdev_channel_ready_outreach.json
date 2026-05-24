@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-24T08:20:00+02:00",
+  "run_type": "marketing-live-action",
+  "chosen_action": {
+    "type": "ctxtdev_channel_ready_outreach_asset",
+    "channel": "manual_contact_asset",
+    "title": "Create a single-target channel-ready outreach draft for ctxt.dev / Signum",
+    "artifact": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_ctxtdev_publisher_outreach_ready.md"
+  },
+  "why_this_action": {
+    "summary": "The strongest untouched publisher target still lacked a send-ready single-message asset, and the runtime could not directly execute its Telegram path from the current Matrix-bound context. Converting the generic multi-target packet into a channel-ready manual asset is the highest-leverage local move that still improves the odds of a real Codeberg-first citation send today.",
+    "shared_findings_used": [
+      "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+      "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+      "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+      "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+      "agents/marketing/logs/market_intelligence_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.md",
+      "agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json",
+      "drafts/primary_repo_flat_contact_handoff_packet_latest.md"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "artifact_created": true,
+    "delivery_surface": "workspace_artifact"
+  },
+  "expected_outcome": "Immediate manual send on the strongest untouched publisher target with Codeberg-first positioning preserved.",
+  "measurement_window": {
+    "review_at": "2026-05-31T08:20:00+02:00",
+    "success_metric": "Confirmed send on either the site contact path or Telegram, then any reply, mention, citation, backlink, or attributable qualified repo inspection.",
+    "kill_condition": "If still unsent by the review checkpoint, replace this lane instead of refreshing another ctxt.dev-specific draft."
+  }
+}

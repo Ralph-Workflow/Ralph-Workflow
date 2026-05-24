@@ -110,6 +110,7 @@ It is to make judgment easier by pushing toward:
 If you want to try that on one real task:
 - [Start here: one real task](../../START_HERE.md)
 - [Good unattended task vs bad one](./good_unattended_task.md)
+- [Autonomous AI workflows for production reliability](./autonomous_ai_workflows_production_reliability.md)
 - [Claude Code + Codex workflow](./claude_code_codex_workflow.md)
 
 ## Primary repo

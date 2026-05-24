@@ -96,6 +96,7 @@ Its job is to make the whole loop more reviewable:
 If that is what you are trying to get from Claude Code + Codex, start here:
 - [Try one real task](../../START_HERE.md)
 - [Good unattended task vs bad one](./good_unattended_task.md)
+- [Autonomous AI workflows for production reliability](./autonomous_ai_workflows_production_reliability.md)
 - [Review bundle example](../examples/review_bundle_example.md)
 
 ## When not to use this workflow

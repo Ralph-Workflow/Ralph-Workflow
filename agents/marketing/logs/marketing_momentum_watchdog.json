@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-05-24T07:42:15.093353+02:00",
+  "generated_at": "2026-05-24T08:15:19.224616+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 0.0,
+  "report_age_hours": 0.55,
   "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-22_0728.md",
-  "latest_healthy_report_age_hours": 48.23,
-  "latest_post_age_hours": 92.29,
+  "latest_healthy_report_age_hours": 48.78,
+  "latest_post_age_hours": 92.84,
   "reddit_monitor_runtime": {
     "status": "report_generated",
-    "age_hours": 0.0
+    "age_hours": 0.55
   },
   "adoption_flat": true,
   "pending_repairs": [
@@ -19,20 +19,21 @@
   "blocked_distribution_channels": [],
   "apollo": {
     "status": "login_succeeded",
-    "age_hours": 2.27,
+    "age_hours": 2.82,
     "cloudflare_blocked": false
   },
   "measurement_hold": {
-    "active": true,
-    "hold_started_at": "2026-05-24T06:52:32.840986",
-    "hold_until": "2026-05-24T07:52:32.840986",
-    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_065232_measurement_hold_execution.json"
+    "active": false,
+    "hold_started_at": null,
+    "hold_until": null,
+    "source_log": null
   },
-  "actions": [],
-  "watch_actions": [
-    "reddit_channel_blocked",
+  "actions": [
     "primary_repo_adoption_flat",
-    "measurement_hold_active"
+    "pending_repairs_detected"
   ],
-  "status": "watch"
+  "watch_actions": [
+    "reddit_channel_blocked"
+  ],
+  "status": "needs_attention"
 }

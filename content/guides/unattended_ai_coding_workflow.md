@@ -73,7 +73,10 @@ For higher-risk code, keep the guardrails stricter:
 - no secret or config changes outside clearly allowed files
 - hard stop on flaky, skipped, or missing checks
 
-If your main concern is production reliability, read the deeper walkthrough:
+If your main concern is production reliability, use the repo-facing guide first:
+- [Autonomous AI workflows for production reliability](./autonomous_ai_workflows_production_reliability.md)
+
+For the longer site version:
 - [How to Structure Autonomous AI Agent Workflows for Production Reliability](https://ralphworkflow.com/blog/how-to-structure-autonomous-ai-agent-workflows-for-production-reliability)
 
 ## Who this is for
