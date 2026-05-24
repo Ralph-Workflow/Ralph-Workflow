@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agents.marketing import apollo_sequence_launcher, apollo_sequence_status, channel_discovery, distribution_lane_executor, distribution_lane_selector, generate_content, marketing_loop_checker, marketing_loop_independent_verify, marketing_loop_runner, marketing_momentum_watchdog, marketing_workflow_audit, run, run_posting, sync_outreach_log
+from agents.marketing import apollo_sequence_launcher, apollo_sequence_status, channel_discovery, distribution_lane_executor, distribution_lane_selector, generate_content, marketing_loop_checker, marketing_loop_independent_verify, marketing_loop_runner, marketing_momentum_watchdog, marketing_workflow_audit, run, run_posting, stackoverflow_answer_lane, sync_outreach_log
 
 
 class GenerateContentTests(unittest.TestCase):
@@ -1094,6 +1094,67 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
 
             self.assertEqual(decision.lane, 'measurement_hold')
             self.assertIn('post-cooldown StackOverflow run is already scheduled', '\n'.join(decision.reasons))
+
+    def test_overdue_post_cooldown_stackoverflow_run_stops_blocking_follow_through(self):
+        now = datetime(2026, 5, 24, 11, 34, 0)
+        tmpdir_ctx, patches = self._build_stackoverflow_repeat_guard_fixture(
+            now=now,
+            extra_logs=[(
+                'marketing_2026-05-24_stackoverflow_post_cooldown_cron.json',
+                {
+                    'timestamp': '2026-05-24T08:47:00+02:00',
+                    'status': 'scheduled',
+                    'chosen_action': {'type': 'stackoverflow_post_cooldown_cron'},
+                    'verification': {'scheduled_run_at': '2026-05-24T11:30:00+02:00'},
+                },
+            )],
+            recent_proof_asset_shipped=True,
+        )
+        with tmpdir_ctx:
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], patches[9], patches[10], patches[11], patches[12], patches[13], patches[14], patches[15]:
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertNotEqual(decision.lane, 'measurement_hold')
+            self.assertNotIn('post-cooldown StackOverflow run is already scheduled', '\n'.join(decision.reasons))
+
+    def test_post_cooldown_stackoverflow_noop_retires_packet_for_now(self):
+        now = datetime(2026, 5, 24, 11, 46, 0)
+        tmpdir_ctx, patches = self._build_stackoverflow_repeat_guard_fixture(
+            now=now,
+            extra_logs=[(
+                'marketing_2026-05-24_stackoverflow_post_cooldown_cron.json',
+                {
+                    'timestamp': '2026-05-24T08:47:00+02:00',
+                    'status': 'scheduled',
+                    'chosen_action': {'type': 'stackoverflow_post_cooldown_cron'},
+                    'verification': {'scheduled_run_at': '2026-05-24T11:30:00+02:00'},
+                },
+            )],
+            recent_proof_asset_shipped=True,
+        )
+        with tmpdir_ctx as tmpdir:
+            so_path = Path(tmpdir) / 'logs' / 'stackoverflow_answer_lane_latest.json'
+            so_path.write_text(json.dumps({
+                'generated_at': '2026-05-24T11:45:23+02:00',
+                'drafts_created': 0,
+                'reused_existing_draft': {
+                    'question_url': 'https://stackoverflow.com/questions/79942291/example'
+                },
+                'drafts': [],
+            }), encoding='utf-8')
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], patches[9], patches[10], patches[11], patches[12], patches[13], patches[14], patches[15]:
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            reasons = '\n'.join(decision.reasons)
+            self.assertEqual(decision.lane, 'measurement_hold')
+            self.assertIn('retire this packet for now', reasons)
+            self.assertNotIn('A fresh StackOverflow answer draft already exists', reasons)
+
+
+class StackOverflowAnswerLaneTests(unittest.TestCase):
+    def test_meaningful_outreach_activity_requires_fresh_draft(self):
+        self.assertTrue(stackoverflow_answer_lane._meaningful_outreach_activity(drafts_created=1))
+        self.assertFalse(stackoverflow_answer_lane._meaningful_outreach_activity(drafts_created=0))
 
     def test_avoids_another_directory_submission_during_same_day_burst(self):
         now = datetime(2026, 5, 23, 12, 0, 0)

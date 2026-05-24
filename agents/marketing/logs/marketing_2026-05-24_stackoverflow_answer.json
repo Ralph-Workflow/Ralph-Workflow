@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-05-24T10:47:00",
+  "timestamp": "2026-05-24T11:48:59.481380",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
-    "channel": "directory_confirmation",
-    "title": "Distribution lane decision: directory_confirmation",
+    "channel": "stackoverflow_answer",
+    "title": "Distribution lane decision: stackoverflow_answer",
     "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_distribution_action_brief.md"
   },
   "why_this_action": {
@@ -15,12 +15,12 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "reasoning": "Directory submissions are paused and live listing proof already exists, so refresh approval/backlink evidence and reuse it in the next higher-intent lane instead of inventing another reset.",
+    "reasoning": "Apollo is already in-flight, Reddit is fail-closed here, and curator/comparison outreach is already saturated or exhausted; draft high-intent StackOverflow answers instead of refreshing internal-only packets.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
-      "15 directory submissions already shipped in the last 24 hours.",
-      "19 curator contact attempts already shipped in the last 24 hours.",
-      "11 live external marketing action(s) already shipped in the last 6 hours.",
+      "13 directory submissions already shipped in the last 24 hours.",
+      "15 curator contact attempts already shipped in the last 24 hours.",
+      "10 live external marketing action(s) already shipped in the last 6 hours.",
       "Active repair window says to pause net-new directory submissions until current approval windows mature.",
       "Active repair window says to hold another same-family curator-contact burst and use a different lane.",
       "Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.",
@@ -42,12 +42,10 @@
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
       "Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.",
       "Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
-      "The directory-confirmation snapshot is stale relative to the current submission burst, so refresh live listing/backlink evidence before adding more low-intent distribution.",
+      "A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.",
       "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
-      "StackOverflow discovery is in an active post-429 cooldown until 2026-05-24T11:24:37.256862, so do not spend the next slot re-hitting the API.",
-      "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
-      "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.",
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
+      "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
     ]
   },

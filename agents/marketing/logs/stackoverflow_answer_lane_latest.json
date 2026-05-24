@@ -1,31 +1,28 @@
 {
-  "generated_at": "2026-05-24T10:12:25.541449",
-  "status": "rate_limit_cooldown_reused_previous",
-  "rate_limited": true,
-  "cooldown_active": true,
-  "next_retry_at": "2026-05-24T11:24:37.256862",
-  "search_errors": [
-    {
-      "label": "production-reliability",
-      "code": 400,
-      "error": "HTTP Error 400: Bad Request"
-    },
-    {
-      "label": "claude-autonomous",
-      "code": 429,
-      "error": "HTTP Error 429: Too Many Requests"
-    }
-  ],
+  "generated_at": "2026-05-24T11:48:19.341126",
+  "status": "ok",
+  "rate_limited": false,
+  "cooldown_active": false,
+  "next_retry_at": null,
+  "search_errors": [],
   "halted_after_rate_limit": false,
   "total_questions_found": 1,
   "questions_scored": 1,
   "drafts_created": 0,
   "skipped_existing_drafts": 1,
+  "reused_existing_draft": {
+    "question_title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+    "question_url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
+    "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-should-i-structure-autonomous-ai-agent-workflo.md",
+    "packet_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md",
+    "question_score": 3.85,
+    "pain_family": "unattended-runs"
+  },
   "top_questions": [
     {
       "title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
       "url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
-      "score": 5.7,
+      "score": 3.85,
       "votes": 0,
       "answers": 0
     }

@@ -1,5 +1,5 @@
 # Ralph Workflow Comparison Backlink Execution Handoff Packet
-Generated: 2026-05-24T00:57:32
+Generated: 2026-05-24T10:57:00
 
 ## Why this exists now
 - Prepared comparison/backlink targets already exist, but missing GitHub auth from this environment blocks live PR submission.
@@ -11,6 +11,11 @@ Generated: 2026-05-24T00:57:32
 - market_intelligence_latest.json → positioning and competitor adjacency
 - adoption_metrics_latest.json → Codeberg movement is still the primary success gate
 - /home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md → keep current pain-language tied to real workflow failures
+
+## Live third-party proof to reuse
+- Confirmed public listings already exist; cite these instead of sounding like every submission is still pending.
+- SaaSHub — https://saashub.com/ralph-workflow
+- ToolWise — https://toolwise.ai/tools/ralph-workflow (Existing ToolWise listing already live and pointing to the primary Codeberg repo.)
 
 ## Execute these first
 ### 1. Aider

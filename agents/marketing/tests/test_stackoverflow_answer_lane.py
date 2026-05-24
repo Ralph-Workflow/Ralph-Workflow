@@ -179,12 +179,13 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
         self.assertEqual(payload["top_questions"], previous["top_questions"])
 
     def test_main_respects_active_rate_limit_cooldown(self):
+        future_retry = (datetime.now() + stackoverflow_answer_lane.RATE_LIMIT_COOLDOWN).isoformat()
         previous = {
-            "generated_at": "2026-05-24T04:49:56.677445",
+            "generated_at": datetime.now().isoformat(),
             "status": "rate_limited_reused_previous",
             "rate_limited": True,
             "cooldown_active": True,
-            "next_retry_at": "2026-05-24T10:49:56.677445",
+            "next_retry_at": future_retry,
             "top_questions": [{"title": "Earlier question", "url": "https://stackoverflow.com/questions/1/example"}],
         }
         with tempfile.TemporaryDirectory() as tmp:

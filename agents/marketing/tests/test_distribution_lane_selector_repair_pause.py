@@ -515,5 +515,32 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
         self.assertIn('ctxt.dev / signum'.lower(), joined)
 
 
+    def test_stackoverflow_measurement_pending_counts_reused_existing_draft(self):
+        now = datetime(2026, 5, 24, 11, 25, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            latest_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            latest_path.write_text(json.dumps({
+                'generated_at': '2026-05-24T11:24:56.176949',
+                'drafts_created': 0,
+                'drafts': [],
+                'reused_existing_draft': {
+                    'question_title': 'How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?',
+                    'question_url': 'https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability',
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', latest_path):
+                pending = distribution_lane_selector._stack_overflow_measurement_pending(now)
+
+        self.assertTrue(pending)
+
+
 if __name__ == '__main__':
     unittest.main()

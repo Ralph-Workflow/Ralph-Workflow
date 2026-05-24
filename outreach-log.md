@@ -6068,3 +6068,15 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-24 10:25:49
 - **Note:** Momentum check found: no_recent_reddit_post, outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, same_family_distribution_overlap, same_family_outreach_overlap. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### StackOverflow answer lane
+- **When:** 2026-05-24 11:24:56
+- **Note:** StackOverflow answer lane ran: found 1 questions, scored 1, drafted 0 answers, skipped 1 recent duplicate candidates; refreshed canonical handoff packet from the best existing draft. Top question: How should I structure autonomous AI agent workflows for production reliability .
+
+### StackOverflow answer lane
+- **When:** 2026-05-24 11:29:25
+- **Note:** StackOverflow answer lane ran: found 0 questions, scored 0, drafted 0 answers, skipped 0 recent duplicate candidates. Top question: none.
+
+### StackOverflow answer lane
+- **When:** 2026-05-24 11:45:25
+- **Note:** StackOverflow answer lane ran: found 1 questions, scored 1, drafted 0 answers, skipped 1 recent duplicate candidates; refreshed canonical handoff packet from the best existing draft. Top question: How should I structure autonomous AI agent workflows for production reliability .
