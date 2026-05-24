@@ -104,6 +104,45 @@ def test_agy_invoke_writes_workspace_mcp_config_when_endpoint_present(
     assert not config_path.exists()
 
 
+def test_agy_invoke_skips_mcp_context_when_no_endpoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = _write_prompt(tmp_path)
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    config_path = tmp_path / ".agents" / "mcp_config.json"
+
+    def fake_run_pty_and_read_lines(
+        cmd: object,
+        ctx: SimpleNamespace,
+        extras: object = None,
+    ) -> object:
+        del cmd, extras
+        assert ctx.workspace_path == tmp_path
+        yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+
+    def fake_run_subprocess_and_read_lines(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise AssertionError("subprocess must not be called for AGY")
+
+    monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_and_read_lines)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.run_subprocess_and_read_lines",
+        fake_run_subprocess_and_read_lines,
+    )
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke.load_existing_agy_upstream_servers", lambda _path: ())
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+        )
+    )
+
+    assert not config_path.exists()
+
+
 def test_ansi_wrapped_completion_marker_detected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

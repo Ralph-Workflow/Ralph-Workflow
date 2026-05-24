@@ -623,6 +623,7 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
 
     list(
         invoke_agent(
@@ -831,6 +832,7 @@ def test_invoke_agent_preserves_existing_codex_home_state(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("CODEX_HOME", str(source_home))
 
     list(

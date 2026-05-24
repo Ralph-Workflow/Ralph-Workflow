@@ -167,6 +167,7 @@ def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
     monkeypatch.setattr(
         invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
 
     list(
         invoke_agent(
