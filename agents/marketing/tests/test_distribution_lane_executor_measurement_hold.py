@@ -201,6 +201,75 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('Best human-executable demand-capture asset still waiting', artifact_text)
         self.assertIn('stackoverflow_answer_handoff_packet_latest.md', artifact_text)
 
+    def test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_when_post_cooldown_run_is_already_scheduled(self):
+        now = datetime(2026, 5, 24, 5, 20, 0)
+        decision = LaneDecision(
+            lane='measurement_hold',
+            reason='Hold for follow-through.',
+            reasons=['scheduled StackOverflow retry already exists'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'marketing_2026-05-24_measurement_hold_execution.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T04:51:00',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'why_this_action': {'summary': 'Existing short review window hold.'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'stackoverflow_answer_lane_latest.json').write_text(
+                json.dumps({
+                    'cooldown_active': True,
+                    'next_retry_at': '2026-05-24T11:24:37.256862',
+                    'top_questions': [
+                        {
+                            'title': 'How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?',
+                            'url': 'https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability',
+                        }
+                    ],
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md').write_text('# packet\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_stackoverflow_post_cooldown_cron.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T08:47:43+02:00',
+                    'type': 'stack_overflow_demand_capture_cron',
+                    'status': 'scheduled',
+                    'verification': {'scheduled_run_at': '2026-05-24T11:30:00+02:00'},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'STACKOVERFLOW_LATEST_PATH', log_dir / 'stackoverflow_answer_lane_latest.json'), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.return_value.returncode = 1
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+
+        self.assertEqual(execution.action_type, 'measurement_hold_follow_through')
+        self.assertNotIn('StackOverflow handoff asset', execution.summary)
+        self.assertIn('StackOverflow demand-capture follow-through already scheduled', artifact_text)
+        self.assertIn('2026-05-24T11:30:00+02:00', artifact_text)
+        self.assertNotIn('Best human-executable demand-capture asset still waiting', artifact_text)
+
 
     def test_primary_repo_flat_packet_skips_recently_contacted_publishers(self):
         now = datetime(2026, 5, 24, 5, 55, 0)
@@ -387,6 +456,134 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('Recently contacted executable targets already inside the active review window', packet_text)
         self.assertNotIn('### 1. AXME Code', packet_text)
         self.assertNotIn('### 2. WyeWorks', packet_text)
+
+    def test_primary_repo_flat_packet_marks_active_review_window_as_reference_only(self):
+        now = datetime(2026, 5, 24, 19, 20, 0)
+        findings = [
+            {
+                'target': 'ctxt.dev / Signum',
+                'article_url': 'https://ctxt.dev/posts/en/tasks-are-not-goals',
+                'root_url': 'https://ctxt.dev/',
+                'hook': 'Tasks Are Not Goals',
+                'reason': 'Strong overlap with contract-first workflow audiences.',
+                'outreach_subject': 'RalphWorkflow for your next contract-first workflow roundup',
+                'recommended_next_step': 'Use the site contact path first',
+                'channels': [
+                    {'type': 'website', 'value': 'https://ctxt.dev/contact', 'label': 'contact page'},
+                ],
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            (log_dir / 'marketing_2026-05-24_primary_repo_flat_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T18:18:26',
+                    'action_type': 'primary_repo_flat_contact_manual_delivery',
+                    'chosen_action': {
+                        'packet': str(drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-05-31T18:18:26',
+                    },
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, '_latest_research_signals', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_append_live_listing_proof', return_value=None):
+                artifact, _prepared = distribution_lane_executor._write_primary_repo_flat_contact_handoff_packet(now, findings)
+
+            text = artifact.read_text(encoding='utf-8')
+
+        self.assertIn('This packet was already delivered in the current review window.', text)
+        self.assertIn('## Reference targets already covered in the active review window', text)
+        self.assertIn('Another manual delivery right now would be fake progress', text)
+
+    def test_comparison_packet_marks_active_review_window_as_reference_only(self):
+        now = datetime(2026, 5, 24, 19, 21, 0)
+        queue_rows = [
+            {
+                'slug': 'aider',
+                'name': 'Aider',
+                'status': 'prepared',
+                'comparison_path': '/tmp/aider.md',
+                'review_due_date': '2026-06-05',
+                'artifact_path': '/tmp/packet.md',
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            (log_dir / 'marketing_2026-05-24_comparison_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T10:57:00',
+                    'action_type': 'comparison_backlink_manual_delivery',
+                    'measurement_window': {
+                        'review_at': '2026-05-31T10:57:00',
+                    },
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, '_append_live_listing_proof', return_value=None):
+                artifact, _prepared = distribution_lane_executor._write_comparison_handoff_packet(now, queue_rows)
+
+            text = artifact.read_text(encoding='utf-8')
+
+        self.assertIn('This packet was already manually delivered in the current review window.', text)
+        self.assertIn('## Reference targets already covered in the active review window', text)
+        self.assertIn('Another manual delivery right now would be fake progress', text)
+
+    def test_curator_handoff_packet_marks_active_pause_as_reference_only(self):
+        now = datetime(2026, 5, 24, 19, 22, 0)
+        queue_rows = [
+            {
+                'target': 'AI Resources',
+                'status': 'prepared',
+                'priority': 'HIGH',
+                'url': 'https://airesources.dev/category/agents/',
+                'review_due_date': '2026-06-07',
+                'artifact_path': '/tmp/ai-resources.md',
+                'action': 'Submit PR or request inclusion with a Codeberg-primary entry',
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            adoption_path = log_dir / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, '_append_live_listing_proof', return_value=None), \
+                 patch.object(distribution_lane_executor.distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, True)):
+                artifact, _prepared = distribution_lane_executor._write_curator_handoff_packet(now, queue_rows)
+
+            text = artifact.read_text(encoding='utf-8')
+
+        self.assertIn('Same-family curator outreach is paused in the active repair window.', text)
+        self.assertIn('## Reference targets currently paused by the active repair window', text)
+        self.assertIn('Another curator delivery right now would be fake progress', text)
 
     def test_curator_handoff_packet_includes_live_listing_proof(self):
         now = datetime(2026, 5, 24, 10, 58, 0)
@@ -766,11 +963,12 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 encoding='utf-8',
             )
             (drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md').write_text('# packet\n', encoding='utf-8')
-            (log_dir / 'marketing_2026-05-24_stackoverflow_quota_guard_repair.json').write_text(
+            (log_dir / 'marketing_2026-05-24_stackoverflow_post_cooldown_cron.json').write_text(
                 json.dumps({
                     'timestamp': '2026-05-24T10:37:07+02:00',
-                    'type': 'stack_overflow_lane_repair',
-                    'review_window': {'scheduled_run_at': '2026-05-24T11:30:00+02:00'},
+                    'type': 'stack_overflow_demand_capture_cron',
+                    'status': 'scheduled',
+                    'verification': {'scheduled_run_at': '2026-05-24T11:30:00+02:00'},
                 }),
                 encoding='utf-8',
             )

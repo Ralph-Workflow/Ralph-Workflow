@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T12:52:10.893210+00:00",
+  "generated_at": "2026-05-24T19:12:41.676000+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -11,18 +11,18 @@
       "channels": [
         {
           "type": "website",
+          "value": "https://ctxt.dev/work-with-me",
+          "label": "work with me page"
+        },
+        {
+          "type": "website",
           "value": "https://ctxt.dev/about",
-          "label": "common contact/about path"
+          "label": "about page"
         },
         {
           "type": "website",
           "value": "https://ctxt.dev/contact",
-          "label": "common contact/about path"
-        },
-        {
-          "type": "website",
-          "value": "https://ctxt.dev/contact-us",
-          "label": "common contact/about path"
+          "label": "contact page"
         },
         {
           "type": "telegram",
@@ -30,7 +30,7 @@
           "label": "Telegram"
         }
       ],
-      "recommended_next_step": "public website contact path is now identified"
+      "recommended_next_step": "Telegram consulting contact path is explicitly confirmed"
     },
     {
       "target": "AXME Code",

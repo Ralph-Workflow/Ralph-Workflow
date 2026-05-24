@@ -38,7 +38,12 @@ https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/when-to-u
 GitHub mirror only if needed:
 https://github.com/Ralph-Workflow/Ralph-Workflow
 
+## Verified contact routes
+- `https://ctxt.dev/work-with-me` now explicitly confirms Telegram as the preferred brief-first path.
+- Telegram: `https://t.me/ctxtdev`
+- Fallback public pages: `https://ctxt.dev/contact`, `https://ctxt.dev/about`
+
 ## Measurement note
 - Manual execution target: ctxt.dev / Signum
-- Primary success signal: real contact send via site/Telegram and any later mention/citation/backlink to Codeberg
+- Primary success signal: real contact send via the verified work-with-me → Telegram path and any later mention/citation/backlink to Codeberg
 - Review window: 2026-05-31 for send confirmation, 2026-06-07 for reply/citation movement

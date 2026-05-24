@@ -22,6 +22,39 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         self.assertNotIn(('website', 'https://schema.org'), values)
         self.assertNotIn(('website', 'https://other.example/contact'), values)
 
+    def test_enrich_target_prefers_explicit_work_with_me_telegram_path(self):
+        target = discovery.Target(
+            name='ctxt.dev / Signum',
+            article_url='https://ctxt.dev/posts/en/tasks-are-not-goals',
+            root_url='https://ctxt.dev/',
+            hook='Tasks Are Not Goals (2026-05-22)',
+            reason='Fit',
+            outreach_subject='Subject',
+        )
+
+        def fake_get(url: str, timeout: int = 20) -> str:
+            if url == target.article_url:
+                return '<a href="/work-with-me">Work with me</a>'
+            if url.rstrip('/') == 'https://ctxt.dev':
+                return '<a href="https://t.me/ctxtdev">Telegram</a>'
+            if 'work-with-me' in url:
+                return '<p>' + ('Helpful context. ' * 20) + 'Send a short message in Telegram with your use case.</p><a href="https://t.me/ctxtdev">Message on Telegram</a>'
+            return ''
+
+        original = discovery.http_get
+        discovery.http_get = fake_get
+        try:
+            enriched = discovery.enrich_target(target)
+        finally:
+            discovery.http_get = original
+
+        self.assertEqual(enriched['recommended_next_step'], 'Telegram consulting contact path is explicitly confirmed')
+        self.assertEqual(enriched['channels'][0]['label'], 'work with me page')
+        self.assertIn(
+            {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
+            enriched['channels'],
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

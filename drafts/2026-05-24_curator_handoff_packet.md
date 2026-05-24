@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Execution Handoff Packet
-Generated: 2026-05-24T13:12:12
+Generated: 2026-05-24T21:37:04
 
 ## Why this exists now
 - Prepared curator targets already exist, but the loop kept rediscovering/resetting instead of consolidating the best ready-to-execute items.
@@ -12,12 +12,17 @@ Generated: 2026-05-24T13:12:12
 - market_intelligence_latest.json → comparison framing and competitor adjacency
 - /home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md → keep current pain-language tied to real workflow failures
 
+## Current execution status
+- Same-family curator outreach is paused in the active repair window.
+- Do not redeliver this packet until the hold clears or the prepared target set materially changes.
+- Use this file as reference only while the marketing execution board remains the source of truth.
+
 ## Live third-party proof to reuse
 - Confirmed public listings already exist; cite these instead of sounding like every submission is still pending.
 - SaaSHub — https://saashub.com/ralph-workflow
 - ToolWise — https://toolwise.ai/tools/ralph-workflow (Existing ToolWise listing already live and pointing to the primary Codeberg repo.)
 
-## Execute these first
+## Reference targets currently paused by the active repair window
 ### 1. AI Resources
 - Status: prepared
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
@@ -61,6 +66,7 @@ Generated: 2026-05-24T13:12:12
 ## Process rule now in force
 - While prepared curator targets still exist, do not spend another run on distribution-reset discovery for the same lane.
 - Refresh this packet when the top prepared set changes, not on every audit loop.
+- Another curator delivery right now would be fake progress because same-family outreach is paused in the active repair window.
 
 ## Measurement contract
 - Expected outcome: at least one executed PR, inclusion request, or maintainer contact against the prepared queue

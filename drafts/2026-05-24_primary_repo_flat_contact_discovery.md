@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-24T12:52:10+00:00
+Generated: 2026-05-24T19:12:41+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -15,12 +15,12 @@ Generated: 2026-05-24T12:52:10+00:00
 ### 1. ctxt.dev / Signum
 - Hook: Tasks Are Not Goals (2026-05-22)
 - Article/root: https://ctxt.dev/posts/en/tasks-are-not-goals / https://ctxt.dev/
-- Recommended next step: public website contact path is now identified
+- Recommended next step: Telegram consulting contact path is explicitly confirmed
 - Suggested subject: RalphWorkflow for your next contract-first agent workflow roundup
 - Discovered channels:
-  - common contact/about path: https://ctxt.dev/about
-  - common contact/about path: https://ctxt.dev/contact
-  - common contact/about path: https://ctxt.dev/contact-us
+  - work with me page: https://ctxt.dev/work-with-me
+  - about page: https://ctxt.dev/about
+  - contact page: https://ctxt.dev/contact
   - Telegram: https://t.me/ctxtdev
 
 ### 2. AXME Code
