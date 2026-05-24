@@ -72,26 +72,31 @@ It runs on your own machine, under your own token budget, with the agents you al
 ## Starting an Overnight Run
 
 ```bash
-# Write your spec
-cat > SPEC.md << 'EOF'
-## Goal
-Build the billing webhook handler
-
-## Acceptance criteria
-- Parses Stripe event types: invoice.paid, subscription.deleted
-- Writes events to billing_events table
-- Returns 200 with idempotency key check
-- Unit tests cover each event type
-EOF
-
-# Run the pipeline
-ralph run --spec SPEC.md --agent claude-code
-
-# Morning: check what the pipeline produced
-ralph diff     # what changed
-ralph checks  # what passed
-ralph status  # what still needs a human call
+pipx install ralph-workflow
+cd /path/to/your/repo
+ralph --init
+ralph --diagnose
+$EDITOR PROMPT.md
+ralph
 ```
+
+Use `PROMPT.md` as the overnight contract:
+
+```md
+Change:
+Build the billing webhook handler.
+
+Keep unchanged:
+Do not change existing invoice creation, billing calculations, or unrelated webhook paths.
+
+Done means:
+Stripe `invoice.paid` and `subscription.deleted` events are handled, persisted to `billing_events`, and return 200 with idempotency protection.
+
+Checks:
+Relevant webhook tests pass, any new billing-webhook tests pass, and the app build succeeds.
+```
+
+The morning-after review is simple: inspect the diff, inspect the checks that actually ran, and ask whether you would merge it.
 
 That is the AI engineering pipeline that survives overnight: not the one that ran the most tokens, the one that produced something you can actually review.
 

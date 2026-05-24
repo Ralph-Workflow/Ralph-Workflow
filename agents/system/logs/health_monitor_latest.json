@@ -1,5 +1,5 @@
 {
-  "ts": "2026-05-24T02:53:58.448115",
+  "ts": "2026-05-24T03:26:20.106813",
   "jobs_checked": 20,
   "issues_found": 10,
   "issues": [
@@ -50,8 +50,8 @@
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=125",
-      "repeats_in_recent_history": 125,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=127",
+      "repeats_in_recent_history": 127,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification::loop_verification_fail",
       "escalation_level": "critical",
@@ -64,8 +64,8 @@
       "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
       "category": "escalation_required",
       "last_error": "Marketing runner bundle is not healthy.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=68",
-      "repeats_in_recent_history": 68,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=70",
+      "repeats_in_recent_history": 70,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
       "escalation_level": "critical",
@@ -78,8 +78,8 @@
       "name": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation",
       "category": "escalation_required",
       "last_error": "Momentum watchdog status is needs_attention with actions: primary_repo_adoption_flat, pending_repairs_detected.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=38",
-      "repeats_in_recent_history": 38,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=40",
+      "repeats_in_recent_history": 40,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with::review_followup_required",
       "escalation_level": "critical",
@@ -92,8 +92,8 @@
       "name": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair_escalation",
       "category": "escalation_required",
       "last_error": "Workflow audit still reports needs_repair.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required repeat_count=38",
-      "repeats_in_recent_history": 38,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required repeat_count=40",
+      "repeats_in_recent_history": 40,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair::review_followup_required",
       "escalation_level": "critical",
@@ -106,8 +106,8 @@
       "name": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g_escalation",
       "category": "escalation_required",
       "last_error": "Workflow audit shows the primary repo adoption goal is still flat in the current window without a live measurement-pending repair state.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g:review_followup_required repeat_count=38",
-      "repeats_in_recent_history": 38,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g:review_followup_required repeat_count=40",
+      "repeats_in_recent_history": 40,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g::review_followup_required",
       "escalation_level": "critical",
@@ -121,25 +121,25 @@
       "type": "immediate_review_followup_owner_action",
       "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779584016999:35\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "immediate_review_followup_owner_action",
       "job": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779584018743:36\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "immediate_review_followup_owner_action",
       "job": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779584020446:37\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "immediate_review_followup_owner_action",
       "job": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779584022294:38\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "rerun_independent_architecture_verification",
@@ -151,43 +151,43 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-24T02:53:44.213760+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-24T03:26:05.075736+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779584025928:39\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779584027662:40\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779584029417:41\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779584031226:42\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779584032916:43\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779585976271:44\"\n}"
     }
   ]
 }

@@ -130,25 +130,38 @@ The two flagged items? They required judgment calls — a design decision about 
 
 ## The Tool Stack
 
-I use [RalphWorkflow on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — primary · [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — for this. It orchestrates the loop and enforces the spec contract. Here's the config I run:
+I use [RalphWorkflow on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — primary · [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — for this. It orchestrates the loop and enforces the spec contract.
 
-```yaml
-# ralph.config.yaml
-workflow:
-  spec: SPEC.md
-  agents:
-    planning: gpt-4o
-    implementation: claude-code
-    verification: o1-mini
-  commit_template: "feat: {summary}\nSpec: {spec_items}"
-  verify_on_commit: true
+The clean first-run path today is:
+
+```bash
+pipx install ralph-workflow
+cd /path/to/your/repo
+ralph --init
+ralph --diagnose
+$EDITOR PROMPT.md
+ralph
 ```
 
-Then: `ralph run --spec SPEC.md`
+Use `PROMPT.md` as the short execution contract for the run:
 
-That's it. The orchestrator handles agent switching, context passing between phases, and the verification gate.
+```md
+Change:
+[what should change]
 
-This works with any OpenAI-compatible API endpoint. If you're using OpenCode, Azure OpenAI, or a local model — RalphWorkflow doesn't care. It enforces the workflow pattern, not a specific provider.
+Keep unchanged:
+[what must stay stable]
+
+Done means:
+[observable outcome]
+
+Checks:
+[tests, lint, build, screenshots, or other verification]
+```
+
+If you already wrote a longer `SPEC.md`, keep it — but boil the first run down into this contract so the task stays reviewable and the checks stay explicit.
+
+This works with the agent CLIs you already use. The point is not a specific model stack; it is enforcing the workflow pattern and the verification gate.
 
 ---
 
@@ -173,13 +186,14 @@ Spec Kit is a good start. RalphWorkflow is the production-ready version for deve
 
 If you want to try this tonight:
 
-1. **Install RalphWorkflow:** `npm install -g ralphworkflow` (or `brew install ralphworkflow`)
-2. **Pick a feature** you've been putting off — something scoped enough to spec in an hour
-3. **Write the SPEC.md** at the root of your project — use the template above
-4. **Run:** `ralph run --spec SPEC.md`
-5. **Come back in a few hours**
+1. **Install Ralph Workflow:** `pipx install ralph-workflow`
+2. **Pick one meaningful backlog task** you can still review honestly tomorrow morning
+3. **Write the contract in `PROMPT.md`** using the template above
+4. **Initialize and sanity-check the workflow:** `ralph --init && ralph --diagnose`
+5. **Run:** `ralph`
+6. **Come back in a few hours and ask:** would I merge this?
 
-The first run will teach you more about your own spec quality than any blog post can. You'll find the gaps in your thinking when you see what ambiguous spec items produce.
+The first run will teach you more about task quality and verification quality than any blog post can. If the result is hard to judge, the spec was still too vague.
 
 ---
 
@@ -193,6 +207,6 @@ Stop guessing what candidates can do. Watch them do it.
 
 ---
 
-*The spec-driven workflow works because it treats AI coding like engineering — not like magic. Write the spec. Enforce the contract. Come back to clean code.*
+*The spec-driven workflow works because it treats AI coding like engineering — not like magic. Write the spec. Enforce the contract. Come back to something you can actually review.*
 
-*Questions about setup? Drop them below. I've helped a few teams adopt this workflow and happy to troubleshoot your config.*
+*If you want the shortest real path, start on Codeberg first: [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow). Then grab `START_HERE.md` in the repo and run one real backlog task tonight.*

@@ -1,12 +1,12 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-24T03:19:50
+Generated: 2026-05-24T04:33:28
 Chosen lane: **distribution_reset**
 
 ## Why this lane
 - Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 16 directory submissions already shipped in the last 24 hours.
-- 46 curator contact attempts already shipped in the last 24 hours.
+- 19 directory submissions already shipped in the last 24 hours.
+- 42 curator contact attempts already shipped in the last 24 hours.
 - Active repair window says to pause net-new directory submissions until current approval windows mature.
 - Active repair window says to hold another same-family curator-contact burst and use a different lane.
 - Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.
@@ -24,6 +24,7 @@ Chosen lane: **distribution_reset**
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.
 - Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
+- A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
 - A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
 - The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.

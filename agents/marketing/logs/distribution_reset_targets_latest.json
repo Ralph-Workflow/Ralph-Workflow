@@ -5,11 +5,13 @@
       "target": "Claude Code Alternatives",
       "url": "https://claude-code-alternatives.com/tool/create/",
       "why_it_fits": "high-intent Claude Code alternative directory with a live submit form and direct adjacency to CLI agent comparison intent that already matches Ralph Workflow's comparison pages.",
-      "status": "promoted_to_curator_queue",
+      "status": "executed_elsewhere",
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery.md",
-      "next_path": "manual submission or scripted form execution in a later non-overlap run",
+      "next_path": "wait for listing/review evidence instead of resubmitting during the current measurement window",
       "promoted_at": "2026-05-24T02:47:15.881073",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_claude-code-alternatives.md"
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_claude-code-alternatives.md",
+      "reconciled_at": "2026-05-24T03:24:58+02:00",
+      "reconciled_by": "marketing-active-loop"
     },
     {
       "target": "AI IDE",

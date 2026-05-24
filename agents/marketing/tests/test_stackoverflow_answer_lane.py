@@ -70,6 +70,21 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
         self.assertIn("correlation ID", answer)
         self.assertIn("canary", answer)
 
+    def test_useful_results_question_is_draft_worthy(self):
+        question = {
+            "title": "How can I get more useful results from ai coding agents?",
+            "body_snippet": "Claude Code gets mixed results and I want a workflow with analysis, design, implementation, review, and verification instead of babysitting every step.",
+            "answers": 0,
+            "accepted_answer": "",
+            "tags": ["claude-code", "artificial-intelligence"],
+        }
+        question["pain_family"] = stackoverflow_answer_lane.classify_pain_family(question, question)
+        question["score"] = stackoverflow_answer_lane.score_question(question, question)
+
+        self.assertIn(question["pain_family"], {"verification-review", "workflow-orchestration"})
+        self.assertTrue(stackoverflow_answer_lane.is_draft_worthy(question))
+        self.assertGreaterEqual(question["score"], 2.4)
+
     def test_load_recent_drafted_question_urls_reads_recent_drafts(self):
         with tempfile.TemporaryDirectory() as tmp:
             draft_dir = Path(tmp)
@@ -104,6 +119,32 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
         payload = stackoverflow_answer_lane.json.loads(stackoverflow_answer_lane.SO_LOG.read_text(encoding="utf-8"))
         self.assertEqual(payload["drafts_created"], 0)
         self.assertEqual(payload["skipped_existing_drafts"], 1)
+
+    def test_main_preserves_previous_state_when_rate_limited(self):
+        previous = {
+            "generated_at": "2026-05-23T16:34:38.381978",
+            "top_questions": [{"title": "Earlier question", "url": "https://stackoverflow.com/questions/1/example"}],
+            "drafts_created": 0,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "stackoverflow_answer_lane_latest.json"
+            log_path.write_text(stackoverflow_answer_lane.json.dumps(previous), encoding="utf-8")
+            def rate_limited_search(_spec):
+                stackoverflow_answer_lane.SEARCH_RUNTIME["rate_limited"] = True
+                stackoverflow_answer_lane.SEARCH_RUNTIME["errors"] = [{"label": "workflow", "code": 429, "error": "HTTP Error 429: Too Many Requests"}]
+                return []
+
+            with patch.object(stackoverflow_answer_lane, "SO_LOG", log_path), \
+                 patch.object(stackoverflow_answer_lane, "SO_SEARCH_SPECS", [{"label": "workflow"}]), \
+                 patch.object(stackoverflow_answer_lane, "so_search_site", side_effect=rate_limited_search), \
+                 patch.object(stackoverflow_answer_lane, "append_outreach_log"):
+                rc = stackoverflow_answer_lane.main()
+                payload = stackoverflow_answer_lane.json.loads(log_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["status"], "rate_limited_reused_previous")
+        self.assertTrue(payload["rate_limited"])
+        self.assertEqual(payload["top_questions"], previous["top_questions"])
 
 
 if __name__ == "__main__":

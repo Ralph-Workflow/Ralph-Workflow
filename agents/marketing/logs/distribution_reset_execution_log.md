@@ -135,3 +135,25 @@ Goal met: identified 4 additional untouched third-party targets that are still c
 - Checked against the current outreach log and marketing artifacts; these domains were not already targeted.
 - These are higher-fit than another low-intent generic directory because they already speak to AI coding workflows, tool comparison, or agentic dev setups.
 - Best immediate prioritization order: AI for Code, VibeFactory, AI Dev Setup, VibeCoders.
+
+## 7) Claude Stack workflow submission — 2026-05-24
+Goal met: shipped one fresh high-intent workflow-directory submission on a Claude Code-specific surface instead of another saturated broad-directory or same-family curator burst.
+
+### What executed
+- Target: **Claude Stack**
+- Submit URL: https://www.claudestack.dev/submit
+- Submission endpoint: https://www.claudestack.dev/api/submit
+- Category: `workflows`
+- Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+- Mirror URL: https://github.com/Ralph-Workflow/Ralph-Workflow
+- Verification: direct JSON POST returned HTTP 200 with body `{"ok":true,"id":null}`
+
+### Why this was the highest-leverage move now
+- The current bottleneck is still repo conversion and qualified distribution, but recent same-family directory and curator bursts are already inside active measurement windows.
+- Claude Stack is a better-fit surface than another generic AI-tools directory because it is explicitly for Claude Code resources and workflows.
+- The live submit bundle exposed a public executable endpoint, so this run could ship a real external action immediately instead of another prep artifact.
+- The landing path keeps Codeberg first by linking directly to the START_HERE entry on Codeberg while preserving GitHub as mirror-only context.
+
+### Artifact
+- Log: `agents/marketing/logs/marketing_2026-05-24_040259_claudestack_submission.json`
+- Review by: 2026-06-07

@@ -70,6 +70,6 @@ That's the missing piece. Everything else is already here.
 
 ---
 
-*If you're a solo dev or team lead trying to actually ship with AI tools instead of just experimenting — this workflow pattern is where I'd start. Happy to answer questions below.*
+*If you're a solo dev or team lead trying to actually ship with AI tools instead of just experimenting, start on one real backlog task you can judge tomorrow morning — then inspect the workflow on Codeberg first: [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow).* 
 
 *For hiring managers: we built [HireAegis Interviewer](https://hireaegis.io) because the same logic applies to technical interviews — stop guessing, start seeing exactly what candidates do in a real IDE.*

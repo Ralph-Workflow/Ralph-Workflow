@@ -80,13 +80,99 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                     patch.object(distribution_lane_selector, '_stack_overflow_manual_delivery_current', return_value=True),
                     patch.object(distribution_lane_selector, '_recent_executed_action_type', side_effect=lambda *args, **kwargs: kwargs.get('action_types') == distribution_lane_selector.RECENT_PROOF_ASSET_ACTION_TYPES),
                     patch.object(distribution_lane_selector, '_backlink_status_snapshot', return_value={'payload': {'summary': {}}, 'live_listings': 2, 'age_hours': 1}),
+                    patch.object(distribution_lane_selector, '_directory_confirmation_due', return_value=True),
+                ]:
+                    stack.enter_context(patcher)
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+        self.assertEqual(decision.lane, 'directory_confirmation')
+        self.assertIn('active repair window says to hold another same-family curator-contact burst', '\n'.join(decision.reasons).lower())
+
+    def test_skips_repeat_directory_confirmation_inside_short_review_window(self):
+        now = datetime(2026, 5, 24, 4, 24, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        audit = {
+            "repair_window_status": "needs_repair",
+            "repair_actions": [
+                {
+                    "failure_type": "primary_repo_flat",
+                    "repair_state": "needs_execution",
+                },
+                {
+                    "failure_type": "same_family_outreach_overlap",
+                    "repair_state": "pending_measurement",
+                },
+                {
+                    "failure_type": "same_family_distribution_overlap",
+                    "repair_state": "pending_measurement",
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            adoption_path = log_dir / 'adoption.json'
+            audit_path = log_dir / 'audit.json'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            audit_path.write_text(json.dumps(audit), encoding='utf-8')
+
+            def recent_action(*args, **kwargs):
+                action_types = kwargs.get('action_types')
+                if action_types == distribution_lane_selector.RECENT_PROOF_ASSET_ACTION_TYPES:
+                    return True
+                if action_types == distribution_lane_selector.RECENT_DIRECTORY_CONFIRMATION_ACTION_TYPES:
+                    return True
+                return False
+
+            with ExitStack() as stack:
+                for patcher in [
+                    patch.object(distribution_lane_selector, 'LOG_DIR', log_dir),
+                    patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir),
+                    patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path),
+                    patch.object(distribution_lane_selector, 'AUDIT_LATEST_JSON', audit_path),
+                    patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json),
+                    patch.object(distribution_lane_selector, 'LATEST_MD', latest_md),
+                    patch.object(distribution_lane_selector, '_recent_owned_content_posts', return_value=[]),
+                    patch.object(distribution_lane_selector, '_working_directory_channels', return_value=[]),
+                    patch.object(distribution_lane_selector, '_already_attempted_channel_names', return_value=set()),
+                    patch.object(distribution_lane_selector, '_shared_findings', return_value=['adoption_metrics_latest.json']),
+                    patch.object(distribution_lane_selector, '_load_recent_monitor_summary', return_value={'provider_degraded': True, 'reddit_blocked': True, 'partial_visibility_only': True}),
+                    patch.object(distribution_lane_selector, '_hn_ceiling_repeated', return_value=False),
+                    patch.object(distribution_lane_selector, '_github_auth_available', return_value=False),
+                    patch.object(distribution_lane_selector, '_apollo_ready', return_value=True),
+                    patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=True),
+                    patch.object(distribution_lane_selector, '_apollo_sequence_measurement_status', return_value={'measurement_pending': True, 'next_review_at': '2026-05-30T00:14:49+02:00'}),
+                    patch.object(distribution_lane_selector, '_live_curator_queue_count', return_value=8),
+                    patch.object(distribution_lane_selector, '_prepared_curator_targets_waiting_for_handoff', return_value=0),
+                    patch.object(distribution_lane_selector, '_prepared_curator_target_names', return_value=[]),
+                    patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=15),
+                    patch.object(distribution_lane_selector, '_contact_discovery_current_for_targets', return_value=False),
+                    patch.object(distribution_lane_selector, '_contact_discovery_has_targets', return_value=False),
+                    patch.object(distribution_lane_selector, '_manual_contact_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_manual_contact_queue_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_curator_contact_handoff_packet_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_comparison_queue_capacity', return_value=(8, 8)),
+                    patch.object(distribution_lane_selector, '_distribution_reset_targets_ready', return_value=4),
+                    patch.object(distribution_lane_selector, '_recent_live_action_family_count', side_effect=[19, 42]),
+                    patch.object(distribution_lane_selector, '_stack_overflow_measurement_pending', return_value=True),
+                    patch.object(distribution_lane_selector, '_stack_overflow_handoff_packet_current', return_value=True),
+                    patch.object(distribution_lane_selector, '_stack_overflow_manual_delivery_current', return_value=True),
+                    patch.object(distribution_lane_selector, '_recent_executed_action_type', side_effect=recent_action),
+                    patch.object(distribution_lane_selector, '_backlink_status_snapshot', return_value={'payload': {'summary': {}}, 'live_listings': 2, 'age_hours': 0.1}),
                     patch.object(distribution_lane_selector, '_directory_confirmation_due', return_value=False),
                 ]:
                     stack.enter_context(patcher)
                 decision = distribution_lane_selector.choose_distribution_lane(now)
 
         self.assertEqual(decision.lane, 'distribution_reset')
-        self.assertIn('active repair window says to hold another same-family curator-contact burst', '\n'.join(decision.reasons).lower())
+        self.assertIn('directory-confirmation refresh already shipped', '\n'.join(decision.reasons).lower())
 
 
 if __name__ == '__main__':

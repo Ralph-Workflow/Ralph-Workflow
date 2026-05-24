@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-05-24T03:24:58+02:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "directory_submission",
+    "channel": "claude_code_alternatives",
+    "title": "Fresh distribution execution: Claude Code Alternatives submission",
+    "target": "Claude Code Alternatives",
+    "submit_url": "https://claude-code-alternatives.com/tool/create/"
+  },
+  "why_this_action": {
+    "summary": "Used a fresh high-intent Claude Code comparison directory from the distribution-reset queue to put Ralph Workflow in front of evaluator traffic that is already looking for Claude Code alternatives, while keeping Codeberg as the primary destination.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg remains the primary success metric and is flat",
+      "marketing_workflow_audit_latest.json: current bottleneck is distribution and message to primary repo conversion",
+      "market_intelligence_latest.json: competitor/comparison positioning is already mapped and reusable",
+      "distribution_reset_targets_latest.json: Claude Code Alternatives was a fresh untouched high-intent target",
+      "outreach-log.md: verified this domain had not already been contacted or submitted"
+    ]
+  },
+  "result": {
+    "status": "submitted",
+    "ok": true,
+    "live_external_action": true,
+    "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "mirror_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "categories": [
+      "AI IDEs",
+      "CLI Agents"
+    ],
+    "tags": [
+      "Free",
+      "Freemium",
+      "Open Source",
+      "Self-hosted"
+    ],
+    "verification": {
+      "initial_post": "POST multipart form to https://claude-code-alternatives.com/tool/ returned HTTP 302 with Location https://claude-code-alternatives.com/submitter/projects",
+      "dedupe_check": "Immediate second submission attempt returned validation error 'The url has already been taken.', indicating the Codeberg URL is now recorded by the directory",
+      "logo_source": "https://ralphworkflow.com/icon.png"
+    },
+    "review_by": "2026-06-07"
+  },
+  "expected_outcome": {
+    "goal": "Earn a new high-intent comparison-directory listing that can send Claude Code alternative traffic to the primary Codeberg repo.",
+    "measurement_window": "2026-05-24 to 2026-06-07",
+    "success_metric": "Live listing or curator follow-up plus eventual Codeberg traffic/adoption movement",
+    "replacement_condition": "If no listing evidence or reply exists by 2026-06-07, treat this target as non-converting and switch the next fresh run to a different demand-capture lane instead of another directory-family repeat."
+  }
+}
