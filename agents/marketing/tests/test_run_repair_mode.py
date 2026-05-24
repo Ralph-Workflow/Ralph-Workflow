@@ -1,5 +1,8 @@
+import json
+import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 from agents.marketing import run
@@ -187,6 +190,76 @@ class RunRepairModeTests(unittest.TestCase):
 
         self.assertEqual(updated.lane, 'distribution_reset')
         self.assertEqual(updated.reason, 'base reason')
+
+    def test_latest_measurement_hold_window_detects_active_cooldown(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                payload = {
+                    'timestamp': '2026-05-24T04:51:00',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                    'why_this_action': {'summary': 'measurement hold is active'},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-24_measurement_hold_execution.json').write_text(json.dumps(payload), encoding='utf-8')
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 24, 5, 20, 0))
+
+                self.assertIsNotNone(hold)
+                self.assertEqual(hold['hold_started_at'], datetime(2026, 5, 24, 4, 51, 0))
+                self.assertEqual(hold['hold_until'], datetime(2026, 5, 24, 5, 51, 0))
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_latest_measurement_hold_window_clears_after_new_live_external_action(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_payload = {
+                    'timestamp': '2026-05-24T04:51:00',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }
+                live_payload = {
+                    'timestamp': '2026-05-24T05:10:00',
+                    'chosen_action': {'type': 'directory_submission_execution'},
+                    'result': {'status': 'submitted', 'ok': True, 'live_external_action': True},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-24_measurement_hold_execution.json').write_text(json.dumps(hold_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-24_directory_submission_execution.json').write_text(json.dumps(live_payload), encoding='utf-8')
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 24, 5, 20, 0))
+
+                self.assertIsNone(hold)
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_latest_measurement_hold_window_ignores_internal_repair_logs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_payload = {
+                    'timestamp': '2026-05-24T04:51:00',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }
+                repair_payload = {
+                    'timestamp': '2026-05-24T05:12:49',
+                    'chosen_action': {'type': 'measurement_hold_cooldown_repair'},
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-24_measurement_hold_execution.json').write_text(json.dumps(hold_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-24_measurement_hold_cooldown_repair.json').write_text(json.dumps(repair_payload), encoding='utf-8')
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 24, 5, 20, 0))
+
+                self.assertIsNotNone(hold)
+                self.assertEqual(hold['hold_started_at'], datetime(2026, 5, 24, 4, 51, 0))
+            finally:
+                run.LOG_DIR = original_log_dir
 
 
 if __name__ == '__main__':

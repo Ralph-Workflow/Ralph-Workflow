@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-05-24T04:51:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "distribution_selector_measurement_hold_repair",
+    "channel": "marketing_loop_runtime",
+    "title": "Stop post-burst reset churn when live actions are already in flight",
+    "targets": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_distribution_lane_selector_repair_pause.py"
+    ]
+  },
+  "why_this_action": {
+    "summary": "The selector was still steering into distribution_reset even after multiple fresh external actions, active same-family pause windows, and live StackOverflow/Apollo handoff windows made another reset fake progress.",
+    "shared_findings_used": [
+      "market_intelligence_latest.json",
+      "marketing_workflow_audit_latest.json",
+      "marketing_workflow_audit_latest.md",
+      "distribution_lane_latest.json",
+      "stackoverflow_answer_lane_latest.json",
+      "seo-reports/2026-05-24.md",
+      "reddit_post_analysis.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "files_changed": 3,
+    "selector_output_after_fix": "measurement_hold",
+    "execution_output_after_fix": "measurement_hold_execution"
+  },
+  "verification": {
+    "tests": [
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause",
+      "python3 -m py_compile agents/marketing/distribution_lane_selector.py agents/marketing/distribution_lane_executor.py"
+    ],
+    "runtime_check": "choose_distribution_lane(datetime.fromisoformat('2026-05-24T04:51:00')) -> measurement_hold"
+  },
+  "expected_outcome": {
+    "primary_goal": "stop the always-on marketer from inventing another reset burst immediately after several fresh external actions already shipped",
+    "measurement_window": "effective immediately on the next lane-selection run",
+    "replacement_condition": "When one of the active measurement or handoff windows materially ages or resolves, the selector can return to a genuinely executable lane."
+  }
+}

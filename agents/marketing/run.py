@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
 from agents.marketing.distribution_lane_executor import execute_distribution_lane
 from agents.marketing.distribution_lane_selector import choose_distribution_lane
 from agents.marketing.market_intelligence_runtime import load_market_intelligence
+from agents.marketing.measurement_hold_runtime import latest_measurement_hold_window as shared_latest_measurement_hold_window
 
 AGENTS_DIR = ROOT / "agents/marketing"
 LOG_DIR = AGENTS_DIR / "logs"
@@ -80,6 +81,16 @@ MANUAL_CONTACT_REPAIR_ACTION_TYPES = {
 ACTIVE_REPAIR_WINDOW_STATUSES = {
     "needs_repair",
     "measurement_pending",
+}
+
+MEASUREMENT_HOLD_ACTION_TYPE = "measurement_hold_execution"
+MEASUREMENT_HOLD_COOLDOWN_MINUTES = 60
+LIVE_EXTERNAL_STATUSES = {
+    "executed",
+    "sent",
+    "submitted",
+    "published",
+    "launched",
 }
 
 
@@ -645,10 +656,91 @@ def competitor_report_is_stale(now: datetime, hours: int = 18) -> bool:
     return (now - modified) > timedelta(hours=hours)
 
 
+def _recent_marketing_log_payloads() -> list[tuple[Path, dict[str, Any], datetime]]:
+    payloads: list[tuple[Path, dict[str, Any], datetime]] = []
+    for path in LOG_DIR.glob("marketing_*.json"):
+        if any(token in path.name for token in ("latest", "workflow_audit", "loop_runner", "loop_verifier", "independent_verification", "momentum_watchdog", "positioning_audit")):
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        timestamp = parse_iso_date(payload.get("timestamp") or payload.get("timestamp_utc"))
+        if timestamp is not None and timestamp.tzinfo is not None:
+            timestamp = timestamp.replace(tzinfo=None)
+        if timestamp is None:
+            timestamp = datetime.fromtimestamp(path.stat().st_mtime)
+        payloads.append((path, payload, timestamp))
+    payloads.sort(key=lambda item: item[2], reverse=True)
+    return payloads
+
+
+def _latest_measurement_hold_window(now: datetime) -> dict[str, Any] | None:
+    return shared_latest_measurement_hold_window(now, LOG_DIR)
+
+
+def _write_measurement_hold_skip_log(now: datetime, hold_window: dict[str, Any]) -> Path:
+    payload = {
+        "timestamp": now.isoformat(),
+        "run_type": "marketing-measurement-hold-skip",
+        "chosen_action": {
+            "type": "measurement_hold_cooldown_skip",
+            "channel": "measurement_hold",
+            "title": "Respect active measurement-hold cooldown",
+        },
+        "why_this_action": {
+            "summary": "A recent measurement hold is still active, so this run should not burn more cycles on the same short-window evaluation churn.",
+            "hold_started_at": hold_window["hold_started_at"].isoformat(),
+            "hold_until": hold_window["hold_until"].isoformat(),
+            "source_log": hold_window["source_log"],
+        },
+        "result": {
+            "status": "skipped",
+            "ok": True,
+            "live_external_action": False,
+        },
+    }
+    path = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d_%H%M%S')}_measurement_hold_skip.json"
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return path
+
+
 def main() -> int:
     now = datetime.now()
     weekday = now.weekday()
     is_monday = weekday == 0
+
+    hold_window = _latest_measurement_hold_window(now)
+    if hold_window is not None:
+        skip_log = _write_measurement_hold_skip_log(now, hold_window)
+        payload = {
+            "timestamp": now.isoformat(),
+            "weekly_mode": is_monday,
+            "marketing_status": "measurement_hold",
+            "measurement_hold": {
+                "active": True,
+                "hold_started_at": hold_window["hold_started_at"].isoformat(),
+                "hold_until": hold_window["hold_until"].isoformat(),
+                "source_log": hold_window["source_log"],
+                "reason": hold_window["reason"],
+            },
+            "content_generation": {
+                "returncode": 0,
+                "stdout": "skipped: active measurement-hold cooldown",
+                "stderr": "",
+            },
+            "posting": {
+                "returncode": 0,
+                "stdout": "skipped: active measurement-hold cooldown",
+                "stderr": "",
+            },
+            "skip_log": str(skip_log),
+        }
+        log_file = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d')}.json"
+        log_file.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        print(f"[run.py] Active measurement hold until {hold_window['hold_until'].isoformat()} — skipping heavy marketing loop work.", flush=True)
+        print(json.dumps(payload, indent=2))
+        return 0
 
     # Run seo_daily.py for fresh SEO intelligence
     print("[run.py] Running seo_daily.py...", flush=True)

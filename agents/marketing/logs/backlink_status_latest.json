@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T02:20:30.943153+00:00",
+  "generated_at": "2026-05-24T03:36:46.492824+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -245,6 +245,62 @@
       ],
       "listing_live": false,
       "status_note": "Submitted 2026-05-24 via the public /api/submit-resource endpoint; treat as pending review until the public tool page resolves."
+    },
+    "ClaudeCodeAlternatives": {
+      "directory": "ClaudeCodeAlternatives",
+      "listing_url": "https://claude-code-alternatives.com/cli-agents/ralph-workflow/",
+      "submit_url": "https://claude-code-alternatives.com/tool/create/",
+      "check_results": [
+        {
+          "url": "https://claude-code-alternatives.com/cli-agents/ralph-workflow/",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        },
+        {
+          "url": "https://claude-code-alternatives.com/ai-ides/ralph-workflow/",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        },
+        {
+          "url": "https://claude-code-alternatives.com/cli-agents/",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        },
+        {
+          "url": "https://claude-code-alternatives.com/ai-ides/",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submitted 2026-05-24; initial POST returned HTTP 302 and an immediate second attempt said the Codeberg URL was already taken, so treat as recorded/pending until a public listing resolves."
+    },
+    "ClaudeStack": {
+      "directory": "ClaudeStack",
+      "listing_url": "https://claudestack.dev/entries/ralph-workflow",
+      "submit_url": "https://www.claudestack.dev/submit",
+      "check_results": [
+        {
+          "url": "https://claudestack.dev/entries/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        },
+        {
+          "url": "https://claudestack.dev/category/workflows",
+          "status": 200,
+          "ok": true,
+          "has_product_marker": false,
+          "negative_markers": [],
+          "transient_markers": []
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submitted 2026-05-24 via the public /api/submit endpoint; track the workflows category and the likely slug until the public entry resolves."
     }
   },
   "google_index": {
@@ -339,13 +395,25 @@
       "indexed": false,
       "found_urls": [],
       "status": 200
+    },
+    "ralph workflow claude code alternatives": {
+      "query": "ralph workflow claude code alternatives",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow claudestack": {
+      "query": "ralph workflow claudestack",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     }
   },
   "summary": {
     "directories_with_live_listings": 2,
     "queries_indexed": 1,
     "queries_unavailable": 0,
-    "total_queries": 15,
+    "total_queries": 17,
     "check_urls": [
       "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
       "https://github.com/Ralph-Workflow/Ralph-Workflow",

@@ -1,10 +1,11 @@
 {
-  "lane": "distribution_reset",
-  "reason": "Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet.",
+  "lane": "measurement_hold",
+  "reason": "Several fresh external actions already shipped in the short review window, and the other executable lanes are still inside measurement or handoff windows; hold for follow-through instead of inventing another reset.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
-    "19 directory submissions already shipped in the last 24 hours.",
-    "42 curator contact attempts already shipped in the last 24 hours.",
+    "20 directory submissions already shipped in the last 24 hours.",
+    "39 curator contact attempts already shipped in the last 24 hours.",
+    "5 live external marketing action(s) already shipped in the last 6 hours.",
     "Active repair window says to pause net-new directory submissions until current approval windows mature.",
     "Active repair window says to hold another same-family curator-contact burst and use a different lane.",
     "Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.",
@@ -24,6 +25,7 @@
     "Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
     "A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.",
     "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
+    "StackOverflow discovery is in an active post-429 cooldown until 2026-05-24T11:24:37.256862, so do not spend the next slot re-hitting the API.",
     "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
     "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.",
     "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",

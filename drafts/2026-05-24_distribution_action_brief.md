@@ -1,12 +1,13 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-24T04:33:28
-Chosen lane: **distribution_reset**
+Generated: 2026-05-24T05:30:30
+Chosen lane: **measurement_hold**
 
 ## Why this lane
-- Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet.
+- Several fresh external actions already shipped in the short review window, and the other executable lanes are still inside measurement or handoff windows; hold for follow-through instead of inventing another reset.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 19 directory submissions already shipped in the last 24 hours.
-- 42 curator contact attempts already shipped in the last 24 hours.
+- 20 directory submissions already shipped in the last 24 hours.
+- 39 curator contact attempts already shipped in the last 24 hours.
+- 5 live external marketing action(s) already shipped in the last 6 hours.
 - Active repair window says to pause net-new directory submissions until current approval windows mature.
 - Active repair window says to hold another same-family curator-contact burst and use a different lane.
 - Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.
@@ -26,6 +27,7 @@ Chosen lane: **distribution_reset**
 - Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
 - A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
+- StackOverflow discovery is in an active post-429 cooldown until 2026-05-24T11:24:37.256862, so do not spend the next slot re-hitting the API.
 - A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
 - The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
@@ -38,8 +40,8 @@ Chosen lane: **distribution_reset**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate queue-reset work
-- Do not count curator or comparison queue follow-through alone as a fresh repair
-- Reuse `market_intelligence_latest.json` and current queue logs to define the next untouched target classes
-- Add genuinely new third-party citation/backlink targets before the next outreach-prep execution
-- Keep Codeberg as the only primary CTA while expanding the target universe
+## Immediate measurement-hold work
+- Do not ship another fresh outreach/reset action in this short review window
+- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
+- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
+- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map

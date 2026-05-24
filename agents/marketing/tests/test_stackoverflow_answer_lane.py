@@ -144,6 +144,32 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(payload["status"], "rate_limited_reused_previous")
         self.assertTrue(payload["rate_limited"])
+        self.assertTrue(payload["cooldown_active"])
+        self.assertIsNotNone(payload["next_retry_at"])
+        self.assertEqual(payload["top_questions"], previous["top_questions"])
+
+    def test_main_respects_active_rate_limit_cooldown(self):
+        previous = {
+            "generated_at": "2026-05-24T04:49:56.677445",
+            "status": "rate_limited_reused_previous",
+            "rate_limited": True,
+            "cooldown_active": True,
+            "next_retry_at": "2026-05-24T10:49:56.677445",
+            "top_questions": [{"title": "Earlier question", "url": "https://stackoverflow.com/questions/1/example"}],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "stackoverflow_answer_lane_latest.json"
+            log_path.write_text(stackoverflow_answer_lane.json.dumps(previous), encoding="utf-8")
+            with patch.object(stackoverflow_answer_lane, "SO_LOG", log_path), \
+                 patch.object(stackoverflow_answer_lane, "SO_SEARCH_SPECS", [{"label": "workflow"}]), \
+                 patch.object(stackoverflow_answer_lane, "so_search_site") as mocked_search:
+                rc = stackoverflow_answer_lane.main()
+                payload = stackoverflow_answer_lane.json.loads(log_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        mocked_search.assert_not_called()
+        self.assertEqual(payload["status"], "rate_limit_cooldown_reused_previous")
+        self.assertTrue(payload["cooldown_active"])
         self.assertEqual(payload["top_questions"], previous["top_questions"])
 
 

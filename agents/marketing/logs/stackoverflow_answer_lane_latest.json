@@ -1,8 +1,22 @@
 {
-  "generated_at": "2026-05-24T04:20:17.289634",
-  "status": "ok",
-  "rate_limited": false,
-  "search_errors": [],
+  "generated_at": "2026-05-24T05:24:37.256862",
+  "status": "rate_limited_reused_previous",
+  "rate_limited": true,
+  "cooldown_active": true,
+  "next_retry_at": "2026-05-24T11:24:37.256862",
+  "search_errors": [
+    {
+      "label": "production-reliability",
+      "code": 400,
+      "error": "HTTP Error 400: Bad Request"
+    },
+    {
+      "label": "claude-autonomous",
+      "code": 429,
+      "error": "HTTP Error 429: Too Many Requests"
+    }
+  ],
+  "halted_after_rate_limit": false,
   "total_questions_found": 1,
   "questions_scored": 1,
   "drafts_created": 0,
