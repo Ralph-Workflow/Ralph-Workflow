@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from ralph.testing._fake_psutil_process import FakePsutilProcess
@@ -23,6 +24,10 @@ class FakePsutil:
         if pid not in self._processes:
             self._processes[pid] = FakePsutilProcess(pid=pid)
         return self._processes[pid]
+
+    def process_iter(self, attrs: Sequence[str] | None = None) -> list[FakePsutilProcess]:
+        del attrs
+        return list(self._processes.values())
 
     def wait_procs(
         self,

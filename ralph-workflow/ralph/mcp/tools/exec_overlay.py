@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 from contextlib import contextmanager, suppress
@@ -20,6 +21,25 @@ _GENERATED_DIR_NAMES = (
     ".tox",
     ".nox",
 )
+
+
+def _get_private_exec_base() -> Path:
+    """Return a private per-user directory for exec overlays."""
+    if os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA", str(Path.home()))
+        base = Path(local_app_data) / "ralph" / "exec"
+    else:
+        home_base = Path.home() / ".cache" / "ralph" / "exec"
+        temp_root = Path(tempfile.gettempdir()).resolve()
+        base = (
+            Path("/var/tmp") / "ralph" / "exec"
+            if home_base.resolve().is_relative_to(temp_root)
+            else home_base
+        )
+    base.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with suppress(Exception):
+        base.chmod(0o700)
+    return base
 
 
 def _mirror_workspace(source_root: Path, overlay_root: Path) -> None:
@@ -190,12 +210,18 @@ def _ensure_git_isolation(source_root: Path, overlay_root: Path, tmp_root: Path)
 @contextmanager
 def create_ephemeral_overlay(source_root: Path) -> Iterator[Path]:
     """Create a temporary workspace mirror for isolated exec runs."""
-    with tempfile.TemporaryDirectory(prefix="ralph-exec-overlay-") as tmpdir:
-        overlay_root = Path(tmpdir) / "ws"
+    private_base = _get_private_exec_base()
+    tmpdir_path = tempfile.mkdtemp(dir=private_base)
+    try:
+        tmpdir = Path(tmpdir_path)
+        overlay_root = tmpdir / "ws"
         overlay_root.parent.mkdir(parents=True, exist_ok=True)
         _mirror_workspace(source_root, overlay_root)
-        _ensure_git_isolation(source_root, overlay_root, Path(tmpdir))
+        _ensure_git_isolation(source_root, overlay_root, tmpdir)
         yield overlay_root
+    finally:
+        with suppress(Exception):
+            shutil.rmtree(tmpdir_path, ignore_errors=True)
 
 
 __all__ = ["create_ephemeral_overlay"]

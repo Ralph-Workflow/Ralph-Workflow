@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
@@ -26,7 +28,7 @@ class TestCreateEphemeralOverlay:
             assert overlay != workspace
             assert (overlay / "root.txt").read_text(encoding="utf-8") == "root"
 
-    def test_yields_path_inside_temp_dir(self, tmp_path: Path) -> None:
+    def test_yields_path_in_isolated_private_dir(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
 
@@ -202,6 +204,53 @@ class TestCreateEphemeralOverlay:
             assert overlay_git.read_text(encoding="utf-8") == "not a gitdir pointer\n"
 
 
+@pytest.mark.timeout_seconds(30)
+class TestOverlayPrivateDirectoryPlacement:
+    """Observer-based proof that the exec overlay is not in the system temp directory."""
+
+    @pytest.mark.subprocess_e2e
+    def test_overlay_cwd_is_not_in_system_temp_dir(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+
+        result = run_command(
+            sys.executable,
+            ["-c", "import os; print(os.getcwd())"],
+            workspace,
+            5_000,
+        )
+
+        assert result.returncode == 0
+        overlay_cwd = Path(result.stdout.decode().strip())
+        tmp_dir = Path(os.path.realpath(tempfile.gettempdir()))
+
+        assert not overlay_cwd.is_relative_to(tmp_dir), (
+            f"Overlay CWD {overlay_cwd!r} is inside system temp {tmp_dir!r}. "
+            "create_ephemeral_overlay must place overlays in a private directory so "
+            "scanning the system temp dir finds nothing during exec."
+        )
+
+    @pytest.mark.subprocess_e2e
+    def test_overlay_private_dir_is_cleaned_up_after_exec(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+
+        result = run_command(
+            sys.executable,
+            ["-c", "import os; print(os.getcwd())"],
+            workspace,
+            5_000,
+        )
+
+        assert result.returncode == 0
+        overlay_cwd = Path(result.stdout.decode().strip())
+        overlay_tmpdir = overlay_cwd.parent
+        assert not overlay_tmpdir.exists(), (
+            f"Overlay temp dir {overlay_tmpdir!r} still exists after exec returned. "
+            "create_ephemeral_overlay must clean up the per-exec directory on exit."
+        )
+
+
 class TestRunCommandOverlayIntegration:
     def test_run_command_passes_overlay_cwd_to_runner(self, tmp_path: Path) -> None:
         seen_cwd: list[Path] = []
@@ -337,3 +386,35 @@ class TestOverlayIsolationEndToEnd:
         assert source_path == str(overlay_dir)
         assert pwd != str(workspace)
         assert pwd in {"", str(overlay_dir)}
+
+
+@pytest.mark.timeout_seconds(30)
+class TestExecOrphanProcessCleanup:
+    @pytest.mark.subprocess_e2e
+    def test_background_process_is_killed_after_exec_returns(
+        self, tmp_path: Path
+    ) -> None:
+        psutil = pytest.importorskip("psutil")
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        script = (
+            "import subprocess, sys; "
+            "p = subprocess.Popen("
+            "    [sys.executable, '-c', 'import time; time.sleep(60)'], "
+            "    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL"
+            "); "
+            "print(p.pid)"
+        )
+
+        result = run_command(sys.executable, ["-c", script], workspace, 10_000)
+        assert result.returncode == 0
+        child_pid = int(result.stdout.decode().strip())
+
+        try:
+            _, alive = psutil.wait_procs([psutil.Process(child_pid)], timeout=2.0)
+            assert not alive, (
+                f"Background process {child_pid} still alive after exec returned; "
+                "_cleanup_exec_orphans must kill it."
+            )
+        except psutil.NoSuchProcess:
+            pass

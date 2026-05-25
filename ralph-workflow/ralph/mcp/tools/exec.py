@@ -6,8 +6,10 @@ inside an ephemeral workspace overlay after capability checks and policy filteri
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
+import signal
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -29,6 +31,9 @@ from ralph.process.manager import SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from ralph.process.manager import ProcessManager
+    from ralph.process.manager._process_manager_types import _PsutilModuleLike, _PsutilProcessLike
 
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
 DEFAULT_TIMEOUT_MS = 30_000
@@ -435,6 +440,41 @@ def _child_process_env(workspace_root: Path, cwd: Path) -> dict[str, str]:
     return env
 
 
+def _kill_orphan_tree_windows(root_pid: int, psutil_mod: _PsutilModuleLike | None) -> None:
+    """Recursively kill orphaned descendants of root_pid on Windows."""
+    if psutil_mod is None or root_pid <= 0:
+        return
+    frontier: set[int] = {root_pid}
+    seen: set[int] = set()
+    while frontier:
+        children_found: dict[int, _PsutilProcessLike] = {}
+        with contextlib.suppress(Exception):
+            for proc in psutil_mod.process_iter(["pid", "ppid"]):
+                with contextlib.suppress(Exception):
+                    info = proc.info
+                    ppid = info.get("ppid")
+                    pid = proc.pid
+                    if ppid in frontier and pid not in seen:
+                        children_found[pid] = proc
+        if not children_found:
+            break
+        seen.update(children_found)
+        for proc in children_found.values():
+            with contextlib.suppress(Exception):
+                proc.kill()
+        frontier = set(children_found)
+
+
+def _cleanup_exec_orphans(pgid: int, root_pid: int, psutil_mod: _PsutilModuleLike | None) -> None:
+    """Kill orphaned processes after the exec root exits."""
+    if hasattr(os, "killpg"):
+        if pgid > 1:
+            with contextlib.suppress(OSError):
+                os.killpg(pgid, signal.SIGKILL)
+    else:
+        _kill_orphan_tree_windows(root_pid, psutil_mod)
+
+
 def run_command(
     command: str,
     args: list[str],
@@ -452,7 +492,13 @@ def run_command(
         try:
             if resolved_deps.runner is not None:
                 return resolved_deps.runner([command, *args], overlay_cwd, timeout_seconds)
-            return _run_subprocess([command, *args], overlay_cwd, timeout_seconds, cwd)
+            return _run_subprocess(
+                [command, *args],
+                overlay_cwd,
+                timeout_seconds,
+                cwd,
+                resolved_deps.process_manager,
+            )
         except FileNotFoundError as exc:
             raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
         except PermissionError as exc:
@@ -470,8 +516,10 @@ def _run_subprocess(
     cwd: Path,
     timeout_seconds: float | None,
     workspace_root: Path,
+    pm: ProcessManager | None = None,
 ) -> _CompletedProcessAdapter:
-    handle = get_process_manager().spawn(
+    effective_pm = pm if pm is not None else get_process_manager()
+    handle = effective_pm.spawn(
         command,
         SpawnOptions(
             cwd=str(cwd),
@@ -481,11 +529,15 @@ def _run_subprocess(
             label=f"mcp-exec:{command[0]}",
         ),
     )
+    stdout: bytes | None = b""
+    stderr: bytes | None = b""
     try:
         stdout, stderr = handle.communicate_and_cleanup(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
         raise
+    finally:
+        _cleanup_exec_orphans(handle.record.pgid, handle.record.pid, effective_pm._psutil)
     return _CompletedProcessAdapter(
         stdout=stdout or b"",
         stderr=stderr or b"",

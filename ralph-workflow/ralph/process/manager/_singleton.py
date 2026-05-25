@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.process.manager._process_manager import ProcessManager
+from ralph.process.manager._process_manager_runtime import load_psutil_module as _load_psutil_module
 from ralph.process.manager._process_termination_error import ProcessTerminationError
 
 if TYPE_CHECKING:
@@ -23,6 +24,8 @@ class _ProcessManagerState:
     instance: ProcessManager | None = None
     atexit_registered: bool = False
 
+
+_DEFAULT_PSUTIL = _load_psutil_module()
 
 _pm_state = _ProcessManagerState()
 
@@ -40,7 +43,7 @@ def _atexit_shutdown() -> None:
 def get_process_manager(*, policy: ProcessManagerPolicy | None = None) -> ProcessManager:
     """Return the module-level ProcessManager singleton, creating it on first call."""
     if _pm_state.instance is None:
-        _pm_state.instance = ProcessManager(policy=policy)
+        _pm_state.instance = ProcessManager(policy=policy, psutil=_DEFAULT_PSUTIL)
     if not _pm_state.atexit_registered:
         atexit.register(_atexit_shutdown)
         _pm_state.atexit_registered = True

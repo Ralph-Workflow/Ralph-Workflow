@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
+    from ralph.process.manager import ProcessManager
 
 type CwdProvider = Callable[[], Path]
 type CommandRunner = Callable[[list[str], Path, float | None], _CompletedProcessAdapter]
@@ -23,3 +24,4 @@ class ExecRunDeps:
     runner: CommandRunner | None = None
     cwd_provider: CwdProvider | None = None
     overlay_factory: OverlayFactory | None = None
+    process_manager: ProcessManager | None = None
