@@ -13,7 +13,7 @@ import pytest
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_run_deps import ExecRunDeps
 from ralph.mcp.tools.exec import run_command
-from ralph.mcp.tools.exec_overlay import create_ephemeral_overlay
+from ralph.mcp.tools.exec_overlay import _compute_exec_base_str, create_ephemeral_overlay
 from tests.mock_workspace_root import MockWorkspaceRoot
 
 
@@ -202,6 +202,36 @@ class TestCreateEphemeralOverlay:
             overlay_git = overlay / ".git"
             assert overlay_git.is_file()
             assert overlay_git.read_text(encoding="utf-8") == "not a gitdir pointer\n"
+
+
+class TestComputeExecBaseStr:
+    """Unit tests for _compute_exec_base_str() OS branch selection."""
+
+    def test_windows_uses_localappdata(self, tmp_path: Path) -> None:
+        local_app = str(tmp_path / "AppData" / "Local")
+        result = _compute_exec_base_str("nt", local_app, str(tmp_path / "home"), "/tmp")
+        assert result == str(Path(local_app) / "ralph" / "exec")
+
+    def test_windows_falls_back_to_home_when_localappdata_absent(
+        self, tmp_path: Path
+    ) -> None:
+        home_str = str(tmp_path / "home" / "user")
+        result = _compute_exec_base_str("nt", None, home_str, "/tmp")
+        assert result == str(Path(home_str) / "ralph" / "exec")
+
+    def test_posix_normal_uses_home_cache(self, tmp_path: Path) -> None:
+        fake_home = tmp_path / "home" / "user"
+        fake_home.mkdir(parents=True)
+        system_tmp = tmp_path / "system-tmp"
+        system_tmp.mkdir()
+        result = _compute_exec_base_str("posix", None, str(fake_home), str(system_tmp))
+        assert result == str(fake_home / ".cache" / "ralph" / "exec")
+
+    def test_posix_home_cache_in_temp_uses_var_tmp(self, tmp_path: Path) -> None:
+        fake_home = tmp_path / "user"
+        fake_home.mkdir()
+        result = _compute_exec_base_str("posix", None, str(fake_home), str(tmp_path))
+        assert result == str(Path("/var/tmp") / "ralph" / "exec")
 
 
 @pytest.mark.timeout_seconds(30)

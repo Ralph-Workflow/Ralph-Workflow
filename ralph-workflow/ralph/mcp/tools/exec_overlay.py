@@ -23,19 +23,38 @@ _GENERATED_DIR_NAMES = (
 )
 
 
+def _compute_exec_base_str(
+    os_name: str,
+    local_app_data: str | None,
+    home_str: str,
+    temp_dir: str,
+) -> str:
+    """Return the private exec overlay base path for the given environment."""
+    if os_name == "nt":
+        root = local_app_data if local_app_data is not None else home_str
+        return str(Path(root) / "ralph" / "exec")
+
+    home_cache = Path(home_str) / ".cache" / "ralph" / "exec"
+    try:
+        home_cache_resolved = home_cache.resolve()
+        temp_root = Path(temp_dir).resolve()
+        if home_cache_resolved.is_relative_to(temp_root):
+            return str(Path("/var/tmp") / "ralph" / "exec")
+    except Exception:
+        pass
+    return str(home_cache)
+
+
 def _get_private_exec_base() -> Path:
     """Return a private per-user directory for exec overlays."""
-    if os.name == "nt":
-        local_app_data = os.environ.get("LOCALAPPDATA", str(Path.home()))
-        base = Path(local_app_data) / "ralph" / "exec"
-    else:
-        home_base = Path.home() / ".cache" / "ralph" / "exec"
-        temp_root = Path(tempfile.gettempdir()).resolve()
-        base = (
-            Path("/var/tmp") / "ralph" / "exec"
-            if home_base.resolve().is_relative_to(temp_root)
-            else home_base
+    base = Path(
+        _compute_exec_base_str(
+            os.name,
+            os.environ.get("LOCALAPPDATA") if os.name == "nt" else None,
+            str(Path.home()),
+            tempfile.gettempdir(),
         )
+    )
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
     with suppress(Exception):
         base.chmod(0o700)

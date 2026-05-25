@@ -5,7 +5,8 @@ from __future__ import annotations
 import itertools
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+import typing
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -61,7 +62,7 @@ def _make_handle(
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=returncode),
-        psutil=fake_psutil,
+        psutil=cast("typing.Any", fake_psutil),
     )
     return pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="test:managed-process"))
 
@@ -280,6 +281,28 @@ class TestManagedProcessCommunicateAndCleanup:
         assert live_child._killed is True
         assert dead_child._killed is False
         assert dead_child._terminated is False
+
+    def test_timeout_kills_snapshot_descendants(self) -> None:
+        live_child = TreeProcess(pid=1001, stubborn=True)
+        root = TreeProcess(
+            pid=1,
+            direct_children=[live_child],
+            recursive_children=[live_child],
+        )
+        fake_psutil = FakePsutil()
+        fake_psutil._processes = {1: root, 1001: live_child}
+        handle = _make_handle(fake_psutil=fake_psutil)
+        handle._proc.communicate = lambda input=None, timeout=None: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired(cmd=[sys.executable], timeout=0.1)
+        )
+
+        with pytest.raises(subprocess.TimeoutExpired):
+            handle.communicate_and_cleanup(cleanup_grace_period_s=0.0)
+
+        assert live_child._killed, (
+            "Live snapshot descendants must be killed by communicate_and_cleanup "
+            "timeout handler, independent of any exec-level orphan sweeper"
+        )
 
     def test_timeout_still_terminates_root(self, monkeypatch: pytest.MonkeyPatch) -> None:
         fake_psutil = FakePsutil()
