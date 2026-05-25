@@ -1,5 +1,5 @@
 # Ralph Workflow Primary-Repo-Flat Publisher Contact Packet
-Generated: 2026-05-25T11:14:27
+Generated: 2026-05-25T15:04:46
 
 ## Why this exists now
 - Codeberg adoption is still flat in the active window.
@@ -92,6 +92,41 @@ Ralph Workflow
 - Short contact-form version:
 ```text
 I liked Best AI Coding Tools in 2026. Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. B2B buyer guide audience already comparing coding-agent tradeoffs and adjacent workflow layers. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
+```
+
+### 3. Morph
+- URL: https://www.morphllm.com/best-ai-coding-agents-2026
+- Hook: 14 Best AI Coding Agents (2026): Full Rankings
+- Why this target: Fresh AI coding agent rankings page already comparing terminal agents and multi-agent workflows; good fit for a workflow-system addition that points evaluators to Codeberg first.
+- Suggested subject: Ralph Workflow for your AI coding agents rankings page
+- Recommended next step: email/contact send path is now identified
+- First channel to try: Email first: info@morphllm.com
+- Contact channels:
+  - email: info@morphllm.com
+  - contact page: https://www.morphllm.com/about
+  - contact page: https://www.morphllm.com/contact
+  - contact page: https://www.morphllm.com/docs
+  - X/Twitter: https://x.com/CerebrasSystems/status/1978874694825840679
+  - X/Twitter: https://x.com/morphllm
+  - LinkedIn: https://www.linkedin.com/company/morphllm
+- Outreach angle: keep it publisher-native and pain-led; ask for comparison/citation consideration with Codeberg as the canonical repo, not a generic product pitch.
+- Ready-to-send email draft:
+```text
+Hi,
+
+I liked 14 Best AI Coding Agents (2026): Full Rankings. A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
+Why I thought of your audience: Fresh AI coding agent rankings page already comparing terminal agents and multi-agent workflows; good fit for a workflow-system addition that points evaluators to Codeberg first. It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
+
+If you keep comparison roundups, workflow references, or follow-up links on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
+
+Thanks,
+Ralph Workflow
+```
+- Short contact-form version:
+```text
+I liked 14 Best AI Coding Agents (2026): Full Rankings. Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. Fresh AI coding agent rankings page already comparing terminal agents and multi-agent workflows; good fit for a workflow-system addition that points evaluators to Codeberg first. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
 ```
 
 ## Process rule now in force

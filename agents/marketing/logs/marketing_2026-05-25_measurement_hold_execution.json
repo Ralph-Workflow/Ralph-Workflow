@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-05-25T14:24:06.608707",
+  "timestamp": "2026-05-25T15:04:46.903167",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "measurement_hold_churn_guard_repair",
+    "type": "measurement_hold_follow_through",
     "channel": "measurement_hold",
     "title": "Distribution lane execution: measurement_hold",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_142406_measurement_hold_follow_through.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_150446_measurement_hold_follow_through.md"
   },
   "why_this_action": {
-    "summary": "Escalated repeated measurement-hold churn into an architecture guard on the third hold-window event: the prompt repair, the re-entry contract repair, and the scheduled post-hold rerun are already in place, so future runs should suppress duplicate follow-through unless a real signal or stale packet change appears.",
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",

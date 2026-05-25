@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-25T09:13:45+00:00
+Generated: 2026-05-25T13:01:14+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -83,3 +83,17 @@ Generated: 2026-05-25T09:13:45+00:00
   - contact page: https://www.tldl.io/about
   - website: https://www.tldl.io
   - X/Twitter: https://x.com/shenli3514
+
+### 7. Morph
+- Hook: 14 Best AI Coding Agents (2026): Full Rankings
+- Article/root: https://www.morphllm.com/best-ai-coding-agents-2026 / https://www.morphllm.com/
+- Recommended next step: email/contact send path is now identified
+- Suggested subject: Ralph Workflow for your AI coding agents rankings page
+- Discovered channels:
+  - email: info@morphllm.com
+  - contact page: https://www.morphllm.com/about
+  - contact page: https://www.morphllm.com/contact
+  - contact page: https://www.morphllm.com/docs
+  - X/Twitter: https://x.com/CerebrasSystems/status/1978874694825840679
+  - X/Twitter: https://x.com/morphllm
+  - LinkedIn: https://www.linkedin.com/company/morphllm

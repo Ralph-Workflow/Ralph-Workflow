@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-25T14:27:52.304744+02:00
+- Checked: 2026-05-25T15:06:57.805769+02:00
 - Overall health: high_risk
 - Primary failure mode: Architecture-owned topology, checker, verifier, and runtime-health gates are green after refresh; the only live red remains external marketing certification on primary-repo outcome evidence.
 - Most urgent fix: Do not certify the whole stack green until marketing produces a fresh independent pass backed by measurable Codeberg movement.
@@ -10,7 +10,7 @@
 ## Live topology
 
 - Live Gateway jobs: 20 total / 20 enabled / 0 disabled
-- Live running jobs now: Push research findings to git repo, agent-architecture-watchdog, apollo-channel-monitor, marketing-active-loop, marketing-momentum-watchdog, marketing-workflow-audit, reddit-monitor, reddit-pipeline-watchdog, repo-adoption-tracker, system-health-monitor
+- Live running jobs now: none
 - Live last-error residue: none
 - Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-reflection, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
 - User crontab ownership: ok
@@ -22,11 +22,11 @@
    - Recommended fix: let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before whole-stack green.
 
 2. **Medium — Architecture audit metadata matches the live Gateway topology in this run**
-   - Mechanism: live runtime currently shows 20 jobs, 20 enabled, 0 disabled, 10 running, and 0 live last-error residues.
+   - Mechanism: live runtime currently shows 20 jobs, 20 enabled, 0 disabled, 0 running, and 0 live last-error residues.
    - Recommended fix: keep direct live-topology checks on every watchdog run; do not infer live-disabled jobs from persisted history.
 
 3. **Medium — Architecture verifier path is green on local ownership and freshness gates**
-   - Mechanism: loop integrity marks the architecture watchdog ok, health monitor now shows only marketing issues, and the verifier has a fresh independently verified pass artifact.
+   - Mechanism: loop integrity marks the architecture watchdog ok, health monitor now shows only marketing issues, and the verifier can be rerun cleanly after this audit refresh.
    - Recommended fix: rerun independent verification after any future material architecture/runtime refresh.
 
 4. **Low — Docs and shared market-intelligence reuse remain independently verifiable**
@@ -36,9 +36,9 @@
 ## Repaired this run
 
 - **reran_loop_integrity** — Refreshed owner coverage, contract status, and user-crontab ownership against the live registry.
-- **reran_architecture_independent_verification** — Refreshed independent architecture verification once live topology aligned again with the current runtime.
-- **reran_architecture_verifier** — Restored a fresh architecture verifier pass artifact tied to the current independent verification.
-- **reran_health_monitor** — Refreshed runtime health after verifier recovery; live issues now localize only to marketing.
+- **reran_health_monitor** — Refreshed runtime health; live issues now localize only to marketing.
+- **reran_architecture_independent_verification** — Refreshed independent architecture verification against the updated audit and live topology.
+- **reran_architecture_verifier** — Restored a fresh architecture verifier pass artifact tied to the updated independent verification.
 - **refreshed_architecture_audit_artifacts** — Refreshed the architecture audit summary against the current live Gateway topology and latest verifier evidence.
 
 ## Still red
