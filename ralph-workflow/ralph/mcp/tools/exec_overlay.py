@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -183,7 +183,8 @@ def _ensure_git_isolation(source_root: Path, overlay_root: Path, tmp_root: Path)
     source_git = source_root / ".git"
     overlay_git = overlay_root / ".git"
     if source_git.is_file():
-        _setup_private_gitdir(source_git, overlay_git, overlay_root, tmp_root)
+        with suppress(Exception):
+            _setup_private_gitdir(source_git, overlay_git, overlay_root, tmp_root)
 
 
 @contextmanager

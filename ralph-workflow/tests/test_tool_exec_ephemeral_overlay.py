@@ -120,6 +120,25 @@ class TestCreateEphemeralOverlay:
 
         assert not overlay_path.exists()
 
+    def test_cleanup_on_exception(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        overlay_path = workspace
+
+        with pytest.raises(RuntimeError), create_ephemeral_overlay(workspace) as overlay:
+            overlay_path = overlay
+            raise RuntimeError("boom")
+
+        assert not overlay_path.exists()
+
+    def test_handles_empty_workspace(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+
+        with create_ephemeral_overlay(workspace) as overlay:
+            assert overlay.is_dir()
+            assert overlay != workspace
+
     def test_includes_regular_repo_git_directory(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         git_dir = workspace / ".git"
@@ -168,6 +187,18 @@ class TestCreateEphemeralOverlay:
             assert alternates.read_text(encoding="utf-8") == f"{shared_gitdir / 'objects'}\n"
             config_text = (private_gitdir / "config").read_text(encoding="utf-8")
             assert f"worktree = {overlay}" in config_text
+
+    def test_malformed_worktree_git_pointer_falls_back_to_copied_file(
+        self, tmp_path: Path
+    ) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / ".git").write_text("not a gitdir pointer\n", encoding="utf-8")
+
+        with create_ephemeral_overlay(workspace) as overlay:
+            overlay_git = overlay / ".git"
+            assert overlay_git.is_file()
+            assert overlay_git.read_text(encoding="utf-8") == "not a gitdir pointer\n"
 
 
 class TestRunCommandOverlayIntegration:
@@ -245,6 +276,7 @@ class TestRunCommandOverlaySubprocessE2E:
         assert readme.read_text(encoding="utf-8") != original
 
 
+@pytest.mark.timeout_seconds(30)
 class TestOverlayIsolationEndToEnd:
     @pytest.mark.subprocess_e2e
     def test_overlay_keeps_source_workspace_unchanged(self, tmp_path: Path) -> None:

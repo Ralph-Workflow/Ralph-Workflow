@@ -56,6 +56,14 @@ class TestHandleExecCommand:
         assert isinstance(content, ToolContent)
         assert "git version" in content.text.lower()
 
+    def test_exec_with_blacklisted_command_raises(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "sudo", "args": ["ls"]}
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_exec_command(session, workspace, params)
+
     def test_exec_returns_error_on_nonzero_exit(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
