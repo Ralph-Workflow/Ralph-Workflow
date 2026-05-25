@@ -127,7 +127,6 @@
 # transport = "agy"
 # yolo_flag = "--dangerously-skip-permissions"
 # print_flag = "--print"
-# session_flag = "--conversation {}"
 # json_parser = "generic"
 # can_commit = false
 # display_name = "Google Anti Gravity"

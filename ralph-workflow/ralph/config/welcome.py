@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 _KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
     "claude": "https://docs.claude.com/claude-code",
     "opencode": "https://opencode.ai",
+    "agy": "https://github.com/google-antigravity/antigravity-cli",
 }
 
 
@@ -58,7 +59,7 @@ def _build_agent_availability_content(
                 return content
         except Exception:
             pass
-    content.append(Text("Ensure your AI agents are on PATH (e.g., `claude`, `opencode`)"))
+    content.append(Text("Ensure your AI agents are on PATH (e.g., `claude`, `opencode`, `agy`)"))
     return content
 
 

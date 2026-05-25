@@ -113,3 +113,15 @@ class TestResolveInvocationRuntime:
         result = invoke_module.resolve_invocation_runtime(config, extra_env, None)
         assert result.mcp_endpoint == "http://localhost:9999"
         assert result.agent_env is not None
+
+    def test_agy_runtime_early_exit_when_no_endpoint(self) -> None:
+        config = AgentConfig(
+            cmd="agy",
+            transport=AgentTransport.AGY,
+        )
+
+        result = invoke_module.resolve_invocation_runtime(config, None, None)
+
+        assert result.agent_env is None
+        assert result.server_env is None
+        assert result.mcp_endpoint is None

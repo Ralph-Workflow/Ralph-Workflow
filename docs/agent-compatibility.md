@@ -27,7 +27,7 @@ This guide documents compatibility between Ralph Workflow and various AI coding 
 | **Claude Code** | ✅ Excellent | ✅ Excellent | Best overall compatibility |
 | **Codex (OpenAI)** | ✅ Excellent | ✅ Excellent | Great for security-focused reviews |
 | **OpenCode** | ✅ Good | ✅ Good | Requires `opencode` parser |
-| **Google Anti Gravity (AGY)** | ✅ Good | ✅ Good | First-class; config-discovery-based setup (pre-configure `mcp_config.json`) |
+| **Google Anti Gravity (AGY)** | ✅ Good | ✅ Good | First-class; PTY-based runtime injection with `.agents/mcp_config.json` managed by Ralph |
 | **CCS/GLM** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
 | **ZhipuAI/ZAI** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
 | **Qwen** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
@@ -125,19 +125,20 @@ json_parser = "opencode"
 [agents.agy]
 name = "agy"
 command = "agy"
-args = ["--conversation", "<PROMPT>"]
+print_flag = "--print"
+yolo_flag = "--dangerously-skip-permissions"
 json_parser = "generic"
 ```
 
 **MCP Setup**:
-- pre-configure `mcp_config.json`
+- Ralph Workflow automatically injects the run-scoped Ralph MCP endpoint into `.agents/mcp_config.json` before AGY launches and restores the file after the run
 - run `ralph --check-mcp`
-- keep the AGY config discovery path aligned with Ralph-owned MCP proxies
+- keep the AGY workspace config aligned with Ralph-owned MCP proxies
 
 **Notes**:
 - Completion contract: `declare_complete` or phase artifact, same as Claude interactive
 - Multimodal delivery uses the Gemini provider profile
-- Config-discovery-based, not env-var injection
+- PTY-based runtime injection into `.agents/mcp_config.json`, not manual pre-configuration
 - AGY is a supported orchestration path, not a replacement for Ralph Workflow
 
 ## Agents with Known Issues

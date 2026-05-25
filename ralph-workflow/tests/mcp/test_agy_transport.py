@@ -75,3 +75,83 @@ def test_load_existing_agy_upstream_servers_parses_http_entry(
     assert len(http_servers) == 1
     assert http_servers[0].name == "github"
     assert http_servers[0].url == "https://api.githubcopilot.com/mcp/"
+
+
+def test_load_existing_agy_upstream_servers_reads_workspace_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """It reads workspace-level .agents/mcp_config.json before global config."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    agents_dir = workspace / ".agents"
+    agents_dir.mkdir()
+    config_file = agents_dir / "mcp_config.json"
+    config_file.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "ws-upstream": {
+                        "serverUrl": "http://workspace-upstream:7777/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = load_existing_agy_upstream_servers(workspace_path=workspace)
+
+    names = {s.name for s in result}
+    assert "ws-upstream" in names
+    http_servers = [s for s in result if s.name == "ws-upstream"]
+    assert len(http_servers) == 1
+    assert http_servers[0].url == "http://workspace-upstream:7777/mcp"
+
+
+def test_load_existing_agy_upstream_servers_global_overrides_workspace_on_name_collision(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Global AGY config overrides workspace config when names collide."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    workspace = tmp_path / "project"
+    agents_dir = workspace / ".agents"
+    agents_dir.mkdir(parents=True)
+    workspace_config = agents_dir / "mcp_config.json"
+    workspace_config.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "shared-server": {
+                        "serverUrl": "http://workspace.example.invalid/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    agy_home = tmp_path / ".gemini" / "antigravity-cli"
+    agy_home.mkdir(parents=True)
+    global_config = agy_home / "mcp_config.json"
+    global_config.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "shared-server": {
+                        "serverUrl": "http://global.example.invalid/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = load_existing_agy_upstream_servers(workspace_path=workspace)
+
+    assert len(result) == 1
+    assert result[0].name == "shared-server"
+    assert result[0].url == "http://global.example.invalid/mcp"

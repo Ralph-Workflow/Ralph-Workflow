@@ -1,3 +1,5 @@
+"""Tests for the verify command wrapper."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -103,6 +105,7 @@ def test_pytest_commands_mirror_makefile_shards_without_expanding_directories(
 def test_main_runs_all_verify_steps_when_successful(
     tmp_path: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
 ) -> None:
+    timeout = verify_module._TEST_TIMEOUT_SECONDS
     pytest_cmd_a = (
         "-m",
         "pytest",
@@ -128,8 +131,8 @@ def test_main_runs_all_verify_steps_when_successful(
         "-m",
         "not subprocess_e2e",
     )
-    wrapped_a = verify_module._verify_timeout_pytest_args(pytest_cmd_a, timeout=30.0)
-    wrapped_b = verify_module._verify_timeout_pytest_args(pytest_cmd_b, timeout=30.0)
+    wrapped_a = verify_module._verify_timeout_pytest_args(pytest_cmd_a, timeout=timeout)
+    wrapped_b = verify_module._verify_timeout_pytest_args(pytest_cmd_b, timeout=timeout)
     monkeypatch.setattr(
         verify_module,
         "_pytest_commands",
@@ -198,6 +201,7 @@ def test_main_prints_agent_fix_banner_when_verify_step_fails(
 def test_main_wraps_pytest_with_verify_timeout(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
+    timeout = verify_module._TEST_TIMEOUT_SECONDS
     pytest_cmd = (
         "-m",
         "pytest",
@@ -210,7 +214,7 @@ def test_main_wraps_pytest_with_verify_timeout(
         "-m",
         "not subprocess_e2e",
     )
-    wrapped = verify_module._verify_timeout_pytest_args(pytest_cmd, timeout=30.0)
+    wrapped = verify_module._verify_timeout_pytest_args(pytest_cmd, timeout=timeout)
     monkeypatch.setattr(verify_module, "_pytest_commands", lambda _cwd: (pytest_cmd,))
     runner = StubRunner(
         [
@@ -233,8 +237,9 @@ def test_main_wraps_pytest_with_verify_timeout(
 def test_main_treats_no_tests_exit_as_non_failing_shard(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
+    timeout = verify_module._TEST_TIMEOUT_SECONDS
     pytest_cmd = verify_module._pytest_args("tests/test_[aA]*.py")
-    wrapped = verify_module._verify_timeout_pytest_args(pytest_cmd, timeout=30.0)
+    wrapped = verify_module._verify_timeout_pytest_args(pytest_cmd, timeout=timeout)
     monkeypatch.setattr(verify_module, "_pytest_commands", lambda _cwd: (pytest_cmd,))
     runner = StubRunner(
         [
@@ -252,3 +257,16 @@ def test_main_treats_no_tests_exit_as_non_failing_shard(
 def test_suite_timeout_cli_value_avoids_decimal_noise() -> None:
     assert verify_module._suite_timeout_cli_value(30.0) == "30"
     assert verify_module._suite_timeout_cli_value(30.5) == "30.5"
+
+
+def test_main_rejects_positional_arguments(tmp_path: Path) -> None:
+    runner = StubRunner([])
+
+    try:
+        main(["unexpected"], runner=runner, cwd=tmp_path)
+    except SystemExit as exc:
+        assert str(exc) == "ralph.verify does not accept positional arguments"
+    else:
+        raise AssertionError("expected SystemExit")
+
+    assert runner.calls == []

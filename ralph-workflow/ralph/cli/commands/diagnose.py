@@ -162,7 +162,7 @@ def build_next_steps(
             "Claude Code (https://docs.claude.com/claude-code), "
             "Codex CLI (https://codex.openai.com), "
             "OpenCode (https://opencode.ai), "
-            "or Google Anti Gravity."
+            "or Google Anti Gravity (https://github.com/google-antigravity/antigravity-cli)."
         )
 
     if not validation_ok:

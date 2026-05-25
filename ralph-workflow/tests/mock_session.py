@@ -7,6 +7,7 @@ class MockSession:
     session_id = "test-session"
 
     def __init__(self, *args: object) -> None:
+        self.run_id = "test-run"
         if not args:
             self._caps: set[str] = set()
         elif len(args) == 1 and isinstance(args[0], set):

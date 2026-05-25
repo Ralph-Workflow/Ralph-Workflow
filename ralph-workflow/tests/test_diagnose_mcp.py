@@ -71,6 +71,7 @@ def test_diagnose_renders_custom_mcp_tables_with_real_stdio_fixture(
     assert "Claude" in output
     assert "Codex" in output
     assert "OpenCode" in output
+    assert "AGY" in output
 
 
 def test_diagnose_renders_effective_session_mcp_inventory(

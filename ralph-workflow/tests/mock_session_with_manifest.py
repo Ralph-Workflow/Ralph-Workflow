@@ -12,6 +12,7 @@ from ralph.mcp.multimodal.resources import MediaManifest
 class MockSessionWithManifest:
     allowed_capability: str | None = None
     session_id: str = "test-session"
+    run_id: str = "test-run"
     media_manifest: MediaManifest = field(default_factory=MediaManifest)
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
 

@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from ralph.display.snapshot import PipelineSnapshot
 
 _MAX_NOTIFY_SECONDS = 0.001
-PLAN_STEP_COUNT = 2
 
 
 def _make_state() -> PipelineState:

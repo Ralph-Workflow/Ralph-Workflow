@@ -1,0 +1,143 @@
+"""Black-box regression tests for AGY runner completion behavior."""
+
+from __future__ import annotations
+
+import types
+from typing import TYPE_CHECKING, cast
+
+from ralph.agents.execution_state import AgyExecutionStrategy
+from ralph.agents.idle_watchdog import TimeoutPolicy
+from ralph.agents.invoke import (
+    AgentInvocationError,
+    CompletionCheckOptions,
+    check_process_result,
+)
+from ralph.config.enums import AgentTransport
+from ralph.config.general_config import GeneralConfig
+from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.context import make_display_context
+from ralph.pipeline import runner as runner_module
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
+from ralph.workspace.scope import WorkspaceScope
+from tests._session_fake_mcp_bridge import _FakeMcpBridge
+from tests._session_registry_factory import _RegistryFactory
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
+
+    import pytest
+
+    from ralph.process.manager import ManagedProcess
+
+
+def test_agy_missing_completion_does_not_retry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the task", encoding="utf-8")
+    effect = InvokeAgentEffect(agent_name="agy", phase="development", prompt_file=str(prompt_file))
+    _RegistryFactory._agent_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    registry = _RegistryFactory
+    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_a, **_kw: _FakeMcpBridge())
+    invoke_count = [0]
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: object | None = None,
+    ) -> Iterator[str]:
+        del config, prompt_file, options
+        invoke_count[0] += 1
+
+        def _gen() -> Iterator[str]:
+            yield "output line"
+            fake_handle = cast("ManagedProcess", types.SimpleNamespace(returncode=0))
+            check_process_result(
+                fake_handle,
+                "agy",
+                [],
+                CompletionCheckOptions(
+                    execution_strategy=AgyExecutionStrategy(),
+                    workspace_path=tmp_path,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=0.0,
+                    ),
+                ),
+            )
+
+        return _gen()
+
+    result = runner_module.execute_agent_effect(
+        effect,
+        UnifiedConfig(general=GeneralConfig(max_retries=0)),
+        runner_module.AgentExecutionDeps(
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
+            agent_registry=registry,
+        ),
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+    )
+
+    assert result == PipelineEvent.AGENT_FAILURE
+    assert invoke_count[0] == 1
+
+
+def test_agy_completion_evidenced_run_does_not_fail(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the task", encoding="utf-8")
+    effect = InvokeAgentEffect(agent_name="agy", phase="development", prompt_file=str(prompt_file))
+    _RegistryFactory._agent_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    registry = _RegistryFactory
+    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_a, **_kw: _FakeMcpBridge())
+    invoke_count = [0]
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: object | None = None,
+    ) -> Iterator[str]:
+        del config, prompt_file, options
+        invoke_count[0] += 1
+        declare_line = "Task declared complete: session_id=agy, summary=done, timestamp=1"
+
+        def _gen() -> Iterator[str]:
+            yield declare_line
+            fake_handle = cast("ManagedProcess", types.SimpleNamespace(returncode=0))
+            check_process_result(
+                fake_handle,
+                "agy",
+                [declare_line],
+                CompletionCheckOptions(
+                    execution_strategy=AgyExecutionStrategy(),
+                    workspace_path=tmp_path,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=0.0,
+                    ),
+                ),
+            )
+
+        return _gen()
+
+    result = runner_module.execute_agent_effect(
+        effect,
+        UnifiedConfig(general=GeneralConfig(max_retries=0)),
+        runner_module.AgentExecutionDeps(
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
+            agent_registry=registry,
+        ),
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert invoke_count[0] == 1

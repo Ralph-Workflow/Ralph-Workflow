@@ -36,7 +36,7 @@ fails when it tries to invoke an agent.
 - **Claude Code**: see <https://docs.claude.com/claude-code>
 - **Codex CLI**: see <https://platform.openai.com/docs/codex>
 - **opencode**: see <https://opencode.ai>
-- **Google Anti Gravity (agy)**: see the Google Anti Gravity documentation for installation instructions
+- **Google Anti Gravity (agy)**: see <https://github.com/google-antigravity/antigravity-cli>
 
 Verify after installation:
 
@@ -45,6 +45,17 @@ ralph --diagnose
 ```
 
 The PATH column in the Agents table should show `on PATH` in green.
+
+## AGY transport unavailable on Windows
+
+**Symptom:** The AGY transport fails immediately on Windows, or the run log reports that PTY-backed terminal handling is supported only on POSIX platforms.
+
+**Cause:** Ralph Workflow invokes AGY via a PTY so AGY's `isatty()` check in `--print` mode succeeds. That transport depends on POSIX terminal APIs (`openpty`, `fork`, controlling-terminal setup), so it supports Linux and macOS directly but not native Windows terminals through the same code path.
+
+**Fix:**
+
+- Use WSL2 or a POSIX-compatible environment on Windows.
+- Or route the phase to another headless transport such as Codex or OpenCode.
 
 ## MCP servers fail to start
 

@@ -75,13 +75,11 @@ Do not rely on Codex for environments that require strict tool isolation. Ralph 
 
 Reference: https://platform.openai.com/docs/codex
 
-### Google Anti Gravity - Full Enforcement (Config-Discovery-Based)
+### Google Anti Gravity - Full Enforcement (Workspace-Config-Injection-Based)
 
-Google Anti Gravity (AGY) is a first-class supported agent path under the same MCP enforcement contract as Claude Code and OpenCode. The distinction from those backends is that AGY has no documented environment variable for config root redirection, so Ralph Workflow uses config-discovery-based upstream loading rather than direct injection.
+Google Anti Gravity (AGY) is a first-class supported agent path under the same MCP enforcement contract as Claude Code and OpenCode. Ralph Workflow automatically injects the run-scoped Ralph MCP endpoint into the workspace-level `.agents/mcp_config.json` before AGY launches using the `agy_workspace_mcp_endpoint` context manager, and restores the file after the run. The provider-visible `.agents/mcp_config.json` written by this context manager contains only the Ralph MCP server entry, matching Ralph's strict-authority-mode contract. No manual pre-configuration of the Ralph endpoint is required. Ralph Workflow still discovers user-configured AGY upstream servers from `~/.gemini/antigravity-cli/mcp_config.json` and workspace `.agents/mcp_config.json` for the upstream proxy.
 
-Ralph Workflow discovers AGY upstream servers from the user's existing config files: `~/.gemini/antigravity-cli/mcp_config.json` and workspace-level `.agents/mcp_config.json`. Users must pre-configure the Ralph MCP endpoint in AGY's `mcp_config.json` as a `serverUrl` entry; Ralph Workflow reads that existing config, normalizes AGY's `serverUrl` HTTP entries, and re-exposes those upstream tools as Ralph Workflow-owned proxied aliases.
-
-AGY participates fully in Ralph's upstream proxy model, capability-gated MCP model, and completion contract. There is no documented home-root override, so Ralph treats AGY as config-discovery-based rather than direct-injection-based — a setup difference, not a capability limitation.
+AGY participates fully in Ralph's upstream proxy model, capability-gated MCP model, and completion contract. This is a setup difference, not a capability limitation.
 
 ## 3. Known Bugs and Limitations
 
@@ -103,8 +101,6 @@ AGY participates fully in Ralph's upstream proxy model, capability-gated MCP mod
 
 ### Google Anti Gravity
 
-- AGY does not currently expose a documented home-root override for config redirection.
-- Ralph discovers AGY upstream servers from existing config files instead of injecting a live temp-home redirect.
 - `serverUrl` is the AGY HTTP field name; `url` is used by Ralph's internal upstream normalization.
 
 ## 4. How Ralph Workflow Verifies Enforcement
@@ -112,9 +108,11 @@ AGY participates fully in Ralph's upstream proxy model, capability-gated MCP mod
 Ralph Workflow's test suite covers enforcement through agent invocation tests:
 
 - **`tests/test_agents_invoke_1.py`** through **`tests/test_agents_invoke_5.py`** verify Claude, OpenCode, Codex, and AGY invocation enforcement.
-- **`tests/test_agy_execution_contract.py`** proves AGY uses `ClaudeInteractiveExecutionStrategy` and that clean exit without `declare_complete` raises `OpenCodeResumableExitError`.
+- **`tests/test_agy_execution_contract.py`** proves AGY uses `AgyExecutionStrategy` with `supports_session_continuation()=False` and `supports_completion_enforcement()=True`, and that clean exit without `declare_complete` raises `AgentInvocationError` (non-retryable — no retry loop).
+- **`tests/test_agy_runner_no_retry.py`** verifies that AGY missing-completion reaches `AGENT_FAILURE` via the `check_process_result` seam with exactly one invoke attempt (no retry loop), and that a completion-evidenced AGY run is accepted by the runner, returning `PipelineEvent.AGENT_SUCCESS`.
 - **`tests/mcp/test_agy_transport.py`** verifies the AGY transport helpers, including `serverUrl` normalization for HTTP upstream servers.
-- **`tests/test_agents_invoke_5.py`** includes the AGY runtime endpoint wiring behavior test.
+- **`tests/test_agy_workspace_mcp.py`** verifies workspace-level MCP config injection/restore and that the written config is Ralph-only.
+- **`tests/agents/test_invoke_mcp_merge.py`** verifies `invoke_agent()` writes and restores `.agents/mcp_config.json` with only the Ralph entry.
 
 Transport selection and alias routing are verified in **`tests/test_agent_registry.py`**, which checks that `ccs` aliases resolve to the correct CLI and that each CLI receives the appropriate transport configuration.
 
@@ -122,7 +120,7 @@ Run these tests with:
 
 ```bash
 cd ralph-workflow
-pytest tests/test_agents_invoke_1.py tests/test_agents_invoke_2.py tests/test_agents_invoke_3.py tests/test_agents_invoke_4.py tests/test_agents_invoke_5.py -q
+pytest tests/test_agents_invoke_1.py tests/test_agents_invoke_2.py tests/test_agents_invoke_3.py tests/test_agents_invoke_4.py tests/test_agents_invoke_5.py tests/test_agy_workspace_mcp.py tests/agents/test_invoke_mcp_merge.py -q
 ```
 
 ## 5. Follow-Up
@@ -131,7 +129,7 @@ pytest tests/test_agents_invoke_1.py tests/test_agents_invoke_2.py tests/test_ag
 
 With MCP-only enforcement active, agents that encounter an unreachable MCP server have no native fallback. Claude Code, OpenCode, Codex, and Google Anti Gravity will all produce output when their only available tools are unavailable, but that output will not be useful and may be silently wrong.
 
-A preflight probe that verifies MCP server reachability before launching an agent is planned. See `.agent/PLAN.md` for the full roadmap. Until that probe is implemented, an unreachable MCP server will produce a confusing failure mode that is difficult to diagnose from logs alone.
+Ralph Workflow ships a built-in MCP reachability preflight via `ralph --check-mcp`. Running this command validates all configured MCP servers and exits with code 0 on success or non-zero on failure. The preflight is implemented in `ralph/cli/main.py` (`handle_check_mcp`) and calls `validate_custom_mcp_servers` from `ralph/pipeline/runner.py`, which probes each configured server for reachability. Running `ralph --check-mcp` before the first AGY (or any agent) run is the recommended way to catch unreachable MCP servers before they produce confusing agent failures.
 
 ### Prompt Size Monitoring
 

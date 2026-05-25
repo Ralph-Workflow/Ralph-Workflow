@@ -868,6 +868,7 @@ def test_git_diff_uses_start_commit_sha_when_present(tmp_git_repo: Path) -> None
     diff = materialize_module._git_diff(tmp_git_repo)
 
     assert "feature.py" in diff
+    repo.git.clear_cache()
 
 
 def test_git_diff_falls_back_to_head_when_start_commit_absent(tmp_git_repo: Path) -> None:
@@ -879,6 +880,7 @@ def test_git_diff_falls_back_to_head_when_start_commit_absent(tmp_git_repo: Path
     diff = materialize_module._git_diff(tmp_git_repo)
 
     assert "work.py" in diff
+    repo.git.clear_cache()
 
 
 def test_git_diff_cumulative_across_multiple_mid_cycle_commits(tmp_git_repo: Path) -> None:
@@ -897,6 +899,7 @@ def test_git_diff_cumulative_across_multiple_mid_cycle_commits(tmp_git_repo: Pat
     assert "file_a.py" in diff
     assert "file_b.py" in diff
     assert "file_c.py" in diff
+    repo.git.clear_cache()
 
 
 def test_git_diff_zero_mid_cycle_commits_only_uncommitted(tmp_git_repo: Path) -> None:
@@ -907,3 +910,4 @@ def test_git_diff_zero_mid_cycle_commits_only_uncommitted(tmp_git_repo: Path) ->
         repo.index.add(["uncommitted.py"])
     diff = materialize_module._git_diff(tmp_git_repo)
     assert "uncommitted.py" in diff
+    repo.git.clear_cache()

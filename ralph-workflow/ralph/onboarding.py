@@ -56,7 +56,7 @@ def welcome_panel_next_steps() -> tuple[str, ...]:
     explanation = init_local_config_override_explanation()
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
-        "Install AI agents if missing (e.g., `claude`, `opencode`)",
+        "Install AI agents if missing (e.g., `claude`, `opencode`, `agy`)",
         f"(Optional) Run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}",
         f"(Recommended) Run {DIAGNOSE_COMMAND} to verify agents, MCP servers, and config "
         "before the first real run",

@@ -32,7 +32,7 @@ def test_agent_registry_from_config_loads_all_agents() -> None:
 
     registry = AgentRegistry.from_config(config)
 
-    assert set(registry.list_agents()) >= {"claude", "claude-headless", "codex", "opencode"}
+    assert set(registry.list_agents()) >= {"claude", "claude-headless", "codex", "opencode", "agy"}
     assert registry.get("opencode") == AgentConfig(cmd="opencode", can_commit=True)
 
 
@@ -109,7 +109,7 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert agy.transport == AgentTransport.AGY
     assert agy.yolo_flag == "--dangerously-skip-permissions"
     assert agy.print_flag == "--print"
-    assert agy.session_flag == "--conversation {}"
+    assert agy.session_flag is None
 
 
 def test_ccs_alias_keeps_claude_transport() -> None:

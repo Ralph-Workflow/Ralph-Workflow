@@ -194,14 +194,18 @@ def _append_transport_prompt_arg(
         and build_options.mcp_endpoint
     ):
         cmd.append("--")
-        resolved_prompt = _resolve_prompt_path(prompt_file, build_options.workspace_path)
-        prompt_text = resolved_prompt.read_text(encoding="utf-8")
-        artifacts = _read_multimodal_sidecar(prompt_file, build_options.workspace_path)
-        if artifacts:
-            prompt_text += _build_multimodal_appendix(artifacts)
+        prompt_text = _load_prompt_text(prompt_file, build_options.workspace_path)
         cmd.append(prompt_text)
         return
     cmd.append(prompt_file)
+
+
+def _load_prompt_text(prompt_file: str, workspace_path: Path | None) -> str:
+    text = _resolve_prompt_path(prompt_file, workspace_path).read_text(encoding="utf-8")
+    artifacts = _read_multimodal_sidecar(prompt_file, workspace_path)
+    if artifacts:
+        text += _build_multimodal_appendix(artifacts)
+    return text
 
 
 def _split_optional_flag(flag: str | None) -> list[str]:
@@ -223,12 +227,7 @@ def _build_opencode_command(
     *,
     options: _BuildCommandOptions,
 ) -> list[str]:
-    prompt_text = _resolve_prompt_path(prompt_file, options.workspace_path).read_text(
-        encoding="utf-8"
-    )
-    artifacts = _read_multimodal_sidecar(prompt_file, options.workspace_path)
-    if artifacts:
-        prompt_text += _build_multimodal_appendix(artifacts)
+    prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
     cmd = [_agent_command_name(config), "run"]
     if options.pure:
         cmd.append("--pure")
@@ -256,12 +255,7 @@ def _build_codex_command(
     *,
     options: _BuildCommandOptions,
 ) -> list[str]:
-    prompt_text = _resolve_prompt_path(prompt_file, options.workspace_path).read_text(
-        encoding="utf-8"
-    )
-    artifacts = _read_multimodal_sidecar(prompt_file, options.workspace_path)
-    if artifacts:
-        prompt_text += _build_multimodal_appendix(artifacts)
+    prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
     cmd = config.cmd.split()
     if config.output_flag is not None:
         cmd.append(config.output_flag)
@@ -284,32 +278,20 @@ def _build_agy_command(
 ) -> list[str]:
     """Build the AGY command line.
 
-    AGY uses: agy --print <prompt> [--dangerously-skip-permissions] [--conversation <session_id>]
+    AGY uses: agy [--dangerously-skip-permissions] [--add-dir <path>] [--verbose] --print <prompt>
     """
     cmd = config.cmd.split()
-
-    # Add print flag for non-interactive output
-    if config.print_flag:
-        cmd.append(config.print_flag)
-
-    prompt_text = _resolve_prompt_path(prompt_file, options.workspace_path).read_text(
-        encoding="utf-8"
-    )
-    artifacts = _read_multimodal_sidecar(prompt_file, options.workspace_path)
-    if artifacts:
-        prompt_text += _build_multimodal_appendix(artifacts)
-    cmd.append(prompt_text)
-
-    # Add yolo/permissions flag if present
     cmd.extend(_split_optional_flag(config.yolo_flag))
-
-    # Add session continuation flag if session_id is present
     if config.session_flag and options.session_id:
         cmd.extend(config.session_flag.format(options.session_id).split())
-
+    if options.workspace_path is not None:
+        cmd.extend(["--add-dir", str(options.workspace_path)])
     if options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
-
+    if config.print_flag:
+        cmd.append(config.print_flag)
+    prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
+    cmd.append(prompt_text)
     return cmd
 
 

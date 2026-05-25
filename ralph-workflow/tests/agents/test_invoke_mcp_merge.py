@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from unittest.mock import patch
 
 from loguru import logger
@@ -61,6 +61,11 @@ _TOML_SERVER = UpstreamMcpServer(
     name="toml-injected",
     transport="http",
     url="http://toml.example/mcp",
+)
+_AGY_UPSTREAM_SERVER = UpstreamMcpServer(
+    name="agy-upstream",
+    transport="http",
+    url="http://agy-upstream.example/mcp",
 )
 
 
@@ -207,6 +212,7 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -215,7 +221,7 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
             str(prompt_file),
             options=InvokeOptions(
                 show_progress=False,
-                workspace_path=tmp_path,
+                workspace_path=None,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
@@ -246,6 +252,7 @@ def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_and_read_lines)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
@@ -347,6 +354,7 @@ def test_claude_collision_mcp_toml_overrides_native_server(
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -366,6 +374,59 @@ def test_claude_collision_mcp_toml_overrides_native_server(
     assert winning.url == "http://toml.example/mcp"
 
 
+def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config_path = tmp_path / ".agents" / "mcp_config.json"
+    endpoint = "http://127.0.0.1:9999/mcp"
+    config_at_launch: list[dict[str, object]] = []
+    env_at_launch: list[dict[str, str]] = []
+
+    def fake_run_pty_and_read_lines(cmd: object, ctx: object, extras: object = None) -> object:
+        del cmd, extras
+        config_at_launch.append(
+            cast("dict[str, object]", json.loads(config_path.read_text(encoding="utf-8")))
+        )
+        env_at_launch.append(cast("dict[str, str]", cast("Any", ctx).extra_env))
+        yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke.run_pty_and_read_lines",
+        fake_run_pty_and_read_lines,
+    )
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", lambda _workspace_path: ())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.load_existing_agy_upstream_servers",
+        lambda workspace_path: (_AGY_UPSTREAM_SERVER,),
+    )
+
+    list(
+        invoke_agent(
+            AgentConfig(cmd="agy", transport=AgentTransport.AGY),
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={str(MCP_ENDPOINT_ENV): endpoint},
+            ),
+        )
+    )
+
+    assert len(config_at_launch) == 1
+    launch_config = config_at_launch[0]
+    servers = cast("dict[str, object]", launch_config["mcpServers"])
+    assert len(servers) == 1
+    ralph = cast("dict[str, object]", servers["ralph"])
+    assert ralph["serverUrl"] == endpoint
+    assert UPSTREAM_MCP_CONFIG_ENV in env_at_launch[0]
+    upstreams = load_upstream_mcp_servers(env_at_launch[0][UPSTREAM_MCP_CONFIG_ENV])
+    assert any(s.name == "agy-upstream" for s in upstreams)
+    assert not config_path.exists()
+
+
 def test_agy_upstream_env_var_includes_mcp_toml_server(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -373,7 +434,12 @@ def test_agy_upstream_env_var_includes_mcp_toml_server(
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     seen_env: list[dict[str, str]] = []
-    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
+    def fake_run_pty_and_read_lines(cmd: object, ctx: object, extras: object = None) -> object:
+        del cmd, extras
+        seen_env.append(cast("dict[str, str]", cast("Any", ctx).extra_env))
+        yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+
+    monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_and_read_lines)
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr(
