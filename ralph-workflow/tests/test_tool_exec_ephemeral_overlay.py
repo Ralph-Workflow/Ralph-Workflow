@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from ralph.mcp.tools import exec_overlay
+from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_run_deps import ExecRunDeps
 from ralph.mcp.tools.exec import run_command
 from tests.mock_workspace_root import MockWorkspaceRoot
@@ -127,10 +128,8 @@ class TestCreateEphemeralOverlay:
         workspace.mkdir()
         overlay_path = workspace
 
-        with (
-            pytest.raises(RuntimeError),
-            exec_overlay.create_ephemeral_overlay(workspace),
-        ) as overlay:
+        with pytest.raises(RuntimeError), \
+            exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             overlay_path = overlay
             raise RuntimeError("boom")
 
@@ -305,10 +304,12 @@ class TestRunCommandOverlayIntegration:
         overlay_dir = tmp_path / "overlay"
         overlay_dir.mkdir()
 
-        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None) -> object:
+        def fake_runner(
+            command: list[str], cwd: Path, timeout_seconds: float | None
+        ) -> _CompletedProcessAdapter:
             del command, timeout_seconds
             seen_cwd.append(cwd)
-            return type("Result", (), {"stdout": b"", "stderr": b"", "returncode": 0})()
+            return _CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
 
         def fake_overlay(workspace_root: Path) -> AbstractContextManager[Path]:
             del workspace_root
@@ -330,10 +331,12 @@ class TestRunCommandOverlayIntegration:
         seen_cwd: list[Path] = []
         workspace = MockWorkspaceRoot(tmp_path)
 
-        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None) -> object:
+        def fake_runner(
+            command: list[str], cwd: Path, timeout_seconds: float | None
+        ) -> _CompletedProcessAdapter:
             del command, timeout_seconds
             seen_cwd.append(cwd)
-            return type("Result", (), {"stdout": b"", "stderr": b"", "returncode": 0})()
+            return _CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
 
         run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner))
 
@@ -462,6 +465,39 @@ class TestExecOrphanProcessCleanup:
             assert not alive, (
                 f"Background process {child_pid} still alive after exec returned; "
                 "_cleanup_exec_orphans must kill it."
+            )
+        except psutil.NoSuchProcess:
+            pass
+
+    @pytest.mark.subprocess_e2e
+    def test_new_session_background_process_is_killed_after_exec_returns(
+        self, tmp_path: Path
+    ) -> None:
+        psutil = pytest.importorskip("psutil")
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        script = (
+            "import subprocess, sys, time; "
+            "p = subprocess.Popen("
+            "    [sys.executable, '-c', 'import time; time.sleep(60)'], "
+            "    start_new_session=True, "
+            "    stdout=subprocess.DEVNULL, "
+            "    stderr=subprocess.DEVNULL"
+            "); "
+            "time.sleep(1.0); "
+            "print(p.pid)"
+        )
+
+        result = run_command(sys.executable, ["-c", script], workspace, 10_000)
+        assert result.returncode == 0
+        child_pid = int(result.stdout.decode().strip())
+
+        try:
+            _, alive = psutil.wait_procs([psutil.Process(child_pid)], timeout=2.0)
+            assert not alive, (
+                f"Background process {child_pid} still alive after exec returned; "
+                "start_new_session=True means os.killpg alone is insufficient and "
+                "communicate_and_cleanup psutil snapshot must handle this escaped case."
             )
         except psutil.NoSuchProcess:
             pass

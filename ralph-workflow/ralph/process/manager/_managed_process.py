@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import contextlib
 import subprocess
+import threading
 import time as _time
 from typing import IO, TYPE_CHECKING
 
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
+    from _thread import LockType
+
     from ralph.process.manager._process_manager import ProcessManager
     from ralph.process.manager._process_manager_types import (
         _PsutilModuleLike,
@@ -85,6 +88,51 @@ class ManagedProcess:
             self._manager._mark_exited(self._record, rc)
         return stdout, stderr
 
+    def _start_descendant_monitor(
+        self,
+        stop_event: threading.Event,
+        observed_descendants: dict[int, _PsutilProcessLike],
+        observed_lock: LockType,
+    ) -> threading.Thread:
+        def _observe_descendants() -> None:
+            while not stop_event.wait(0.05):
+                for proc in self._snapshot_live_descendants():
+                    raw_pid: object = getattr(proc, "pid", None)
+                    if isinstance(raw_pid, int):
+                        with observed_lock:
+                            observed_descendants[raw_pid] = proc
+
+        thread = threading.Thread(target=_observe_descendants, daemon=True)
+        thread.start()
+        return thread
+
+    def _observed_descendants(
+        self,
+        observed_descendants: dict[int, _PsutilProcessLike],
+        observed_lock: LockType,
+    ) -> list[_PsutilProcessLike]:
+        with observed_lock:
+            return list(observed_descendants.values())
+
+    def _collect_live_descendants(
+        self,
+        psutil_mod: _PsutilModuleLike,
+        groups: list[list[_PsutilProcessLike]],
+    ) -> list[_PsutilProcessLike]:
+        live_descendants: list[_PsutilProcessLike] = []
+        seen_pids: set[int] = set()
+        for group in groups:
+            for proc in group:
+                if not self._is_live_psutil_process(psutil_mod, proc):
+                    continue
+                raw_pid: object = getattr(proc, "pid", None)
+                proc_pid = int(raw_pid) if isinstance(raw_pid, int) else id(proc)
+                if proc_pid in seen_pids:
+                    continue
+                seen_pids.add(proc_pid)
+                live_descendants.append(proc)
+        return live_descendants
+
     def communicate_and_cleanup(
         self,
         input: bytes | None = None,
@@ -94,31 +142,50 @@ class ManagedProcess:
         """Drain output and clean up any descendant processes with psutil."""
         psutil_mod = self._manager._psutil
         snapshot_descendants = self._snapshot_live_descendants() if psutil_mod is not None else []
+        observed_descendants: dict[int, _PsutilProcessLike] = {}
+        observed_lock = threading.Lock()
+        stop_monitor = threading.Event()
+        monitor_thread = (
+            self._start_descendant_monitor(stop_monitor, observed_descendants, observed_lock)
+            if psutil_mod is not None
+            else None
+        )
+
         try:
             stdout, stderr = self.communicate(input=input, timeout=timeout)
         except subprocess.TimeoutExpired:
             with contextlib.suppress(Exception):
                 self.terminate(grace_period_s=cleanup_grace_period_s)
-            if snapshot_descendants and psutil_mod is not None:
-                with contextlib.suppress(Exception):
-                    self._cleanup_descendant_waves(
-                        psutil_mod, snapshot_descendants, cleanup_grace_period_s
-                    )
+            if psutil_mod is not None:
+                live_descendants = self._collect_live_descendants(
+                    psutil_mod,
+                    [
+                        snapshot_descendants,
+                        self._observed_descendants(observed_descendants, observed_lock),
+                        self._snapshot_live_descendants(),
+                    ],
+                )
+                if live_descendants:
+                    with contextlib.suppress(Exception):
+                        self._cleanup_descendant_waves(
+                            psutil_mod, live_descendants, cleanup_grace_period_s
+                        )
             raise
+        finally:
+            stop_monitor.set()
+            if monitor_thread is not None:
+                with contextlib.suppress(Exception):
+                    monitor_thread.join(timeout=0.5)
 
         if psutil_mod is not None:
-            live_descendants = list(snapshot_descendants)
-            root_descendants = self._snapshot_live_descendants()
-            if root_descendants:
-                seen_pids: set[int] = set()
-                live_descendants = []
-                for proc in [*snapshot_descendants, *root_descendants]:
-                    raw_pid: object = getattr(proc, "pid", None)
-                    proc_pid = int(raw_pid) if isinstance(raw_pid, int) else id(proc)
-                    if proc_pid in seen_pids:
-                        continue
-                    seen_pids.add(proc_pid)
-                    live_descendants.append(proc)
+            live_descendants = self._collect_live_descendants(
+                psutil_mod,
+                [
+                    snapshot_descendants,
+                    self._observed_descendants(observed_descendants, observed_lock),
+                    self._snapshot_live_descendants(),
+                ],
+            )
             if live_descendants:
                 self._cleanup_descendant_waves(
                     psutil_mod, live_descendants, cleanup_grace_period_s
