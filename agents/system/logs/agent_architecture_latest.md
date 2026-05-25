@@ -1,8 +1,8 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-25T10:37:40+02:00
+- Checked: 2026-05-25T12:42:20+02:00
 - Overall health: high_risk
-- Primary failure mode: Architecture-owned topology, verifier freshness, and ownership checks are green; the only live red is external marketing certification still failing on primary-repo outcome evidence.
+- Primary failure mode: Architecture-owned topology, checker, verifier, and runtime-health gates are green after refresh; the only live red remains external marketing certification on primary-repo outcome evidence.
 - Most urgent fix: Do not certify the whole stack green until marketing produces a fresh independent pass backed by measurable Codeberg movement.
 - Verifier status: independently_verified_pass
 - Verifier verdict: qualified_pass
@@ -26,7 +26,7 @@
    - Recommended fix: keep direct live-topology checks on every watchdog run; do not infer live-disabled jobs from persisted history.
 
 3. **Medium — Architecture verifier path is green on local ownership and freshness gates**
-   - Mechanism: loop integrity marks the architecture watchdog ok, health monitor shows only external marketing issues, and the architecture verifier now has a fresh pass artifact.
+   - Mechanism: loop integrity marks the architecture watchdog ok, health monitor shows only marketing issues, and the architecture verifier now has a fresh pass artifact.
    - Recommended fix: rerun independent verification after any future material architecture artifact refresh.
 
 4. **Low — Docs remains independently green and stable**
@@ -36,7 +36,7 @@
 ## Repaired this run
 
 - **reran_loop_integrity** — Refreshed owner coverage, contract status, and user-crontab ownership against the live registry.
-- **reran_health_monitor** — Re-localized live issues before signoff; architecture-owned issues stayed clear and the red stayed external to marketing.
+- **reran_health_monitor** — Cleared architecture-owned verifier/runtime residue; live issues now localize only to marketing.
 - **reran_architecture_independent_verification** — Refreshed the independent verification artifact against the newest runtime evidence.
 - **reran_architecture_verifier** — Re-established a fresh verifier pass artifact tied to the current independent verification.
 - **refreshed_architecture_audit_artifacts** — Refreshed the architecture audit against the current live Gateway topology and latest verifier evidence.

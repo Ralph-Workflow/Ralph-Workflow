@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T12:13:43.775089",
+  "generated_at": "2026-05-25T12:39:09.239375",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -78,7 +78,8 @@
       "kill_condition": "Another audit adds more same-family publisher outreach before the current reply/review windows have materially aged or produced evidence",
       "success_metric": "Next execution lane is not another same-day publisher-contact burst and produces a cleaner measurement path toward Codeberg movement",
       "priority": 2,
-      "repair_state": "needs_execution"
+      "repair_state": "pending_measurement",
+      "repair_acknowledged_at": "2026-05-25T12:38:31.894824"
     },
     {
       "target_tactic": "github_mirror_outreach",
@@ -91,10 +92,11 @@
       "repair_state": "pending_measurement"
     }
   ],
-  "repair_window_status": "needs_repair",
+  "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
     "primary_repo_flat",
-    "mirror_repo_flat"
+    "mirror_repo_flat",
+    "same_family_publisher_overlap"
   ],
   "has_failing_tactics": true,
   "reasons": [
@@ -147,7 +149,7 @@
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_114219_distribution_architecture_guard_pause.md"
+    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_123831_distribution_architecture_guard_pause.md"
   },
   "latest_executed_action": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_codivox_publisher_outreach.json",
@@ -161,7 +163,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-25T12:13:22.137747+02:00",
+    "generated_at": "2026-05-25T12:38:51.565055+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",

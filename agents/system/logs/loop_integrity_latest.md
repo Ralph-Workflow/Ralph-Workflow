@@ -1,9 +1,12 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-25 08:36 UTC
+Timestamp: 2026-05-25 10:39 UTC
 
 ## ralph-docs-watchdog
 - Status: ok
+- Repairs:
+  - runner artifact was stale; executed runner
+  - executed verifier after repairing stale verifier state
 - Checker: `DOCS_QUALITY_OK`
 
 ## autonomous-marketing-stack
@@ -17,7 +20,7 @@ Timestamp: 2026-05-25 08:36 UTC
   - runner failed after checker failure
   - independent verifier failed after remediation
   - checker still failing after remediation/verifier pass
-- Checker: `MARKETING_LOOP_FAIL: primary repo adoption remains flat inside a measurement-pending repair window; do not certify health yet`
+- Checker: `MARKETING_LOOP_FAIL: runner artifact is stale relative to marketing_workflow_audit_latest.json; rerun the full runner bundle before certifying health`
 - Checker after repair: `MARKETING_LOOP_FAIL: primary repo adoption remains flat inside a measurement-pending repair window; do not certify health yet`
 
 ## ralph-site-owner-loop

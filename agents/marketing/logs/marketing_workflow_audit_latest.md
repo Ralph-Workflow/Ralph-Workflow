@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-25T12:13:43.775089
+- Generated: 2026-05-25T12:39:09.239375
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -36,7 +36,7 @@
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
 - **same_family_publisher_overlap** (tactic) → HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.
-  - Repair state: needs_execution
+  - Repair state: pending_measurement
   - Kill condition: Another audit adds more same-family publisher outreach before the current reply/review windows have materially aged or produced evidence
   - Success metric: Next execution lane is not another same-day publisher-contact burst and produces a cleaner measurement path toward Codeberg movement
 - **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
@@ -44,7 +44,7 @@
   - Kill condition: N/A (mirror, not primary)
   - Success metric: GitHub mirror shows any adoption delta
 - No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
-- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
+- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, same_family_publisher_overlap
 
 ## Latest executed marketing action
 - Type: publisher_email_outreach

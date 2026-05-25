@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-25T11:42:19.531014",
+  "timestamp": "2026-05-25T12:38:31.894824",
   "weekly_mode": true,
   "site_health": {
     "homepage": {
@@ -94,7 +94,7 @@
     },
     {
       "priority": "info",
-      "action": "Note: hermes-agent has 166399 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
+      "action": "Note: hermes-agent has 166451 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
       "reason": "Competitor intelligence for positioning decisions."
     }
   ],
@@ -128,19 +128,19 @@
     "competitor_analysis": {
       "ran_ok": true,
       "report_path": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-25.md",
-      "stdout": "[competitor_analysis] Starting competitor analysis at 2026-05-25 11:42\n  \u2192 Monitoring competitors...\n    done in 7.6s\n  \u2192 Generating comparison pages...\n    done in 0.0s\n  \u2192 Discovering new competitors...\n    done in 0.1s (found 0)\n\nCompetitor analysis complete (7.7s total):\n  - Monitored: 8 competi",
+      "stdout": "[competitor_analysis] Starting competitor analysis at 2026-05-25 12:38\n  \u2192 Monitoring competitors...\n    done in 7.9s\n  \u2192 Generating comparison pages...\n    done in 0.0s\n  \u2192 Discovering new competitors...\n    done in 0.1s (found 0)\n\nCompetitor analysis complete (8.1s total):\n  - Monitored: 8 competi",
       "competitor_count": 8,
       "competitors": {
         "hermes-agent": {
           "status": 200,
-          "stars": 166399,
+          "stars": 166451,
           "features_found": [
             "Persistent memory"
           ]
         },
         "conductor-oss": {
           "status": 200,
-          "stars": 31840,
+          "stars": 31839,
           "features_found": [
             "Durable execution"
           ]
@@ -154,12 +154,12 @@
         },
         "aider": {
           "status": 200,
-          "stars": 45274,
+          "stars": 45280,
           "features_found": []
         },
         "continue": {
           "status": 200,
-          "stars": 33366,
+          "stars": 33368,
           "features_found": []
         },
         "cursor": {
@@ -257,7 +257,7 @@
     }
   },
   "market_intelligence": {
-    "generated_at": "2026-05-25T11:42:38.758199",
+    "generated_at": "2026-05-25T12:38:51.507044",
     "source": "competitor_analysis.py",
     "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
     "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-25.md",
@@ -309,7 +309,7 @@
         "name": "Hermes Agent",
         "positioning": "Self-improving agent that learns from experience",
         "site_status": 200,
-        "github_stars": 166399,
+        "github_stars": 166451,
         "key_features_found": [
           "Persistent memory"
         ]
@@ -318,7 +318,7 @@
         "name": "Conductor OSS",
         "positioning": "Enterprise-grade workflow orchestration for AI agents",
         "site_status": 200,
-        "github_stars": 31840,
+        "github_stars": 31839,
         "key_features_found": [
           "Durable execution"
         ]
@@ -336,14 +336,14 @@
         "name": "Aider",
         "positioning": "Terminal-based AI pair programming in your git repo",
         "site_status": 200,
-        "github_stars": 45274,
+        "github_stars": 45280,
         "key_features_found": []
       },
       "continue": {
         "name": "Continue",
         "positioning": "The leading AI code assistant inside your IDE",
         "site_status": 200,
-        "github_stars": 33366,
+        "github_stars": 33368,
         "key_features_found": []
       },
       "cursor": {
@@ -410,10 +410,11 @@
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 directory submissions already shipped in the last 24 hours.",
-      "5 curator contact attempts already shipped in the last 24 hours.",
+      "4 curator contact attempts already shipped in the last 24 hours.",
       "3 live external marketing action(s) already shipped in the last 6 hours.",
       "If no new outcome lands first, this short-window congestion clears at 2026-05-25T15:07:03. Before then, another live outbound action would mostly blur measurement.",
       "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
+      "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
@@ -456,7 +457,7 @@
     "lane": "distribution_architecture_guard_pause",
     "action_type": "distribution_architecture_guard_pause",
     "status": "skipped_repair",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_114219_distribution_architecture_guard_pause.md",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_123831_distribution_architecture_guard_pause.md",
     "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn.",
     "targets_prepared": [],
     "shared_findings_used": [
@@ -469,17 +470,18 @@
     "live_external_action": false,
     "blocking_factors": []
   },
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_114219_distribution_architecture_guard_pause.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_123831_distribution_architecture_guard_pause.json",
   "post_execution_distribution_lane": {
     "lane": "distribution_architecture_guard_pause",
     "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged guard follow-through for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 directory submissions already shipped in the last 24 hours.",
-      "5 curator contact attempts already shipped in the last 24 hours.",
+      "4 curator contact attempts already shipped in the last 24 hours.",
       "3 live external marketing action(s) already shipped in the last 6 hours.",
       "If no new outcome lands first, this short-window congestion clears at 2026-05-25T15:07:03. Before then, another live outbound action would mostly blur measurement.",
       "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
+      "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",

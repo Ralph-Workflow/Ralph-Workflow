@@ -1,6 +1,6 @@
 {
-  "lane": "distribution_architecture_guard_pause",
-  "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged guard follow-through for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
+  "lane": "distribution_architecture_repair",
+  "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, but this review window already reused that pause for the current fingerprint; perform a concrete distribution-architecture repair now instead of logging another guard pause.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "1 directory submissions already shipped in the last 24 hours.",
@@ -31,7 +31,8 @@
     "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
     "6 prior distribution-architecture repair run(s) already hit this same empty-board window.",
     "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
-    "7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window."
+    "7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.",
+    "5 prior guard pause run(s) already reused this same fingerprint in the current review window."
   ],
   "owned_content_posts_last_36h": 0,
   "unsubmitted_directory_channels": [],

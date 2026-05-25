@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T23:20:15.969895+00:00",
+  "generated_at": "2026-05-25T11:48:07.212267+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -437,110 +437,113 @@
   "google_index": {
     "site:codeberg.org RalphWorkflow": {
       "query": "site:codeberg.org RalphWorkflow",
-      "indexed": null,
-      "error": "HTTP Error 429: Too Many Requests"
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "site:github.com RalphWorkflow Ralph Workflow": {
       "query": "site:github.com RalphWorkflow Ralph Workflow",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralphworkflow.com": {
       "query": "ralphworkflow.com",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": true,
+      "found_urls": [
+        "ralphworkflow.com"
+      ],
+      "status": 200
     },
     "ralph workflow aitoolsindex": {
       "query": "ralph workflow aitoolsindex",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow toolshelf": {
       "query": "ralph workflow toolshelf",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow saashub": {
       "query": "ralph workflow saashub",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow toolwise": {
       "query": "ralph workflow toolwise",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow indie stack": {
       "query": "ralph workflow indie stack",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow listyourtool": {
       "query": "ralph workflow listyourtool",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow nav-ai": {
       "query": "ralph workflow nav-ai",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow openagents": {
       "query": "ralph workflow openagents",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow toolscout": {
       "query": "ralph workflow toolscout",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow vbwebtools": {
       "query": "ralph workflow vbwebtools",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow the toolify": {
       "query": "ralph workflow the toolify",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow claudetory": {
       "query": "ralph workflow claudetory",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow claude code alternatives": {
       "query": "ralph workflow claude code alternatives",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow claudestack": {
       "query": "ralph workflow claudestack",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     },
     "ralph workflow aiagents.directory": {
       "query": "ralph workflow aiagents.directory",
-      "indexed": null,
-      "skipped": true,
-      "error": "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint."
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     }
   },
   "summary": {
@@ -548,10 +551,10 @@
     "live_listings_pointing_to_codeberg": 2,
     "live_listings_pointing_to_github_only": 0,
     "live_listings_with_unknown_repo_target": 0,
-    "queries_indexed": 0,
-    "queries_unavailable": 18,
-    "queries_skipped_after_rate_limit": 17,
-    "google_rate_limit_encountered": true,
+    "queries_indexed": 1,
+    "queries_unavailable": 0,
+    "queries_skipped_after_rate_limit": 0,
+    "google_rate_limit_encountered": false,
     "total_queries": 18,
     "check_urls": [
       "https://codeberg.org/RalphWorkflow/Ralph-Workflow",

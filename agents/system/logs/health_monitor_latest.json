@@ -1,5 +1,5 @@
 {
-  "ts": "2026-05-25T10:39:43.687626",
+  "ts": "2026-05-25T12:40:22.276582",
   "jobs_checked": 20,
   "issues_found": 4,
   "issues": [
@@ -26,8 +26,8 @@
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=239",
-      "repeats_in_recent_history": 239,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=245",
+      "repeats_in_recent_history": 245,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification::loop_verification_fail",
       "escalation_level": "critical",
@@ -40,8 +40,8 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
       "category": "escalation_required",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=157",
-      "repeats_in_recent_history": 157,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=163",
+      "repeats_in_recent_history": 163,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin::review_followup_required",
       "escalation_level": "critical",
