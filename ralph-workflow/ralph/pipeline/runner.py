@@ -970,7 +970,11 @@ def emit_phase_transition_if_changed(
 
 
 def write_start_commit_if_absent(workspace_root: Path) -> None:
-    """Record the current HEAD as the cycle baseline if no baseline exists yet."""
+    """Record the current HEAD as the cycle baseline if no baseline exists yet.
+
+    This is best effort: if the baseline cannot be written, log a warning and
+    continue without aborting the pipeline.
+    """
     if read_cycle_baseline(workspace_root) is not None:
         return
     repo: Repo | None = None
@@ -982,6 +986,12 @@ def write_start_commit_if_absent(workspace_root: Path) -> None:
         if not repo.head.is_valid():
             return
         write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
+    except OSError as exc:
+        logger.warning(
+            "Could not write cycle baseline in {}: {} — continuing without baseline",
+            workspace_root,
+            exc,
+        )
     finally:
         close = cast("Callable[[], object] | None", getattr(repo, "close", None))
         if callable(close):

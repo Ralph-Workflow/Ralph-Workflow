@@ -36,6 +36,7 @@ _ENV_ERRNOS: frozenset[int] = frozenset(
         errno.EHOSTUNREACH,
         errno.ENETDOWN,
         errno.EPIPE,
+        errno.ENOSPC,
     }
 )
 

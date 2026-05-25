@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import io
 
 from loguru import logger
@@ -195,3 +196,39 @@ def test_agent_inactivity_timeout_is_agent_fault() -> None:
 
     assert failure.category == FailureCategory.AGENT
     assert failure.counts_against_budget is True
+
+
+def test_enospc_oserror_is_environmental_not_ambiguous() -> None:
+    """OSError with errno.ENOSPC must classify as ENVIRONMENTAL, not AMBIGUOUS."""
+    classifier = FailureClassifier()
+
+    failure = classifier.classify(
+        OSError(errno.ENOSPC, "No space left on device"),
+        phase="development",
+        agent="claude",
+    )
+
+    assert failure.category == FailureCategory.ENVIRONMENTAL
+    assert failure.counts_against_budget is False
+
+
+def test_enospc_oserror_via_controller_does_not_debit_budget() -> None:
+    """ENOSPC reaching RecoveryController must not debit agent budget."""
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
+    state = _make_state()
+
+    _, _, evt = controller.handle(
+        state,
+        OSError(errno.ENOSPC, "No space left on device"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert evt.category == "environmental"
+    assert evt.counted_against_budget is False
+
+    budget_state = controller.budget_registry.get("development", "claude")
+    assert budget_state is not None
+    assert budget_state.consumed == 0
