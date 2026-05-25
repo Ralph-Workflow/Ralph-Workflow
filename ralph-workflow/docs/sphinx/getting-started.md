@@ -3,9 +3,10 @@
 New to Ralph Workflow? This page takes you from install to one honest unattended run in a repository you already care about.
 If you already know the shape of the product and just want the shortest checklist, use [Quickstart](quickstart.md).
 
-Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
 It turns that simple structure into a stronger composable workflow for substantial, well-specified repo work by moving through planning, implementation, and verification instead of stopping at one long agent session.
 The default workflow is already strong for writing software; start there first, then extend later only when you know why.
+That is a convention-over-configuration posture: plug in the coding agents you already use, keep your current setup, and avoid making API-key handoff the main setup story.
 
 ## What this page gives you
 
@@ -35,27 +36,38 @@ If you are unsure what counts as a good task, use [First Task Guide](first-task-
 ## First-run flow
 
 1. Install Ralph Workflow and confirm the CLI is available.
-2. In the repo you want to try, scaffold the default first-run files:
-
-   ```bash
-   ralph --init
-   ```
-
-3. Replace the starter prompt with a real task. A minimal `PROMPT.md` can start like this:
-
-   ```md
-   # Goal
-   Ship one reviewable change with a clear finish line.
-   ```
-
+2. Initialize the repo with `ralph --init`.
+3. Pick one real repo and one task with a clear finish line.
 4. Start with the default workflow instead of customizing immediately.
-5. Let Ralph Workflow plan, implement, and verify the change.
+5. Let Ralph plan, implement, and verify the change.
 6. Judge the result by the software change and the checks, not by transcript confidence alone.
 
 That flow matters because Ralph Workflow is designed to give you a stronger unattended coding loop than a single long agent session.
 The point of the first run is to see whether the default loop improves the repo in a way you can actually review.
 
-If you need the conceptual model behind that loop, open [Concepts](concepts.md). If the first run stalls or fails, use [Troubleshooting](troubleshooting.md).
+## Minimal first-run example
+
+```bash
+pipx install ralph-workflow
+cd /path/to/your/repo
+ralph --init
+$EDITOR PROMPT.md
+ralph
+```
+
+Example `PROMPT.md` starting point:
+
+```md
+# Goal
+Ship one focused backlog task with tests or another real verification step.
+
+## Constraints
+- keep the change scoped to the task
+- run the relevant checks before stopping
+```
+
+If you need the underlying concepts first, open [Concepts](concepts.md).
+If your first run goes sideways, use [Troubleshooting](troubleshooting.md).
 
 ## Recommended next clicks after your first run
 

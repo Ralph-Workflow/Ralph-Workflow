@@ -3,7 +3,7 @@
 Ralph Workflow
 ==============
 
-Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
 It turns that simple structure into a stronger composable workflow for substantial, well-specified repo work, and the default workflow is already good enough to start using before you customize anything.
 
 This page is the maintained operator manual home.
@@ -13,7 +13,7 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
 
 .. note::
 
-   New here? Start with :doc:`getting-started` for the shortest honest first run before diving into the rest of the manual.
+   New here? Start with :doc:`getting-started` before you dive into the rest of the manual.
 
 Manual paths
 ============
@@ -48,7 +48,12 @@ Use-case routing
    getting-started
    quickstart
    first-task-guide
+   configuration
    reference
+   advanced-pipeline-configuration
+   advanced-artifact-configuration
+   advanced-mcp-configuration
    policy-explanation
+   user-stories
    which-agent-should-i-start-with
    when-unattended-coding-fits

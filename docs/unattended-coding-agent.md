@@ -1,9 +1,11 @@
 # Unattended Coding Agent: What It Should Actually Mean
 
+If you are looking for an unattended coding agent, the important question is not just whether a model can keep typing while you are away.
+The important question is whether you can come back to software you can judge honestly.
+
 Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
 That simple center composes into more complex workflows for substantial, well-specified repo work on your own machine with the agents you already use, and the default workflow is already strong enough to start with.
 
-If you are looking for an unattended coding agent, the important question is not just whether a model can keep typing while you are away.
 The important question is whether you can come back to software you can judge honestly.
 
 ## Unattended should still mean accountable

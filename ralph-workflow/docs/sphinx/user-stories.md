@@ -1,6 +1,6 @@
 # End-User Stories
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
 That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
@@ -18,12 +18,11 @@ Its job is to get you to the right next doc quickly, including overnight use cas
 - [When Unattended Coding Fits](when-unattended-coding-fits.md)
 - [Choose Your First Ralph Workflow Task](first-task-guide.md)
 
-## I already use Claude Code, Codex, OpenCode, or Google Anti Gravity and want a baseline comparison
+## I already use Claude Code, Codex, or OpenCode and want a baseline comparison
 
 - [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md)
 - [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md)
 - [Ralph Workflow vs OpenCode](ralph-workflow-vs-opencode.md)
-- [Ralph Workflow vs Google Anti Gravity](ralph-workflow-vs-google-anti-gravity.md)
 
 ## I want to run work overnight without babysitting the terminal
 
@@ -40,7 +39,7 @@ Short answer:
 - repo-specific override → `.agent/ralph-workflow.toml`
 - workflow structure changes → `.agent/pipeline.toml`
 
-## I want to change which agents Ralph Workflow uses
+## I want to change which agents Ralph uses
 
 - [Configuration Reference](configuration.md)
 - [Which Agent Should I Start With?](which-agent-should-i-start-with.md)

@@ -1,11 +1,14 @@
 # Choose Your First Ralph Workflow Task
 
+A first Ralph Workflow run should be worth waiting for overnight.
+That means picking a task big enough to benefit from orchestration and concrete enough to judge honestly the next day.
+
 Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
 That simple center composes into more complex workflows for substantial, well-specified repo work, and the shipped default workflow is strongest when the task already has a real finish line.
 
 ## Do not start with a vague demo
 
-The fastest honest test is one real backlog task you already care about.
+The fastest honest test is one substantial backlog task you already care about.
 Choose something that is large enough to benefit from orchestration, but clear enough to judge afterward.
 
 A good first task is:
@@ -19,7 +22,7 @@ A good first task is:
 
 Strong first runs usually look like:
 
-- a focused feature slice with acceptance criteria
+- a substantial feature slice with acceptance criteria
 - a refactor with tests and known invariants
 - a verification pass on behavior you already rely on
 - a cleanup project with a concrete finish line

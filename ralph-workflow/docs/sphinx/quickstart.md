@@ -1,20 +1,24 @@
 # Quickstart
 
-Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
 That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything. If you need config answers, open [Configuration Reference](configuration.md). If you want docs routed by use case, open [End-User Stories](user-stories.md).
 
 
 Use this page when you already understand the product story and want the shortest path to one honest first run in a real repository.
-Ralph Workflow gives you a strong default unattended coding workflow built from a simple core loop inspired by the original Ralph loop; the point of this page is to use that default safely before you customize anything.
+Ralph Workflow gives you a strong default unattended coding workflow built from a simple Ralph-loop core; the point of this page is to use that default safely before you customize anything.
 If you need fuller explanation, task-selection help, or more context for why the default flow works, go back to [Getting Started](getting-started.md).
 
 ## Quickstart checklist
 
 1. Pick a real repo and a task with a visible finish line.
-2. Prefer the default workflow before touching advanced config.
-3. Run Ralph Workflow on that task.
-4. Judge the result by the repo change and the checks that ran.
-5. Only customize after you know what the default loop already does well enough.
+2. Initialize the repo with `ralph --init`.
+3. Prefer the default workflow before touching advanced config.
+4. Run Ralph Workflow on that task.
+5. Judge the result by the repo change and the checks that ran.
+6. Only customize after you know what the default loop already does well enough.
+
+If you want explicit project-local overrides, run `ralph --init-local-config` and then edit `.agent/ralph-workflow.toml` in that repo.
+That local file belongs to the opt-in override flow, not the default `ralph --init` path.
 
 ## Good first-task shape
 
@@ -26,22 +30,6 @@ Your first task should be:
 - important enough that better unattended workflow would matter
 
 If you need help picking that task, use [First Task Guide](first-task-guide.md).
-
-## Initialization commands
-
-Use the default initializer first:
-
-```bash
-ralph --init
-```
-
-`ralph --init` scaffolds `PROMPT.md` plus the standard project-local support files used for MCP, pipeline, and artifact configuration. If you explicitly want a project-local override copy of the main config, create `.agent/ralph-workflow.toml` with:
-
-```bash
-ralph --init-local-config
-```
-
-That explicit opt-in path is the right place for repo-local main-config overrides; the broader file layout is explained in [Configuration Reference](configuration.md).
 
 ## What success should look like
 

@@ -5,7 +5,6 @@ This page is supporting proof for that composable workflow system and its strong
 
 
 Use this page after you already understand the workflow and want a review standard for the morning-after handoff.
-This page is supporting proof for Ralph Workflow's default unattended coding flow, not the main product pitch.
 Start with the product story and operator route first, then use this page to judge whether a run produced something worth trusting.
 
 ## What to evaluate first
