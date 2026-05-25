@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-25T03:40:38.973112",
+  "timestamp": "2026-05-25T06:15:00",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "primary_repo_flat_contact_handoff_packet_execution",
@@ -17,6 +17,7 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "targets_prepared": [
+      "ctxt.dev / Signum",
       "NxCode",
       "TIMEWELL"
     ]

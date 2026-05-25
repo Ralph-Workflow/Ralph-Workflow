@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T01:47:18.205052+00:00",
+  "generated_at": "2026-05-25T05:00:37.633570+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -113,6 +113,11 @@
       "outreach_subject": "Ralph Workflow for your next AI coding tools benchmark update",
       "channels": [
         {
+          "type": "email",
+          "value": "timewell@timewell.jp",
+          "label": "email"
+        },
+        {
           "type": "website",
           "value": "https://timewell.jp/about",
           "label": "about page"
@@ -138,7 +143,7 @@
           "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "public website contact path is now identified"
+      "recommended_next_step": "email/contact send path is now identified"
     }
   ],
   "omitted_recent_targets": [

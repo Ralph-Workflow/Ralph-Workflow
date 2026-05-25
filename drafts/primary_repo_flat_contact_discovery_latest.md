@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-25T01:47:18+00:00
+Generated: 2026-05-25T05:00:37+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -52,9 +52,10 @@ Generated: 2026-05-25T01:47:18+00:00
 ### 4. TIMEWELL
 - Hook: AI coding tools benchmark focused on agent-style development and review discipline
 - Article/root: https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026 / https://timewell.jp/en/
-- Recommended next step: public website contact path is now identified
+- Recommended next step: email/contact send path is now identified
 - Suggested subject: Ralph Workflow for your next AI coding tools benchmark update
 - Discovered channels:
+  - email: timewell@timewell.jp
   - about page: https://timewell.jp/about
   - contact page: https://timewell.jp/company
   - contact page: https://timewell.jp/company/members

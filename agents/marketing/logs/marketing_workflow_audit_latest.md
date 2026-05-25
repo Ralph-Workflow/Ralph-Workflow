@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-25T05:36:30.754543
+- Generated: 2026-05-25T06:56:07.412578
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,8 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- 6 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
-- The most recent runtime activity was manual_outreach_asset_follow_through, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
+- The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
@@ -20,7 +19,6 @@
 - Repetition risk in outreach opening: "Honestly the part I'd optimize first is the handoff, not the model stack."
 - Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
-- Failing tactic detected: same_family_outreach_overlap
 - Dormant risk parked for now: reddit_style_repetition_suspended_while_channel_blocked
 
 ## Outcome evaluation
@@ -35,10 +33,6 @@
   - Repair state: pending_measurement
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
-- **same_family_outreach_overlap** (tactic) → HOLD another same-day curator-contact burst. Reuse the prepared/manual-contact artifacts already in queue and spend the next active cycle on a different lane that can create clearer demand or cleaner follow-through measurement.
-  - Repair state: needs_execution
-  - Kill condition: Another audit adds more same-family curator outreach before the existing reply/backlink windows have materially aged or produced evidence
-  - Success metric: Next execution lane advances a different family or executes an existing manual-contact packet instead of starting another same-day curator burst
 - **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
   - Repair state: pending_measurement
   - Kill condition: N/A (mirror, not primary)

@@ -156,6 +156,37 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         self.assertIn({'type': 'email', 'value': 'legal@nxcode.io', 'label': 'email'}, enriched['channels'])
         self.assertIn({'type': 'email', 'value': 'support@nxcode.io', 'label': 'email'}, enriched['channels'])
 
+    def test_enrich_target_preserves_explicit_real_email(self):
+        target = discovery.Target(
+            name='TIMEWELL',
+            article_url='https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026',
+            root_url='https://timewell.jp/en/',
+            hook='Hook',
+            reason='Fit',
+            outreach_subject='Subject',
+            explicit_emails=('timewell@timewell.jp',),
+        )
+
+        def fake_get(url: str, timeout: int = 20) -> str:
+            normalized = url.rstrip('/')
+            if normalized == 'https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026':
+                return '<a href="/en/contact">Contact</a>'
+            if normalized == 'https://timewell.jp/en':
+                return '<a href="/en/company">Company</a>'
+            if normalized == 'https://timewell.jp/en/contact':
+                return '<form></form>'
+            return ''
+
+        original = discovery.http_get
+        discovery.http_get = fake_get
+        try:
+            enriched = discovery.enrich_target(target)
+        finally:
+            discovery.http_get = original
+
+        self.assertEqual(enriched['recommended_next_step'], 'email/contact send path is now identified')
+        self.assertEqual(enriched['channels'][0], {'type': 'email', 'value': 'timewell@timewell.jp', 'label': 'email'})
+
     def test_recent_contact_targets_omits_recent_live_publisher_outreach(self):
         with TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)

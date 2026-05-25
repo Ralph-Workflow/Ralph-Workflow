@@ -12,7 +12,7 @@ from agents.marketing import distribution_lane_executor
 
 
 class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
-    def test_execution_board_blocks_primary_repo_flat_packet_for_contact_page_only_target(self):
+    def test_execution_board_surfaces_primary_repo_flat_packet_for_verified_manual_contact_target(self):
         now = datetime(2026, 5, 24, 15, 10, 0)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -28,7 +28,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                         {
                             'target': 'ctxt.dev / Signum',
                             'channels': [
-                                {'type': 'website', 'value': 'https://ctxt.dev/contact', 'label': 'common contact/about path'},
+                                {'type': 'website', 'value': 'https://ctxt.dev/contact', 'label': 'contact page'},
                                 {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
                             ],
                         }
@@ -36,7 +36,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 }),
                 encoding='utf-8',
             )
-            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n\n### 1. AXME Code\n', encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n\n### 1. ctxt.dev / Signum\n', encoding='utf-8')
 
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
@@ -45,8 +45,9 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             board_text = board_path.read_text(encoding='utf-8')
 
-        self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
-        self.assertIn('Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.', board_text)
+        self.assertIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertIn('Targets: ctxt.dev / Signum', board_text)
+        self.assertIn('human-executable via verified public contact paths', board_text)
 
     def test_execution_board_hides_stale_primary_repo_flat_packet_until_refreshed(self):
         now = datetime(2026, 5, 25, 0, 20, 0)
@@ -728,8 +729,8 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                     {
                         'target': 'ctxt.dev / Signum',
                         'channels': [
-                            {'type': 'website', 'value': 'https://ctxt.dev/about'},
-                            {'type': 'telegram', 'value': 'https://t.me/ctxtdev'},
+                            {'type': 'website', 'value': 'https://ctxt.dev/about', 'label': 'about page'},
+                            {'type': 'x', 'value': 'https://x.com/ctxtdev', 'label': 'X/Twitter'},
                         ],
                     },
                 ]
@@ -1257,6 +1258,60 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                     },
                     'measurement_window': {'review_at': '2026-05-31T07:33:00+02:00'},
                     'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertIn('Primary-repo-flat publisher contact packet was already manually delivered in the current review window', board_text)
+
+    def test_execution_board_hides_primary_repo_flat_packet_after_manual_delivery_refresh_in_active_review_window(self):
+        now = datetime(2026, 5, 25, 6, 53, 23)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            packet_path = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'ctxt.dev / Signum',
+                            'channels': [{'type': 'website', 'value': 'https://ctxt.dev/work-with-me'}],
+                        },
+                        {
+                            'target': 'NxCode',
+                            'channels': [{'type': 'website', 'value': 'https://www.nxcode.io/ar/contact'}],
+                        },
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            packet_path.write_text('# publisher packet\n\n### 1. ctxt.dev / Signum\n\n### 2. NxCode\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-25_primary_repo_flat_contact_manual_delivery_refresh.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T06:50:32+02:00',
+                    'chosen_action': {
+                        'type': 'primary_repo_flat_contact_manual_delivery_refresh',
+                        'packet': str(packet_path),
+                    },
+                    'measurement_window': {'review_at': '2026-06-01T06:50:32+02:00'},
+                    'result': {
+                        'status': 'executed',
+                        'ok': True,
+                        'artifact': str(packet_path),
+                    },
                 }),
                 encoding='utf-8',
             )
