@@ -1,5 +1,14 @@
 # Outreach Log
 
+## 2026-05-25 (Monday) — Homepage SEO title/meta + keyword-gap guard repaired (15:46 UTC / 17:46 CEST)
+- **What I executed:** patched `Ralph-Site/app/views/pages/home.html.erb` to fix the two live on-page issues from `seo-reports/2026-05-25.md`: the homepage title is now shorter and keyword-front-loaded (**Unattended coding agent**), and the meta description is now length-safe while keeping the real product path (**Claude Code, Codex CLI, OpenCode, tested code, ready to review**). In the same pass I added the exact missing keyword intents **Claude Code unattended workflows** and **AI agent workflow composer** into the homepage search-intent section.
+- **Runtime enforcement added:** patched `Ralph-Site/spec/requests/pages_spec.rb` so future regressions fail if the homepage title grows past **60** characters, if the meta description leaves the **150-160** range, or if those two keyword-gap phrases disappear from the page.
+- **Verification:** direct file inspection confirms the new title string, a **152-character** meta description, and the two missing keyword phrases are present in the page source. Full Rails request specs could not run in this workspace because the Ralph-Site bundle/gems are not installed locally (`Bundler::GemNotFound`).
+- **Why this action:** this was the strongest same-run internal repair surfaced by the latest daily report. Reddit remains partial-visibility research, while the homepage still had a concrete on-page loss the system could fix immediately.
+- **Expected outcome:** cleaner homepage snippets, better keyword match for the current search-intent set, and fewer evaluator drop-offs before the Codeberg-first proof path.
+- **Measurement window:** watch the next daily SEO report plus repo-adoption signals through **2026-06-01**. If the title/meta issue still appears or homepage keyword coverage does not improve, treat it as a failed repair and escalate beyond copy.
+- **Type:** **REPAIRED / CONVERSION_REPAIR**
+
 ## 2026-05-25 (Monday) — Reddit monitoring (14:13 UTC / 16:13 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-25_1613.md`
 - **Scan summary:** forced-refresh local monitor again returned **13 scanned / 2 shortlisted** with **ok=3 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
@@ -6553,4 +6562,8 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-25 16:18:09
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 16:59:09
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-25T11:14:27.780471",
+  "timestamp": "2026-05-25T17:33:27",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -15,14 +15,13 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "reasoning": "The short review window is still active, but the primary-repo-flat publisher packet is stale while fresh targets already have verified public contact paths; refresh the Codeberg-first execution packet now so the next slot has a truthful asset.",
+    "reasoning": "The active repair window still blocks another net-new publisher burst, but a current Codeberg-first publisher contact packet already exists for fresh primary-repo-flat targets; reuse that packet as the truthful follow-through surface instead of stalling behind another measurement hold or churn guard.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 directory submissions already shipped in the last 24 hours.",
-      "5 curator contact attempts already shipped in the last 24 hours.",
-      "3 live external marketing action(s) already shipped in the last 6 hours.",
-      "If no new outcome lands first, this short-window congestion clears at 2026-05-25T15:07:03. Before then, another live outbound action would mostly blur measurement.",
-      "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
+      "2 curator contact attempts already shipped in the last 24 hours.",
+      "1 live external marketing action(s) already shipped in the last 6 hours.",
+      "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
@@ -32,9 +31,10 @@
       "No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
-      "An active manual publisher handoff already covers (ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
+      "A channel-ready manual publisher outreach asset already exists (reddit discussion handoff packet latest), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.",
+      "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
       "Some remaining publisher targets only expose non-runtime-executable channels (AI Saying, TLDL), so they should not keep this lane looking actionable until a sendable path exists.",
-      "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (Toolradar), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
+      "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (Morph), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
       "Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",

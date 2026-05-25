@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -253,6 +254,91 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('Suppressed regeneration of the Reddit discussion handoff packet', artifact_text)
             self.assertFalse((drafts_dir / '2026-05-25_reddit_discussion_handoff_packet.md').exists())
+
+    def test_manual_follow_through_prefers_current_primary_repo_flat_packet_over_stale_legacy_asset(self):
+        now = datetime(2026, 5, 25, 17, 8, 0)
+        decision = LaneDecision(
+            lane='manual_outreach_asset_follow_through',
+            reason='Reuse the truthful packet.',
+            reasons=['primary packet exists'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'adoption_metrics_latest.json').write_text(
+                json.dumps({
+                    'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {'target': 'TIMEWELL', 'channels': [{'type': 'email', 'value': 'timewell@timewell.jp'}]},
+                        {'target': 'Toolradar', 'channels': [{'type': 'email', 'value': 'editorial@toolradar.com'}]},
+                        {'target': 'Morph', 'channels': [{'type': 'email', 'value': 'info@morphllm.com'}]},
+                    ],
+                }),
+                encoding='utf-8',
+            )
+            primary_packet = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
+            primary_packet.write_text(
+                '# packet\n\n'
+                '- ToolWise — https://toolwise.ai/tools/ralph-workflow\n\n'
+                '### 1. TIMEWELL\n\n'
+                '### 2. Toolradar\n\n'
+                '### 3. Morph\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_primary_repo_flat_contact_handoff_packet_execution.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T15:04:46+02:00',
+                    'chosen_action': {'type': 'primary_repo_flat_contact_handoff_packet_execution'},
+                    'result': {'status': 'prepared', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+            legacy_asset = drafts_dir / 'reddit_discussion_handoff_packet_latest.md'
+            legacy_asset.write_text('# Reddit packet\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-25_reddit_discussion_channel_ready_outreach_asset.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T14:08:00+02:00',
+                    'type': 'reddit_discussion_channel_ready_outreach_asset',
+                    'chosen_action': {
+                        'channel': 'manual_contact_asset',
+                        'artifact': str(legacy_asset),
+                        'title': 'Prepare Reddit discussion handoff packet',
+                    },
+                    'measurement_window': {'review_at': '2026-06-01T14:08:00+02:00'},
+                    'result': {'status': 'executed', 'artifact': str(legacy_asset)},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', log_dir / 'adoption_metrics_latest.json'), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={}):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now=now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+
+        self.assertEqual(execution.action_type, 'manual_outreach_asset_follow_through')
+        self.assertIn('Primary-repo-flat publisher contact packet', artifact_text)
+        self.assertIn(str(primary_packet), artifact_text)
+        self.assertIn('TIMEWELL', artifact_text)
+        self.assertIn('Morph', artifact_text)
+        self.assertNotIn(str(legacy_asset), artifact_text)
 
     def test_execution_board_surfaces_primary_repo_flat_packet_for_verified_manual_contact_target(self):
         now = datetime(2026, 5, 24, 15, 10, 0)
@@ -1629,13 +1715,16 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 }),
                 encoding='utf-8',
             )
-            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n\n### 1. AXME Code\n', encoding='utf-8')
+            packet_path = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
+            packet_path.write_text('# publisher packet\n\n### 1. AXME Code\n', encoding='utf-8')
+            delivered_source_mtime = datetime(2026, 5, 24, 7, 30, 0)
+            os.utime(packet_path, (delivered_source_mtime.timestamp(), delivered_source_mtime.timestamp()))
             (log_dir / 'marketing_2026-05-24_primary_repo_flat_contact_manual_delivery.json').write_text(
                 json.dumps({
                     'timestamp': '2026-05-24T07:33:00+02:00',
                     'chosen_action': {
                         'type': 'primary_repo_flat_contact_manual_delivery',
-                        'packet': str(drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'),
+                        'packet': str(packet_path),
                     },
                     'measurement_window': {'review_at': '2026-05-31T07:33:00+02:00'},
                     'result': {'status': 'executed', 'ok': True},
@@ -1683,6 +1772,8 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 '# publisher packet\n\n- ToolWise — https://toolwise.ai/tools/ralph-workflow\n\n### 1. ctxt.dev / Signum\n\n### 2. NxCode\n',
                 encoding='utf-8',
             )
+            delivered_source_mtime = datetime(2026, 5, 25, 6, 45, 0)
+            os.utime(packet_path, (delivered_source_mtime.timestamp(), delivered_source_mtime.timestamp()))
             (log_dir / 'marketing_2026-05-25_primary_repo_flat_contact_manual_delivery_refresh.json').write_text(
                 json.dumps({
                     'timestamp': '2026-05-25T06:50:32+02:00',
@@ -1709,6 +1800,62 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
         self.assertIn('Primary-repo-flat publisher contact packet was already manually delivered in the current review window', board_text)
+
+    def test_execution_board_surfaces_refreshed_primary_repo_flat_packet_after_same_path_delivery_log(self):
+        now = datetime(2026, 5, 25, 17, 4, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            packet_path = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'Toolradar',
+                            'channels': [{'type': 'email', 'value': 'editorial@toolradar.com', 'label': 'email'}],
+                        }
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            packet_path.write_text(
+                '# publisher packet\n\n- ToolWise — https://toolwise.ai/tools/ralph-workflow\n\n### 1. Toolradar\n',
+                encoding='utf-8',
+            )
+            refreshed_at = datetime(2026, 5, 25, 15, 4, 46)
+            os.utime(packet_path, (refreshed_at.timestamp(), refreshed_at.timestamp()))
+            (log_dir / 'marketing_2026-05-25_primary_repo_flat_contact_manual_delivery_refresh.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T06:50:32+02:00',
+                    'chosen_action': {
+                        'type': 'primary_repo_flat_contact_manual_delivery_refresh',
+                        'packet': str(packet_path),
+                    },
+                    'measurement_window': {'review_at': '2026-06-01T06:50:32+02:00'},
+                    'result': {
+                        'status': 'executed',
+                        'ok': True,
+                        'artifact': str(packet_path),
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertIn('Targets: Toolradar', board_text)
+        self.assertNotIn('already manually delivered in the current review window', board_text)
 
     def test_execution_board_hides_comparison_packet_after_manual_delivery_in_active_review_window(self):
         now = datetime(2026, 5, 24, 14, 21, 0)

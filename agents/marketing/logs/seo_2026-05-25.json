@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-25T16:17:32.232687",
+  "timestamp": "2026-05-25T17:26:18.192860",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6449,
+      "word_count": 6463,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -74,7 +74,54 @@
     ]
   },
   "ranks": {
-    "_note": "GSC token refresh failed. Run `python3 agents/marketing/gsc_auth.py` to re-authorize."
+    "unattended coding agent": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI agent orchestration CLI": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "spec-driven AI agent": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI coding workflow automation": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Claude Code automation": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Claude Code unattended": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI agent workflow composer": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Ralph Workflow": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    }
   },
   "backlinks": {
     "count_approx": 2,
@@ -142,7 +189,6 @@
   },
   "priority_actions": [
     "Fix top on-page SEO issues (current score: 70/100)",
-    "Create content targeting: Claude Code unattended, AI agent workflow composer",
-    "Set up Google Search Console: python3 agents/marketing/gsc_auth.py"
+    "Create content targeting: Claude Code unattended, AI agent workflow composer"
   ]
 }
