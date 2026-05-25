@@ -72,7 +72,6 @@ def builtin_agents() -> dict[str, AgentConfig]:
             output_flag=None,
             yolo_flag="--dangerously-skip-permissions",
             print_flag="--print",
-            session_flag="--conversation {}",
             can_commit=False,
             json_parser=JsonParserType.GENERIC,
             transport=AgentTransport.AGY,

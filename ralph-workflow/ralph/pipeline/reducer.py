@@ -341,9 +341,7 @@ def _enter_failed_recovery(
     logger.bind(component="policy.routing").info(
         explain_routing_decision(state.phase, target, "failure", reason, recovery=True)
     )
-    new_state = state.copy_with(
-        phase=target,
-        previous_phase=state.phase,
+    new_state = progress.advance_phase(state, target, policy=policy).copy_with(
         last_error=reason,
         recovery_epoch=state.recovery_epoch + 1,
     )
@@ -391,9 +389,7 @@ def _handle_phase_failure(
                     "non-recoverable failure — routing via policy workflow_fallback",
                 )
             )
-            new_state = state.copy_with(
-                phase=fallback_target,
-                previous_phase=event.phase,
+            new_state = progress.advance_phase(state, fallback_target, policy=policy).copy_with(
                 last_error=failure_message,
             )
             return new_state, []
@@ -838,7 +834,7 @@ def _handle_complete(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle pipeline completion — routes to the policy-declared terminal success phase."""
     terminal = _terminal_success_route(policy)
-    new_state = state.copy_with(phase=terminal)
+    new_state = progress.advance_phase(state, terminal, policy=policy)
     return new_state, []
 
 

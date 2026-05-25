@@ -29,6 +29,8 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.legacy_console_display import LegacyConsoleDisplay, get_display_context
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.workspace import FsWorkspace
@@ -212,8 +214,19 @@ def _normalize_repo_relative_path(raw_path: str) -> str:
     return normalized
 
 
+def _close_repo(repo: Repo | None) -> None:
+    close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+    if callable(close):
+        close()
+
+
 def _changed_commit_paths(repo_root: Path) -> list[str]:
-    status_output = cast("str", Repo(repo_root).git.status("--porcelain"))
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        status_output = cast("str", repo.git.status("--porcelain"))
+    finally:
+        _close_repo(repo)
     status_lines = status_output.splitlines()
     changed: list[str] = []
     for line in status_lines:
@@ -229,7 +242,12 @@ def _changed_commit_paths(repo_root: Path) -> list[str]:
 
 
 def _repo_has_commit_work(repo_root: Path) -> bool:
-    return Repo(repo_root).is_dirty(untracked_files=True)
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        return repo.is_dirty(untracked_files=True)
+    finally:
+        _close_repo(repo)
 
 
 def cleanup_commit_message_artifacts(repo_root: Path) -> None:

@@ -11,7 +11,6 @@ import sys
 
 def main() -> None:
     """Launch the interactive prompt-helper (same as `ralph --prompt-helper`)."""
-    from ralph.cli.commands.prompt_helper import run_prompt_helper
     from ralph.config.bootstrap import (
         ensure_global_config,
         ensure_global_mcp_config,
@@ -31,4 +30,6 @@ def main() -> None:
         print(f"Error starting ralph-prompt: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    run_prompt_helper(cfg, workspace_root)
+    from ralph.cli.commands.prompt_helper import run_prompt_helper as _run_prompt_helper
+
+    _run_prompt_helper(cfg, workspace_root)

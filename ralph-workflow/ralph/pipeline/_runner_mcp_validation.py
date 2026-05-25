@@ -11,6 +11,11 @@ import ralph.mcp.transport.claude as claude_transport_module
 from ralph.mcp.session_plan import effective_session_mcp_plan_from_servers
 from ralph.mcp.transport import common as transport_common_module
 from ralph.mcp.upstream.agent_probe import AgentProbeReport, probe_agent_transports
+from ralph.mcp.upstream.tool_catalog_cache import (
+    cache_tool_catalog,
+    clear_tool_catalog,
+    collect_tool_catalog,
+)
 from ralph.mcp.upstream.validation import (
     UpstreamValidationError,
     strict_mode_from_env,
@@ -85,18 +90,21 @@ def run_custom_mcp_validation(
     """
     upstreams = _effective_session_mcp_servers_for_runner_validation(workspace_root)
     if not upstreams:
+        clear_tool_catalog(workspace_root)
         return 0
 
     strict = strict_mode_from_env()
     try:
         upstream_report = validate_fn(upstreams, strict=strict)
     except UpstreamValidationError as exc:
+        clear_tool_catalog(workspace_root)
         logger.error("Session MCP server validation failed:\n{}", exc)
         return 1
 
     healthy_names = {r.name for r in upstream_report.servers if r.ok}
     healthy_servers = tuple(s for s in upstreams if s.name in healthy_names)
     if not healthy_servers:
+        clear_tool_catalog(workspace_root)
         return 0
 
     probe_results = probe_fn(healthy_servers, workspace_path=workspace_root)
@@ -117,4 +125,13 @@ def run_custom_mcp_validation(
             failure.transport,
             failure.error,
         )
+
+    try:
+        cache_tool_catalog(workspace_root, collect_tool_catalog(healthy_servers))
+    except Exception as exc:
+        clear_tool_catalog(workspace_root)
+        if strict:
+            logger.error("Failed to cache upstream tool catalog: {}", exc)
+            return 1
+        logger.warning("Failed to cache upstream tool catalog (soft mode): {}", exc)
     return 0

@@ -450,6 +450,28 @@ def _save_checkpoint_or_log(
         logger.exception(message, phase=state.phase, err=exc)
 
 
+def _maybe_clear_invoke_agent_entry_drains(
+    effect: Effect,
+    state: PipelineState,
+    workspace: FsWorkspace,
+    policy_bundle: PolicyBundle,
+) -> None:
+    if isinstance(effect, InvokeAgentEffect):
+        is_resume = (
+            state.phase == effect.phase
+            and state.previous_phase is None
+            and state.checkpoint_saved_count > 0
+        )
+        if not is_resume:
+            clear_phase_entry_drains(
+                workspace,
+                str(effect.phase),
+                state.previous_phase,
+                policy_bundle.pipeline,
+                policy_bundle.artifacts,
+            )
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -501,6 +523,12 @@ def _run_pipeline_step(
             workspace = FsWorkspace(
                 workspace_scope.root,
                 allowed_roots=workspace_scope.allowed_roots,
+            )
+            _maybe_clear_invoke_agent_entry_drains(
+                effect,
+                state,
+                workspace,
+                policy_bundle,
             )
             _mat_fn = (
                 materialize_prompt_for_phase
@@ -950,16 +978,32 @@ def emit_phase_transition_if_changed(
 
 
 def write_start_commit_if_absent(workspace_root: Path) -> None:
-    """Record the current HEAD as the cycle baseline if no baseline exists yet."""
+    """Record the current HEAD as the cycle baseline if no baseline exists yet.
+
+    This is best effort: if the baseline cannot be written, log a warning and
+    continue without aborting the pipeline.
+    """
     if read_cycle_baseline(workspace_root) is not None:
         return
+    repo: Repo | None = None
     try:
         repo = Repo(workspace_root)
     except InvalidGitRepositoryError:
         return
-    if not repo.head.is_valid():
-        return
-    write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
+    try:
+        if not repo.head.is_valid():
+            return
+        write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
+    except OSError as exc:
+        logger.warning(
+            "Could not write cycle baseline in {}: {} — continuing without baseline",
+            workspace_root,
+            exc,
+        )
+    finally:
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+        if callable(close):
+            close()
 
 
 call_determine_effect_from_policy = _call_determine_effect_from_policy

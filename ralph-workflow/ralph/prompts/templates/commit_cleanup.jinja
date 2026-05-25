@@ -34,9 +34,11 @@ Only recommend removing files from the commit if they match these categories:
 **NEVER recommend deleting:**
 - Source code files (`.py`, `.js`, `.ts`, `.rs`, `.go`, etc.)
 - Test files (even if temporarily modified)
-- Documentation files (`.md`, `.txt`, `.rst`)
+- Documentation files (`.md`, `.rst`, and human-authored `.txt` notes/docs)
 - Configuration files that were intentionally modified for this commit
 - Any file whose removal would change what the commit does
+
+**Exception:** obvious generated text artifacts are housekeeping and may be removed, for example verification/build captures such as `verify-output.txt`, `test-output.txt`, `build/report.txt`, or temp transcripts/logs under generated-output directories.
 
 **If you are unsure whether a file should be removed, do NOT include it in your actions.**
 

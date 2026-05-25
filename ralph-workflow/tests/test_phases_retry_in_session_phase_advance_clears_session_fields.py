@@ -8,11 +8,16 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from ralph.phases import PhaseContext
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
-from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.policy.models import (
+    PhaseDefinition,
+    PhaseTransition,
+    PhaseWorkflowFallback,
+    PipelinePolicy,
+)
 
 
 @lru_cache(maxsize=1)
@@ -75,6 +80,70 @@ def _minimal_analysis_policy() -> PipelinePolicy:
     )
 
 
+def _terminal_transition_policy() -> PipelinePolicy:
+    return PipelinePolicy(
+        phases={
+            "development": PhaseDefinition(
+                drain="development",
+                role="execution",
+                transitions=PhaseTransition(on_success="done", on_failure="failed_terminal"),
+            ),
+            "done": PhaseDefinition(
+                drain="done",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="done", on_loopback="done"),
+            ),
+            "failed_terminal": PhaseDefinition(
+                drain="failed_terminal",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(
+                    on_success="failed_terminal", on_loopback="failed_terminal"
+                ),
+            ),
+        },
+        entry_phase="development",
+        terminal_phase="done",
+        recovery={"failed_route": "failed_terminal"},
+    )
+
+
+def _workflow_fallback_policy() -> PipelinePolicy:
+    return PipelinePolicy(
+        phases={
+            "development": PhaseDefinition(
+                drain="development",
+                role="execution",
+                transitions=PhaseTransition(on_success="done", on_failure="failed_terminal"),
+                workflow_fallback=PhaseWorkflowFallback(target="planning"),
+            ),
+            "planning": PhaseDefinition(
+                drain="planning",
+                role="execution",
+                transitions=PhaseTransition(on_success="done", on_failure="failed_terminal"),
+            ),
+            "done": PhaseDefinition(
+                drain="done",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="done", on_loopback="done"),
+            ),
+            "failed_terminal": PhaseDefinition(
+                drain="failed_terminal",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(
+                    on_success="failed_terminal", on_loopback="failed_terminal"
+                ),
+            ),
+        },
+        entry_phase="development",
+        terminal_phase="done",
+        recovery={"failed_route": "failed_terminal"},
+    )
+
+
 class TestPhaseAdvanceClearsSessionFields:
     """Phase advance must clear session fields to prevent cross-phase session leaks."""
 
@@ -105,4 +174,69 @@ class TestPhaseAdvanceClearsSessionFields:
         )
         policy = _minimal_analysis_policy()
         new_state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, pipeline_policy=policy)
+        assert new_state.session_preserve_retry_pending is False
+
+    def test_complete_clears_session_fields_on_terminal_success(self) -> None:
+        state = PipelineState(
+            phase="development",
+            phase_chains={
+                "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
+            },
+            last_agent_session_id="sess-to-clear",
+            session_preserve_retry_pending=True,
+        )
+
+        new_state, _ = reducer_reduce(
+            state,
+            PipelineEvent.COMPLETE,
+            pipeline_policy=_terminal_transition_policy(),
+        )
+
+        assert new_state.phase == "done"
+        assert new_state.last_agent_session_id is None
+        assert new_state.session_preserve_retry_pending is False
+
+    def test_failed_clears_session_fields_on_terminal_failure(self) -> None:
+        state = PipelineState(
+            phase="development",
+            phase_chains={
+                "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
+            },
+            last_agent_session_id="sess-to-clear",
+            session_preserve_retry_pending=True,
+            last_error="boom",
+        )
+
+        new_state, _ = reducer_reduce(
+            state,
+            PipelineEvent.FAILED,
+            pipeline_policy=_terminal_transition_policy(),
+        )
+
+        assert new_state.phase == "failed_terminal"
+        assert new_state.last_agent_session_id is None
+        assert new_state.session_preserve_retry_pending is False
+
+    def test_workflow_fallback_clears_session_fields(self) -> None:
+        state = PipelineState(
+            phase="development",
+            phase_chains={
+                "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
+            },
+            last_agent_session_id="sess-to-clear",
+            session_preserve_retry_pending=True,
+        )
+
+        new_state, _ = reducer_reduce(
+            state,
+            PhaseFailureEvent(
+                phase="development",
+                reason="non recoverable",
+                recoverable=False,
+            ),
+            pipeline_policy=_workflow_fallback_policy(),
+        )
+
+        assert new_state.phase == "planning"
+        assert new_state.last_agent_session_id is None
         assert new_state.session_preserve_retry_pending is False

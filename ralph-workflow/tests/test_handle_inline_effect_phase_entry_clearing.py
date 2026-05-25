@@ -15,6 +15,7 @@ from ralph.pipeline.effects import PreparePromptEffect
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from ralph.policy.models import ArtifactsPolicy, PipelinePolicy
@@ -50,7 +51,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        # Pre-create all 4 planning + planning_analysis files
+        # Pre-create all 6 planning, planning_analysis, and development_analysis files
         _write_artifact_files(
             ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md"
         )
@@ -58,6 +59,11 @@ class TestHandleInlineEffectPhaseEntryClearing:
             ws, "planning_analysis_decision",
             ".agent/artifacts/planning_analysis_decision.json",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
+        )
+        _write_artifact_files(
+            ws, "development_analysis_decision",
+            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
 
         effect = PreparePromptEffect(
@@ -75,16 +81,18 @@ class TestHandleInlineEffectPhaseEntryClearing:
                 state=state,
                 pipeline_policy=pipeline,
                 artifacts_policy=artifacts_policy,
-                workspace_scope=type("WS", (), {"root": root, "allowed_roots": []})(),
+                workspace_scope=WorkspaceScope(root=root, allowed_roots=frozenset([root])),
             )
         finally:
             runner_module.materialize_prepared_prompt = original
 
-        # All 4 files cleared
+        # All 6 files cleared
         assert not ws.exists(".agent/artifacts/plan.json")
         assert not ws.exists(".agent/PLAN.md")
         assert not ws.exists(".agent/artifacts/planning_analysis_decision.json")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_planning_to_development_clears_analysis_and_dev(
         self, tmp_path: Path
@@ -129,7 +137,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
                 state=state,
                 pipeline_policy=pipeline,
                 artifacts_policy=artifacts_policy,
-                workspace_scope=type("WS", (), {"root": root, "allowed_roots": []})(),
+                workspace_scope=WorkspaceScope(root=root, allowed_roots=frozenset([root])),
             )
         finally:
             runner_module.materialize_prepared_prompt = original
@@ -180,7 +188,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
                 state=state,
                 pipeline_policy=pipeline,
                 artifacts_policy=artifacts_policy,
-                workspace_scope=type("WS", (), {"root": root, "allowed_roots": []})(),
+                workspace_scope=WorkspaceScope(root=root, allowed_roots=frozenset([root])),
             )
         finally:
             runner_module.materialize_prepared_prompt = original
@@ -218,7 +226,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
                 state=state,
                 pipeline_policy=pipeline,
                 artifacts_policy=artifacts_policy,
-                workspace_scope=type("WS", (), {"root": root, "allowed_roots": []})(),
+                workspace_scope=WorkspaceScope(root=root, allowed_roots=frozenset([root])),
             )
         finally:
             runner_module.materialize_prepared_prompt = original
@@ -255,7 +263,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
                 state=state,
                 pipeline_policy=pipeline,
                 artifacts_policy=artifacts_policy,
-                workspace_scope=type("WS", (), {"root": root, "allowed_roots": []})(),
+                workspace_scope=WorkspaceScope(root=root, allowed_roots=frozenset([root])),
             )
         finally:
             runner_module.materialize_prepared_prompt = original
@@ -294,7 +302,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
                 state=state,
                 pipeline_policy=pipeline,
                 artifacts_policy=artifacts_policy,
-                workspace_scope=type("WS", (), {"root": root, "allowed_roots": []})(),
+                workspace_scope=WorkspaceScope(root=root, allowed_roots=frozenset([root])),
             )
         finally:
             runner_module.materialize_prepared_prompt = original
@@ -320,6 +328,11 @@ class TestHandleInlineEffectPhaseEntryClearing:
             ".agent/artifacts/planning_analysis_decision.json",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
+        _write_artifact_files(
+            ws, "development_analysis_decision",
+            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
+        )
 
         effect = PreparePromptEffect(
             phase="planning", previous_phase="development_commit",
@@ -339,16 +352,18 @@ class TestHandleInlineEffectPhaseEntryClearing:
                 state=state,
                 pipeline_policy=pipeline,
                 artifacts_policy=artifacts_policy,
-                workspace_scope=type("WS", (), {"root": root, "allowed_roots": []})(),
+                workspace_scope=WorkspaceScope(root=root, allowed_roots=frozenset([root])),
             )
         finally:
             runner_module.materialize_prepared_prompt = original
 
-        # All 4 files cleared despite checkpoint_saved_count > 0
+        # All 6 files cleared despite checkpoint_saved_count > 0
         assert not ws.exists(".agent/artifacts/plan.json")
         assert not ws.exists(".agent/PLAN.md")
         assert not ws.exists(".agent/artifacts/planning_analysis_decision.json")
         assert not ws.exists(".agent/PLANNING_ANALYSIS_DECISION.md")
+        assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
+        assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
     def test_resumed_non_planning_phase_does_not_clear(self, tmp_path: Path) -> None:
         """Non-planning resume: checkpoint_saved_count>0, previous_phase=None."""
@@ -380,7 +395,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
                 state=state,
                 pipeline_policy=pipeline,
                 artifacts_policy=artifacts_policy,
-                workspace_scope=type("WS", (), {"root": root, "allowed_roots": []})(),
+                workspace_scope=WorkspaceScope(root=root, allowed_roots=frozenset([root])),
             )
         finally:
             runner_module.materialize_prepared_prompt = original

@@ -67,7 +67,7 @@ role = "execution"
 prompt_template = "planning.jinja"
 loopback_prompt_template = "planning_edit.jinja"
 display_style = "theme.phase.planning"
-clear_drains_on_fresh_entry = ["planning", "planning_analysis"]
+clear_drains_on_fresh_entry = ["planning", "planning_analysis", "development_analysis"]
 [blocks.planning.phase.transitions]
 on_success = "planning_analysis"
 [blocks.planning.phase.artifact_history]

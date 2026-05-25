@@ -52,6 +52,7 @@ from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
+from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 from ralph.recovery.retry_prompt import build_retry_error_block
 from ralph.workspace import FsWorkspace
 
@@ -448,8 +449,7 @@ def _failure_requires_fresh_session(exc: Exception, inactivity_error_type: type[
     if isinstance(exc, inactivity_error_type):
         session_resume_safe = cast("object", getattr(exc, "session_resume_safe", False))
         return session_resume_safe is not True
-    raw_details = "\n".join(_recovery_error_parts(exc))
-    return any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS)
+    return contains_casefolded_marker(_recovery_error_parts(exc), _SESSION_NOT_FOUND_SUBSTRINGS)
 
 
 def _retryable_agent_failure_reason(
@@ -460,7 +460,7 @@ def _retryable_agent_failure_reason(
     if type(exc).__name__ == "OpenCodeResumableExitError":
         return "agent session exited without required completion evidence"
     raw_details = "\n".join(_recovery_error_parts(exc))
-    if any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS):
+    if contains_casefolded_marker(_recovery_error_parts(exc), _SESSION_NOT_FOUND_SUBSTRINGS):
         return "a stale session ID (fresh session required)"
     details = raw_details.lower()
     for marker in _TRANSIENT_CONNECTIVITY_MARKERS:
@@ -470,14 +470,7 @@ def _retryable_agent_failure_reason(
 
 
 def _recovery_error_parts(exc: Exception) -> list[str]:
-    parts: list[str] = [str(exc)]
-    stderr = cast("object", getattr(exc, "stderr", None))
-    if isinstance(stderr, str) and stderr.strip():
-        parts.append(stderr.strip())
-    parsed_output = cast("object", getattr(exc, "parsed_output", None))
-    if isinstance(parsed_output, list):
-        parts.extend(str(item).strip() for item in parsed_output if str(item).strip())
-    return parts
+    return failure_detail_parts(exc)
 
 
 def _recovery_context_lines(

@@ -211,6 +211,18 @@ def test_build_next_steps_agent_missing_recommends_install() -> None:
     )
 
 
+def test_build_next_steps_agent_missing_includes_agy_url() -> None:
+    """_build_next_steps must include the AGY install URL in missing-agent guidance."""
+    steps = build_next_steps(
+        validation_ok=True,
+        agent_missing=True,
+        prompt_exists=True,
+        prompt_has_sentinel=False,
+    )
+    combined = " ".join(steps)
+    assert "https://github.com/google-antigravity/antigravity-cli" in combined
+
+
 def test_build_next_steps_validation_failed_recommends_regenerate() -> None:
     """_build_next_steps must mention regenerate-config when validation failed."""
     steps = build_next_steps(

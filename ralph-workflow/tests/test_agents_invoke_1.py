@@ -43,6 +43,11 @@ if TYPE_CHECKING:
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 
+@pytest.fixture(autouse=True)
+def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+
+
 def _json_object(raw: str) -> dict[str, object]:
     return cast("dict[str, object]", json.loads(raw))
 
@@ -78,6 +83,7 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
     monkeypatch.setattr(
         invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
 
     list(
         invoke_agent(
@@ -115,6 +121,7 @@ def test_invoke_agent_probe_and_strategy_share_same_registry(
     monkeypatch.setattr(
         invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
 
     list(
         invoke_agent(
@@ -165,6 +172,7 @@ def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
     monkeypatch.setattr(
         invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
 
     list(
         invoke_agent(
@@ -191,6 +199,7 @@ def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
     assert state == AgentExecutionState.WAITING_ON_CHILD
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_invoke_agent_without_session_scope_ignores_unrelated_agent_labels(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -276,6 +285,7 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: FakeProcess(),
     )
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
 
     with pytest.raises(AgentInactivityTimeoutError, match="no output for 0s"):
         list(

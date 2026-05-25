@@ -7,11 +7,12 @@ import json
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pytest
 from loguru import logger
 
+import ralph.agents.invoke as invoke_module
 from ralph.agents.invoke import (
     BuildCommandOptions,
     InvokeOptions,
@@ -44,6 +45,11 @@ if TYPE_CHECKING:
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 
+@pytest.fixture(autouse=True)
+def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+
+
 def _json_object(raw: str) -> dict[str, object]:
     return cast("dict[str, object]", json.loads(raw))
 
@@ -73,45 +79,13 @@ def _run_agy_transport_proxy_payload_check(
     monkeypatch.setenv("HOME", str(fake_home))
     agy_transport_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
 
-    class FakeAgyProcess:
-        pid: int = 12345
+    def fake_run_pty_agy(cmd: object, ctx: object, extras: object = None) -> object:
+        del cmd, extras
+        seen_envs["agy"] = cast("dict[str, str]", cast("Any", ctx).extra_env)
+        yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
-        def poll(self) -> int | None:
-            return self.returncode
-
-        def __init__(self) -> None:
-            self.stdout = iter(
-                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
-            )
-            self.stderr = SimpleNamespace(read=lambda: "")
-            self.returncode = 0
-
-        def __enter__(self) -> FakeAgyProcess:
-            return self
-
-        def __exit__(
-            self,
-            _exc_type: object,
-            exc: object,
-            _tb: object,
-        ) -> Literal[False]:
-            return False
-
-        def wait(self, timeout: float | None = None) -> int:
-            return self.returncode
-
-        def terminate(self) -> None:
-            self.returncode = -15
-
-        def kill(self) -> None:
-            self.returncode = -9
-
-    def fake_popen_agy(*args: object, **kwargs: object) -> FakeAgyProcess:
-        del args
-        seen_envs["agy"] = _env_dict(kwargs)
-        return FakeAgyProcess()
-
-    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_agy)
+    monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_agy)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
     agy_config_dir = fake_home / ".gemini" / "antigravity-cli"
     agy_config_dir.mkdir(parents=True)
     (agy_config_dir / "mcp_config.json").write_text(
@@ -130,8 +104,7 @@ def _run_agy_transport_proxy_payload_check(
     assert UPSTREAM_MCP_CONFIG_ENV in runtime.agent_env
     agy_upstream_payload = json.loads(runtime.agent_env[UPSTREAM_MCP_CONFIG_ENV])
     assert any(
-        u["name"] == "upstream-agy-http" and u["transport"] == "http"
-        for u in agy_upstream_payload
+        u["name"] == "upstream-agy-http" and u["transport"] == "http" for u in agy_upstream_payload
     ), (
         "AGY HTTP serverUrl upstream must appear in RALPH_UPSTREAM_MCP_CONFIG "
         "after normalization fix"
@@ -209,6 +182,7 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("CODEX_HOME", str(source_home))
 
     list(
@@ -412,6 +386,7 @@ def test_claude_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -487,6 +462,7 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv(
         "OPENCODE_CONFIG_CONTENT",
         json.dumps(
@@ -588,6 +564,7 @@ def test_codex_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("CODEX_HOME", str(source_home))
 
     list(
@@ -620,8 +597,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
 
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_: None)
-
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
     seen_envs: dict[str, dict[str, str]] = {}
 
     class FakeProcess:
@@ -680,6 +656,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_claude)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("HOME", str(fake_home))
     list(
         invoke_agent(
@@ -765,8 +742,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
 
     agy_upstream_payload = json.loads(seen_envs["agy"][UPSTREAM_MCP_CONFIG_ENV])
     assert any(
-        u["name"] == "upstream-agy-http" and u["transport"] == "http"
-        for u in agy_upstream_payload
+        u["name"] == "upstream-agy-http" and u["transport"] == "http" for u in agy_upstream_payload
     ), (
         "AGY HTTP serverUrl upstream must appear in RALPH_UPSTREAM_MCP_CONFIG "
         "after normalization fix"
@@ -834,6 +810,104 @@ def test_agy_command_inlines_prompt_content_not_file_path(tmp_path: Path) -> Non
 
     assert cmd[-1] == prompt_text
     assert str(prompt_file) not in cmd
+
+
+def test_agy_command_includes_print_flag(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(
+        cmd="agy",
+        transport=AgentTransport.AGY,
+        print_flag="--print",
+    )
+
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
+
+    assert "--print" in cmd
+    assert cmd.index("--print") < len(cmd) - 1
+    assert cmd[-1] == prompt_text
+
+
+def test_build_agy_command_all_flags_precede_print_and_prompt(tmp_path: Path) -> None:
+    prompt_text = "hello"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(
+        cmd="agy",
+        print_flag="--print",
+        session_flag="--conversation {}",
+        yolo_flag="--dangerously-skip-permissions",
+        verbose_flag="--verbose",
+        can_commit=False,
+        transport=AgentTransport.AGY,
+    )
+
+    result = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(session_id="sess-1", verbose=True),
+    )
+
+    assert result == [
+        "agy",
+        "--dangerously-skip-permissions",
+        "--conversation",
+        "sess-1",
+        "--verbose",
+        "--print",
+        "hello",
+    ]
+
+
+def test_agy_command_appends_yolo_flag(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(
+        cmd="agy",
+        transport=AgentTransport.AGY,
+        yolo_flag="--dangerously-skip-permissions",
+    )
+
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
+
+    assert "--dangerously-skip-permissions" in cmd
+
+
+def test_agy_command_appends_session_flag(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(
+        cmd="agy",
+        transport=AgentTransport.AGY,
+        session_flag="--conversation {}",
+    )
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(session_id="test-session-123"),
+    )
+
+    assert "--conversation" in cmd
+    assert "test-session-123" in cmd
+
+
+def test_agy_command_appends_verbose_flag(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(
+        cmd="agy",
+        transport=AgentTransport.AGY,
+        verbose_flag="--verbose",
+    )
+
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions(verbose=True))
+
+    assert "--verbose" in cmd
 
 
 def test_agy_command_appends_multimodal_sidecar_content(tmp_path: Path) -> None:

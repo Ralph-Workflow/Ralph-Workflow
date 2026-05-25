@@ -569,6 +569,75 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
     )
 
 
+def test_runner_opencode_lowercase_stale_message_in_parsed_output_triggers_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Lowercase stale-session details in parsed_output still force a fresh retry session."""
+    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
+    monkeypatch.setattr(
+        runner_module,
+        "materialize_system_prompt",
+        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
+    )
+
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+
+    captured_calls: list[str | None] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config, prompt_file
+        captured_calls.append(options.session_id if options is not None else None)
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "opencode",
+                1,
+                "Unexpected server error",
+                [
+                    '{"type":"error","error":{"message":"session not found: lower-case-deadbeef"}}'
+                ],
+            )
+        return []
+
+    result = runner_module.execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="opencode",
+            phase="development",
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        runner_module.AgentExecutionDeps(
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
+            agent_registry=_registry_factory(
+                AgentConfig(
+                    cmd="opencode",
+                    output_flag="--format json",
+                    session_flag="--session {}",
+                    transport=AgentTransport.OPENCODE,
+                )
+            ),
+        ),
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        state=_make_state(last_session_id="lower-case-deadbeef", session_preserve=True),
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
+    assert captured_calls[1] is None
+
+
 # ---------------------------------------------------------------------------
 # Controller-level tests (pure logic, no runner)
 # ---------------------------------------------------------------------------

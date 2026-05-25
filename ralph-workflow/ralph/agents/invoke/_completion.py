@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import IO, TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.agents.completion_signals import evaluate_completion
+from ralph.agents.completion_signals import _check_completion_sentinel, evaluate_completion
 from ralph.agents.execution_state import (
     AgentExecutionState,
     GenericExecutionStrategy,
@@ -21,6 +21,7 @@ from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.agents.invoke._agent_run_ctx import _EvalCompletionFn
@@ -37,7 +38,9 @@ class _CompletionCheckOptions:
     required_artifact: RequiredArtifact | None = None
     explicit_completion_seen: bool = False
     captured_session_id: str | None = None
+    completion_run_id: str | None = None
     evaluate_completion_fn: _EvalCompletionFn | None = None
+    _sentinel_check_fn: Callable[[Path, str | None], bool] | None = field(default=None)
 
 
 def _wait_for_completion_grace(
@@ -213,6 +216,21 @@ def _check_process_result(
             bounded_output,
             required_artifact=opts.required_artifact,
         )
+        sentinel_check_fn = (
+            opts._sentinel_check_fn
+            if opts._sentinel_check_fn is not None
+            else _check_completion_sentinel
+        )
+        sentinel_run_id = (
+            opts.completion_run_id
+            if opts.completion_run_id is not None
+            else opts.captured_session_id
+        )
+        if not signals.explicit_complete and sentinel_check_fn(
+            opts.workspace_path,
+            sentinel_run_id,
+        ):
+            signals = replace(signals, explicit_complete=True)
         exit_state = opts.execution_strategy.classify_exit(
             handle, signals, liveness_probe=opts.liveness_probe
         )
@@ -236,3 +254,50 @@ def _check_process_result(
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
             session_id = opts.captured_session_id or extract_session_id(bounded_output)
             raise OpenCodeResumableExitError(agent_name, session_id=session_id)
+    elif (
+        opts is not None
+        and opts.execution_strategy is not None
+        and opts.execution_strategy.supports_completion_enforcement()
+        and opts.workspace_path is not None
+    ):
+        bounded_output = _bounded_output_lines(
+            parsed_output or [],
+            explicit_completion_seen=opts.explicit_completion_seen,
+        )
+        _eval_fn = (
+            opts.evaluate_completion_fn
+            if opts.evaluate_completion_fn is not None
+            else evaluate_completion
+        )
+        signals = _eval_fn(
+            opts.workspace_path,
+            bounded_output,
+            required_artifact=opts.required_artifact,
+        )
+        sentinel_check_fn = (
+            opts._sentinel_check_fn
+            if opts._sentinel_check_fn is not None
+            else _check_completion_sentinel
+        )
+        sentinel_run_id = (
+            opts.completion_run_id
+            if opts.completion_run_id is not None
+            else opts.captured_session_id
+        )
+        if not signals.explicit_complete and sentinel_check_fn(
+            opts.workspace_path,
+            sentinel_run_id,
+        ):
+            signals = replace(signals, explicit_complete=True)
+        exit_state = opts.execution_strategy.classify_exit(
+            handle, signals, liveness_probe=opts.liveness_probe
+        )
+        if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
+            raise AgentInvocationError(
+                agent_name,
+                0,
+                (
+                    "agent exited without required completion evidence "
+                    "(no artifact, no declare_complete)"
+                ),
+            )

@@ -67,3 +67,22 @@ class TestRunnerCycleStartUsesForceTrue:
         assert read_cycle_baseline(root) == existing_sha, (
             "_write_start_commit_if_absent must not overwrite an already-set baseline"
         )
+
+    def test_write_start_commit_if_absent_does_not_propagate_oserror(
+        self, git_repo: tuple[Path, Repo]
+    ) -> None:
+        """write_start_commit_if_absent must handle write errors gracefully.
+
+        Disk-full (ENOSPC) is environmental; the cycle baseline is best-effort.
+        """
+        import errno
+
+        root, _ = git_repo
+
+        def failing_write(workspace_root: Path, sha: str, *, force: bool = False) -> None:
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        with patch.object(runner_module, "write_cycle_baseline", failing_write):
+            runner_module.write_start_commit_if_absent(root)
+
+        assert read_cycle_baseline(root) is None

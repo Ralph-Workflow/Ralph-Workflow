@@ -4,7 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 51
+UNIT_TEST_SHARD_COUNT = 49
 
 
 def _target_body(name: str) -> list[str]:
@@ -108,8 +108,6 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
         "$(PYTEST_ROOT_PATHS_G)",
         "$(PYTEST_ROOT_PATHS_H)",
         "$(PYTEST_ROOT_PATHS_I)",
-        "$(PYTEST_ROOT_PATHS_J)",
-        "$(PYTEST_ROOT_PATHS_K)",
         "$(PYTEST_ROOT_PATHS_L)",
         "$(PYTEST_ROOT_PATHS_M_CONFIG)",
         "$(PYTEST_ROOT_PATHS_M_ARTIFACTS)",
@@ -136,7 +134,7 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
         unit_body,
         ["python -m ralph.verify_timeout", "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)"],
     )
-    assert "python -m ralph.verify_timeout" in integration_body[0]
+    assert "uv run python -m ralph.verify_timeout" in integration_body[0]
     assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
 
     for marker in expected_unit_markers:

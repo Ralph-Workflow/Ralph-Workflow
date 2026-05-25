@@ -6,7 +6,6 @@ Research-confirmed facts:
 - Executable: agy
 - Print flag: --print
 - Yolo flag: --dangerously-skip-permissions
-- Session flag: --conversation {}
 - MCP config path: ~/.gemini/antigravity-cli/mcp_config.json
 - HTTP JSON key: serverUrl
 - Output format: plain text (not NDJSON) - uses JsonParserType.GENERIC
@@ -20,11 +19,13 @@ endpoint using AGY's serverUrl field.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import cast
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
+from ralph.mcp.transport.common import _load_mcpservers_from_paths
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 # AGY home config directory name within its default config root
@@ -48,6 +49,30 @@ def agy_mcp_config(endpoint: str) -> str:
         }
     }
     return json.dumps(config_payload, separators=(",", ":"))
+
+
+@contextmanager
+def agy_workspace_mcp_endpoint(workspace_path: Path, endpoint: str) -> Iterator[None]:
+    """Write a run-scoped Ralph-only MCP config for AGY and restore it after exit."""
+    config_path = workspace_path / ".agents" / "mcp_config.json"
+    original_bytes = config_path.read_bytes() if config_path.is_file() else None
+    config_payload = {
+        "mcpServers": {
+            RALPH_MCP_SERVER_NAME: {
+                "serverUrl": endpoint,
+            }
+        }
+    }
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
+        yield
+    finally:
+        if original_bytes is None:
+            if config_path.is_file():
+                config_path.unlink()
+        else:
+            config_path.write_bytes(original_bytes)
 
 
 def _normalize_agy_server_entry(name: str, entry: object) -> tuple[str, object] | None:
@@ -84,18 +109,11 @@ def load_existing_agy_upstream_servers(
     Returns:
         Tuple of UpstreamMcpServer objects found in AGY config files.
     """
-    merged: dict[str, object] = {}
-    for path in _agy_mcp_config_paths(workspace_path):
-        config_obj = _parse_json_config_file(path)
-        if not config_obj:
-            continue
-        value = config_obj.get("mcpServers")
-        if isinstance(value, dict):
-            for srv_name, srv_entry in value.items():
-                normalized = _normalize_agy_server_entry(srv_name, srv_entry)
-                if normalized is not None:
-                    merged[normalized[0]] = normalized[1]
-    return normalize_upstream_mcp_servers(merged)
+    return normalize_upstream_mcp_servers(
+        _load_mcpservers_from_paths(
+            _agy_mcp_config_paths(workspace_path), _normalize_agy_server_entry
+        )
+    )
 
 
 def _agy_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
@@ -115,20 +133,8 @@ def _agy_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
     )
 
 
-def _parse_json_config_file(path: Path) -> dict[str, object]:
-    """Parse a JSON config file, returning empty dict on error."""
-    if not path.exists():
-        return {}
-    try:
-        raw_payload: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(raw_payload, dict):
-        return {}
-    return cast("dict[str, object]", raw_payload)
-
-
 __all__ = [
     "agy_mcp_config",
+    "agy_workspace_mcp_endpoint",
     "load_existing_agy_upstream_servers",
 ]

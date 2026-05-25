@@ -47,7 +47,7 @@ If you already know your first question is really about tool fit, do not dig thr
 - Still stuck hovering over Claude Code approval mode? Read [Claude Code Approval Mode](docs/claude-code-approval-mode.md)
 - Already using one agent and want the lowest-friction setup? Read [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md)
 - Already using OpenCode and wondering whether you still need Ralph Workflow? Read [Ralph Workflow vs OpenCode](docs/ralph-workflow-vs-opencode.md)
-- Already using Google Anti Gravity and want to understand how it works with Ralph Workflow? Read [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md)
+- Already using Google Anti Gravity and want to understand how it works with Ralph Workflow? Read [Ralph Workflow vs Google Anti Gravity](docs/sphinx/ralph-workflow-vs-google-anti-gravity.md)
 - Already splitting work across Claude Code and Codex? Read [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md)
 - Want the shortest morning-after trust check before setup? Read [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md)
 - Want proof before setup? Open the [Example Review Bundle](docs/sphinx/example-review-bundle.md)

@@ -25,7 +25,7 @@ from ralph.mcp.upstream.client import (
     normalize_upstream_content_blocks,
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer
-from ralph.mcp.upstream.models import UpstreamCallError
+from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 from ralph.mcp.upstream.validation import UpstreamValidationError
 
 _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
@@ -74,6 +74,40 @@ class UpstreamRegistry:
                 continue
 
             clients[server.name] = client
+            for tool in tools:
+                alias = proxied_mcp_tool_name(server.name, tool.name, origin=server.origin)
+                if alias in seen_aliases:
+                    prev_server, prev_tool = seen_aliases[alias]
+                    raise RegistryCollisionError(
+                        f"alias collision: '{alias}' produced by "
+                        f"({server.name!r}, {tool.name!r}) conflicts with "
+                        f"({prev_server!r}, {prev_tool!r})"
+                    )
+                seen_aliases[alias] = (server.name, tool.name)
+                proxied_tools.append(ProxiedTool(alias=alias, server_name=server.name, tool=tool))
+
+        return cls(proxied_tools, clients)
+
+    @classmethod
+    def build_from_tool_catalog(
+        cls,
+        servers: Iterable[UpstreamMcpServer],
+        tool_catalog: dict[str, list[UpstreamTool]],
+        *,
+        client_factory: UpstreamClientFactory | None = None,
+    ) -> UpstreamRegistry:
+        """Build a registry from pre-discovered tools without probing upstreams."""
+
+        _factory = client_factory if client_factory is not None else make_upstream_client
+        seen_aliases: dict[str, tuple[str, str]] = {}
+        proxied_tools: list[ProxiedTool] = []
+        clients: dict[str, _AnyUpstreamClient] = {}
+
+        for server in servers:
+            tools = tool_catalog.get(server.name)
+            if not tools:
+                continue
+            clients[server.name] = _factory(server)
             for tool in tools:
                 alias = proxied_mcp_tool_name(server.name, tool.name, origin=server.origin)
                 if alias in seen_aliases:

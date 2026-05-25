@@ -19,6 +19,35 @@ The core stays simple. That simplicity is what makes more complex workflows easi
 Ralph Workflow also ships with a **strong default workflow for writing software**.
 You can use that default as-is, or build on top of it when you need something more advanced.
 
+## TL;DR — Start in 5 minutes
+
+1. Pick **one real backlog task** you can still judge tomorrow
+2. Put a one-paragraph spec in `PROMPT.md`
+3. Run Ralph Workflow tonight
+4. Review the diff and the checks in the morning
+5. Ask: **would I merge this?**
+
+```md
+Change:
+[what should change]
+
+Keep unchanged:
+[what must stay stable]
+
+Done means:
+[observable outcome]
+
+Checks:
+[tests, lint, build, or other verification]
+```
+
+If you want the lowest-friction first run, use one of these task shapes:
+- validation rule
+- focused feature slice
+- bounded refactor with tests
+
+If none of those feel easy to judge tomorrow morning, the task is still too broad.
+
 ## The route to use
 
 1. [START_HERE.md](START_HERE.md) — shortest honest first run
@@ -38,6 +67,23 @@ Requires Python 3.12+.
 
 Make sure the agent CLIs you want Ralph Workflow to call are already installed and authenticated.
 Ralph Workflow does not replace those coding agents. It orchestrates them.
+
+## Why people use it
+
+- **No new toolchain required** — keep the coding agents you already trust
+- **Unattended runs with a clean finish** — not just a transcript and a claim
+- **Reviewable output** — diff, checks, artifacts, and open questions
+- **Composable default workflow** — start simple and extend later
+
+## If the first run earns trust
+
+Use **Codeberg** as the public home:
+- ⭐ star the repo
+- 👀 watch the repo
+- 🐛 open an issue if your first run exposed friction
+- 🔧 open a PR if you fix something real
+
+Use GitHub only if you strongly prefer the mirror.
 
 ## License
 

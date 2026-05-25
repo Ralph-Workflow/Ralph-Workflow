@@ -33,6 +33,7 @@ from ralph.mcp.transport.common import (
     set_upstream_mcp_config,
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.tool_catalog_cache import apply_tool_catalog_env, get_tool_catalog
 from ralph.policy.validation import PolicyValidationError
 
 _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
@@ -208,6 +209,15 @@ def build_session_mcp_plan(
         )
         upstreams = effective_mcp.effective_servers
         set_upstream_mcp_config(server_env, upstreams)
+
+    cached_tool_catalog = get_tool_catalog(workspace_path)
+    if cached_tool_catalog:
+        upstreams = tuple(server for server in upstreams if server.name in cached_tool_catalog)
+        set_upstream_mcp_config(server_env, upstreams)
+        apply_tool_catalog_env(
+            server_env,
+            {server.name: cached_tool_catalog[server.name] for server in upstreams},
+        )
 
     if upstreams and not is_commit:
         capabilities.add("upstream.tool_use")

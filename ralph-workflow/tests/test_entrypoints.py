@@ -4,9 +4,13 @@ import builtins
 import importlib
 import runpy
 import sys
-import types
+from collections.abc import Sequence
+from types import ModuleType
 
 import pytest
+
+from ralph.cli import main as cli_main_module
+from ralph.mcp.server import runtime as mcp_runtime_module
 
 
 def _run_entrypoint(module_name: str) -> None:
@@ -21,7 +25,7 @@ def test_ralph_main_entrypoint_calls_app(monkeypatch: pytest.MonkeyPatch) -> Non
     def fake_app() -> None:
         called.append("called")
 
-    monkeypatch.setattr("ralph.cli.main.app", fake_app)
+    monkeypatch.setattr(cli_main_module, "app", fake_app)
 
     _run_entrypoint("ralph.main")
 
@@ -34,7 +38,7 @@ def test_ralph_dunder_main_entrypoint_calls_app(monkeypatch: pytest.MonkeyPatch)
     def fake_app() -> None:
         called.append("called")
 
-    monkeypatch.setattr("ralph.cli.main.app", fake_app)
+    monkeypatch.setattr(cli_main_module, "app", fake_app)
 
     _run_entrypoint("ralph.__main__")
 
@@ -47,9 +51,7 @@ def test_ralph_mcp_server_entrypoint_calls_main(monkeypatch: pytest.MonkeyPatch)
     def fake_main() -> None:
         called.append("called")
 
-    fake_runtime = types.ModuleType("ralph.mcp.server.runtime")
-    fake_runtime.main = fake_main
-    monkeypatch.setitem(sys.modules, "ralph.mcp.server.runtime", fake_runtime)
+    monkeypatch.setattr(mcp_runtime_module, "main", fake_main)
 
     _run_entrypoint("ralph.mcp.server.__main__")
 
@@ -77,10 +79,16 @@ def test_mcp_server_package_import_is_lazy_when_mcp_dependency_missing(
 ) -> None:
     original_import = builtins.__import__
 
-    def guarded_import(name: str, *args: object, **kwargs: object) -> object:
+    def guarded_import(
+        name: str,
+        globals: dict[str, object] | None = None,
+        locals: dict[str, object] | None = None,
+        fromlist: Sequence[str] = (),
+        level: int = 0,
+    ) -> ModuleType:
         if name.startswith("mcp"):
             raise ModuleNotFoundError("No module named 'mcp'")
-        return original_import(name, *args, **kwargs)
+        return original_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", guarded_import)
     for module_name in (

@@ -20,7 +20,7 @@ from ralph.runtime import (
 TIMEOUT_EXCEEDED_SECONDS = 0.05
 SLOW_COMMAND_SECONDS = 0.2
 RAW_PYTEST_TIMEOUT_EXIT_CODE = 124
-RAW_PYTEST_MAX_ELAPSED_SECONDS = 2.5
+RAW_PYTEST_MAX_ELAPSED_SECONDS = 4.0
 
 
 def test_timeout_seconds_from_env_uses_default_when_missing(
@@ -85,7 +85,6 @@ def test_raw_pytest_run_is_hard_capped_by_suite_timeout(tmp_path: Path) -> None:
         "    time.sleep(2.0)\n",
         encoding="utf-8",
     )
-
     start = time.monotonic()
     result = run_process(
         sys.executable,

@@ -60,3 +60,6 @@ class GenericExecutionStrategy:
 
     def supports_session_continuation(self) -> bool:
         return False
+
+    def supports_completion_enforcement(self) -> bool:
+        return False

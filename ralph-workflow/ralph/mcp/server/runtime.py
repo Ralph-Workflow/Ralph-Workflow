@@ -59,8 +59,10 @@ from ralph.mcp.tools.bridge import ToolBridge, ToolDefinition, build_ralph_tool_
 from ralph.mcp.transport.common import mcp_config_as_upstreams, merge_mcp_toml_into_upstreams
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
+    UPSTREAM_MCP_TOOL_CATALOG_ENV,
     UpstreamMcpServer,
     load_upstream_mcp_servers,
+    load_upstream_tool_catalog,
 )
 from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.workspace.fs import FsWorkspace
@@ -286,11 +288,19 @@ def build_standalone_http_server(
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
     upstream_servers = load_runtime_upstream_servers(mcp_cfg)
-    upstream_reg = (
-        _extras.upstream_registry or UpstreamRegistry.build(upstream_servers)
-        if upstream_servers
-        else _extras.upstream_registry
-    )
+    tool_catalog = load_upstream_tool_catalog(os.environ.get(UPSTREAM_MCP_TOOL_CATALOG_ENV))
+    if tool_catalog:
+        upstream_servers = tuple(
+            server for server in upstream_servers if server.name in tool_catalog
+        )
+    if _extras.upstream_registry is not None:
+        upstream_reg = _extras.upstream_registry
+    elif upstream_servers and tool_catalog:
+        upstream_reg = UpstreamRegistry.build_from_tool_catalog(upstream_servers, tool_catalog)
+    elif upstream_servers:
+        upstream_reg = UpstreamRegistry.build(upstream_servers)
+    else:
+        upstream_reg = None
     registry = build_ralph_tool_registry(
         effective_session,
         workspace,
@@ -396,11 +406,19 @@ def build_fastmcp_server(
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
     upstream_servers = load_runtime_upstream_servers(mcp_cfg)
-    upstream_reg = (
-        _extras.upstream_registry or UpstreamRegistry.build(upstream_servers)
-        if upstream_servers
-        else _extras.upstream_registry
-    )
+    tool_catalog = load_upstream_tool_catalog(os.environ.get(UPSTREAM_MCP_TOOL_CATALOG_ENV))
+    if tool_catalog:
+        upstream_servers = tuple(
+            server for server in upstream_servers if server.name in tool_catalog
+        )
+    if _extras.upstream_registry is not None:
+        upstream_reg = _extras.upstream_registry
+    elif upstream_servers and tool_catalog:
+        upstream_reg = UpstreamRegistry.build_from_tool_catalog(upstream_servers, tool_catalog)
+    elif upstream_servers:
+        upstream_reg = UpstreamRegistry.build(upstream_servers)
+    else:
+        upstream_reg = None
     registry = build_ralph_tool_registry(
         effective_session,
         workspace,

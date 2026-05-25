@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -318,6 +319,8 @@ def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) ->
         get_conflicted_files(repo_root=tmp_git_repo, executor=executor)
     finally:
         unsubscribe()
+        with contextlib.suppress(Exception):
+            get_process_manager().shutdown_all(grace_period_s=0)
         reset_process_manager()
 
     _assert_full_lifecycle(events, "git-rebase:")

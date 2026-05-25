@@ -12,6 +12,7 @@ from loguru import logger
 from ralph.config.enums import AgentTransport
 from ralph.mcp.upstream.agent_probe import AgentProbeReport
 from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.upstream_tool import UpstreamTool
 from ralph.mcp.upstream.validation import (
     UpstreamServerReport,
     UpstreamValidationError,
@@ -99,6 +100,13 @@ def test_healthy_claude_native_upstreams_and_probes_return_zero(
 
     validate_mock = MagicMock(return_value=_ok_report((native,)))
     monkeypatch.setattr(runner_module, "VALIDATE_MCP", validate_mock)
+    monkeypatch.setattr(
+        "ralph.pipeline._runner_mcp_validation.collect_tool_catalog",
+        lambda servers: {
+            server.name: [UpstreamTool(name="ping", description="Ping", input_schema={})]
+            for server in servers
+        },
+    )
 
     probe_mock = MagicMock(return_value=())
     monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", probe_mock)
@@ -127,6 +135,13 @@ def test_healthy_upstreams_and_probes_return_zero(
 
     validate_mock = MagicMock(return_value=_ok_report(servers))
     monkeypatch.setattr(runner_module, "VALIDATE_MCP", validate_mock)
+    monkeypatch.setattr(
+        "ralph.pipeline._runner_mcp_validation.collect_tool_catalog",
+        lambda current_servers: {
+            server.name: [UpstreamTool(name="ping", description="Ping", input_schema={})]
+            for server in current_servers
+        },
+    )
 
     probe_mock = MagicMock(return_value=())
     monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", probe_mock)

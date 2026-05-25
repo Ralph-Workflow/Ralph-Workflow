@@ -259,8 +259,15 @@ def _spawn_mcp_process(
 
     try:
         deps.preflight(endpoint, _visible_tools, deps.preflight_timeout())
-    except Exception:
+    except Exception as exc:
+        returncode = process.poll()
         bridge.shutdown()
+        if returncode is not None:
+            raise McpServerError(
+                f"MCP server process exited before endpoint {endpoint} became ready "
+                f"(rc={returncode})",
+                restart_count=0,
+            ) from exc
         raise
 
     return bridge

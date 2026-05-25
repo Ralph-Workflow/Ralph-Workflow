@@ -609,6 +609,52 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
     assert endpoints_seen == [initial_endpoint, initial_endpoint]
 
 
+def test_start_mcp_server_raises_clear_error_when_process_exits_before_preflight_ready(
+    tmp_path: Path,
+) -> None:
+    def fake_reserve_port() -> int:
+        return 43126
+
+    def fake_create_session_file(root: Path, session: object) -> Path:
+        del root, session
+        path = tmp_path / "session-preflight-crash.json"
+        path.write_text("{}", encoding="utf-8")
+        return path
+
+    def fake_subprocess_env(session_file: Path) -> dict[str, str]:
+        return {str(MCP_SESSION_FILE_ENV): str(session_file)}
+
+    def fake_spawn(
+        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+    ) -> FakeProcess:
+        del command, cwd, env, phase
+        return FakeProcess(poll_result=23)
+
+    def fake_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
+        del endpoint, required_tools, timeout
+        raise RuntimeError("connection refused")
+
+    deps = lifecycle.LifecycleDeps(
+        reserve_port=fake_reserve_port,
+        create_session_file=fake_create_session_file,
+        subprocess_env=fake_subprocess_env,
+        spawn_process=fake_spawn,
+        preflight=fake_preflight,
+        preflight_timeout=lambda: timedelta(seconds=5),
+    )
+
+    session = AgentSession(
+        session_id="session-preflight-crash",
+        run_id="run-preflight-crash",
+        drain="planning",
+        capabilities={"WorkspaceRead"},
+    )
+    workspace = lifecycle.FsWorkspace(tmp_path)
+
+    with pytest.raises(lifecycle.McpServerError, match=r"exited before endpoint .*\(rc=23\)"):
+        lifecycle.start_mcp_server(session, workspace, deps=deps)
+
+
 # ---------------------------------------------------------------------------
 # model_identity serialization tests
 # ---------------------------------------------------------------------------

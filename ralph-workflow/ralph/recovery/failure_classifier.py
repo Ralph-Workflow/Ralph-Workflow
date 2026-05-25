@@ -10,6 +10,7 @@ from loguru import logger
 
 from .classified_failure import ClassifiedFailure
 from .failure_category import FailureCategory
+from .failure_details import contains_casefolded_marker, failure_detail_parts
 
 # Network/transport error substrings that indicate environmental faults
 _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(
@@ -35,6 +36,7 @@ _ENV_ERRNOS: frozenset[int] = frozenset(
         errno.EHOSTUNREACH,
         errno.ENETDOWN,
         errno.EPIPE,
+        errno.ENOSPC,
     }
 )
 
@@ -54,6 +56,20 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
         "Missing/invalid issues artifact",
         "Missing required analysis artifact",
         "Missing fix_result artifact",
+    }
+)
+
+# Typed *ValidationError class names that should route to ARTIFACT_VALIDATION.
+# Matched by type(exc).__name__ to avoid circular imports between ralph.recovery
+# and ralph.mcp/ralph.pipeline.
+_ARTIFACT_VALIDATION_TYPE_NAMES: frozenset[str] = frozenset(
+    {
+        "PlanArtifactValidationError",
+        "DevelopmentResultValidationError",
+        "TypedArtifactValidationError",
+        "SmokeTestResultValidationError",
+        "ProductSpecValidationError",
+        "WorkUnitsValidationError",
     }
 )
 
@@ -125,7 +141,7 @@ def _is_artifact_validation_message(raw_message: str) -> bool:
 
 def _is_stale_session_message(raw_message: str) -> bool:
     """Return True if the message indicates a stale agent session ID was used."""
-    return any(s in raw_message for s in SESSION_NOT_FOUND_SUBSTRINGS)
+    return contains_casefolded_marker((raw_message,), SESSION_NOT_FOUND_SUBSTRINGS)
 
 
 class FailureClassifier:
@@ -146,14 +162,16 @@ class FailureClassifier:
         if isinstance(exc, str):
             raw_message = exc
             original: BaseException | None = None
+            detail_parts = [exc]
         else:
             exc_msg = str(exc)
             type_name = type(exc).__name__
             raw_message = f"{type_name}: {exc_msg}" if exc_msg else type_name
             original = exc
+            detail_parts = failure_detail_parts(exc)
 
         exc_obj = exc if isinstance(exc, BaseException) else None
-        category, counts, reset_session = self._categorize(exc_obj, raw_message)
+        category, counts, reset_session = self._categorize(exc_obj, raw_message, detail_parts)
 
         if category == FailureCategory.AMBIGUOUS:
             logger.warning(
@@ -179,33 +197,46 @@ class FailureClassifier:
         self,
         exc: BaseException,
         raw_message: str,
+        detail_parts: list[str],
     ) -> tuple[FailureCategory, bool, bool] | None:
         if _is_user_config_exc(exc):
             return FailureCategory.USER_CONFIG, False, False
+        # Route typed *ValidationError exceptions by type name BEFORE environmental
+        # checks so a future validation error that wraps an OSError is still caught here.
+        if type(exc).__name__ in _ARTIFACT_VALIDATION_TYPE_NAMES:
+            return FailureCategory.ARTIFACT_VALIDATION, False, False
         if _is_environmental_exc(exc):
             return FailureCategory.ENVIRONMENTAL, False, False
         type_name = type(exc).__name__
         if type_name == "AgentInactivityTimeoutError":
             return FailureCategory.AGENT, True, False
         if type_name == "AgentInvocationError":
-            if _is_stale_session_message(raw_message):
-                return FailureCategory.AGENT, True, True
-            msg_lower = raw_message.lower()
-            if not _message_looks_environmental(raw_message) and (
-                "empty" in msg_lower or "no output" in msg_lower or "timed out" in msg_lower
+            reset_session = contains_casefolded_marker(
+                detail_parts, SESSION_NOT_FOUND_SUBSTRINGS
+            )
+            if reset_session or (
+                not _message_looks_environmental(raw_message)
+                and (
+                    "empty" in (msg_lower := raw_message.lower())
+                    or "no output" in msg_lower
+                    or "timed out" in msg_lower
+                )
             ):
-                return FailureCategory.AGENT, True, False
+                return FailureCategory.AGENT, True, reset_session
         return None
 
     def _categorize(
         self,
         exc: BaseException | None,
         raw_message: str,
+        detail_parts: list[str],
     ) -> tuple[FailureCategory, bool, bool]:
         if exc is not None:
-            result = self._categorize_exc(exc, raw_message)
+            result = self._categorize_exc(exc, raw_message, detail_parts)
             if result is not None:
                 return result
+        if contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS):
+            return FailureCategory.AGENT, True, True
         if _message_looks_environmental(raw_message):
             return FailureCategory.ENVIRONMENTAL, False, False
         if _is_user_config_message(raw_message):

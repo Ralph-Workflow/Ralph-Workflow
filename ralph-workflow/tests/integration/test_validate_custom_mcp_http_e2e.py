@@ -14,6 +14,7 @@ import pytest
 from loguru import logger
 
 from ralph.mcp.protocol.startup import RetryablePreflightError
+from ralph.mcp.upstream.upstream_tool import UpstreamTool
 from ralph.mcp.upstream.validation import (
     validate_upstream_mcp_servers,
 )
@@ -66,6 +67,19 @@ def test_validate_http_server_healthy_returns_zero(
     monkeypatch.setattr(
         "ralph.mcp.upstream.validation.make_upstream_client",
         lambda server, **kw: StubUpstreamClient([FAKE_TOOL]),
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline._runner_mcp_validation.collect_tool_catalog",
+        lambda servers: {
+            server.name: [
+                UpstreamTool(
+                    name=FAKE_TOOL.name,
+                    description=FAKE_TOOL.description,
+                    input_schema=FAKE_TOOL.input_schema,
+                )
+            ]
+            for server in servers
+        },
     )
     monkeypatch.setattr(runner_module, "VALIDATE_MCP", passing_validate)
     monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", lambda *a, **k: ())

@@ -1238,6 +1238,13 @@ ralph.agents.execution_state.opencode_execution_strategy
    :members:
    :show-inheritance:
 
+ralph.agents.execution_state.agy_execution_strategy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.execution_state.agy_execution_strategy
+   :members:
+   :show-inheritance:
+
 ralph.agents.executor
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -1904,6 +1911,13 @@ ralph.mcp.upstream.registry
    :members:
    :show-inheritance:
 
+ralph.mcp.upstream.tool_catalog_cache
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.upstream.tool_catalog_cache
+   :members:
+   :show-inheritance:
+
 ralph.mcp.upstream.validation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2242,6 +2256,13 @@ ralph.recovery.failure_category
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.failure_category
+   :members:
+   :show-inheritance:
+
+ralph.recovery.failure_details
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.failure_details
    :members:
    :show-inheritance:
 

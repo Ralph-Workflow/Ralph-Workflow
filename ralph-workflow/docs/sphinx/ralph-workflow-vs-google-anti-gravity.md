@@ -27,7 +27,7 @@ Ralph Workflow is strongest when you want to get out of the loop for a while.
 
 You write a bounded spec in `PROMPT.md`, Ralph Workflow runs planning, development, verification, and review as one unattended flow, and you come back to a diff, checks, logs, and artifacts you can inspect like normal engineering work.
 
-For Google Anti Gravity support, the MCP contract matters too: before a run, configure the Ralph Workflow MCP endpoint in AGY's native config, then use `ralph --check-mcp` to verify the wiring. Ralph Workflow-owned MCP tools, completion signals such as `declare_complete`, and proxied upstream servers are part of the supported-agent story rather than an escape hatch.
+For Google Anti Gravity support, the MCP contract matters too: Ralph Workflow automatically injects its MCP endpoint at run time; use `ralph --check-mcp` to verify AGY transport compatibility before the first run. Ralph Workflow-owned MCP tools, completion signals such as `declare_complete`, and proxied upstream servers are part of the supported-agent story rather than an escape hatch.
 
 ## Choose Ralph Workflow when
 
@@ -83,7 +83,6 @@ That is the real product test.
 
 ## Fastest honest first test
 
-Before you start, AGY requires one manual step that Claude and Codex do not: add the Ralph Workflow MCP endpoint to your AGY native config file before Ralph Workflow can discover it. Add a `serverUrl` entry for Ralph Workflow under `mcpServers` in either `~/.gemini/antigravity-cli/mcp_config.json` (global) or `.agents/mcp_config.json` (workspace-local). Then verify the wiring with `ralph --check-mcp` before the first run.
 
 Then run:
 

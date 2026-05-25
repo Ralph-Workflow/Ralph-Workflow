@@ -13,9 +13,12 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan, resolve_model_identity
 from ralph.mcp.upstream.config import UPSTREAM_MCP_CONFIG_ENV, load_upstream_mcp_servers
+from ralph.mcp.upstream.tool_catalog_cache import cache_tool_catalog, clear_tool_catalog
+from ralph.mcp.upstream.upstream_tool import UpstreamTool
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from pathlib import Path
 
 
@@ -26,6 +29,13 @@ def isolated_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     return home
+
+
+@pytest.fixture(autouse=True)
+def _clear_tool_catalog_cache(tmp_path: Path) -> Generator[None, None, None]:
+    clear_tool_catalog(tmp_path)
+    yield
+    clear_tool_catalog(tmp_path)
 
 
 _DEFAULT_AGENTS_POLICY = AgentsPolicy(
@@ -125,6 +135,41 @@ enabled = true
     assert {server.name for server in upstreams} == {"github", "docs"}
 
 
+def test_build_session_mcp_plan_filters_server_env_to_cached_upstreams(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    (isolated_home / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"github": {"command": "npx", "args": ["-y", "github-mcp"]}}}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "mcp.toml").write_text(
+        """
+[mcp_servers.docs]
+transport = "http"
+url = "http://docs.example/mcp"
+""".strip(),
+        encoding="utf-8",
+    )
+    cache_tool_catalog(
+        tmp_path,
+        {"github": [UpstreamTool(name="search", description="Search", input_schema={})]},
+    )
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="planning",
+        workspace_path=tmp_path,
+        agents_policy=_default_agents_policy(tmp_path),
+    )
+
+    assert plan.server_env is not None
+    upstreams = load_upstream_mcp_servers(plan.server_env[UPSTREAM_MCP_CONFIG_ENV])
+    assert {server.name for server in upstreams} == {"github"}
+
+
 def test_build_session_mcp_plan_claude_interactive_includes_upstreams(
     isolated_home: Path,
     tmp_path: Path,
@@ -154,6 +199,40 @@ url = "http://docs.example/mcp"
     assert plan.server_env is not None
     upstreams = load_upstream_mcp_servers(plan.server_env[UPSTREAM_MCP_CONFIG_ENV])
     assert {server.name for server in upstreams} == {"github", "docs"}
+
+
+def test_build_session_mcp_plan_agy_includes_upstreams(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    (isolated_home / ".gemini" / "antigravity-cli").mkdir(parents=True)
+    (isolated_home / ".gemini" / "antigravity-cli" / "mcp_config.json").write_text(
+        json.dumps({"mcpServers": {"agy-upstream": {"serverUrl": "http://agy-upstream.example/mcp"}}}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "mcp.toml").write_text(
+        """
+[mcp_servers.docs]
+transport = "http"
+url = "http://docs.example/mcp"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.AGY,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_default_agents_policy(tmp_path),
+    )
+
+    assert "upstream.tool_use" in plan.capabilities
+    assert plan.server_env is not None
+
+    upstreams = load_upstream_mcp_servers(plan.server_env[UPSTREAM_MCP_CONFIG_ENV])
+    assert {"agy-upstream", "docs"}.issubset({server.name for server in upstreams})
 
 
 def test_session_mcp_plan_omits_web_search_and_web_visit_for_commit_even_when_enabled(

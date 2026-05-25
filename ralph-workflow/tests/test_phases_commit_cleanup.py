@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from git import Repo
 
 from ralph.phases import PhaseContext
 from ralph.phases.commit_cleanup import handle_commit_cleanup_phase
@@ -147,6 +148,82 @@ def test_delete_file_action_removes_file(tmp_git_repo: Path) -> None:
     result = handle_commit_cleanup_phase(effect, ctx)
     assert PipelineEvent.PHASE_LOOPBACK in result
     assert not binary.exists()
+
+
+def test_delete_verify_output_text_file_removes_file(tmp_git_repo: Path) -> None:
+    """Generated verification capture text files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    verify_output = tmp_git_repo / "verify-output.txt"
+    verify_output.write_text("captured verify output")
+    assert verify_output.exists()
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "verify-output.txt"}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit_cleanup",
+        prompt_file="cleanup.txt",
+    )
+
+    result = handle_commit_cleanup_phase(effect, ctx)
+
+    assert PipelineEvent.PHASE_LOOPBACK in result
+    assert not verify_output.exists()
+
+
+def test_delete_tracked_verify_output_text_file_returns_failure_event(
+    tmp_git_repo: Path,
+) -> None:
+    """Generated-looking text files stay protected once they are tracked repo content."""
+    workspace = FsWorkspace(tmp_git_repo)
+    verify_output = tmp_git_repo / "verify-output.txt"
+    verify_output.write_text("intentional checked-in artifact")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(["verify-output.txt"])
+        repo.index.commit("track verify output")
+    finally:
+        repo.close()
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "verify-output.txt"}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit_cleanup",
+        prompt_file="cleanup.txt",
+    )
+
+    result = handle_commit_cleanup_phase(effect, ctx)
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert verify_output.exists()
 
 
 def test_git_exclude_action_adds_pattern(tmp_git_repo: Path) -> None:

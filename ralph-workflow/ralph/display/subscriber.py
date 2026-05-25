@@ -141,6 +141,10 @@ class PipelineSubscriber:
     def queue(self) -> Queue[PipelineSnapshot]:
         return self._queue
 
+    def _invalidate_snapshot_cache_locked(self) -> None:
+        self._snapshot_cache_state = None
+        self._snapshot_cache = None
+
     @property
     def dropped_count(self) -> int:
         return self._dropped_count
@@ -233,6 +237,7 @@ class PipelineSubscriber:
         pattern: str | None = None,
     ) -> None:
         with self._lock:
+            self._invalidate_snapshot_cache_locked()
             self._active_unit_id = unit_id
             self._active_agent = agent_name or self._active_agent
             if tool_name is not None:
@@ -266,6 +271,7 @@ class PipelineSubscriber:
         line = _format_waiting_status_line(event)
         snapshots_to_publish: list[PipelineSnapshot] = []
         with self._lock:
+            self._invalidate_snapshot_cache_locked()
             if unit_id is not None:
                 self._active_unit_id = unit_id
             if agent_name is not None:
@@ -291,6 +297,7 @@ class PipelineSubscriber:
     def record_analysis(self, phase: str, decision: str, reason: str | None = None) -> None:
         """Record an analysis result; updates the analysis panel and decision log."""
         with self._lock:
+            self._invalidate_snapshot_cache_locked()
             self._analysis_phase = phase
             self._analysis_decision = decision
             self._analysis_reason = reason
@@ -321,6 +328,7 @@ class PipelineSubscriber:
         """Record an auto-answered permission prompt for visibility and auditing."""
         line = f"Ralph auto-answered permission prompt: {prompt_summary} → {selected_option}"
         with self._lock:
+            self._invalidate_snapshot_cache_locked()
             self._active_agent = agent_name or self._active_agent
             self._last_activity_line = line
             self._append_decision_log_locked(
@@ -388,6 +396,7 @@ class PipelineSubscriber:
         marker = self._plan_refresh_marker()
         if marker == self._last_plan_refresh_marker:
             return
+        self._invalidate_snapshot_cache_locked()
         plan = read_plan_artifact(self._workspace_root) or PlanSummary()
         self._plan_summary = plan.summary
         self._plan_scope_items = plan.scope_items
@@ -431,6 +440,7 @@ class PipelineSubscriber:
         decision: str,
         reason: str,
     ) -> None:
+        self._invalidate_snapshot_cache_locked()
         self._decision_log.append((phase, decision, reason, _now_iso()))
         if len(self._decision_log) > _DECISION_LOG_MAX:
             self._decision_log = self._decision_log[-_DECISION_LOG_MAX:]
@@ -441,6 +451,8 @@ class PipelineSubscriber:
     ) -> PipelineSnapshot | None:
         if state is None:
             return None
+        if self._snapshot_cache_state is state and self._snapshot_cache is not None:
+            return self._snapshot_cache
         snapshot = snapshot_from_state(
             state,
             SnapshotContext(

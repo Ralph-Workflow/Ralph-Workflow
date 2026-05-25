@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from loguru import logger
@@ -24,15 +24,22 @@ from ralph.mcp.protocol.env import MCP_SESSION_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import runtime as server_runtime
 from ralph.mcp.server.runtime import load_runtime_upstream_servers
-from ralph.mcp.tools.names import upstream_proxy_tool_name
-from ralph.mcp.upstream.client import HttpUpstreamClient, StdioUpstreamClient, make_upstream_client
+from ralph.mcp.tools.names import custom_proxy_tool_name, upstream_proxy_tool_name
+from ralph.mcp.upstream.client import (
+    HttpUpstreamClient,
+    StdioUpstreamClient,
+    make_upstream_client,
+)
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
+    UPSTREAM_MCP_TOOL_CATALOG_ENV,
     UpstreamMcpServer,
     serialize_upstream_mcp_servers,
+    serialize_upstream_tool_catalog,
 )
 from ralph.mcp.upstream.models import UpstreamCallError
 from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.mcp.upstream.upstream_tool import UpstreamTool
 from ralph.mcp.upstream.validation import UpstreamValidationError
 from ralph.phases import PhaseContext
 from ralph.phases.execution import handle_execution_phase
@@ -41,6 +48,13 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ralph.agents.chain import ChainManager
+    from ralph.agents.registry import AgentRegistry
+    from ralph.policy.models import AgentsPolicy
 
 # Lazy imports for multimodal tests that require optional dependencies
 # These are only available when the multimodal feature is fully configured
@@ -55,6 +69,7 @@ def _isolate_from_upstream_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # Prevent real upstream MCP servers (configured in dev env) from being
     # loaded during tests. Each test provides its own upstream config if needed.
     monkeypatch.delenv(UPSTREAM_MCP_CONFIG_ENV, raising=False)
+    monkeypatch.delenv(UPSTREAM_MCP_TOOL_CATALOG_ENV, raising=False)
 
 
 def _session(run_id: str = "run-1", capabilities: set[str] | None = None) -> AgentSession:
@@ -595,10 +610,10 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
     policy = load_policy(tmp_path / ".agent")
     ctx = PhaseContext.model_construct(
         workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
+        registry=cast("AgentRegistry", object()),
+        chain_manager=cast("ChainManager", object()),
         pipeline_policy=policy.pipeline,
-        agents_policy=object(),
+        agents_policy=cast("AgentsPolicy", object()),
         artifacts_policy=policy.artifacts,
     )
     planning_result = handle_execution_phase(
@@ -807,7 +822,7 @@ def test_mcp_server_builders_raise_when_any_configured_upstream_is_unreachable(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     builder_name: str,
-    extras_factory: object,
+    extras_factory: Callable[[McpConfig], dict[str, object]],
     server_name: str,
     spec: McpServerSpec,
     upstream: UpstreamMcpServer,
@@ -830,11 +845,59 @@ def test_mcp_server_builders_raise_when_any_configured_upstream_is_unreachable(
     monkeypatch.setattr(server_runtime, "load_runtime_upstream_servers", lambda cfg: (upstream,))
     monkeypatch.setattr(server_runtime.UpstreamRegistry, "build", fake_build)
 
-    builder = getattr(server_runtime, builder_name)
+    builder = cast(
+        "Callable[..., object]",
+        getattr(server_runtime, builder_name),
+    )
     kwargs = cast("dict[str, object]", extras_factory(mcp_config))
 
     with pytest.raises(UpstreamValidationError, match=server_name):
         builder(tmp_path, **kwargs)
+
+
+def test_build_standalone_http_server_uses_cached_upstream_tool_catalog_without_eager_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = McpConfig(
+        mcp_servers={
+            "docs": McpServerSpec(name="docs", transport="http", url="http://unused")
+        }
+    )
+    monkeypatch.setenv(
+        UPSTREAM_MCP_TOOL_CATALOG_ENV,
+        serialize_upstream_tool_catalog(
+            {
+                "docs": [
+                    UpstreamTool(
+                        name="ping",
+                        description="Ping",
+                        input_schema={"type": "object"},
+                    )
+                ]
+            }
+        ),
+    )
+
+    def fail_build(*args: object, **kwargs: object) -> UpstreamRegistry:
+        del args, kwargs
+        raise AssertionError("eager upstream probe should not run when tool catalog is cached")
+
+    monkeypatch.setattr(server_runtime.UpstreamRegistry, "build", fail_build)
+
+    server = server_runtime.build_standalone_http_server(
+        tmp_path,
+        extras=server_runtime.McpServerExtras(mcp_config=config),
+    )
+
+    tools_response, _state = server._mcp_server._handle_tools_list(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=1, params={})
+    )
+    assert tools_response is not None
+    result = cast("dict[str, object]", tools_response.result)
+    tools = cast("list[dict[str, object]]", result["tools"])
+    tool_names = {cast("str", tool["name"]) for tool in tools}
+    assert custom_proxy_tool_name("docs", "ping") in tool_names
 
 
 def test_upstream_policy_blocks_proxied_tools_without_upstream_capability(
