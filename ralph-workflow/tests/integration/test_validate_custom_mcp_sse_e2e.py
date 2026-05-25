@@ -13,13 +13,16 @@ from typing import TYPE_CHECKING
 import pytest
 from loguru import logger
 
+from ralph.mcp.upstream.upstream_tool import UpstreamTool
 from ralph.mcp.upstream.validation import validate_upstream_mcp_servers
 from ralph.pipeline import runner as runner_module
 from tests.fixtures.mcp_test_harness import FAKE_TOOL, StubUpstreamClient
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator
     from pathlib import Path
+
+    from ralph.mcp.upstream.config import UpstreamMcpServer
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +48,22 @@ def _write_sse_mcp_toml(workspace: Path, port: int) -> None:
     (agent_dir / "mcp.toml").write_text(body, encoding="utf-8")
 
 
+def _stub_successful_tool_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ralph.pipeline._runner_mcp_validation.collect_tool_catalog",
+        lambda servers: {
+            server.name: [
+                UpstreamTool(
+                    name=FAKE_TOOL.name,
+                    description=FAKE_TOOL.description,
+                    input_schema=FAKE_TOOL.input_schema,
+                )
+            ]
+            for server in servers
+        },
+    )
+
+
 def test_validate_sse_server_healthy_returns_zero(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -53,7 +72,9 @@ def test_validate_sse_server_healthy_returns_zero(
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
-    def passing_validate(servers: object, *, strict: object) -> object:
+    def passing_validate(
+        servers: Iterable[UpstreamMcpServer], *, strict: bool | None
+    ) -> object:
         return validate_upstream_mcp_servers(
             servers,
             strict=strict,
@@ -64,6 +85,7 @@ def test_validate_sse_server_healthy_returns_zero(
         "ralph.mcp.upstream.validation.make_upstream_client",
         lambda server, **kw: StubUpstreamClient([FAKE_TOOL]),
     )
+    _stub_successful_tool_catalog(monkeypatch)
     monkeypatch.setattr(runner_module, "VALIDATE_MCP", passing_validate)
     monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", lambda *a, **k: ())
 
@@ -80,7 +102,9 @@ def test_validate_sse_server_healthy_logs_no_errors(
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
-    def passing_validate(servers: object, *, strict: object) -> object:
+    def passing_validate(
+        servers: Iterable[UpstreamMcpServer], *, strict: bool | None
+    ) -> object:
         return validate_upstream_mcp_servers(
             servers,
             strict=strict,
@@ -91,6 +115,7 @@ def test_validate_sse_server_healthy_logs_no_errors(
         "ralph.mcp.upstream.validation.make_upstream_client",
         lambda server, **kw: StubUpstreamClient([FAKE_TOOL]),
     )
+    _stub_successful_tool_catalog(monkeypatch)
     monkeypatch.setattr(runner_module, "VALIDATE_MCP", passing_validate)
     monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", lambda *a, **k: ())
 
