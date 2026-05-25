@@ -421,9 +421,16 @@ def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) 
     return cwd_provider()
 
 
-def _child_process_env(cwd: Path) -> dict[str, str]:
-    env = dict(os.environ)
-    env["PWD"] = str(cwd)
+def _child_process_env(workspace_root: Path, cwd: Path) -> dict[str, str]:
+    source_root = str(workspace_root)
+    overlay_root = str(cwd)
+    env = {
+        key: value.replace(source_root, overlay_root)
+        if source_root in value
+        else value
+        for key, value in os.environ.items()
+    }
+    env["PWD"] = overlay_root
     env.pop("OLDPWD", None)
     return env
 
@@ -438,13 +445,14 @@ def run_command(
     """Execute a subprocess in a private overlay rooted at the workspace."""
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
-    command_runner = resolved_deps.runner or _run_subprocess
     overlay_factory = resolved_deps.overlay_factory or create_ephemeral_overlay
     cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
     timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
     with overlay_factory(cwd) as overlay_cwd:
         try:
-            return command_runner([command, *args], overlay_cwd, timeout_seconds)
+            if resolved_deps.runner is not None:
+                return resolved_deps.runner([command, *args], overlay_cwd, timeout_seconds)
+            return _run_subprocess([command, *args], overlay_cwd, timeout_seconds, cwd)
         except FileNotFoundError as exc:
             raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
         except PermissionError as exc:
@@ -458,13 +466,16 @@ def run_command(
 
 
 def _run_subprocess(
-    command: list[str], cwd: Path, timeout_seconds: float | None
+    command: list[str],
+    cwd: Path,
+    timeout_seconds: float | None,
+    workspace_root: Path,
 ) -> _CompletedProcessAdapter:
     handle = get_process_manager().spawn(
         command,
         SpawnOptions(
             cwd=str(cwd),
-            env=_child_process_env(cwd),
+            env=_child_process_env(workspace_root, cwd),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             label=f"mcp-exec:{command[0]}",

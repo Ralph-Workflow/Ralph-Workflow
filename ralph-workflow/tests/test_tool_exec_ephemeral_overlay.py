@@ -304,13 +304,14 @@ class TestOverlayIsolationEndToEnd:
         assert (tmp_git_repo / "README.md").read_text(encoding="utf-8") == before
 
     @pytest.mark.subprocess_e2e
-    def test_real_subprocess_does_not_see_source_workspace_pwd(
-        self, tmp_path: Path
+    def test_real_subprocess_rewrites_source_workspace_env_values(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         overlay_dir = tmp_path / "overlay"
         overlay_dir.mkdir()
+        monkeypatch.setenv("RALPH_TEST_SOURCE_PATH", str(workspace))
 
         def fake_overlay(workspace_root: Path) -> AbstractContextManager[Path]:
             del workspace_root
@@ -318,13 +319,21 @@ class TestOverlayIsolationEndToEnd:
 
         result = run_command(
             sys.executable,
-            ["-c", "import os; print(os.environ.get('PWD', ''))"],
+            [
+                "-c",
+                (
+                    "import os; "
+                    "print(os.environ.get('RALPH_TEST_SOURCE_PATH', '')); "
+                    "print(os.environ.get('PWD', ''))"
+                ),
+            ],
             workspace,
             5000,
             deps=ExecRunDeps(overlay_factory=fake_overlay),
         )
 
-        pwd = result.stdout.decode(encoding="utf-8").strip()
+        source_path, pwd = result.stdout.decode(encoding="utf-8").splitlines()
         assert result.returncode == 0
+        assert source_path == str(overlay_dir)
         assert pwd != str(workspace)
         assert pwd in {"", str(overlay_dir)}
