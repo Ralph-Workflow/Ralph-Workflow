@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-25T17:44:00
+Generated: 2026-05-25T19:23:49
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -10,21 +10,19 @@ Generated: 2026-05-25T17:44:00
 - Apollo next review: 2026-05-30T00:14:49.075391+02:00
 - Apollo launch review: 2026-05-30T00:14:49.075391+02:00
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
+- Primary-repo-flat publisher contact packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 
 ## Best executable assets still waiting
-### 1. Manual community discussion asset
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/reddit_discussion_handoff_packet_latest.md
-- Targets: reddit discussion handoff packet latest
-- Why this matters: The primary-repo-flat publisher packet was fully consumed in this review window (TIMEWELL already live, Toolradar sent, Morph sent), so the remaining truthful do-now asset is the current manual discussion packet rather than another duplicate publisher burst.
-
-### 2. Primary-repo-flat publisher contact packet
-- When: Wait for reply/citation review windows or a refreshed untouched target set
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
-- Targets already live this window: TIMEWELL, Toolradar, Morph
-- Why this matters: Keep the packet as the canonical evidence/source bundle, but do not treat it as a fresh send slot again until the target set changes or review dates expire.
-
+- No do-now handoff packet is currently truthful in this review window.
+- Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum, AI Saying, TLDL.
+- Fresh publisher outreach already shipped in the current review window for: Morph, ToolChase, Toolradar.
+- Primary-repo-flat publisher contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
+- Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
+- Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.
+- Comparison backlink packet exists, but it was already manually delivered in the current review window.
+- StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.
+- If this board is still empty after one of these blockers clears, the lane architecture needs another repair.
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
 - adoption_metrics_latest.json → Codeberg movement remains the primary success gate

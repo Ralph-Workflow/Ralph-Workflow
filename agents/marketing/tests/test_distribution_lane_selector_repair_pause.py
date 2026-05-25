@@ -4068,6 +4068,49 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
         self.assertEqual(decision.lane, 'distribution_architecture_repair')
         self.assertIn('repair the lane architecture', decision.reason.lower())
 
+    def test_manual_outreach_asset_is_not_misclassified_as_reddit_from_summary_only(self):
+        now = datetime(2026, 5, 25, 17, 44, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            artifact = drafts_dir / '2026-05-23_vivy_yi_curator_email.txt'
+            artifact.write_text('manual curator follow-through\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_vivy_manual_contact_asset.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-23T21:46:39+02:00',
+                    'chosen_action': {
+                        'type': 'curator_contact_channel_ready_outreach_asset',
+                        'channel': 'manual_contact_asset',
+                        'artifact': str(artifact),
+                        'title': 'vivy-yi curator email fallback attempt',
+                    },
+                    'why_this_action': {
+                        'summary': 'Used the highest-priority unsent curator target after Reddit and Apollo were already constrained by current workflow rules.',
+                        'targets_prepared': ['vivy-yi/awesome-agent-orchestration'],
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-01T21:46:39+02:00',
+                    },
+                    'result': {
+                        'status': 'prepared',
+                        'artifact': str(artifact),
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir):
+                assets = distribution_lane_selector._manual_outreach_assets_waiting_for_execution(now)
+
+        self.assertEqual(len(assets), 1)
+        self.assertEqual(assets[0]['artifact_path'], str(artifact))
+
     def test_current_primary_repo_flat_packet_beats_measurement_hold_and_guard(self):
         now = datetime(2026, 5, 25, 5, 54, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}

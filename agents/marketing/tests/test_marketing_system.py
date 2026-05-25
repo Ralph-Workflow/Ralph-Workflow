@@ -4291,6 +4291,91 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             self.assertIn('production reliability', artifact_text)
 
 
+class RunMeasurementHoldTests(unittest.TestCase):
+    def test_hold_run_does_not_mask_guard_pause_with_stale_measurement_hold_reuse(self):
+        fixed_now = datetime(2026, 5, 25, 18, 53, 0)
+        hold_window = {
+            'hold_started_at': datetime(2026, 5, 25, 17, 7, 41),
+            'hold_until': datetime(2026, 5, 25, 23, 7, 41),
+            'source_log': '/tmp/hold.json',
+            'reason': 'short review window still active',
+        }
+        distribution_lane = SimpleNamespace(
+            lane='distribution_architecture_guard_pause',
+            reason='pause duplicate guard churn until the fingerprint changes',
+            artifact_path='/tmp/guard-pause.md',
+        )
+        distribution_execution = SimpleNamespace(
+            action_type='distribution_architecture_guard_pause',
+            status='executed',
+            artifact_path='/tmp/guard-pause.md',
+            summary='Reused existing distribution-architecture guard artifact.',
+            targets_prepared=[],
+            shared_findings_used=[],
+            live_external_action=False,
+            blocking_factors=[],
+        )
+        recent_follow_through = {
+            'log_path': '/tmp/follow-through.json',
+            'artifact_path': '/tmp/measurement-hold.md',
+            'status': 'executed',
+            'summary': 'Reused existing measurement-hold follow-through artifact.',
+            'targets_prepared': [],
+            'live_external_action': False,
+            'blocking_factors': [],
+        }
+
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return fixed_now
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            skip_log = log_dir / 'skip.json'
+            skip_log.write_text('{}', encoding='utf-8')
+            execution_log = log_dir / 'distribution_execution.json'
+            execution_log.write_text('{}', encoding='utf-8')
+            seo_insights = tmp / 'seo_insights.md'
+            seo_insights.write_text('', encoding='utf-8')
+
+            with patch.object(run, 'LOG_DIR', log_dir), \
+                 patch.object(run, 'datetime', FixedDatetime), \
+                 patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
+                 patch.object(run, '_write_measurement_hold_skip_log', return_value=skip_log), \
+                 patch.object(run, 'run_seo_daily', return_value={}), \
+                 patch.object(run, 'load_seo_trends', return_value=[]), \
+                 patch.object(run, 'compute_trends', return_value={}), \
+                 patch.object(run, 'write_seo_insights', return_value=seo_insights), \
+                 patch.object(run, 'choose_distribution_lane', return_value=distribution_lane), \
+                 patch.object(run, '_latest_measurement_hold_follow_through', return_value=recent_follow_through), \
+                 patch.object(run, '_measurement_hold_follow_through_is_stale', return_value=False), \
+                 patch.object(run, '_latest_distribution_architecture_guard_execution', return_value={
+                     'log_path': '/tmp/guard-log.json',
+                     'artifact_path': '/tmp/guard-pause.md',
+                     'status': 'executed',
+                     'summary': 'Reused existing distribution-architecture guard artifact.',
+                     'targets_prepared': [],
+                     'shared_findings_used': [],
+                     'live_external_action': False,
+                     'blocking_factors': [],
+                 }), \
+                 patch.object(run, '_distribution_architecture_guard_execution_is_stale', return_value=False), \
+                 patch.object(run, 'execute_distribution_lane', return_value=distribution_execution) as execute_mock, \
+                 patch.object(run, '_write_distribution_execution_log', return_value=execution_log), \
+                 patch.object(run, '_refresh_distribution_lane_after_execution', return_value=distribution_lane):
+                rc = run.main()
+
+            self.assertEqual(rc, 0)
+            execute_mock.assert_not_called()
+            payload = json.loads((log_dir / 'marketing_2026-05-25.json').read_text(encoding='utf-8'))
+            self.assertEqual(payload['distribution_lane']['lane'], 'distribution_architecture_guard_pause')
+            self.assertEqual(payload['distribution_execution']['action_type'], 'distribution_architecture_guard_pause')
+            self.assertFalse(payload['distribution_execution']['reused_existing_follow_through'])
+
+
 class MarketingLoopRunnerTests(unittest.TestCase):
     def test_runner_executes_outcome_engine_before_reporting_scripts(self):
         names = [path.name for path in marketing_loop_runner.SCRIPTS]

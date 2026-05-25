@@ -467,13 +467,23 @@ class RunRepairModeTests(unittest.TestCase):
                     },
                 }), encoding='utf-8')
 
+                decision = LaneDecision(
+                    lane='measurement_hold',
+                    reason='Hold for follow-through.',
+                    reasons=['existing hold still active'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='',
+                )
+
                 with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
-                     patch.object(run, 'choose_distribution_lane') as choose_mock, \
+                     patch.object(run, 'choose_distribution_lane', return_value=decision) as choose_mock, \
                      patch.object(run, 'execute_distribution_lane') as execute_mock:
                     rc = run.main()
 
                 self.assertEqual(rc, 0)
-                choose_mock.assert_not_called()
+                choose_mock.assert_called_once()
                 execute_mock.assert_not_called()
                 daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
                 payload = json.loads(daily_log.read_text(encoding='utf-8'))
@@ -559,6 +569,7 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertEqual(rc, 0)
                 self.assertEqual(choose_mock.call_count, 2)
                 self.assertEqual(choose_mock.call_args_list[1].kwargs.get('write_action_log'), False)
+                self.assertEqual(choose_mock.call_args_list[1].kwargs.get('persist_latest_artifacts'), False)
                 execute_mock.assert_called_once()
                 daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
                 payload = json.loads(daily_log.read_text(encoding='utf-8'))
@@ -667,6 +678,7 @@ class RunRepairModeTests(unittest.TestCase):
 
         self.assertEqual(refreshed.lane, 'distribution_architecture_repair')
         self.assertEqual(choose_mock.call_args.kwargs.get('write_action_log'), False)
+        self.assertEqual(choose_mock.call_args.kwargs.get('persist_latest_artifacts'), False)
 
     def test_write_distribution_execution_log_records_short_review_window_release_for_measurement_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:

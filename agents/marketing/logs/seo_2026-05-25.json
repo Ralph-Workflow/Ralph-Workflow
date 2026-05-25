@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-25T17:47:51.328536",
+  "timestamp": "2026-05-25T19:24:02.110406",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "Ralph Workflow: Composable Loop Framework for Autonomous Coding \u2014 Ralph Workflow",
-      "meta_description": "Free and open-source AI agent orchestrator for substantial software engineering work. Ralph Workflow gives you a vendor-neutral coding workflow to plan, build, test, verify, and resume real backlog tasks overnight with Claude Code, Codex CLI, or OpenCode.",
+      "title": "Unattended coding agent \u2014 Ralph Workflow",
+      "meta_description": "Open-source unattended coding agent for Claude Code, Codex CLI, and OpenCode. Start one real task before bed and wake up to tested code ready to review.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Free and open-source AI agent orchestrator for substantial software engineering work. Ralph Workflow gives you a vendor-neutral coding workflow to plan, build, test, verify, and resume real backlog tasks overnight with Claude Code, Codex CLI, or OpenCode.",
-        "title": "Ralph Workflow: Composable Loop Framework for Autonomous Coding \u2014 Ralph Workflow",
+        "description": "Open-source unattended coding agent for Claude Code, Codex CLI, and OpenCode. Start one real task before bed and wake up to tested code ready to review.",
+        "title": "Unattended coding agent \u2014 Ralph Workflow",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6463,
+      "word_count": 6401,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -56,22 +56,10 @@
     }
   },
   "onpage": {
-    "score": 70,
-    "grade": "C",
-    "issues": [
-      {
-        "severity": "error",
-        "item": "Title too long"
-      },
-      {
-        "severity": "warning",
-        "item": "Meta description too long",
-        "detail": "Keep between 150-160 characters"
-      }
-    ],
-    "recommendations": [
-      "Keep title under 60 characters (current: 80 chars)"
-    ]
+    "score": 100,
+    "grade": "A",
+    "issues": [],
+    "recommendations": []
   },
   "ranks": {
     "unattended coding agent": {
@@ -167,19 +155,18 @@
     }
   },
   "content_gap": {
-    "gaps": [
-      "Claude Code unattended",
-      "AI agent workflow composer"
-    ],
+    "gaps": [],
     "covered": [
       "unattended coding agent",
       "AI agent orchestration CLI",
       "spec-driven AI agent",
       "AI coding workflow automation",
       "Claude Code automation",
+      "Claude Code unattended",
+      "AI agent workflow composer",
       "Ralph Workflow"
     ],
-    "coverage_pct": 75.0
+    "coverage_pct": 100.0
   },
   "serp": {
     "position": null,
@@ -187,8 +174,5 @@
     "related_searches": false,
     "keyword": "unattended coding agent"
   },
-  "priority_actions": [
-    "Fix top on-page SEO issues (current score: 70/100)",
-    "Create content targeting: Claude Code unattended, AI agent workflow composer"
-  ]
+  "priority_actions": []
 }

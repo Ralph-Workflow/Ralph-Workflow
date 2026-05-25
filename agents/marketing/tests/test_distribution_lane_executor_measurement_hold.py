@@ -1694,6 +1694,51 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertNotIn('### 1. Curator manual-contact packet', board_text)
 
+    def test_execution_board_does_not_misclassify_manual_asset_as_reddit_from_summary_only(self):
+        now = datetime(2026, 5, 25, 17, 44, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            artifact = drafts_dir / '2026-05-23_vivy_yi_curator_email.txt'
+            artifact.write_text('manual curator follow-through\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_vivy_manual_contact_asset.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-23T21:46:39+02:00',
+                    'chosen_action': {
+                        'type': 'curator_contact_channel_ready_outreach_asset',
+                        'channel': 'manual_contact_asset',
+                        'artifact': str(artifact),
+                        'title': 'vivy-yi curator email fallback attempt',
+                    },
+                    'why_this_action': {
+                        'summary': 'Used the highest-priority unsent curator target after Reddit and Apollo were already constrained by current workflow rules.',
+                        'targets_prepared': ['vivy-yi/awesome-agent-orchestration'],
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-01T21:46:39+02:00',
+                    },
+                    'result': {
+                        'status': 'prepared',
+                        'artifact': str(artifact),
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('Manual publisher outreach asset', board_text)
+        self.assertNotIn('Manual community discussion asset', board_text)
+
     def test_execution_board_hides_primary_repo_flat_packet_after_manual_delivery_in_active_review_window(self):
         now = datetime(2026, 5, 24, 14, 21, 0)
 

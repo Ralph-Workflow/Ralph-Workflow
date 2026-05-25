@@ -269,7 +269,11 @@ def _apply_repair_mode_overrides(distribution_lane: Any, pending_repairs: list[d
 
 
 def _refresh_distribution_lane_after_execution(now: datetime, pending_repairs: list[dict[str, Any]] | None = None) -> Any:
-    refreshed = choose_distribution_lane(now, write_action_log=False)
+    refreshed = choose_distribution_lane(
+        now,
+        write_action_log=False,
+        persist_latest_artifacts=False,
+    )
     if pending_repairs:
         refreshed = _apply_repair_mode_overrides(refreshed, pending_repairs)
     return refreshed
@@ -925,16 +929,21 @@ def main() -> int:
             except (json.JSONDecodeError, OSError):
                 audit = {}
 
+        distribution_lane = choose_distribution_lane(now)
+        if pending_repairs:
+            distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs)
+
         recent_follow_through = _latest_measurement_hold_follow_through(hold_window)
         reused_existing_follow_through = (
-            recent_follow_through is not None
+            distribution_lane.lane == "measurement_hold"
+            and recent_follow_through is not None
             and not _measurement_hold_follow_through_is_stale(recent_follow_through)
         )
 
         if reused_existing_follow_through:
-            lane_name = "measurement_hold"
-            lane_reason = hold_window["reason"]
-            lane_artifact_path = recent_follow_through.get("artifact_path", "")
+            lane_name = distribution_lane.lane
+            lane_reason = distribution_lane.reason
+            lane_artifact_path = getattr(distribution_lane, "artifact_path", "")
             execution_action_type = "measurement_hold_follow_through"
             execution_status = recent_follow_through.get("status", "executed")
             execution_artifact_path = recent_follow_through.get("artifact_path", "")
@@ -942,13 +951,6 @@ def main() -> int:
             execution_targets_prepared = list(recent_follow_through.get("targets_prepared") or [])
             execution_live_external_action = bool(recent_follow_through.get("live_external_action", False))
             execution_blocking_factors = list(recent_follow_through.get("blocking_factors") or [])
-            distribution_lane = SimpleNamespace(
-                lane=lane_name,
-                reason=lane_reason,
-                reasons=[lane_reason],
-                artifact_path=lane_artifact_path,
-                short_review_window_release_at=hold_window["hold_until"].isoformat(),
-            )
             distribution_execution = SimpleNamespace(
                 action_type=execution_action_type,
                 status=execution_status,
@@ -966,15 +968,43 @@ def main() -> int:
                 reused_from_log=str(recent_follow_through["log_path"]),
             )
         else:
-            distribution_lane = choose_distribution_lane(now)
-            if pending_repairs:
-                distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs)
-            distribution_execution = execute_distribution_lane(distribution_lane, now)
-            distribution_execution_log = _write_distribution_execution_log(
-                distribution_lane=distribution_lane,
-                execution=distribution_execution,
-                now=now,
-            )
+            reused_existing_distribution_execution = False
+            recent_guard_execution = None
+            if distribution_lane.lane in DISTRIBUTION_ARCHITECTURE_GUARD_REUSE_ACTION_TYPES:
+                recent_guard_execution = _latest_distribution_architecture_guard_execution(distribution_lane.lane)
+                reused_existing_distribution_execution = (
+                    recent_guard_execution is not None
+                    and not _distribution_architecture_guard_execution_is_stale(recent_guard_execution)
+                )
+
+            if reused_existing_distribution_execution and recent_guard_execution is not None:
+                distribution_execution = SimpleNamespace(
+                    action_type=(
+                        "distribution_architecture_guard_follow_through"
+                        if distribution_lane.lane == "distribution_architecture_guard_follow_through"
+                        else "distribution_architecture_guard_pause"
+                    ),
+                    status=recent_guard_execution.get("status", "executed"),
+                    artifact_path=recent_guard_execution.get("artifact_path", ""),
+                    summary=recent_guard_execution.get("summary", "Reused existing distribution-architecture guard artifact."),
+                    targets_prepared=list(recent_guard_execution.get("targets_prepared") or []),
+                    shared_findings_used=list(recent_guard_execution.get("shared_findings_used") or []),
+                    live_external_action=bool(recent_guard_execution.get("live_external_action", False)),
+                    blocking_factors=list(recent_guard_execution.get("blocking_factors") or []),
+                )
+                distribution_execution_log = _write_distribution_execution_log(
+                    distribution_lane=distribution_lane,
+                    execution=distribution_execution,
+                    now=now,
+                    reused_from_log=str(recent_guard_execution["log_path"]),
+                )
+            else:
+                distribution_execution = execute_distribution_lane(distribution_lane, now)
+                distribution_execution_log = _write_distribution_execution_log(
+                    distribution_lane=distribution_lane,
+                    execution=distribution_execution,
+                    now=now,
+                )
             refreshed_lane = _refresh_distribution_lane_after_execution(now, pending_repairs)
             lane_name = distribution_lane.lane
             lane_reason = distribution_lane.reason

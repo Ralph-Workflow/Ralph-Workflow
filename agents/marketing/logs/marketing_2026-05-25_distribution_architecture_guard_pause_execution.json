@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-25T16:17:32.150384",
+  "timestamp": "2026-05-25T19:22:26.133086",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "distribution_architecture_guard_pause",
     "channel": "distribution_architecture_guard_pause",
     "title": "Distribution lane execution: distribution_architecture_guard_pause",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_161732_distribution_architecture_guard_pause.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_192226_distribution_architecture_guard_pause.md"
   },
   "why_this_action": {
     "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn.",
@@ -25,6 +25,6 @@
     "blocking_factors": []
   },
   "verification": {
-    "execution_board_fingerprint": "f952d591b2db82d4930abbd6f6490163b2ff034e"
+    "execution_board_fingerprint": "c70250cf52ab9c1a986ce0164e55dd9f14f32a9a"
   }
 }

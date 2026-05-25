@@ -6579,3 +6579,22 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-25 17:51:02
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+
+## 2026-05-25 (Monday) — Reddit monitoring (16:28 UTC / 18:28 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-25_1828.md`
+- **Scan summary:** forced-refresh local monitor returned **13 scanned / 2 shortlisted** with **ok=3 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
+- **Coverage note:** still a **partial-visibility** pass. Direct Reddit/provider coverage remains degraded enough that the monitor should keep failing closed on posting, so I cross-checked with fresh web search across adjacent communities instead of treating the thin local shortlist as the whole market.
+- **Current verdict:** still **not** a posting pass. Discussion-fit is real; honest RalphWorkflow mention fit is still only **medium-low**.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
+  - `r/AI_Agents` — "Seedance 2.0 is impressive. it’s still not a production workflow."
+  - `r/EngineeringManagers` — "how are teams handling PR review now that AI is doubling output but not doubling reviewers"
+  - `r/webdev` — "What are we doing with AI PRs now?"
+- **Repeated pains worth tracking:** context continuity, state continuity, review tax, architectural intent loss, and workflows that look finished without being easy to merge.
+- **Self-improving lesson:** keep **context continuity / state continuity** as a first-class research lens, and keep using adjacent review-management communities as language-mining surfaces when direct Reddit coverage is partial.
+- **Posting note:** No posting attempted. Research-first only while coverage remains partial.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 18:51:28
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
