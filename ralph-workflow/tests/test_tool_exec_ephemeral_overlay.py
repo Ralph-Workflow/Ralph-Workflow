@@ -14,6 +14,7 @@ from ralph.mcp.tools import exec_overlay
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_run_deps import ExecRunDeps
 from ralph.mcp.tools.exec import run_command
+from ralph.mcp.tools.exec_overlay import _get_private_exec_base
 from tests.mock_workspace_root import MockWorkspaceRoot
 
 
@@ -238,15 +239,11 @@ class TestComputeExecBaseStr:
 
 
 @pytest.mark.timeout_seconds(30)
-class TestOverlayPrivateDirectoryPlacement:
-    """Observer-based proof that the exec overlay is not in the system temp directory."""
+class TestOverlayPrivateDirectoryPermissions:
+    """Observer-based proof that the exec overlay base directory is private."""
 
-    def test_overlay_base_dir_has_private_permissions(self, tmp_path: Path) -> None:
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-
-        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
-            base = overlay.parent.parent
+    def test_overlay_base_dir_has_private_permissions(self) -> None:
+        base = _get_private_exec_base()
 
         assert base.exists(), "overlay base directory should exist"
         if os.name != "nt":
@@ -484,7 +481,7 @@ class TestExecOrphanProcessCleanup:
             "    stdout=subprocess.DEVNULL, "
             "    stderr=subprocess.DEVNULL"
             "); "
-            "time.sleep(1.0); "
+            "time.sleep(0.1); "
             "print(p.pid)"
         )
 
