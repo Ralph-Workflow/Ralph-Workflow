@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-05-25T01:12:50+02:00",
+  "action": "directory_confirmation_google_rate_limit_guard_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "channel": "marketing_runtime",
+  "why_this_action": {
+    "summary": "The execution board had no truthful do-now outbound packet in the active short review window, so the strongest move available was to improve the current directory-confirmation lane itself. The fresh backlink refresh exposed a concrete runtime flaw: after the first Google HTTP 429, the tracker kept sending the remaining search burst anyway.",
+    "shared_findings_used": [
+      "agents/marketing/logs/adoption_metrics_latest.json: Codeberg remains flat and is still the primary success gate",
+      "agents/marketing/logs/distribution_lane_latest.json: current lane is directory_confirmation",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json: same-family outbound overlap is still active",
+      "drafts/marketing_execution_board_latest.md: no truthful do-now packet exists in the current review window",
+      "agents/marketing/logs/backlink_status_latest.json: fresh refresh showed Google 429 rate limiting across the search check stage",
+      "agents/marketing/logs/reddit_execution_status_latest.json: Reddit remains blocked, so this slot should not be spent there"
+    ]
+  },
+  "files_changed": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/backlink_status.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_backlink_status.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_status_latest.json"
+  ],
+  "verification": {
+    "commands": [
+      "python3 -m unittest agents.marketing.tests.test_backlink_status -v",
+      "python3 -m py_compile agents/marketing/backlink_status.py",
+      "python3 agents/marketing/backlink_status.py"
+    ],
+    "results": {
+      "directories_with_live_listings": 2,
+      "live_listings_pointing_to_codeberg": 1,
+      "live_listings_pointing_to_github_only": 1,
+      "queries_indexed": 0,
+      "queries_unavailable": 18,
+      "queries_skipped_after_rate_limit": 17,
+      "google_rate_limit_encountered": true,
+      "codeberg_primary_live_directories": [
+        "ToolWise"
+      ],
+      "github_only_live_directories": [
+        "SaaSHub"
+      ]
+    },
+    "artifacts": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_status_latest.json",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_directory_confirmation_google_rate_limit_guard_repair.md"
+    ]
+  },
+  "expected_outcome": "Future directory-confirmation refreshes stop after the first Google 429 instead of hammering the remaining search burst, preserving cleaner measurement truth while keeping the live listing proof current."
+}

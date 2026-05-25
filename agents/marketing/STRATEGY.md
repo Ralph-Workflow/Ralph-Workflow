@@ -437,3 +437,28 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 
 ### Priority Actions (from SEO analysis)
 - Create content targeting: Claude Code unattended, AI agent workflow composer
+
+## Weekly Review — 2026-05-25
+
+### SEO Health
+**SEO Score:** 90/100 (A) | Ranked keywords: 0 | Backlinks: 2 | DR: None
+**Trends:** ranks 0.0
+
+### Content Performance
+- conversion-asset: 1 posts, 0 total views, 0.0 avg views/publish
+- philosophy: 1 posts, 0 total views, 0.0 avg views/publish
+- seo-guide: 1 posts, 0 total views, 0.0 avg views/publish
+- technical: 1 posts, 0 total views, 0.0 avg views/publish
+- unknown: 33 posts, 0 total views, 0.0 avg views/publish
+- usecase: 1 posts, 0 total views, 0.0 avg views/publish
+
+### Weekly Decisions
+- **[HIGH]** MARK AS FAILING: Current content/distribution tactics are not driving repo adoption. — Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)
+- **[INFO]** Do not infer a winning owned-content format yet. — Current content-performance logs show zero measurable views, so format recommendations would be guesswork.
+- **[MEDIUM]** Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move. — Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes.
+- **[MEDIUM]** Ship comparison-led backlink outreach packets whenever the curator queue is already full. — A follow-through note is not enough when the queue is saturated; the loop needs a fresh executable distribution asset tied to existing comparison pages.
+- **[MEDIUM]** Leverage competitor comparison pages in content and outreach. — Monitoring 8 competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked.
+- **[INFO]** Note: hermes-agent has 165661 GitHub stars — lean into Ralph's cost and flexibility advantages. — Competitor intelligence for positioning decisions.
+
+### Priority Actions (from SEO analysis)
+- Create content targeting: Claude Code unattended, AI agent workflow composer

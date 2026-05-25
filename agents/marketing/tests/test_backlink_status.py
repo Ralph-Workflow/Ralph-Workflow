@@ -135,6 +135,23 @@ class BacklinkStatusTests(unittest.TestCase):
     def test_search_queries_include_aiagents_directory_after_submission(self):
         self.assertIn("ralph workflow aiagents.directory", backlink_status.SEARCH_QUERIES)
 
+    def test_google_rate_limited_detects_429_error(self):
+        self.assertTrue(
+            backlink_status._google_rate_limited(
+                {"error": "HTTP Error 429: Too Many Requests"}
+            )
+        )
+        self.assertFalse(backlink_status._google_rate_limited({"error": "timeout"}))
+
+    def test_skipped_google_index_marks_result_unavailable_without_requery(self):
+        result = backlink_status.skipped_google_index(
+            "ralph workflow toolwise",
+            "Skipped after earlier Google 429 to avoid hammering the rate-limited endpoint.",
+        )
+        self.assertIsNone(result["indexed"])
+        self.assertTrue(result["skipped"])
+        self.assertIn("429", result["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

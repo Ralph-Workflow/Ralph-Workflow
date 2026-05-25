@@ -213,6 +213,82 @@ class RunRepairModeTests(unittest.TestCase):
             finally:
                 run.LOG_DIR = original_log_dir
 
+    def test_latest_measurement_hold_window_uses_short_review_window_release_time(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                payload = {
+                    'timestamp': '2026-05-25T01:47:40.177303',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'why_this_action': {
+                        'summary': 'measurement hold is active',
+                        'hold_until': '2026-05-25T02:05:05',
+                    },
+                    'review_window': {'scheduled_run_at': '2026-05-25T02:05:05'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-25_measurement_hold_execution.json').write_text(json.dumps(payload), encoding='utf-8')
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 25, 1, 49, 0))
+
+                self.assertIsNotNone(hold)
+                self.assertEqual(hold['hold_started_at'], datetime(2026, 5, 25, 1, 47, 40, 177303))
+                self.assertEqual(hold['hold_until'], datetime(2026, 5, 25, 2, 5, 5))
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_latest_measurement_hold_window_falls_back_to_release_cron_schedule(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_payload = {
+                    'timestamp': '2026-05-25T01:47:40.177303',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'why_this_action': {'summary': 'measurement hold is active'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }
+                release_payload = {
+                    'timestamp': '2026-05-25T01:47:41.000000',
+                    'chosen_action': {'type': 'measurement_hold_release_cron'},
+                    'review_window': {'scheduled_run_at': '2026-05-25T02:05:05'},
+                    'result': {'status': 'scheduled', 'ok': True, 'live_external_action': False},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-25_measurement_hold_execution.json').write_text(json.dumps(hold_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-25_measurement_hold_release_cron.json').write_text(json.dumps(release_payload), encoding='utf-8')
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 25, 1, 49, 0))
+
+                self.assertIsNotNone(hold)
+                self.assertEqual(hold['hold_until'], datetime(2026, 5, 25, 2, 5, 5))
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_latest_measurement_hold_window_falls_back_to_distribution_lane_release_time(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_payload = {
+                    'timestamp': '2026-05-25T01:47:40.177303',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'why_this_action': {'summary': 'measurement hold is active'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-25_measurement_hold_execution.json').write_text(json.dumps(hold_payload), encoding='utf-8')
+                (run.LOG_DIR / 'distribution_lane_latest.json').write_text(
+                    json.dumps({'short_review_window_release_at': '2026-05-25T02:05:05'}),
+                    encoding='utf-8',
+                )
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 25, 1, 49, 0))
+
+                self.assertIsNotNone(hold)
+                self.assertEqual(hold['hold_until'], datetime(2026, 5, 25, 2, 5, 5))
+            finally:
+                run.LOG_DIR = original_log_dir
+
     def test_latest_measurement_hold_window_clears_after_new_live_external_action(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR
@@ -377,6 +453,44 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_hold.md')
                 self.assertEqual(payload['distribution_execution']['targets_prepared'], ['Existing target'])
                 self.assertEqual(payload['distribution_execution_log'], str(prior_log))
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_write_distribution_execution_log_records_short_review_window_release_for_measurement_hold(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                lane = LaneDecision(
+                    lane='measurement_hold',
+                    reason='Hold for truthful re-entry after the short review window clears.',
+                    reasons=['multiple fresh external actions already overlap'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='',
+                    short_review_window_release_at='2026-05-25T02:05:05',
+                )
+                execution = SimpleNamespace(
+                    action_type='measurement_hold_execution',
+                    status='prepared',
+                    artifact_path='/tmp/hold.md',
+                    summary='Enforced a short measurement hold.',
+                    targets_prepared=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                log_path = run._write_distribution_execution_log(
+                    distribution_lane=lane,
+                    execution=execution,
+                    now=datetime(2026, 5, 25, 1, 47, 40, 177303),
+                )
+                payload = json.loads(log_path.read_text(encoding='utf-8'))
+
+                self.assertEqual(payload['review_window']['scheduled_run_at'], '2026-05-25T02:05:05')
+                self.assertEqual(payload['why_this_action']['hold_until'], '2026-05-25T02:05:05')
             finally:
                 run.LOG_DIR = original_log_dir
 

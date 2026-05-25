@@ -123,6 +123,14 @@ def _write_distribution_execution_log(*, distribution_lane: Any, execution: Any,
             'blocking_factors': list(getattr(execution, 'blocking_factors', []) or []),
         },
     }
+    short_review_window_release_at = str(getattr(distribution_lane, 'short_review_window_release_at', '') or '').strip()
+    if short_review_window_release_at and getattr(execution, 'action_type', '') in {'measurement_hold_execution', 'measurement_hold_follow_through'}:
+        payload['review_window'] = {
+            'scheduled_run_at': short_review_window_release_at,
+        }
+        why_this_action = payload.get('why_this_action') if isinstance(payload.get('why_this_action'), dict) else {}
+        why_this_action['hold_until'] = short_review_window_release_at
+        payload['why_this_action'] = why_this_action
     path.write_text(json.dumps(payload, indent=2, default=str), encoding='utf-8')
     return path
 

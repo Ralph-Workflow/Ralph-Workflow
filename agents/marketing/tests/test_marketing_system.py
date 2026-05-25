@@ -2589,6 +2589,7 @@ class MarketingWorkflowAuditBurstTests(unittest.TestCase):
                 '# Ralph Workflow Curator Contact Execution Packet\n\n## Execute these first\n### 1. vivy-yi/awesome-agent-orchestration\n',
                 encoding='utf-8',
             )
+            os.utime(curator_contact_handoff_path, (datetime(2026, 5, 23, 19, 40, 0).timestamp(), datetime(2026, 5, 23, 19, 40, 0).timestamp()))
             reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
             reset_log_path.write_text('# Distribution Reset Execution Log\n', encoding='utf-8')
             stackoverflow_handoff_path.write_text('# StackOverflow handoff\n', encoding='utf-8')
