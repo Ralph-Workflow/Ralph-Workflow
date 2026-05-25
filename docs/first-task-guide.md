@@ -1,8 +1,5 @@
 # Choose Your First Ralph Workflow Task
 
-A first Ralph Workflow run should be worth waiting for overnight.
-That means picking a task big enough to benefit from orchestration and concrete enough to judge honestly the next day.
-
 Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
 That simple center composes into more complex workflows for substantial, well-specified repo work, and the shipped default workflow is strongest when the task already has a real finish line.
 

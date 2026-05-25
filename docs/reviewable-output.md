@@ -3,7 +3,6 @@
 Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
 This page is supporting proof for that composable workflow system and its strong default workflow, not the main product pitch.
 
-
 Use this page after you already understand the workflow and want a review standard for the morning-after handoff.
 Start with the product story and operator route first, then use this page to judge whether a run produced something worth trusting.
 

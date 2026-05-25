@@ -17,7 +17,7 @@ If you need fuller explanation, task-selection help, or more context for why the
 5. Judge the result by the repo change and the checks that ran.
 6. Only customize after you know what the default loop already does well enough.
 
-If you want explicit project-local overrides, run `ralph --init-local-config` and then edit `.agent/ralph-workflow.toml` in that repo.
+For explicit project-local overrides, run `ralph --init-local-config` and then edit `.agent/ralph-workflow.toml` in that repo.
 That local file belongs to the opt-in override flow, not the default `ralph --init` path.
 
 ## Good first-task shape

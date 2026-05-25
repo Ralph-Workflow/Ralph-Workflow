@@ -1,11 +1,8 @@
 # End-User Stories
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
-That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-
-This page is the plain-English map for real user goals.
-Its job is to get you to the right next doc quickly, including overnight use cases and baseline comparison routes.
+This page is the plain-English route map for real user goals.
+Use it when you know what you are trying to do but do not care which doc family contains the answer.
+Each section points at the shortest next page for that job, including first-run, overnight use, configuration, comparison, proof, and internals.
 
 ## I am brand new and want the fastest honest first run
 

@@ -15,10 +15,7 @@ It takes the simple Ralph-loop idea and turns it into a **composable workflow sy
 The core stays simple. That simplicity is what makes more complex workflows easier to build, easier to configure, and easier to extend.
 
 Ralph Workflow also ships with a **strong default workflow for writing software**.
-It follows a convention-over-configuration approach: start with the shipped path, then build on top of it only when you need something more advanced.
-
-Bring the coding agents you already trust.
-Ralph Workflow plugs into your existing setup instead of turning “hand over your API keys” into the main product contract.
+You can use that default as-is, or build on top of it when you need something more advanced.
 
 ## The route to use
 
