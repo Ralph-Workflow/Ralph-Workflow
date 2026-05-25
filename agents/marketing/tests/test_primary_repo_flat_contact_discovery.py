@@ -129,7 +129,10 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
             hook='Hook',
             reason='Fit',
             outreach_subject='Subject',
-            contact_urls=('https://www.nxcode.io/ar/contact',),
+            contact_urls=(
+                'https://www.nxcode.io/ar/contact',
+                'https://www.nxcode.io/docs/troubleshooting',
+            ),
         )
 
         def fake_get(url: str, timeout: int = 20) -> str:
@@ -137,9 +140,11 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
             if normalized == 'https://www.nxcode.io/resources/news/codex-vs-cursor-vs-claude-code-2026':
                 return '<a href="/ar/contact">Contact</a>'
             if normalized == 'https://www.nxcode.io':
-                return '<a href="mailto:legal@nxcode.io">Legal</a><a href="mailto:support@nxcode.io">Support</a>'
+                return '<a href="mailto:legal@nxcode.io">Legal</a>'
             if normalized == 'https://www.nxcode.io/ar/contact':
                 return '<form></form><a href="/company/about">About</a>'
+            if normalized == 'https://www.nxcode.io/docs/troubleshooting':
+                return '<p>Urgent issue? <a href="mailto:support@nxcode.io">support@nxcode.io</a></p>'
             if normalized == 'https://www.nxcode.io/company/about':
                 return '<p>About page</p>'
             return ''
@@ -151,7 +156,7 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         finally:
             discovery.http_get = original
 
-        self.assertEqual(enriched['recommended_next_step'], 'public website contact path is now identified')
+        self.assertEqual(enriched['recommended_next_step'], 'email/contact send path is now identified')
         self.assertEqual(enriched['channels'][0], {'type': 'website', 'value': 'https://www.nxcode.io/ar/contact', 'label': 'contact page'})
         self.assertIn({'type': 'email', 'value': 'legal@nxcode.io', 'label': 'email'}, enriched['channels'])
         self.assertIn({'type': 'email', 'value': 'support@nxcode.io', 'label': 'email'}, enriched['channels'])

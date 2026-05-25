@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-25T04:39:35.317926+00:00",
+  "updated_at": "2026-05-25T05:57:49.674709+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 81,
+      "repeat_count": 82,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -226,22 +226,29 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779682517968:75\"\n}",
           "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-25T05:36:59.756561+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779687419729:83\"\n}",
+          "outcome": "resolved"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-25T04:15:13.993917+00:00",
+      "last_seen": "2026-05-25T05:36:55.874569+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-05-25T04:15:18.003277+00:00"
+      "closed_at": "2026-05-25T05:36:59.756572+00:00"
     },
     "marketing_independent_verification::loop_verification_fail": {
       "key": "marketing_independent_verification::loop_verification_fail",
       "name": "marketing_independent_verification",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-22T23:28:25.701171+00:00",
-      "repeat_count": 219,
+      "repeat_count": 233,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -909,13 +916,62 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779683967993:78\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:23:18.220939+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:36:56.136527+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:37:01.761062+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:46:12.209597+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779687972185:86\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:51:28.591667+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779688288567:89\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:57:33.430357+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779688653403:92\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:57:44.119897+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779688664093:95\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-25T04:39:35.317905+00:00",
+      "last_seen": "2026-05-25T05:57:49.674685+00:00",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -925,7 +981,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 136,
+      "repeat_count": 141,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1432,15 +1488,50 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779682518270:76\"\n}",
           "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-25T05:12:14.016184+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-25T05:23:21.825329+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-25T05:37:00.106419+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779687420071:84\"\n}",
+          "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-25T05:46:15.810486+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-25T05:57:37.014680+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-25T04:15:08.500411+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-25T05:59:24.965425+02:00\"\n}",
+      "last_seen": "2026-05-25T05:57:27.889868+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (loop_integrity_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-25T07:54:23.584177+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-05-25T04:15:18.298602+00:00"
+      "closed_at": "2026-05-25T05:57:37.014697+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -2096,7 +2187,7 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T00:07:36.250195+00:00",
-      "repeat_count": 137,
+      "repeat_count": 151,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -3058,13 +3149,111 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779683969775:79\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:23:14.060618+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779686594018:81\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:23:20.055497+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:36:51.775718+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779687411733:82\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:36:57.825622+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:36:58.218980+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:37:03.695383+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:46:08.566663+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779687968540:85\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:46:13.977705+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779687973952:87\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:51:26.884002+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779688286859:88\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:51:30.349477+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779688290319:90\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:57:29.571234+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779688649546:91\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:57:35.154486+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779688655127:93\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:57:42.434941+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779688662409:94\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:57:45.925925+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779688665899:96\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-25T04:39:35.317917+00:00",
+      "last_seen": "2026-05-25T05:57:49.674698+00:00",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -3423,7 +3612,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 23,
+      "repeat_count": 25,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -3482,13 +3671,20 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643022457:3\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-25T05:12:12.255308+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779685932214:80\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-24T17:17:11.019896+00:00",
+      "last_seen": "2026-05-25T05:12:17.897990+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"

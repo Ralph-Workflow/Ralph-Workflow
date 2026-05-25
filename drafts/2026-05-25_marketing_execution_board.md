@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-25T07:00:55
+Generated: 2026-05-25T07:55:41
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -9,17 +9,14 @@ Generated: 2026-05-25T07:00:55
 ## Active review windows
 - Apollo next review: 2026-05-30T00:14:49.075391+02:00
 - Apollo launch review: 2026-05-30T00:14:49.075391+02:00
-- Short review-window congestion clears at: 2026-05-25T07:20:16
-- Post-hold marketer rerun scheduled: 2026-05-25T07:20:16
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Primary-repo-flat publisher contact packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 
 ## Best executable assets still waiting
 - No do-now handoff packet is currently truthful in this review window.
-- Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum, NxCode.
+- Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum.
 - Fresh publisher outreach already shipped in the current review window for: ToolChase.
-- A refreshed primary-repo-flat publisher packet now exists for the new target set, but the short review window is still active; hold manual delivery until that congestion clears.
 - Primary-repo-flat publisher contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.

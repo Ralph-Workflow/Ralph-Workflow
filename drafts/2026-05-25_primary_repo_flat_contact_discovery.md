@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-25T05:00:37+00:00
+Generated: 2026-05-25T05:16:06+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -40,12 +40,13 @@ Generated: 2026-05-25T05:00:37+00:00
 ### 3. NxCode
 - Hook: Codex vs Cursor vs Claude Code comparison with workflow-specific tradeoffs
 - Article/root: https://www.nxcode.io/resources/news/codex-vs-cursor-vs-claude-code-2026 / https://www.nxcode.io/
-- Recommended next step: public website contact path is now identified
+- Recommended next step: email/contact send path is now identified
 - Suggested subject: Ralph Workflow as a workflow-system addition to your AI coding tools comparison
 - Discovered channels:
   - contact page: https://www.nxcode.io/ar/company/about
   - contact page: https://www.nxcode.io/ar/company/careers
   - contact page: https://www.nxcode.io/ar/contact
+  - email: support@nxcode.io
   - X/Twitter: https://twitter.com/nxcode
   - LinkedIn: https://www.linkedin.com/company/nxcode
 

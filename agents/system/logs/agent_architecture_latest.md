@@ -1,9 +1,9 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-25T06:40:58.003628+02:00
+- Checked: 2026-05-25T07:59:01.856408+02:00
 - Overall health: high_risk
-- Primary failure mode: Architecture-owned verifier/runtime topology is coherent; the only live red remains marketing because primary-repo adoption is still flat and marketing independent verification is fail.
-- Most urgent fix: Do not recertify the full stack until the marketing loop produces a fresh independent pass backed by measurable Codeberg movement.
+- Primary failure mode: Architecture-owned topology, verifier freshness, and ownership checks are green; the only live red is external marketing certification still failing on primary-repo outcome evidence.
+- Most urgent fix: Do not certify the whole stack green until marketing produces a fresh independent pass backed by measurable Codeberg movement.
 - Verifier status: independently_verified_pass
 - Verifier verdict: qualified_pass
 
@@ -18,24 +18,28 @@
 ## Severity-ranked findings
 
 1. **High — Marketing remains the only live red owner loop**
-   - Mechanism: marketing independent verification is still fail and the latest workflow audit still shows flat Codeberg and GitHub adoption deltas across the recent window.
-   - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before architecture calls the whole stack green.
+   - Mechanism: marketing independent verification is still fail and the unresolved blocker remains primary-repo adoption measurement pending.
+   - Recommended fix: let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before architecture calls the whole stack green.
 
-2. **Medium — Architecture audit metadata now matches the live Gateway topology**
-   - Mechanism: Live runtime currently shows 20 jobs, 20 enabled, 0 disabled, and the refreshed audit matches that state.
-   - Recommended fix: Keep direct live-topology checks on every watchdog run; do not infer live-disabled jobs from persisted history.
+2. **Medium — Architecture audit metadata matches the live Gateway topology**
+   - Mechanism: live runtime currently shows 20 jobs, 20 enabled, 0 disabled, 0 running, and no live last-error residue.
+   - Recommended fix: keep direct live-topology checks on every watchdog run; do not infer live-disabled jobs from persisted history.
 
-3. **Medium — Architecture verifier path needs a fresh independent rerun after this audit refresh**
-   - Mechanism: This run refreshed the audit artifacts against newer live evidence, so the verifier must be rerun against this snapshot before signoff is current.
-   - Recommended fix: Rerun independent verification and the architecture verifier immediately after refreshing the audit artifacts.
+3. **Medium — Architecture verifier path is green on local ownership and freshness gates**
+   - Mechanism: loop integrity marks the architecture watchdog ok, health monitor shows only external marketing issues, and the architecture verifier now has a fresh pass artifact.
+   - Recommended fix: rerun independent verification after any future material architecture artifact refresh.
 
 4. **Low — Docs remains independently green and stable**
-   - Mechanism: Docs verifier is pass and does not contribute a live architecture fault.
-   - Recommended fix: None.
+   - Mechanism: docs verifier remains independently green and stable through the recent repeat-failure window.
+   - Recommended fix: none.
 
 ## Repaired this run
 
-- **refreshed_architecture_audit_artifacts** — Refreshed the architecture audit against the current 20-job live Gateway topology and latest verifier/health-monitor state.
+- **reran_loop_integrity** — Refreshed owner coverage, contract status, and user-crontab ownership against the live registry.
+- **reran_health_monitor** — Re-localized live issues before signoff; architecture-owned issues stayed clear and the red stayed external to marketing.
+- **reran_architecture_independent_verification** — Refreshed the independent verification artifact against the newest runtime evidence.
+- **reran_architecture_verifier** — Re-established a fresh verifier pass artifact tied to the current independent verification.
+- **refreshed_architecture_audit_artifacts** — Refreshed the architecture audit against the current live Gateway topology and latest verifier evidence.
 
 ## Still red
 
@@ -50,4 +54,4 @@
 
 ## Small gate passed
 
-- `python3 agents/system/agent_architecture_checker.py` passed.
+- `python3 agents/system/agent_architecture_independent_verify.py && python3 agents/system/agent_architecture_verifier.py && python3 agents/system/agent_architecture_checker.py` passed.

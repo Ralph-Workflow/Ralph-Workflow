@@ -28,7 +28,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                         {
                             'target': 'ctxt.dev / Signum',
                             'channels': [
-                                {'type': 'website', 'value': 'https://ctxt.dev/contact', 'label': 'contact page'},
+                                {'type': 'website', 'value': 'https://ctxt.dev/contact', 'label': 'contact form'},
                                 {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
                             ],
                         }
@@ -36,7 +36,10 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 }),
                 encoding='utf-8',
             )
-            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text('# publisher packet\n\n### 1. ctxt.dev / Signum\n', encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text(
+                '# publisher packet\n\n- ToolWise — https://toolwise.ai/tools/ralph-workflow\n\n### 1. ctxt.dev / Signum\n',
+                encoding='utf-8',
+            )
 
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
@@ -84,6 +87,91 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
         self.assertIn('canonical handoff packet is stale', board_text)
+
+    def test_execution_board_prefers_delivery_active_blocker_over_false_stale_packet_flag(self):
+        now = datetime(2026, 5, 25, 7, 36, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'ctxt.dev / Signum',
+                            'channels': [{'type': 'website', 'value': 'https://ctxt.dev/work-with-me', 'label': 'work with me page'}],
+                        },
+                        {
+                            'target': 'ToolChase',
+                            'channels': [{'type': 'email', 'value': 'hello@toolchase.com', 'label': 'email'}],
+                        },
+                        {
+                            'target': 'NxCode',
+                            'channels': [{'type': 'email', 'value': 'support@nxcode.io', 'label': 'email'}],
+                        },
+                        {
+                            'target': 'TIMEWELL',
+                            'channels': [{'type': 'email', 'value': 'timewell@timewell.jp', 'label': 'email'}],
+                        },
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text(
+                '\n'.join([
+                    '# packet',
+                    '',
+                    '- ToolWise — https://toolwise.ai/tools/ralph-workflow',
+                    '',
+                    '### 1. ctxt.dev / Signum',
+                    '### 2. ToolChase',
+                    '### 3. NxCode',
+                    '### 4. TIMEWELL',
+                    '',
+                ]),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_toolchase_manual_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T05:16:29+02:00',
+                    'type': 'primary_repo_flat_contact_manual_delivery',
+                    'chosen_action': {
+                        'draft': str(drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-05-31T05:16:29+02:00',
+                    },
+                    'result': {
+                        'status': 'executed',
+                        'ok': True,
+                        'artifact': str(drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'),
+                    },
+                    'ok': True,
+                    'target': 'ToolChase',
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({
+                    'short_review_window_release_at': '2026-05-25T08:24:28',
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('Primary-repo-flat publisher contact packet was already manually delivered in the current review window', board_text)
+        self.assertIn('Primary-repo-flat publisher contact packet already exists but was already delivered in the current review window', board_text)
+        self.assertNotIn('canonical handoff packet is stale', board_text)
 
     def test_curator_queue_rows_normalize_recent_live_actions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1288,17 +1376,20 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                     'targets': [
                         {
                             'target': 'ctxt.dev / Signum',
-                            'channels': [{'type': 'website', 'value': 'https://ctxt.dev/work-with-me'}],
+                            'channels': [{'type': 'website', 'value': 'https://ctxt.dev/work-with-me', 'label': 'contact form'}],
                         },
                         {
                             'target': 'NxCode',
-                            'channels': [{'type': 'website', 'value': 'https://www.nxcode.io/ar/contact'}],
+                            'channels': [{'type': 'website', 'value': 'https://www.nxcode.io/ar/contact', 'label': 'contact form'}],
                         },
                     ]
                 }),
                 encoding='utf-8',
             )
-            packet_path.write_text('# publisher packet\n\n### 1. ctxt.dev / Signum\n\n### 2. NxCode\n', encoding='utf-8')
+            packet_path.write_text(
+                '# publisher packet\n\n- ToolWise — https://toolwise.ai/tools/ralph-workflow\n\n### 1. ctxt.dev / Signum\n\n### 2. NxCode\n',
+                encoding='utf-8',
+            )
             (log_dir / 'marketing_2026-05-25_primary_repo_flat_contact_manual_delivery_refresh.json').write_text(
                 json.dumps({
                     'timestamp': '2026-05-25T06:50:32+02:00',
@@ -1954,6 +2045,65 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertEqual(execution.action_type, 'distribution_architecture_guard_follow_through')
         self.assertIn('suppressed another duplicate structural repair', artifact_text.lower())
         self.assertIn('third-strike churn guard', artifact_text.lower())
+
+    def test_distribution_architecture_guard_pause_skips_duplicate_follow_through_churn(self):
+        now = datetime(2026, 5, 25, 8, 0, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_guard_pause',
+            reason='The same empty-board distribution-architecture failure is still guarded and was already acknowledged once in this review window; pause further duplicate guard follow-through churn until the board fingerprint or blocker set materially changes.',
+            reasons=['A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json', 'primary_repo_flat_contact_discovery_latest.json'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            board_path = drafts_dir / 'marketing_execution_board_latest.md'
+            board_path.write_text(
+                '# Ralph Workflow Marketing Execution Board\n\n'
+                '## Best executable assets still waiting\n'
+                '- No do-now handoff packet is currently truthful in this review window.\n',
+                encoding='utf-8',
+            )
+            fingerprint = distribution_lane_selector.hashlib.sha1(board_path.read_text(encoding='utf-8').encode('utf-8')).hexdigest()
+            for filename, timestamp, action_type in [
+                ('marketing_2026-05-25_013107_distribution_architecture_repair.json', '2026-05-25T01:31:07', 'distribution_architecture_repair'),
+                ('marketing_2026-05-25_020752_distribution_architecture_repair.json', '2026-05-25T02:07:52', 'distribution_architecture_repair'),
+                ('marketing_2026-05-25_042100_distribution_architecture_churn_guard_repair.json', '2026-05-25T04:21:00', 'distribution_architecture_churn_guard_repair'),
+                ('marketing_2026-05-25_072249_distribution_architecture_guard_follow_through.json', '2026-05-25T07:22:49', 'distribution_architecture_guard_follow_through'),
+            ]:
+                (log_dir / filename).write_text(
+                    json.dumps({
+                        'timestamp': timestamp,
+                        'chosen_action': {'type': action_type},
+                        'verification': {'execution_board_fingerprint': fingerprint},
+                        'result': {'status': 'executed', 'ok': True},
+                    }),
+                    encoding='utf-8',
+                )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(board_path, [])), \
+                 patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', board_path), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=datetime(2026, 5, 25, 7, 20, 16)), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+
+        self.assertEqual(execution.action_type, 'distribution_architecture_guard_pause')
+        self.assertEqual(execution.status, 'skipped_repair')
+        self.assertIn('pause further duplicate guard notes', artifact_text.lower())
+        self.assertIn('prior guard follow-through runs in this window: 1', artifact_text.lower())
 
     def test_distribution_architecture_repair_executes_instead_of_idle_hold(self):
         now = datetime(2026, 5, 25, 9, 0, 0)

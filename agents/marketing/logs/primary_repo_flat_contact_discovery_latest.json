@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T05:00:37.633570+00:00",
+  "generated_at": "2026-05-25T05:16:06.172947+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -92,6 +92,11 @@
           "label": "contact page"
         },
         {
+          "type": "email",
+          "value": "support@nxcode.io",
+          "label": "email"
+        },
+        {
           "type": "x",
           "value": "https://twitter.com/nxcode",
           "label": "X/Twitter"
@@ -102,7 +107,7 @@
           "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "public website contact path is now identified"
+      "recommended_next_step": "email/contact send path is now identified"
     },
     {
       "target": "TIMEWELL",
