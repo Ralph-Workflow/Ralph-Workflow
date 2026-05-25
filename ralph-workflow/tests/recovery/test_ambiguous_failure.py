@@ -304,7 +304,7 @@ def test_plan_artifact_validation_error_via_controller_does_not_debit_budget() -
     debit the agent budget when surfaced through RecoveryController (mirrors the
     prompt's recovery handling).
     """
-    malformed_payload = {
+    malformed_payload: dict[str, object] = {
         "status": "completed",
         "summary": "Development pass plan",
         "steps": [{"title": "Step 1", "details": "do stuff"}],
