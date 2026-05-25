@@ -144,6 +144,7 @@ def run_pty_and_read_lines(
                 required_artifact=ctx.required_artifact,
                 explicit_completion_seen=explicit_completion_seen,
                 captured_session_id=captured_session_id,
+                completion_run_id=expected_session_id,
                 evaluate_completion_fn=ctx.evaluate_completion_fn,
             ),
             _clock=clock,

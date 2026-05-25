@@ -147,8 +147,9 @@ def test_sentinel_check_fn_true_prevents_invocation_error(tmp_path: Path) -> Non
                 normalizer=None,
             ),
             captured_session_id="captured-run-id",
+            completion_run_id="run-sentinel-id",
             _sentinel_check_fn=lambda workspace, run_id: (
-                workspace == tmp_path and run_id == "captured-run-id"
+                workspace == tmp_path and run_id == "run-sentinel-id"
             ),
         ),
     )
@@ -174,12 +175,13 @@ def test_sentinel_check_fn_false_still_raises_invocation_error(tmp_path: Path) -
                     normalizer=None,
                 ),
                 captured_session_id="captured-run-id",
+                completion_run_id="run-sentinel-id",
                 _sentinel_check_fn=lambda workspace, run_id: False,
             ),
         )
 
 
-def test_sentinel_check_fn_receives_captured_session_id(tmp_path: Path) -> None:
+def test_sentinel_check_fn_receives_completion_run_id(tmp_path: Path) -> None:
     strategy = strategy_for_transport(AgentTransport.AGY)
     handle = _FakeHandle(returncode=0)
     seen: list[tuple[Path, str | None]] = []
@@ -203,11 +205,12 @@ def test_sentinel_check_fn_receives_captured_session_id(tmp_path: Path) -> None:
                 normalizer=None,
             ),
             captured_session_id="captured-run-id",
+            completion_run_id="run-sentinel-id",
             _sentinel_check_fn=capture,
         ),
     )
 
-    assert seen == [(tmp_path, "captured-run-id")]
+    assert seen == [(tmp_path, "run-sentinel-id")]
 
 
 def test_sentinel_completion_without_pty_echo(tmp_path: Path) -> None:
@@ -231,7 +234,8 @@ def test_sentinel_completion_without_pty_echo(tmp_path: Path) -> None:
                 markdown_path=None,
                 normalizer=None,
             ),
-            captured_session_id="observable-run-001",
+            captured_session_id="parsed-session-001",
+            completion_run_id="observable-run-001",
         ),
     )
 
@@ -255,7 +259,8 @@ def test_sentinel_absent_without_pty_echo_raises(tmp_path: Path) -> None:
                     markdown_path=None,
                     normalizer=None,
                 ),
-                captured_session_id="observable-run-001",
+                captured_session_id="parsed-session-001",
+                completion_run_id="observable-run-001",
             ),
         )
 

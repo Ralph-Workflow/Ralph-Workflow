@@ -38,6 +38,7 @@ class _CompletionCheckOptions:
     required_artifact: RequiredArtifact | None = None
     explicit_completion_seen: bool = False
     captured_session_id: str | None = None
+    completion_run_id: str | None = None
     evaluate_completion_fn: _EvalCompletionFn | None = None
     _sentinel_check_fn: Callable[[Path, str | None], bool] | None = field(default=None)
 
@@ -220,9 +221,14 @@ def _check_process_result(
             if opts._sentinel_check_fn is not None
             else _check_completion_sentinel
         )
+        sentinel_run_id = (
+            opts.completion_run_id
+            if opts.completion_run_id is not None
+            else opts.captured_session_id
+        )
         if not signals.explicit_complete and sentinel_check_fn(
             opts.workspace_path,
-            opts.captured_session_id,
+            sentinel_run_id,
         ):
             signals = replace(signals, explicit_complete=True)
         exit_state = opts.execution_strategy.classify_exit(
@@ -273,9 +279,14 @@ def _check_process_result(
             if opts._sentinel_check_fn is not None
             else _check_completion_sentinel
         )
+        sentinel_run_id = (
+            opts.completion_run_id
+            if opts.completion_run_id is not None
+            else opts.captured_session_id
+        )
         if not signals.explicit_complete and sentinel_check_fn(
             opts.workspace_path,
-            opts.captured_session_id,
+            sentinel_run_id,
         ):
             signals = replace(signals, explicit_complete=True)
         exit_state = opts.execution_strategy.classify_exit(
