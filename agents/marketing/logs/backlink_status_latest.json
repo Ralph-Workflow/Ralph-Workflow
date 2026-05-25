@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T15:27:15.213082+00:00",
+  "generated_at": "2026-05-25T18:08:11.967381+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -20,7 +20,9 @@
           "error": "HTTP Error 404: Not Found"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -39,7 +41,9 @@
           "error": "<urlopen error timed out>"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -65,11 +69,58 @@
           "preferred_repo_target": "both"
         }
       ],
+      "secondary_check_results": [
+        {
+          "url": "https://www.saashub.com/ralph-workflow-alternatives",
+          "status": 200,
+          "ok": true,
+          "has_product_marker": true,
+          "negative_markers": [],
+          "transient_markers": [
+            "loading..."
+          ],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": true,
+          "has_site_link": true,
+          "preferred_repo_target": "github_only"
+        },
+        {
+          "url": "https://www.saashub.com/best-workflow-automation-software",
+          "status": 200,
+          "ok": true,
+          "has_product_marker": true,
+          "negative_markers": [],
+          "transient_markers": [
+            "loading..."
+          ],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "unknown"
+        }
+      ],
       "listing_live": true,
+      "secondary_live_surfaces": 2,
       "has_codeberg_repo_link": true,
       "has_github_repo_link": true,
       "has_site_link": true,
-      "preferred_repo_target": "both"
+      "preferred_repo_target": "both",
+      "secondary_surface_targets": [
+        {
+          "url": "https://www.saashub.com/ralph-workflow-alternatives",
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": true,
+          "has_site_link": true,
+          "preferred_repo_target": "github_only"
+        },
+        {
+          "url": "https://www.saashub.com/best-workflow-automation-software",
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "unknown"
+        }
+      ]
     },
     "ToolWise": {
       "directory": "ToolWise",
@@ -89,7 +140,9 @@
           "preferred_repo_target": "codeberg_primary"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": true,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": true,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -108,7 +161,9 @@
           "error": "HTTP Error 404: Not Found"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -127,7 +182,9 @@
           "error": "HTTP Error 404: Not Found"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -155,7 +212,9 @@
           "preferred_repo_target": "unknown"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -174,7 +233,9 @@
           "error": "HTTP Error 404: Not Found"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -193,7 +254,9 @@
           "error": "HTTP Error 404: Not Found"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -220,7 +283,9 @@
           "preferred_repo_target": "unknown"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -239,7 +304,9 @@
           "error": "HTTP Error 404: Not Found"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -258,7 +325,9 @@
           "error": "HTTP Error 404: Not Found"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -277,7 +346,9 @@
           "error": "HTTP Error 404: Not Found"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -296,7 +367,9 @@
           "error": "HTTP Error 401: Unauthorized"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -315,7 +388,9 @@
           "error": "HTTP Error 404: Not Found"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -352,7 +427,9 @@
           "error": "HTTP Error 404: Not Found"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -383,7 +460,9 @@
           "preferred_repo_target": "unknown"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -426,7 +505,9 @@
           "preferred_repo_target": "unknown"
         }
       ],
+      "secondary_check_results": [],
       "listing_live": false,
+      "secondary_live_surfaces": 0,
       "has_codeberg_repo_link": false,
       "has_github_repo_link": false,
       "has_site_link": false,
@@ -551,6 +632,10 @@
     "live_listings_pointing_to_codeberg": 2,
     "live_listings_pointing_to_github_only": 0,
     "live_listings_with_unknown_repo_target": 0,
+    "secondary_live_surfaces": 2,
+    "secondary_surfaces_pointing_to_codeberg": 0,
+    "secondary_surfaces_pointing_to_github_only": 1,
+    "secondary_surfaces_with_unknown_repo_target": 1,
     "queries_indexed": 1,
     "queries_unavailable": 0,
     "queries_skipped_after_rate_limit": 0,

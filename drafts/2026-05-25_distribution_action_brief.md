@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-25T19:23:49
+Generated: 2026-05-25T19:49:00
 Chosen lane: **distribution_architecture_guard_pause**
 
 ## Why this lane
@@ -32,7 +32,7 @@ Chosen lane: **distribution_architecture_guard_pause**
 - 4 prior distribution-architecture repair run(s) already hit this same empty-board window.
 - A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
 - 7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.
-- 2 prior guard pause run(s) already reused this same fingerprint in the current review window.
+- 5 prior guard pause run(s) already reused this same fingerprint in the current review window.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate

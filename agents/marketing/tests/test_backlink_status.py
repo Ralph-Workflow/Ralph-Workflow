@@ -135,6 +135,60 @@ class BacklinkStatusTests(unittest.TestCase):
     def test_search_queries_include_aiagents_directory_after_submission(self):
         self.assertIn("ralph workflow aiagents.directory", backlink_status.SEARCH_QUERIES)
 
+    def test_secondary_check_urls_capture_saashub_alternatives_surface(self):
+        self.assertIn(
+            "https://www.saashub.com/ralph-workflow-alternatives",
+            backlink_status.SUBMISSIONS["SaaSHub"]["secondary_check_urls"],
+        )
+
+    def test_check_listing_status_tracks_live_secondary_surface_targets(self):
+        with patch.object(
+            backlink_status,
+            "check_url_status",
+            side_effect=[
+                {
+                    "url": "https://saashub.com/ralph-workflow",
+                    "status": 200,
+                    "ok": True,
+                    "has_product_marker": True,
+                    "negative_markers": [],
+                    "transient_markers": [],
+                    "has_codeberg_repo_link": True,
+                    "has_github_repo_link": True,
+                    "has_site_link": True,
+                    "preferred_repo_target": "both",
+                },
+                {
+                    "url": "https://www.saashub.com/ralph-workflow-alternatives",
+                    "status": 200,
+                    "ok": True,
+                    "has_product_marker": True,
+                    "negative_markers": [],
+                    "transient_markers": [],
+                    "has_codeberg_repo_link": False,
+                    "has_github_repo_link": True,
+                    "has_site_link": True,
+                    "preferred_repo_target": "github_only",
+                },
+            ],
+        ):
+            result = backlink_status.check_listing_status(
+                "SaaSHub",
+                {
+                    "submit_url": "https://saashub.com/add_url",
+                    "listing_url": "https://saashub.com/ralph-workflow",
+                    "known_check_urls": ["https://saashub.com/ralph-workflow"],
+                    "secondary_check_urls": ["https://www.saashub.com/ralph-workflow-alternatives"],
+                },
+            )
+
+        self.assertTrue(result["listing_live"])
+        self.assertEqual(result["secondary_live_surfaces"], 1)
+        self.assertEqual(
+            result["secondary_surface_targets"][0]["preferred_repo_target"],
+            "github_only",
+        )
+
     def test_google_rate_limited_detects_429_error(self):
         self.assertTrue(
             backlink_status._google_rate_limited(

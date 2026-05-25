@@ -1,21 +1,14 @@
 {
   "timestamp": "2026-05-25T19:49:00",
-  "run_type": "marketing-distribution-lane",
+  "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "distribution_lane_switch",
+    "type": "distribution_architecture_guard_pause",
     "channel": "distribution_architecture_guard_pause",
-    "title": "Distribution lane decision: distribution_architecture_guard_pause",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_distribution_action_brief.md"
+    "title": "Distribution lane execution: distribution_architecture_guard_pause",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_194900_distribution_architecture_guard_pause.md"
   },
   "why_this_action": {
-    "shared_findings_used": [
-      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
-      "channel_discovery.json: validated easy-submit directory lanes",
-      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
-      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
-    ],
-    "reasoning": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
+    "summary": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 directory submissions already shipped in the last 24 hours.",
@@ -46,13 +39,21 @@
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
       "7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.",
       "4 prior guard pause run(s) already reused this same fingerprint in the current review window."
+    ],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ]
   },
   "result": {
-    "status": "prepared",
-    "ok": true
-  },
-  "verification": {
-    "execution_board_fingerprint": "53ca5ddf8f352adab6605c726726f1ccc235e263"
+    "status": "skipped_repair",
+    "ok": true,
+    "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn.",
+    "targets_prepared": [],
+    "live_external_action": false,
+    "blocking_factors": []
   }
 }

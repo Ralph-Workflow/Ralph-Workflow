@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-25T19:23:49.536762",
+  "timestamp": "2026-05-25T19:49:00",
   "weekly_mode": true,
   "site_health": {
     "homepage": {
@@ -84,7 +84,7 @@
     },
     {
       "priority": "info",
-      "action": "Note: hermes-agent has 166943 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
+      "action": "Note: hermes-agent has 166965 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
       "reason": "Competitor intelligence for positioning decisions."
     }
   ],
@@ -115,19 +115,19 @@
     "competitor_analysis": {
       "ran_ok": true,
       "report_path": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-25.md",
-      "stdout": "[competitor_analysis] Starting competitor analysis at 2026-05-25 19:23\n  \u2192 Monitoring competitors...\n    done in 5.3s\n  \u2192 Generating comparison pages...\n    done in 0.0s\n  \u2192 Discovering new competitors...\n    done in 0.1s (found 0)\n\nCompetitor analysis complete (5.4s total):\n  - Monitored: 8 competi",
+      "stdout": "[competitor_analysis] Starting competitor analysis at 2026-05-25 19:57\n  \u2192 Monitoring competitors...\n    done in 7.1s\n  \u2192 Generating comparison pages...\n    done in 0.0s\n  \u2192 Discovering new competitors...\n    done in 0.1s (found 0)\n\nCompetitor analysis complete (7.3s total):\n  - Monitored: 8 competi",
       "competitor_count": 8,
       "competitors": {
         "hermes-agent": {
           "status": 200,
-          "stars": 166943,
+          "stars": 166965,
           "features_found": [
             "Persistent memory"
           ]
         },
         "conductor-oss": {
           "status": 200,
-          "stars": 31835,
+          "stars": 31834,
           "features_found": [
             "Durable execution"
           ]
@@ -141,12 +141,12 @@
         },
         "aider": {
           "status": 200,
-          "stars": 45297,
+          "stars": 45299,
           "features_found": []
         },
         "continue": {
           "status": 200,
-          "stars": 33374,
+          "stars": 33375,
           "features_found": []
         },
         "cursor": {
@@ -184,7 +184,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-25T18:52:51.454336",
+    "timestamp": "2026-05-25T19:47:08.329004",
     "metrics": [
       {
         "platform": "GitHub",
@@ -244,7 +244,7 @@
     }
   },
   "market_intelligence": {
-    "generated_at": "2026-05-25T19:24:05.381802",
+    "generated_at": "2026-05-25T19:57:23.585922",
     "source": "competitor_analysis.py",
     "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
     "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-25.md",
@@ -296,7 +296,7 @@
         "name": "Hermes Agent",
         "positioning": "Self-improving agent that learns from experience",
         "site_status": 200,
-        "github_stars": 166943,
+        "github_stars": 166965,
         "key_features_found": [
           "Persistent memory"
         ]
@@ -305,7 +305,7 @@
         "name": "Conductor OSS",
         "positioning": "Enterprise-grade workflow orchestration for AI agents",
         "site_status": 200,
-        "github_stars": 31835,
+        "github_stars": 31834,
         "key_features_found": [
           "Durable execution"
         ]
@@ -323,14 +323,14 @@
         "name": "Aider",
         "positioning": "Terminal-based AI pair programming in your git repo",
         "site_status": 200,
-        "github_stars": 45297,
+        "github_stars": 45299,
         "key_features_found": []
       },
       "continue": {
         "name": "Continue",
         "positioning": "The leading AI code assistant inside your IDE",
         "site_status": 200,
-        "github_stars": 33374,
+        "github_stars": 33375,
         "key_features_found": []
       },
       "cursor": {
@@ -392,8 +392,8 @@
     }
   },
   "distribution_lane": {
-    "lane": "distribution_architecture_repair",
-    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, but this review window already reused that pause for the current fingerprint without a newer concrete repair afterward; perform one concrete distribution-architecture repair now instead of logging another guard pause.",
+    "lane": "distribution_architecture_guard_pause",
+    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 directory submissions already shipped in the last 24 hours.",
@@ -420,10 +420,10 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "2 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "4 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
       "7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.",
-      "3 prior guard pause run(s) already reused this same fingerprint in the current review window."
+      "4 prior guard pause run(s) already reused this same fingerprint in the current review window."
     ],
     "owned_content_posts_last_36h": 0,
     "unsubmitted_directory_channels": [],
@@ -435,16 +435,16 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_distribution_action_brief.md",
-    "short_review_window_release_at": null,
+    "short_review_window_release_at": "2026-05-25T23:07:41",
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
   },
   "distribution_execution": {
-    "lane": "distribution_architecture_repair",
-    "action_type": "distribution_architecture_churn_guard_repair",
-    "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_192349_distribution_architecture_repair.md",
-    "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window.",
+    "lane": "distribution_architecture_guard_pause",
+    "action_type": "distribution_architecture_guard_pause",
+    "status": "skipped_repair",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_194900_distribution_architecture_guard_pause.md",
+    "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn.",
     "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
@@ -456,7 +456,7 @@
     "live_external_action": false,
     "blocking_factors": []
   },
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_192349_distribution_architecture_churn_guard_repair.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_194900_distribution_architecture_guard_pause.json",
   "post_execution_distribution_lane": {
     "lane": "distribution_architecture_guard_pause",
     "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
@@ -489,7 +489,7 @@
       "4 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
       "7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.",
-      "2 prior guard pause run(s) already reused this same fingerprint in the current review window."
+      "5 prior guard pause run(s) already reused this same fingerprint in the current review window."
     ],
     "owned_content_posts_last_36h": 0,
     "unsubmitted_directory_channels": [],
@@ -512,12 +512,12 @@
   "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "skipped: lane=distribution_architecture_repair",
+    "stdout": "skipped: lane=distribution_architecture_guard_pause",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "skipped: lane=distribution_architecture_repair",
+    "stdout": "skipped: lane=distribution_architecture_guard_pause",
     "stderr": ""
   }
 }
