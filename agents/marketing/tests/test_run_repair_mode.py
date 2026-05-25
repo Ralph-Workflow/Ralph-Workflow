@@ -116,6 +116,30 @@ class RunRepairModeTests(unittest.TestCase):
         self.assertEqual(audit['repair_actions'][0]['repair_state'], 'pending_measurement')
         self.assertEqual(audit['repair_window_status'], 'clear')
 
+    def test_same_family_publisher_pause_advances_when_other_lane_runs(self):
+        audit = {
+            'repair_window_status': 'needs_repair',
+            'measurement_pending_reasons': [],
+            'repair_actions': [
+                {
+                    'failure_type': 'same_family_publisher_overlap',
+                    'repair_kind': 'tactic',
+                    'repair_state': 'needs_execution',
+                },
+            ],
+        }
+        execution = SimpleNamespace(action_type='measurement_hold_execution', live_external_action=False)
+
+        changed = run._advance_audit_repairs_for_execution(
+            audit=audit,
+            execution=execution,
+            now=datetime(2026, 5, 23, 21, 0, 0),
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(audit['repair_actions'][0]['repair_state'], 'pending_measurement')
+        self.assertEqual(audit['repair_window_status'], 'clear')
+
     def test_load_active_pending_repairs_keeps_measurement_window_repairs_live(self):
         audit = {
             'repair_window_status': 'measurement_pending',
@@ -540,6 +564,84 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertEqual(payload['distribution_execution']['targets_prepared'], ['Refreshed target'])
                 self.assertNotEqual(payload['distribution_execution_log'], str(prior_log))
                 self.assertEqual(payload['post_execution_distribution_lane']['lane'], 'distribution_architecture_repair')
+            finally:
+                run.LOG_DIR = original_log_dir
+                run.DRAFTS_DIR = original_drafts_dir
+
+    def test_main_reuses_existing_distribution_architecture_guard_pause_when_truth_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            original_drafts_dir = run.DRAFTS_DIR
+            run.LOG_DIR = Path(tmpdir)
+            run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
+            run.DRAFTS_DIR.mkdir()
+            try:
+                prior_log = run.LOG_DIR / 'marketing_2026-05-25_093100_distribution_architecture_guard_pause.json'
+                prior_log.write_text(json.dumps({
+                    'timestamp': '2026-05-25T09:31:00',
+                    'chosen_action': {
+                        'type': 'distribution_architecture_guard_pause',
+                        'channel': 'distribution_architecture_guard_pause',
+                        'draft': '/tmp/existing_guard_pause.md',
+                    },
+                    'why_this_action': {
+                        'shared_findings_used': ['adoption_metrics_latest.json'],
+                    },
+                    'result': {
+                        'status': 'skipped_repair',
+                        'summary': 'Paused duplicate guard churn.',
+                        'targets_prepared': [],
+                        'live_external_action': False,
+                        'blocking_factors': [],
+                    },
+                }), encoding='utf-8')
+
+                decision = LaneDecision(
+                    lane='distribution_architecture_guard_pause',
+                    reason='Pause duplicate guard churn.',
+                    reasons=['guard already acknowledged'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='/tmp/current.md',
+                )
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=None), \
+                     patch.object(run, 'run_seo_daily', return_value={'priority_actions': [], 'ranks': {}, 'backlinks': {'count_approx': 0}}), \
+                     patch.object(run, 'load_seo_trends', return_value=[]), \
+                     patch.object(run, 'compute_trends', return_value={}), \
+                     patch.object(run, 'recent_successful_posts', return_value=[]), \
+                     patch.object(run, 'load_posted_records', return_value=[]), \
+                     patch.object(run, 'enrich_posts_with_views', return_value=[]), \
+                     patch.object(run, 'summarize_content_performance', return_value={}), \
+                     patch.object(run, 'competitor_report_is_stale', return_value=False), \
+                     patch.object(run, 'load_shared_market_intelligence', return_value=None), \
+                     patch.object(run, 'load_adoption_data', return_value={}), \
+                     patch.object(run, 'write_seo_insights', return_value=run.LOG_DIR / 'seo-insights.json'), \
+                     patch.object(run, '_latest_distribution_architecture_guard_execution', return_value={
+                         'timestamp': datetime(2026, 5, 25, 9, 31, 0),
+                         'log_path': str(prior_log),
+                         'artifact_path': '/tmp/existing_guard_pause.md',
+                         'status': 'skipped_repair',
+                         'summary': 'Paused duplicate guard churn.',
+                         'targets_prepared': [],
+                         'shared_findings_used': ['adoption_metrics_latest.json'],
+                         'live_external_action': False,
+                         'blocking_factors': [],
+                     }), \
+                     patch.object(run, '_distribution_architecture_guard_execution_is_stale', return_value=False), \
+                     patch.object(run, 'choose_distribution_lane', return_value=decision) as choose_mock, \
+                     patch.object(run, 'execute_distribution_lane') as execute_mock:
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                execute_mock.assert_not_called()
+                choose_mock.assert_called_once()
+                daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
+                payload = json.loads(daily_log.read_text(encoding='utf-8'))
+                self.assertTrue(payload['reused_existing_distribution_execution'])
+                self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_guard_pause.md')
+                self.assertEqual(payload['distribution_execution_log'], str(prior_log))
             finally:
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir

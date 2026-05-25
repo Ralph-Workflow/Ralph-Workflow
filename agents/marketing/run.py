@@ -20,12 +20,14 @@ import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Iterable
 
 ROOT = Path("/home/mistlight/.openclaw/workspace")
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from agents.marketing import distribution_lane_selector
 from agents.marketing.distribution_lane_executor import execute_distribution_lane
 from agents.marketing.distribution_lane_selector import choose_distribution_lane
 from agents.marketing.market_intelligence_runtime import load_market_intelligence
@@ -79,6 +81,12 @@ MANUAL_CONTACT_REPAIR_ACTION_TYPES = {
     "curator_contact_handoff_packet_execution",
 }
 
+PUBLISHER_LANE_ACTION_TYPES = {
+    "primary_repo_flat_contact_handoff_packet_execution",
+    "primary_repo_flat_contact_handoff_follow_through",
+    "manual_outreach_asset_follow_through",
+}
+
 ACTIVE_REPAIR_WINDOW_STATUSES = {
     "needs_repair",
     "measurement_pending",
@@ -92,6 +100,11 @@ LIVE_EXTERNAL_STATUSES = {
     "submitted",
     "published",
     "launched",
+}
+
+DISTRIBUTION_ARCHITECTURE_GUARD_REUSE_ACTION_TYPES = {
+    "distribution_architecture_guard_follow_through",
+    "distribution_architecture_guard_pause",
 }
 
 
@@ -164,6 +177,8 @@ def _advance_audit_repairs_for_execution(*, audit: dict[str, Any], execution: An
             should_advance = lane_action not in DIRECTORY_LANE_ACTION_TYPES
         elif failure_type == 'same_family_outreach_overlap':
             should_advance = lane_action not in CURATOR_LANE_ACTION_TYPES or lane_action in MANUAL_CONTACT_REPAIR_ACTION_TYPES
+        elif failure_type == 'same_family_publisher_overlap':
+            should_advance = lane_action not in PUBLISHER_LANE_ACTION_TYPES
         elif repair.get('repair_kind') == 'system_design':
             should_advance = shipped_live_repair
 
@@ -816,6 +831,64 @@ def _measurement_hold_follow_through_is_stale(recent_follow_through: dict[str, A
     return False
 
 
+def _distribution_architecture_truth_artifact_paths() -> list[Path]:
+    return [
+        *_measurement_hold_truth_artifact_paths(),
+        DRAFTS_DIR / "marketing_execution_board_latest.md",
+        LOG_DIR / "marketing_workflow_audit_latest.json",
+        LOG_DIR / "adoption_metrics_latest.json",
+    ]
+
+
+def _latest_distribution_architecture_guard_execution(lane: str) -> dict[str, Any] | None:
+    action_type = {
+        "distribution_architecture_guard_follow_through": "distribution_architecture_guard_follow_through",
+        "distribution_architecture_guard_pause": "distribution_architecture_guard_pause",
+    }.get(lane)
+    if not action_type:
+        return None
+
+    current_fingerprint = distribution_lane_selector._execution_board_fingerprint()
+    for path, payload, timestamp in _recent_marketing_log_payloads():
+        chosen_action = payload.get("chosen_action") if isinstance(payload.get("chosen_action"), dict) else {}
+        logged_action_type = str(chosen_action.get("type") or payload.get("action_type") or "").strip()
+        if logged_action_type != action_type:
+            continue
+        verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
+        logged_fingerprint = str(verification.get("execution_board_fingerprint") or "").strip()
+        if current_fingerprint and logged_fingerprint != current_fingerprint:
+            continue
+        result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+        return {
+            "timestamp": timestamp,
+            "log_path": str(path),
+            "artifact_path": chosen_action.get("draft") or payload.get("artifact_path") or "",
+            "status": str(result.get("status") or "executed"),
+            "summary": str(result.get("summary") or "Reused existing distribution-architecture guard artifact."),
+            "targets_prepared": list(result.get("targets_prepared") or []),
+            "shared_findings_used": list((payload.get("why_this_action") or {}).get("shared_findings_used") or []),
+            "live_external_action": bool(result.get("live_external_action", False)),
+            "blocking_factors": list(result.get("blocking_factors") or []),
+        }
+    return None
+
+
+def _distribution_architecture_guard_execution_is_stale(recent_execution: dict[str, Any] | None) -> bool:
+    if not recent_execution:
+        return False
+    execution_timestamp = recent_execution.get("timestamp")
+    if not isinstance(execution_timestamp, datetime):
+        return True
+
+    for path in _distribution_architecture_truth_artifact_paths():
+        try:
+            if path.exists() and datetime.fromtimestamp(path.stat().st_mtime) > execution_timestamp:
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def main() -> int:
     now = datetime.now()
     weekday = now.weekday()
@@ -1066,13 +1139,40 @@ def main() -> int:
                 flush=True,
             )
 
-    distribution_execution = execute_distribution_lane(distribution_lane, now)
-    distribution_execution_log = _write_distribution_execution_log(
-        distribution_lane=distribution_lane,
-        execution=distribution_execution,
-        now=now,
-    )
-    refreshed_distribution_lane = _refresh_distribution_lane_after_execution(now, pending_repairs)
+    reused_existing_distribution_execution = False
+    recent_guard_execution = None
+    if distribution_lane.lane in DISTRIBUTION_ARCHITECTURE_GUARD_REUSE_ACTION_TYPES:
+        recent_guard_execution = _latest_distribution_architecture_guard_execution(distribution_lane.lane)
+        reused_existing_distribution_execution = (
+            recent_guard_execution is not None
+            and not _distribution_architecture_guard_execution_is_stale(recent_guard_execution)
+        )
+
+    if reused_existing_distribution_execution and recent_guard_execution is not None:
+        distribution_execution = SimpleNamespace(
+            action_type=(
+                "distribution_architecture_guard_follow_through"
+                if distribution_lane.lane == "distribution_architecture_guard_follow_through"
+                else "distribution_architecture_guard_pause"
+            ),
+            status=recent_guard_execution.get("status", "executed"),
+            artifact_path=recent_guard_execution.get("artifact_path", ""),
+            summary=recent_guard_execution.get("summary", "Reused existing distribution-architecture guard artifact."),
+            targets_prepared=list(recent_guard_execution.get("targets_prepared") or []),
+            shared_findings_used=list(recent_guard_execution.get("shared_findings_used") or []),
+            live_external_action=bool(recent_guard_execution.get("live_external_action", False)),
+            blocking_factors=list(recent_guard_execution.get("blocking_factors") or []),
+        )
+        distribution_execution_log = Path(recent_guard_execution["log_path"])
+        refreshed_distribution_lane = distribution_lane
+    else:
+        distribution_execution = execute_distribution_lane(distribution_lane, now)
+        distribution_execution_log = _write_distribution_execution_log(
+            distribution_lane=distribution_lane,
+            execution=distribution_execution,
+            now=now,
+        )
+        refreshed_distribution_lane = _refresh_distribution_lane_after_execution(now, pending_repairs)
     print(f"[run.py] Chosen distribution lane: {distribution_lane.lane}", flush=True)
     print(f"[run.py] Distribution execution log: {distribution_execution_log}", flush=True)
     if distribution_execution.artifact_path:
@@ -1147,6 +1247,7 @@ def main() -> int:
         "distribution_execution": distribution_execution.__dict__,
         "distribution_execution_log": str(distribution_execution_log),
         "post_execution_distribution_lane": refreshed_distribution_lane.__dict__,
+        "reused_existing_distribution_execution": reused_existing_distribution_execution,
         "failure_signals": [d["action"] for d in decisions if d.get("is_failing_signal")],
         "marketing_status": "failing" if any(d.get("is_failing_signal") for d in decisions) else "mixed" if decisions else "initial",
         "content_generation": {

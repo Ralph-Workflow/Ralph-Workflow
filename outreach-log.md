@@ -6454,3 +6454,29 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-25 10:19:43
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 10:35:46
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 10:36:34
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+## 2026-05-25 (Monday) — Reddit monitoring (08:53 UTC / 10:53 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-25_1053.md`
+- **Scan summary:** forced-refresh local monitor returned **25 scanned / 4 shortlisted** with **ok=4 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
+- **Coverage note:** this was a **usable but still partial-coverage** pass. The monitor recovered real same-run hits, but Reddit blocking remained high enough that the pass should still fail closed on posting.
+- **Current verdict:** still **not** a posting pass. The best live surfaces were stronger as research/discussion than as honest RalphWorkflow mention targets.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
+  - `r/AI_Agents` — "Seedance 2.0 is impressive. It’s still not a production workflow."
+  - `r/ClaudeAI` — "Fully switched my entire coding workflow to AI driven development"
+  - `r/CursorAI` — "After months with AI coding agents, these 5 small workflow changes made the biggest difference"
+- **Repeated pains worth tracking:** context continuity across tools, visible finish state, workflow that looks done without actually finishing, and reducing babysitting without blind trust.
+- **Self-improving lesson:** keep a hard **discussion-fit vs mention-fit** split and treat **context continuity** as an active scan lens alongside production failure, review tax, and visible finish state.
+- **Posting note:** No posting attempted. Research-first only while coverage remains partial.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 11:59:20
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

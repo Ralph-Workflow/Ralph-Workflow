@@ -1,21 +1,14 @@
 {
-  "timestamp": "2026-05-25T10:39:00",
-  "run_type": "marketing-distribution-lane",
+  "timestamp": "2026-05-25T10:35:58.896675",
+  "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "distribution_lane_switch",
+    "type": "distribution_architecture_churn_guard_repair",
     "channel": "distribution_architecture_repair",
-    "title": "Distribution lane decision: distribution_architecture_repair",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_distribution_action_brief.md"
+    "title": "Distribution lane execution: distribution_architecture_repair",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_103558_distribution_architecture_repair.md"
   },
   "why_this_action": {
-    "shared_findings_used": [
-      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
-      "channel_discovery.json: validated easy-submit directory lanes",
-      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
-      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
-    ],
-    "reasoning": "The current execution-board fingerprint is still empty even though a third-strike churn guard and guard follow-through already exist for this review window; perform a concrete distribution-architecture repair now instead of logging another guard pause.",
+    "summary": "The current execution-board fingerprint is still empty even though a third-strike churn guard and guard follow-through already exist for this review window; perform a concrete distribution-architecture repair now instead of logging another guard pause.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 directory submissions already shipped in the last 24 hours.",
@@ -44,17 +37,25 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "7 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "6 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
       "7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.",
       "1 prior guard pause run(s) already reused this same fingerprint in the current review window."
+    ],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ]
   },
   "result": {
-    "status": "prepared",
-    "ok": true
-  },
-  "verification": {
-    "execution_board_fingerprint": "1597e8f4d84f4e7886621f3b0b36c17f85662fea"
+    "status": "executed",
+    "ok": true,
+    "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window.",
+    "targets_prepared": [],
+    "live_external_action": false,
+    "blocking_factors": []
   }
 }

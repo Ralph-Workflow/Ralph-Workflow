@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-25T07:59:01.856408+02:00
+- Checked: 2026-05-25T10:37:40+02:00
 - Overall health: high_risk
 - Primary failure mode: Architecture-owned topology, verifier freshness, and ownership checks are green; the only live red is external marketing certification still failing on primary-repo outcome evidence.
 - Most urgent fix: Do not certify the whole stack green until marketing produces a fresh independent pass backed by measurable Codeberg movement.

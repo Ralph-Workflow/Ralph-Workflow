@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T10:19:43.528451",
+  "generated_at": "2026-05-25T12:13:43.775089",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -53,7 +53,8 @@
   },
   "failing_tactics": [
     "primary_repo_flat_window",
-    "mirror_repo_flat_window"
+    "mirror_repo_flat_window",
+    "same_family_publisher_overlap"
   ],
   "dormant_risks": [
     "reddit_style_repetition_suspended_while_channel_blocked"
@@ -70,6 +71,16 @@
       "repair_state": "pending_measurement"
     },
     {
+      "target_tactic": "publisher_outreach_burst",
+      "failure_type": "same_family_publisher_overlap",
+      "repair_kind": "tactic",
+      "action": "HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.",
+      "kill_condition": "Another audit adds more same-family publisher outreach before the current reply/review windows have materially aged or produced evidence",
+      "success_metric": "Next execution lane is not another same-day publisher-contact burst and produces a cleaner measurement path toward Codeberg movement",
+      "priority": 2,
+      "repair_state": "needs_execution"
+    },
+    {
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
@@ -80,7 +91,7 @@
       "repair_state": "pending_measurement"
     }
   ],
-  "repair_window_status": "measurement_pending",
+  "repair_window_status": "needs_repair",
   "measurement_pending_reasons": [
     "primary_repo_flat",
     "mirror_repo_flat"
@@ -92,7 +103,8 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was primary_repo_flat_contact_handoff_follow_through, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "8 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
+    "The most recent runtime activity was distribution_architecture_guard_pause, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
@@ -128,17 +140,17 @@
   },
   "latest_marketing_activity": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25.json",
-    "type": "primary_repo_flat_contact_handoff_follow_through",
-    "title": "Distribution lane execution: primary_repo_flat_contact_handoff_packet",
-    "status": "prepared",
+    "type": "distribution_architecture_guard_pause",
+    "title": "Distribution lane execution: distribution_architecture_guard_pause",
+    "status": "skipped_repair",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_primary_repo_flat_contact_handoff_follow_through.md"
+    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_114219_distribution_architecture_guard_pause.md"
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_langpop_publisher_outreach.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_codivox_publisher_outreach.json",
     "type": "publisher_email_outreach",
     "title": "publisher email outreach",
     "status": "executed",
@@ -149,7 +161,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-25T10:19:30.271145+02:00",
+    "generated_at": "2026-05-25T12:13:22.137747+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",

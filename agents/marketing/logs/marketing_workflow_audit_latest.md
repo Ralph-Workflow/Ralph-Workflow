@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-25T10:19:43.528451
+- Generated: 2026-05-25T12:13:43.775089
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,7 +11,8 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was primary_repo_flat_contact_handoff_follow_through, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
+- 8 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
+- The most recent runtime activity was distribution_architecture_guard_pause, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
@@ -19,6 +20,7 @@
 - Repetition risk in outreach opening: "Honestly the part I'd optimize first is the handoff, not the model stack."
 - Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
+- Failing tactic detected: same_family_publisher_overlap
 - Dormant risk parked for now: reddit_style_repetition_suspended_while_channel_blocked
 
 ## Outcome evaluation
@@ -33,6 +35,10 @@
   - Repair state: pending_measurement
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
+- **same_family_publisher_overlap** (tactic) → HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.
+  - Repair state: needs_execution
+  - Kill condition: Another audit adds more same-family publisher outreach before the current reply/review windows have materially aged or produced evidence
+  - Success metric: Next execution lane is not another same-day publisher-contact burst and produces a cleaner measurement path toward Codeberg movement
 - **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
   - Repair state: pending_measurement
   - Kill condition: N/A (mirror, not primary)
@@ -45,7 +51,7 @@
 - Title: publisher email outreach
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_langpop_publisher_outreach.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_codivox_publisher_outreach.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

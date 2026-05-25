@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-25T08:11:04+00:00
+Generated: 2026-05-25T09:13:45+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -12,7 +12,7 @@ Generated: 2026-05-25T08:11:04+00:00
 - market_intelligence_latest.json → comparison/positioning truth reused for outreach framing
 
 ## Contact-ready targets
-- Omitted because live publisher outreach already shipped in the active 7-day review window: AXME Code, Beam, Bollwerk / Werkstatt, NxCode, WyeWorks
+- Omitted because live publisher outreach already shipped in the active 7-day review window: AXME Code, Beam, Bollwerk / Werkstatt, Codivox, NxCode, WyeWorks
 
 ### 1. ctxt.dev / Signum
 - Hook: Tasks Are Not Goals (2026-05-22)
@@ -61,13 +61,15 @@ Generated: 2026-05-25T08:11:04+00:00
 ### 5. Toolradar
 - Hook: Best AI Coding Tools in 2026
 - Article/root: https://toolradar.com/guides/best-ai-coding-tools / https://toolradar.com/
-- Recommended next step: public website contact path is now identified
+- Recommended next step: email/contact send path is now identified
 - Suggested subject: Ralph Workflow as a workflow-system addition to your AI coding tools guide
 - Discovered channels:
+  - email: editorial@toolradar.com
   - contact page: https://toolradar.com/about
   - contact page: https://toolradar.com/advertise
   - contact page: https://toolradar.com/advertise/content-rerun
   - X/Twitter: https://twitter.com/toolradar
+  - X/Twitter: https://x.com/louiscorne
   - X/Twitter: https://x.com/louiscorneloup
   - LinkedIn: https://linkedin.com/company/toolradar
   - LinkedIn: https://www.linkedin.com/in/louis-corneloup-0036b5138
@@ -81,16 +83,3 @@ Generated: 2026-05-25T08:11:04+00:00
   - contact page: https://www.tldl.io/about
   - website: https://www.tldl.io
   - X/Twitter: https://x.com/shenli3514
-
-### 7. Codivox
-- Hook: AI Coding Tools Comparison 2026
-- Article/root: https://codivox.com/comparisons/ai-coding-tools/ / https://codivox.com/
-- Recommended next step: email/contact send path is now identified
-- Suggested subject: Ralph Workflow for your AI coding tools comparison page
-- Discovered channels:
-  - email: hello@codivox.com
-  - contact page: https://codivox.com/about
-  - contact page: https://codivox.com/contact
-  - contact page: https://codivox.com/hire
-  - X/Twitter: https://x.com/codivox
-  - LinkedIn: https://www.linkedin.com/company/codivox

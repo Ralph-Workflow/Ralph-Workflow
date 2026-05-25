@@ -830,6 +830,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(drafts_dir / 'marketing_execution_board_latest.md', [])) as mock_board_write, \
                  patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
                 mock_run.return_value.returncode = 1
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
@@ -841,6 +842,56 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertNotIn('## Execute these first', artifact_text)
         self.assertNotIn('Ready-to-send email draft', artifact_text)
         self.assertNotIn('Short contact-form version', artifact_text)
+        mock_board_write.assert_called_once_with(now)
+
+    def test_primary_repo_flat_packet_refresh_also_refreshes_execution_board(self):
+        now = datetime(2026, 5, 25, 11, 14, 27)
+        decision = LaneDecision(
+            lane='primary_repo_flat_contact_handoff_packet',
+            reason='Fresh primary-repo-flat publisher targets now have verified public contact paths.',
+            reasons=['publisher contacts discovered'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            discovery = {
+                'targets': [
+                    {
+                        'target': 'Toolradar',
+                        'article_url': 'https://toolradar.com/guides/best-ai-coding-tools',
+                        'root_url': 'https://toolradar.com/',
+                        'hook': 'Best AI Coding Tools in 2026',
+                        'reason': 'B2B buyer guide audience already comparing coding-agent tradeoffs and adjacent workflow layers.',
+                        'outreach_subject': 'Ralph Workflow as a workflow-system addition to your AI coding tools guide',
+                        'recommended_next_step': 'email/contact send path is now identified',
+                        'channels': [
+                            {'type': 'email', 'value': 'editorial@toolradar.com', 'label': 'email'},
+                        ],
+                    },
+                ]
+            }
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(json.dumps(discovery), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(drafts_dir / 'marketing_execution_board_latest.md', ['Toolradar'])) as mock_board_write, \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.return_value.returncode = 1
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+        self.assertEqual(execution.action_type, 'primary_repo_flat_contact_handoff_packet_execution')
+        mock_board_write.assert_called_once_with(now)
 
     def test_measurement_hold_refresh_skips_recently_contacted_publishers(self):
         now = datetime(2026, 5, 24, 8, 33, 0)

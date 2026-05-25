@@ -4760,6 +4760,62 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertEqual(latest_meaningful['chosen_action']['type'], 'publisher_email_outreach')
             self.assertEqual(latest_meaningful['chosen_action']['title'], 'publisher email outreach')
 
+    def test_audit_flags_same_day_publisher_outreach_overlap(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            out_dir = tmp / 'logs'
+            out_dir.mkdir()
+            adoption_path = out_dir / 'adoption_metrics_latest.json'
+            retro_path = out_dir / 'reddit_post_analysis.json'
+            outreach_path = tmp / 'outreach-log.md'
+            principles_path = tmp / 'principles.md'
+            four_questions_path = tmp / 'four_questions.md'
+            self_improvement_path = tmp / 'self_improvement.md'
+            audit_json = out_dir / 'marketing_workflow_audit_latest.json'
+            audit_md = out_dir / 'marketing_workflow_audit_latest.md'
+
+            adoption_path.write_text(json.dumps({
+                'metrics': [],
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                    'GitHub': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                },
+                'evaluation': {'failing_signals': ['primary_repo_flat']},
+            }), encoding='utf-8')
+            retro_path.write_text(json.dumps({'recent_posts': [], 'repeated_openings': []}), encoding='utf-8')
+            outreach_path.write_text('Recent publisher outreach is active.', encoding='utf-8')
+            principles_path.write_text('principles', encoding='utf-8')
+            four_questions_path.write_text('questions', encoding='utf-8')
+            self_improvement_path.write_text('self-improvement', encoding='utf-8')
+
+            for index, target in enumerate(['Beam', 'ToolChase', 'TIMEWELL', 'NxCode'], start=1):
+                (out_dir / f'marketing_2026-05-25_0{index}0000_{target.lower()}_publisher_outreach.json').write_text(json.dumps({
+                    'timestamp': f'2026-05-25T0{index}:00:00+00:00',
+                    'action_type': 'publisher_email_outreach' if index % 2 else 'publisher_contact_form_submission',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                    'outcome_ready': True,
+                    'target': target,
+                }), encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_JSON', audit_json), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_MD', audit_md), \
+                 patch.object(marketing_workflow_audit, 'OUTREACH', outreach_path), \
+                 patch.object(marketing_workflow_audit, 'ADOPTION', adoption_path), \
+                 patch.object(marketing_workflow_audit, 'RETRO', retro_path), \
+                 patch.object(marketing_workflow_audit, 'PRINCIPLES', principles_path), \
+                 patch.object(marketing_workflow_audit, 'FOUR_QUESTIONS_DOC', four_questions_path), \
+                 patch.object(marketing_workflow_audit, 'SELF_IMPROVEMENT_DOC', self_improvement_path):
+                rc = marketing_workflow_audit.main()
+
+            self.assertEqual(rc, 0)
+            payload = json.loads(audit_json.read_text(encoding='utf-8'))
+            self.assertIn('same_family_publisher_overlap', payload['failing_tactics'])
+            publisher_repair = next(item for item in payload['repair_actions'] if item['failure_type'] == 'same_family_publisher_overlap')
+            self.assertEqual(publisher_repair['target_tactic'], 'publisher_outreach_burst')
+
     def test_audit_does_not_treat_curator_follow_through_as_shipped_system_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

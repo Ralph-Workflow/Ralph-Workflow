@@ -214,6 +214,45 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         self.assertEqual(enriched['recommended_next_step'], 'email/contact send path is now identified')
         self.assertEqual(enriched['channels'][0], {'type': 'email', 'value': 'timewell@timewell.jp', 'label': 'email'})
 
+    def test_enrich_target_finds_editorial_email_on_toolradar_policy_page(self):
+        target = discovery.Target(
+            name='Toolradar',
+            article_url='https://toolradar.com/guides/best-ai-coding-tools',
+            root_url='https://toolradar.com/',
+            hook='Hook',
+            reason='Fit',
+            outreach_subject='Subject',
+            contact_urls=(
+                'https://toolradar.com/contact',
+                'https://toolradar.com/editorial-policy',
+            ),
+        )
+
+        def fake_get(url: str, timeout: int = 20) -> str:
+            normalized = url.rstrip('/')
+            if normalized == 'https://toolradar.com/guides/best-ai-coding-tools':
+                return '<a href="/contact">Contact</a>'
+            if normalized == 'https://toolradar.com':
+                return '<a href="/about">About</a>'
+            if normalized == 'https://toolradar.com/contact':
+                return '<p>Tell us what you\'re building.</p>'
+            if normalized == 'https://toolradar.com/editorial-policy':
+                return '<p>Email editorial@toolradar.com with corrections.</p>'
+            return ''
+
+        original = discovery.http_get
+        discovery.http_get = fake_get
+        try:
+            enriched = discovery.enrich_target(target)
+        finally:
+            discovery.http_get = original
+
+        self.assertEqual(enriched['recommended_next_step'], 'email/contact send path is now identified')
+        self.assertIn(
+            {'type': 'email', 'value': 'editorial@toolradar.com', 'label': 'email'},
+            enriched['channels'],
+        )
+
     def test_recent_contact_targets_omits_recent_live_publisher_outreach(self):
         with TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)

@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-25T07:59:01.856408+02:00",
+    "checked_at": "2026-05-25T10:37:40+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus jobs.json history split and live artifact cross-checks",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
@@ -127,7 +127,7 @@
     {
       "severity": "medium",
       "title": "Architecture verifier path is green on local ownership and freshness gates",
-      "mechanism": "Loop integrity still marks the architecture watchdog ok, health monitor shows only external marketing issues, and the architecture verifier now has a fresh pass artifact after the independent rerun.",
+      "mechanism": "Loop integrity marks the architecture watchdog ok, health monitor shows only external marketing issues, and the architecture verifier has a fresh pass artifact after the independent rerun.",
       "source_layer": "checker/runtime contract",
       "root_cause": "Architecture-side gates remain coherent; the remaining red stays external.",
       "evidence_refs": [
@@ -141,7 +141,7 @@
     {
       "severity": "low",
       "title": "Docs remains independently green and stable",
-      "mechanism": "Docs verifier still shows independently verified pass.",
+      "mechanism": "Docs verifier still shows independently verified pass and the recent stability window remains acceptable.",
       "source_layer": "cross-loop ownership",
       "root_cause": "Docs owner-loop state remains aligned.",
       "evidence_refs": [
@@ -222,7 +222,7 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-25T07:59:08.370413+02:00",
+    "checked_at": "2026-05-25T10:38:57.543921+02:00",
     "verdict": "qualified_pass"
   },
   "what_still_needs_independent_verification": [
@@ -241,7 +241,7 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-05-25T07:59:08.370413+02:00",
+    "architecture_verifier_checked_at": "2026-05-25T10:38:57.543921+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "autonomous-marketing-stack": "error",

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T08:11:04.593632+00:00",
+  "generated_at": "2026-05-25T09:13:45.470585+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -134,6 +134,11 @@
       "outreach_subject": "Ralph Workflow as a workflow-system addition to your AI coding tools guide",
       "channels": [
         {
+          "type": "email",
+          "value": "editorial@toolradar.com",
+          "label": "email"
+        },
+        {
           "type": "website",
           "value": "https://toolradar.com/about",
           "label": "contact page"
@@ -155,6 +160,11 @@
         },
         {
           "type": "x",
+          "value": "https://x.com/louiscorne",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
           "value": "https://x.com/louiscorneloup",
           "label": "X/Twitter"
         },
@@ -169,7 +179,7 @@
           "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "public website contact path is now identified"
+      "recommended_next_step": "email/contact send path is now identified"
     },
     {
       "target": "TLDL",
@@ -196,53 +206,13 @@
         }
       ],
       "recommended_next_step": "public website contact path is now identified"
-    },
-    {
-      "target": "Codivox",
-      "article_url": "https://codivox.com/comparisons/ai-coding-tools/",
-      "root_url": "https://codivox.com/",
-      "hook": "AI Coding Tools Comparison 2026",
-      "reason": "Direct AI coding comparison page with a public email path and a fit for workflow-layer positioning.",
-      "outreach_subject": "Ralph Workflow for your AI coding tools comparison page",
-      "channels": [
-        {
-          "type": "email",
-          "value": "hello@codivox.com",
-          "label": "email"
-        },
-        {
-          "type": "website",
-          "value": "https://codivox.com/about",
-          "label": "contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://codivox.com/contact",
-          "label": "contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://codivox.com/hire",
-          "label": "contact page"
-        },
-        {
-          "type": "x",
-          "value": "https://x.com/codivox",
-          "label": "X/Twitter"
-        },
-        {
-          "type": "linkedin",
-          "value": "https://www.linkedin.com/company/codivox",
-          "label": "LinkedIn"
-        }
-      ],
-      "recommended_next_step": "email/contact send path is now identified"
     }
   ],
   "omitted_recent_targets": [
     "AXME Code",
     "Beam",
     "Bollwerk / Werkstatt",
+    "Codivox",
     "NxCode",
     "WyeWorks"
   ]
