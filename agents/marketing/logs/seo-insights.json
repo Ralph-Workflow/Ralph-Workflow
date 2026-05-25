@@ -1,8 +1,9 @@
 {
-  "generated_at": "2026-05-25T15:04:50.607492",
+  "generated_at": "2026-05-25T16:17:50.629456",
   "priority_keywords": [
     "Fix top on-page SEO issues (current score: 70/100)",
-    "Create content targeting: Claude Code unattended, AI agent workflow composer"
+    "Create content targeting: Claude Code unattended, AI agent workflow composer",
+    "Set up Google Search Console: python3 agents/marketing/gsc_auth.py"
   ],
   "gaps": [
     "Claude Code unattended",
@@ -11,5 +12,12 @@
   "onpage_score": "70/100 (C)",
   "ranked_keywords": 0,
   "backlinks_approx": 2,
-  "weekly_decisions": []
+  "weekly_decisions": [
+    "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
+    "Fix on-page SEO issues before investing in new content.",
+    "Fix top on-page SEO issues (current score: 70/100)",
+    "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
+    "Ship comparison-led backlink outreach packets whenever the curator queue is already full.",
+    "Leverage competitor comparison pages in content and outreach."
+  ]
 }

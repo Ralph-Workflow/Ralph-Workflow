@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-25T15:37:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "distribution_architecture_repair",
+    "repair": "guard_pause_repair_dedupe",
+    "channel": "distribution_architecture_guard_pause",
+    "title": "Stop same-fingerprint churn from escalating back into duplicate distribution-architecture repairs inside one active review window"
+  },
+  "why_this_action": {
+    "summary": "The selector was still escalating to distribution_architecture_repair at 2026-05-25 15:37 Europe/Berlin even though the same execution-board fingerprint already had both a guard pause and a newer concrete repair inside the still-active short review window. That meant every later cron slot before 2026-05-25 15:57:14 could keep relogging the same repair instead of holding the existing truth.",
+    "shared_findings_used": [
+      "agents/marketing/logs/distribution_lane_latest.json: latest lane had escalated back to distribution_architecture_repair for the same empty-board fingerprint",
+      "drafts/marketing_execution_board_latest.md: the board still had no truthful do-now packet and no blocker change",
+      "agents/marketing/logs/marketing_2026-05-25_123831_distribution_architecture_guard_pause.json: this fingerprint had already used a guard pause in the active window",
+      "agents/marketing/logs/marketing_2026-05-25_124500_distribution_architecture_churn_guard_repair.json: a newer concrete repair had already run after that pause",
+      "agents/marketing/logs/adoption_metrics_latest.json: Codeberg remained flat, so wasting slots on duplicate structural churn was directly harmful"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched guard-state selection to notice when the latest guard pause has already been followed by a concrete repair for the same board fingerprint, added regression coverage, reran the live selector at 2026-05-25 15:37, and the lane now correctly stays on distribution_architecture_guard_pause until the blocker set or review window changes.",
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/tests/test_distribution_lane_selector_repair_pause.py",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/distribution_lane_latest.md",
+      "agents/marketing/logs/marketing_2026-05-25_153700_distribution_architecture_guard_pause.md",
+      "agents/marketing/logs/marketing_2026-05-25_distribution_architecture_guard_pause_execution.json"
+    ],
+    "verification": {
+      "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause",
+      "tests_result": "passed",
+      "live_selector_1537": "distribution_architecture_guard_pause",
+      "live_execution_1537": "distribution_architecture_guard_pause -> skipped_repair",
+      "short_window_release_at": "2026-05-25T15:57:14"
+    }
+  },
+  "replacement_condition": "If the execution-board fingerprint changes or the short review window clears and the selector still stays on guard_pause with no new blocker diff, escalate into blocker-diff repair rather than letting the pause persist blindly."
+}

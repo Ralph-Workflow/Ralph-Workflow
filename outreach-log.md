@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-25 (Monday) — Reddit monitoring (14:13 UTC / 16:13 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-25_1613.md`
+- **Scan summary:** forced-refresh local monitor again returned **13 scanned / 2 shortlisted** with **ok=3 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
+- **Coverage note:** still a **partial-visibility** pass. Local/provider coverage remains degraded enough that the monitor must keep failing closed on posting, but same-run web search confirmed adjacent Reddit discussion was still active rather than truly quiet.
+- **Current verdict:** still **not** a posting pass. Discussion-fit remains real; honest RalphWorkflow mention fit is still only **medium-low**.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
+  - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
+  - `r/AgentsOfAI` — "I think people underestimate how much ‘state’ matters once agents leave the demo stage"
+  - `r/AI_Agents` — "Devs using AI coding agents: where does trust break in your workflow?"
+- **Repeated pains worth tracking:** context continuity, handoff failure, state drift, trust/review breakdown, and workflows that *look* done without actually finishing.
+- **Self-improving lesson:** keep using the forced local pass as telemetry, then rescue with web-backed content-first search when coverage degrades. Keep ranking **state drift / false-finish / reviewability** above approval-loop or remote-control threads, and keep the hard fail-closed gate for posting.
+- **Posting note:** No posting attempted. Research-first only while coverage remains partial.
+
 ## 2026-05-25 (Monday) — Reddit monitoring (12:00 UTC / 14:00 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-25_1400.md`
 - **Scan summary:** forced-refresh local monitor returned **13 scanned / 2 shortlisted** with **ok=3 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
@@ -6519,4 +6533,24 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-25 15:08:06
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 15:23:38
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 15:24:31
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 15:25:24
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 16:17:19
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 16:18:09
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

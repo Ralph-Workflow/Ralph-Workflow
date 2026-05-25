@@ -1,6 +1,6 @@
 {
   "schema_version": "market-intelligence-consumption.v1",
-  "updated_at": "2026-05-25T13:09:58.193971+00:00",
+  "updated_at": "2026-05-25T14:24:04.720942+00:00",
   "shared_artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
   "runtime_proven_consumers": [
     "agents/marketing/reddit_monitor.py",
@@ -12,32 +12,32 @@
   ],
   "producer": {
     "name": "agents/marketing/competitor_analysis.py",
-    "recorded_at": "2026-05-25T12:55:26.141356+00:00",
-    "artifact_generated_at": "2026-05-25T14:55:26.140292"
+    "recorded_at": "2026-05-25T14:17:50.613845+00:00",
+    "artifact_generated_at": "2026-05-25T16:17:50.613464"
   },
   "consumers": {
     "agents/marketing/run.py": {
       "consumer": "agents/marketing/run.py",
-      "recorded_at": "2026-05-25T12:23:29.299721+00:00",
+      "recorded_at": "2026-05-25T14:17:50.628472+00:00",
       "required": false,
       "status": "loaded",
-      "artifact_generated_at": "2026-05-25T14:23:29.269068",
+      "artifact_generated_at": "2026-05-25T16:17:50.613464",
       "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-25.md",
       "competitor_count": 8,
       "comparison_page_count": 8
     },
     "agents/marketing/reddit_monitor.py": {
       "consumer": "agents/marketing/reddit_monitor.py",
-      "recorded_at": "2026-05-25T13:05:20.061944+00:00",
+      "recorded_at": "2026-05-25T14:18:09.302403+00:00",
       "status": "skipped",
       "reason": "cooldown_skip"
     },
     "agents/marketing/distribution_lane_executor.py": {
       "consumer": "agents/marketing/distribution_lane_executor.py",
-      "recorded_at": "2026-05-25T13:09:58.193902+00:00",
+      "recorded_at": "2026-05-25T14:24:04.720861+00:00",
       "required": false,
       "status": "loaded",
-      "artifact_generated_at": "2026-05-25T14:55:26.140292",
+      "artifact_generated_at": "2026-05-25T16:17:50.613464",
       "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-25.md",
       "competitor_count": 8,
       "comparison_page_count": 8

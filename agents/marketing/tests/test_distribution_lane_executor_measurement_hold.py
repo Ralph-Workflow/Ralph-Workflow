@@ -109,6 +109,151 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             board_text = (drafts_dir / 'marketing_execution_board_latest.md').read_text(encoding='utf-8')
             self.assertIn('Manual community discussion asset', board_text)
 
+    def test_execution_board_hides_already_delivered_manual_reddit_asset(self):
+        now = datetime(2026, 5, 25, 15, 11, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            artifact = drafts_dir / 'reddit_discussion_handoff_packet_latest.md'
+            artifact.write_text('# Reddit packet\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-25_reddit_discussion_channel_ready_outreach_asset.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T14:08:00+02:00',
+                    'type': 'reddit_discussion_channel_ready_outreach_asset',
+                    'chosen_action': {
+                        'channel': 'manual_contact_asset',
+                        'artifact': str(artifact),
+                        'title': 'Prepare Reddit discussion handoff packet',
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-01T14:08:00+02:00',
+                    },
+                    'result': {
+                        'status': 'executed',
+                        'artifact': str(artifact),
+                    },
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_reddit_discussion_manual_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T14:24:00+02:00',
+                    'type': 'reddit_discussion_manual_delivery',
+                    'chosen_action': {
+                        'channel': 'current_chat',
+                        'packet': str(artifact),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-01T14:24:00+02:00',
+                    },
+                    'result': {
+                        'status': 'executed',
+                        'artifact_reused': str(artifact),
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('Manual community discussion asset', board_text)
+        self.assertIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+
+    def test_distribution_architecture_repair_does_not_regenerate_delivered_reddit_packet(self):
+        now = datetime(2026, 5, 25, 15, 28, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+
+            latest_packet = drafts_dir / 'reddit_discussion_handoff_packet_latest.md'
+            latest_packet.write_text('# Reddit packet\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-25_reddit_discussion_manual_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T14:24:00+02:00',
+                    'type': 'reddit_discussion_manual_delivery',
+                    'chosen_action': {
+                        'channel': 'current_chat',
+                        'packet': str(latest_packet),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-01T14:24:00+02:00',
+                    },
+                    'result': {
+                        'status': 'executed',
+                        'artifact_reused': str(latest_packet),
+                    },
+                }),
+                encoding='utf-8',
+            )
+            (seo_dir / 'reddit_monitor_latest.md').write_text(
+                '\n'.join([
+                    '# Reddit monitor',
+                    '',
+                    '## Best current discussion opportunities (reply-worthiness first, product-fit second)',
+                    '',
+                    '### 1) how do you keep multi-agent runs reviewable?',
+                    '- URL: <https://www.reddit.com/r/AI_Agents/comments/example1>',
+                    '- Community: `r/AI_Agents`',
+                    '- Freshness: during this pass',
+                    '- Direct reply fit: **high**',
+                    '- Mention fit: **medium-low**',
+                    '- Best RalphWorkflow angle: **content-family match: production_failure**',
+                    '- Why it fits: thread is still live',
+                    '',
+                    '## Strong current rejects',
+                ]),
+                encoding='utf-8',
+            )
+
+            decision = LaneDecision(
+                lane='distribution_architecture_repair',
+                reason='repair the empty board',
+                reasons=['empty board'],
+                owned_content_posts_last_36h=0,
+                unsubmitted_directory_channels=[],
+                shared_findings_used=['adoption_metrics_latest.json: Codeberg movement is the primary success gate'],
+                artifact_path=str(drafts_dir / 'distribution_action_brief.md'),
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', tmp / 'outreach-log.md'), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={}), \
+                 patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stdout='', stderr='')), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
+                 patch.object(distribution_lane_selector, '_distribution_architecture_repair_state', return_value={
+                     'third_strike': False,
+                     'execution_board_fingerprint': 'abc123',
+                     'repeat_count': 1,
+                     'guard_follow_through_count': 0,
+                     'guard_pause_count': 0,
+                 }), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=5), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now=now)
+
+            self.assertEqual(execution.action_type, 'distribution_architecture_repair')
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('Suppressed regeneration of the Reddit discussion handoff packet', artifact_text)
+            self.assertFalse((drafts_dir / '2026-05-25_reddit_discussion_handoff_packet.md').exists())
+
     def test_execution_board_surfaces_primary_repo_flat_packet_for_verified_manual_contact_target(self):
         now = datetime(2026, 5, 24, 15, 10, 0)
 
