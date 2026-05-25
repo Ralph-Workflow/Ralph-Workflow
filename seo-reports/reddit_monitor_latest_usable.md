@@ -1,11 +1,11 @@
-# Reddit monitor — RalphWorkflow — 2026-05-25 10:53 Europe/Berlin
+# Reddit monitor — RalphWorkflow — 2026-05-25 14:00 Europe/Berlin
 
 ## Snapshot
-- **Threads/posts scanned:** 25
-- **Shortlisted:** 4
-- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 21
-- **Query attempts:** 9
-- **Search diagnostics:** ok=4, reddit_ip_blocked=4, time_budget_exceeded=1
+- **Threads/posts scanned:** 13
+- **Shortlisted:** 2
+- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 11
+- **Query attempts:** 8
+- **Search diagnostics:** ok=3, reddit_ip_blocked=4, time_budget_exceeded=1
 - **Prior context reviewed first:** `agents/marketing/REDDIT_LEARNINGS.md`, `outreach-log.md`, `agents/marketing/logs/reddit_posts.jsonl`, `agents/marketing/logs/reddit_post_analysis.md`
 - **Messaging ground truth used:** <https://ralphworkflow.com>
 - **Search mode:** content-first across Reddit via broad query families; subreddit is a weak secondary hint only
@@ -54,26 +54,6 @@ Broad content-first search across Reddit around:
 - Best RalphWorkflow angle: **content-family match: production_failure**
 - Why it fits: content-first match from `production_failure` query family; query=`workflow continuity ai agents reddit`
 
-### 3) Reddit reddit.com › r/claudeai › fully switched my entire coding workflow to ai driven development r/ClaudeAI
-- URL: <https://www.reddit.com/r/ClaudeAI/comments/1o90n6b/fully_switched_my_entire_coding_workflow_to_ai>
-- Community: `r/ClaudeAI`
-- Freshness: during this pass
-- Direct reply fit: **medium-high**
-- Mention fit: **medium-low**
-- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
-- Best RalphWorkflow angle: **content-family match: visible_finish_state**
-- Why it fits: content-first match from `visible_finish_state` query family; query=`what changed AI coding workflow reddit`
-
-### 4) Reddit reddit.com › r/cursorai › after months with ai coding agents, these 5 small workflow changes made the biggest difference r/CursorAI
-- URL: <https://www.reddit.com/r/CursorAI/comments/1rynst9/after_months_with_ai_coding_agents_these_5_small>
-- Community: `r/CursorAI`
-- Freshness: during this pass
-- Direct reply fit: **medium-high**
-- Mention fit: **medium-low**
-- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
-- Best RalphWorkflow angle: **content-family match: visible_finish_state**
-- Why it fits: content-first match from `visible_finish_state` query family; query=`what changed AI coding workflow reddit`
-
 ## Strong current rejects
 - Rejected items are usually tactical setup threads, launch/showcase posts, already-used threads, or weak-fit mentions where the answer should stay thread-native with no product mention.
 
@@ -83,10 +63,10 @@ Broad content-first search across Reddit around:
 - If providers challenge or under-return, that is a monitor fault and should not be treated as a clean “no opportunities” day.
 
 ## Today’s bottom line
-- **Yes**, I found **4** credible discussion opportunities through content-first Reddit search.
+- **Yes**, I found **2** credible discussion opportunities through content-first Reddit search.
 - The search space is **not** bounded to a fixed subreddit list anymore; subreddit only affects tie-breaking after content scoring.
 - A thread can win even in a broader dev or AI community if the post itself matches the real workflow pain strongly enough.
-- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=4**), but other queries still returned usable results (**ok=4**). Treat this as partial coverage, not a total Reddit outage.
+- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=4**), but other queries still returned usable results (**ok=3**). Treat this as partial coverage, not a total Reddit outage.
 
 ## Next self-improving adjustment
 - Keep expanding query families when new pain clusters appear; do not solve search coverage by hardcoding more subreddit names.

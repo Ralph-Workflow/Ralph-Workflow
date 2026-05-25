@@ -108,7 +108,13 @@ DISTRIBUTION_ARCHITECTURE_GUARD_REUSE_ACTION_TYPES = {
 }
 
 
-def _write_distribution_execution_log(*, distribution_lane: Any, execution: Any, now: datetime) -> Path:
+def _write_distribution_execution_log(
+    *,
+    distribution_lane: Any,
+    execution: Any,
+    now: datetime,
+    reused_from_log: str | None = None,
+) -> Path:
     """Write a first-class per-lane execution log so audits don't have to infer runtime state
     from the daily bundle only.
     """
@@ -137,6 +143,11 @@ def _write_distribution_execution_log(*, distribution_lane: Any, execution: Any,
             'blocking_factors': list(getattr(execution, 'blocking_factors', []) or []),
         },
     }
+    if reused_from_log:
+        payload['verification'] = {
+            'reused_from_log': reused_from_log,
+        }
+        payload['result']['reused_existing_artifact'] = True
     short_review_window_release_at = str(getattr(distribution_lane, 'short_review_window_release_at', '') or '').strip()
     if short_review_window_release_at and getattr(execution, 'action_type', '') in {'measurement_hold_execution', 'measurement_hold_follow_through'}:
         payload['review_window'] = {
@@ -931,7 +942,29 @@ def main() -> int:
             execution_targets_prepared = list(recent_follow_through.get("targets_prepared") or [])
             execution_live_external_action = bool(recent_follow_through.get("live_external_action", False))
             execution_blocking_factors = list(recent_follow_through.get("blocking_factors") or [])
-            distribution_execution_log = Path(recent_follow_through["log_path"])
+            distribution_lane = SimpleNamespace(
+                lane=lane_name,
+                reason=lane_reason,
+                reasons=[lane_reason],
+                artifact_path=lane_artifact_path,
+                short_review_window_release_at=hold_window["hold_until"].isoformat(),
+            )
+            distribution_execution = SimpleNamespace(
+                action_type=execution_action_type,
+                status=execution_status,
+                artifact_path=execution_artifact_path,
+                summary=execution_summary,
+                targets_prepared=execution_targets_prepared,
+                shared_findings_used=[],
+                live_external_action=execution_live_external_action,
+                blocking_factors=execution_blocking_factors,
+            )
+            distribution_execution_log = _write_distribution_execution_log(
+                distribution_lane=distribution_lane,
+                execution=distribution_execution,
+                now=now,
+                reused_from_log=str(recent_follow_through["log_path"]),
+            )
         else:
             distribution_lane = choose_distribution_lane(now)
             if pending_repairs:
@@ -1163,7 +1196,12 @@ def main() -> int:
             live_external_action=bool(recent_guard_execution.get("live_external_action", False)),
             blocking_factors=list(recent_guard_execution.get("blocking_factors") or []),
         )
-        distribution_execution_log = Path(recent_guard_execution["log_path"])
+        distribution_execution_log = _write_distribution_execution_log(
+            distribution_lane=distribution_lane,
+            execution=distribution_execution,
+            now=now,
+            reused_from_log=str(recent_guard_execution["log_path"]),
+        )
         refreshed_distribution_lane = distribution_lane
     else:
         distribution_execution = execute_distribution_lane(distribution_lane, now)

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T12:39:09.239375",
+  "generated_at": "2026-05-25T14:24:39.777127",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -106,7 +106,7 @@
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
     "8 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
-    "The most recent runtime activity was distribution_architecture_guard_pause, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The most recent runtime activity was measurement_hold_churn_guard_repair, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
@@ -142,14 +142,14 @@
   },
   "latest_marketing_activity": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25.json",
-    "type": "distribution_architecture_guard_pause",
-    "title": "Distribution lane execution: distribution_architecture_guard_pause",
-    "status": "skipped_repair",
+    "type": "measurement_hold_churn_guard_repair",
+    "title": "Distribution lane execution: measurement_hold",
+    "status": "executed",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_123831_distribution_architecture_guard_pause.md"
+    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_142406_measurement_hold_follow_through.md"
   },
   "latest_executed_action": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_codivox_publisher_outreach.json",
@@ -163,7 +163,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-25T12:38:51.565055+02:00",
+    "generated_at": "2026-05-25T14:23:29.339375+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",

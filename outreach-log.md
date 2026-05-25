@@ -1,5 +1,17 @@
 # Outreach Log
 
+## 2026-05-25 (Monday) — Reddit monitoring (12:00 UTC / 14:00 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-25_1400.md`
+- **Scan summary:** forced-refresh local monitor returned **13 scanned / 2 shortlisted** with **ok=3 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
+- **Coverage note:** this was another **partial-visibility** pass, but importantly it did **not** collapse into a fake zero-opportunity result. Direct Reddit coverage is still degraded enough that the pass should fail closed on posting.
+- **Current verdict:** still **not** a posting pass. The surviving threads were useful research surfaces, but honest RalphWorkflow mention fit remained only **medium-low**.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
+  - `r/AI_Agents` — "Seedance 2.0 is impressive. it’s still not a production workflow."
+- **Repeated pains worth tracking:** context continuity, workflow continuity, production reliability, and the gap between an impressive tool demo and a workflow that actually finishes cleanly.
+- **Self-improving lesson:** keep the hard **partial-coverage fail-closed gate**, keep **context continuity** as a first-class research lens, and do not let a thinner later pass override a broader earlier same-day pass when blocking rises.
+- **Posting note:** No posting attempted. Research-first only while coverage remains partial.
+
 ## 2026-05-25 (Monday) — ToolChase publisher outreach executed (00:24 UTC / 02:24 CEST)
 - **What I executed:** submitted Ralph Workflow to **ToolChase** through its live public contact form at `https://toolchase.com/contact/` after verifying the developer-native comparison fit and the confirmation page path. The pitch stayed **Codeberg-first**, with GitHub explicitly framed as the mirror.
 - **Verification:** the delivery log at `agents/marketing/logs/marketing_2026-05-25_002428_toolchase_contact_form_submission.json` recorded HTTP **200** and the confirmation URL `https://toolchase.com/contact-received/`; the summary log at `agents/marketing/logs/marketing_2026-05-25_toolchase_publisher_outreach.json` records the executed contact-form action.
@@ -6488,3 +6500,15 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-25 12:43:17
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 14:03:31
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 14:23:55
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-25T15:07:03.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 14:24:39
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-25T15:07:03.

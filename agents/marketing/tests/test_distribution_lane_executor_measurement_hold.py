@@ -12,6 +12,103 @@ from agents.marketing import distribution_lane_executor
 
 
 class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
+    def test_distribution_architecture_repair_creates_manual_reddit_discussion_asset_when_monitor_has_live_opportunities(self):
+        now = datetime(2026, 5, 25, 14, 8, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+
+            (log_dir / 'adoption_metrics_latest.json').write_text(
+                json.dumps({
+                    'recent_window': {
+                        'Codeberg': {
+                            'samples': 9,
+                            'stars_delta_window': 0,
+                            'watchers_delta_window': 0,
+                            'forks_delta_window': 0,
+                        }
+                    }
+                }),
+                encoding='utf-8',
+            )
+            (seo_dir / 'reddit_monitor_latest.md').write_text(
+                '\n'.join([
+                    '# Reddit monitor',
+                    '',
+                    '## Best current discussion opportunities (reply-worthiness first, product-fit second)',
+                    '',
+                    '### 1) genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?',
+                    '- URL: <https://www.reddit.com/r/AI_Agents/comments/example1>',
+                    '- Community: `r/AI_Agents`',
+                    '- Freshness: during this pass',
+                    '- Direct reply fit: **high**',
+                    '- Mention fit: **medium-low**',
+                    '- Best RalphWorkflow angle: **content-family match: production_failure**',
+                    '- Why it fits: content-first match from `production_failure` query family; query=`workflow continuity ai agents reddit`',
+                    '',
+                    '### 2) seedance 2.0 is impressive. it\'s still not a production workflow.',
+                    '- URL: <https://www.reddit.com/r/AI_Agents/comments/example2>',
+                    '- Community: `r/AI_Agents`',
+                    '- Freshness: during this pass',
+                    '- Direct reply fit: **high**',
+                    '- Mention fit: **medium-low**',
+                    '- Best RalphWorkflow angle: **content-family match: production_failure**',
+                    '- Why it fits: content-first match from `production_failure` query family; query=`workflow continuity ai agents reddit`',
+                    '',
+                    '## Strong current rejects',
+                ]),
+                encoding='utf-8',
+            )
+
+            decision = LaneDecision(
+                lane='distribution_architecture_repair',
+                reason='repair the empty board',
+                reasons=['empty board'],
+                owned_content_posts_last_36h=0,
+                unsubmitted_directory_channels=[],
+                shared_findings_used=['adoption_metrics_latest.json: Codeberg movement is the primary success gate'],
+                artifact_path=str(drafts_dir / 'distribution_action_brief.md'),
+            )
+
+            def fake_run(*args, **kwargs):
+                return SimpleNamespace(returncode=1, stdout='', stderr='')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', log_dir / 'adoption_metrics_latest.json'), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', tmp / 'outreach-log.md'), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={}), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
+                 patch.object(distribution_lane_selector, '_distribution_architecture_repair_state', return_value={
+                     'third_strike': True,
+                     'execution_board_fingerprint': 'abc123',
+                     'repeat_count': 6,
+                     'guard_follow_through_count': 7,
+                     'guard_pause_count': 5,
+                 }), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=5), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True), \
+                 patch.object(distribution_lane_executor.subprocess, 'run', side_effect=fake_run):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now=now)
+
+            self.assertEqual(execution.action_type, 'reddit_discussion_channel_ready_outreach_asset')
+            self.assertTrue(Path(execution.artifact_path).exists())
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('Reddit Discussion Handoff Packet', artifact_text)
+            self.assertIn('Suggested first reply', artifact_text)
+            self.assertIn('Codeberg repo is the primary place to inspect it', artifact_text)
+
+            board_text = (drafts_dir / 'marketing_execution_board_latest.md').read_text(encoding='utf-8')
+            self.assertIn('Manual community discussion asset', board_text)
+
     def test_execution_board_surfaces_primary_repo_flat_packet_for_verified_manual_contact_target(self):
         now = datetime(2026, 5, 24, 15, 10, 0)
 
@@ -2179,6 +2276,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_executor, '_write_reddit_discussion_handoff_asset', return_value=None), \
                  patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(drafts_dir / 'board.md', ['ctxt.dev / Signum'])), \
                  patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
                  patch.object(distribution_lane_selector, '_distribution_architecture_repair_state', return_value={'third_strike': False, 'repeat_count': 0, 'execution_board_fingerprint': ''}):
@@ -2230,6 +2328,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_write_reddit_discussion_handoff_asset', return_value=None), \
                  patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(board_path, [])), \
                  patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \

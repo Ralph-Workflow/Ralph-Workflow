@@ -480,7 +480,10 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertTrue(payload['distribution_execution']['reused_existing_follow_through'])
                 self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_hold.md')
                 self.assertEqual(payload['distribution_execution']['targets_prepared'], ['Existing target'])
-                self.assertEqual(payload['distribution_execution_log'], str(prior_log))
+                self.assertNotEqual(payload['distribution_execution_log'], str(prior_log))
+                reused_log = json.loads(Path(payload['distribution_execution_log']).read_text(encoding='utf-8'))
+                self.assertEqual(reused_log['verification']['reused_from_log'], str(prior_log))
+                self.assertTrue(reused_log['result']['reused_existing_artifact'])
             finally:
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir
@@ -641,7 +644,10 @@ class RunRepairModeTests(unittest.TestCase):
                 payload = json.loads(daily_log.read_text(encoding='utf-8'))
                 self.assertTrue(payload['reused_existing_distribution_execution'])
                 self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_guard_pause.md')
-                self.assertEqual(payload['distribution_execution_log'], str(prior_log))
+                self.assertNotEqual(payload['distribution_execution_log'], str(prior_log))
+                reused_log = json.loads(Path(payload['distribution_execution_log']).read_text(encoding='utf-8'))
+                self.assertEqual(reused_log['verification']['reused_from_log'], str(prior_log))
+                self.assertTrue(reused_log['result']['reused_existing_artifact'])
             finally:
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir

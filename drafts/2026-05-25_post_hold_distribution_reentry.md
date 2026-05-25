@@ -1,6 +1,6 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-05-25T05:20:00
-- Hold release at: 2026-05-25T07:20:16
+Generated: 2026-05-25T14:24:06
+- Hold release at: 2026-05-25T15:07:03
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot
@@ -9,8 +9,8 @@ Generated: 2026-05-25T05:20:00
 - Keep Codeberg as the canonical CTA and GitHub as mirror-only support.
 
 ## Current blocked-lane truth to preserve
-- Remaining publisher discovery is still non-runtime-sendable here and requires public-path/Telegram follow-through: ctxt.dev / Signum, NxCode, TIMEWELL.
-- No fresh manual-executable primary-repo-flat publisher targets are currently available.
+- Remaining publisher discovery is still non-runtime-sendable here and requires public-path/Telegram follow-through: ctxt.dev / Signum, AI Saying, TLDL.
+- Manual-executable primary-repo-flat publisher targets would still be: TIMEWELL, Toolradar.
 - StackOverflow is exhausted for this review window; do not spend the re-entry slot refreshing that packet.
 - Curator/comparison/manual-contact packets that were already delivered in the current review window remain reference artifacts, not fresh actions.
 - Apollo remains inside its existing review window, so do not mistake "still measuring" for a reason to idle again.
