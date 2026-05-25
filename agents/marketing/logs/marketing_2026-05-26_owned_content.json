@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-26T00:25:00",
+  "timestamp": "2026-05-26T01:01:06.068875",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "owned_content_allowed",
@@ -24,6 +24,7 @@
       "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
+      "Apollo already has a verified non-zero list and launch-ready packet, but no live send confirmation yet; the truthful next move is launch/send follow-through, not another generic outbound packet refresh.",
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",

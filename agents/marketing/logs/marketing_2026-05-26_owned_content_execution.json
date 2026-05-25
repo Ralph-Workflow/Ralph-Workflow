@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-05-26T01:01:06.068875",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "owned_content_lane_noop",
+    "channel": "owned_content",
+    "title": "Distribution lane execution: owned_content",
+    "draft": null
+  },
+  "why_this_action": {
+    "summary": "Owned-content lane remains active; no non-content distribution execution packet needed.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+    ],
+    "targets_prepared": []
+  },
+  "result": {
+    "status": "skipped",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": []
+  }
+}

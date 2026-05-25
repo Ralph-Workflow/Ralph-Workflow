@@ -951,6 +951,92 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
             self.assertEqual(decision.lane, 'distribution_reset')
 
+    def test_prefers_apollo_launch_handoff_when_launch_ready_but_not_live(self):
+        now = datetime(2026, 5, 26, 4, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            apollo_sequence_status_path = log_dir / 'apollo_sequence_status_latest.json'
+            reddit_monitor_path = tmp / 'reddit_monitor_latest.md'
+
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            apollo_sequence_status_path.write_text(json.dumps({
+                'status': 'launch_ready_unverified_send',
+                'measurement_pending': False,
+                'record_count': 5,
+                'sequence_name': 'Ralph Workflow curator follow-up — Codeberg CTA',
+                'needs_live_verification': True,
+            }), encoding='utf-8')
+            reddit_monitor_path.write_text('Partial visibility only. Fail closed. reddit_direct_access_degraded=1\n', encoding='utf-8')
+            (drafts_dir / 'apollo_sequence_launch_packet_latest.md').write_text('# Apollo launch packet\n', encoding='utf-8')
+
+            with ExitStack() as stack:
+                for patcher in [
+                    patch.object(distribution_lane_selector, 'LOG_DIR', log_dir),
+                    patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir),
+                    patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path),
+                    patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path),
+                    patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path),
+                    patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json),
+                    patch.object(distribution_lane_selector, 'LATEST_MD', latest_md),
+                    patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_status_path),
+                    patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', reddit_monitor_path),
+                    patch.object(distribution_lane_selector, '_load_recent_monitor_summary', return_value={'provider_degraded': True, 'reddit_blocked': True, 'partial_visibility_only': True}),
+                    patch.object(distribution_lane_selector, '_github_auth_available', return_value=False),
+                    patch.object(distribution_lane_selector, '_apollo_ready', return_value=True),
+                    patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=False),
+                    patch.object(distribution_lane_selector, '_live_curator_queue_count', return_value=0),
+                    patch.object(distribution_lane_selector, '_prepared_curator_target_names', return_value=[]),
+                    patch.object(distribution_lane_selector, '_prepared_curator_targets_waiting_for_handoff', return_value=0),
+                    patch.object(distribution_lane_selector, '_curator_handoff_packet_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_due_curator_followup_targets', return_value=[]),
+                    patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0),
+                    patch.object(distribution_lane_selector, '_contact_discovery_current_for_targets', return_value=False),
+                    patch.object(distribution_lane_selector, '_contact_discovery_has_targets', return_value=False),
+                    patch.object(distribution_lane_selector, '_manual_contact_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_manual_contact_queue_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_manual_outreach_assets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_pending_confirmation_actions', return_value=[]),
+                    patch.object(distribution_lane_selector, '_pending_confirmation_handoff_packet_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_primary_repo_flat_contact_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_primary_repo_flat_non_executable_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_primary_repo_flat_contact_handoff_packet_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_primary_repo_flat_packet_delivery_still_active', return_value=False),
+                    patch.object(distribution_lane_selector, '_comparison_queue_capacity', return_value=(0, 0)),
+                    patch.object(distribution_lane_selector, '_distribution_reset_targets_ready', return_value=0),
+                    patch.object(distribution_lane_selector, '_recent_live_action_family_count', return_value=0),
+                    patch.object(distribution_lane_selector, '_recent_live_external_action_count', return_value=0),
+                    patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None),
+                    patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)),
+                    patch.object(distribution_lane_selector, '_publisher_outreach_paused_by_repair_window', return_value=False),
+                    patch.object(distribution_lane_selector, '_hn_ceiling_repeated', return_value=True),
+                    patch.object(distribution_lane_selector, '_stack_overflow_measurement_pending', return_value=False),
+                    patch.object(distribution_lane_selector, '_stack_overflow_handoff_packet_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False),
+                    patch.object(distribution_lane_selector, '_stack_overflow_lane_recently_empty', return_value=False),
+                    patch.object(distribution_lane_selector, '_stack_overflow_rate_limit_cooldown_active', return_value=(False, None)),
+                    patch.object(distribution_lane_selector, '_recent_executed_action_type', return_value=False),
+                ]:
+                    stack.enter_context(patcher)
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'apollo_launch_handoff_packet')
+            self.assertIn('launch/send handoff', decision.reason)
+
     def test_submitted_channel_log_with_tld_name_counts_as_attempted(self):
         now = datetime(2026, 5, 23, 6, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -3631,6 +3717,50 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('Apollo Outbound Execution Packet', artifact_text)
             self.assertIn('Codeberg repo', artifact_text)
+
+    def test_apollo_launch_handoff_packet_reuses_launch_ready_state(self):
+        now = datetime(2026, 5, 26, 4, 5, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='apollo_launch_handoff_packet',
+            reason='Apollo is launch-ready but still needs live send confirmation.',
+            reasons=['Apollo already has a verified non-zero list.'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['apollo_sequence_status_latest.json'],
+            artifact_path='drafts/brief.md',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            (log_dir / 'apollo_sequence_status_latest.json').write_text(json.dumps({
+                'status': 'launch_ready_unverified_send',
+                'record_count': 5,
+                'sequence_name': 'Ralph Workflow curator follow-up — Codeberg CTA',
+                'final_url': 'https://app.apollo.io/#/sequences',
+                'needs_live_verification': True,
+                'launch_log': '/tmp/launch.json',
+                'outbound_verification_log': '/tmp/verify.json',
+            }), encoding='utf-8')
+            (drafts_dir / 'apollo_sequence_launch_packet_latest.md').write_text('# Apollo Sequence Launch Packet\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={}):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'apollo_launch_handoff_packet')
+            self.assertEqual(execution.status, 'prepared')
+            self.assertTrue((drafts_dir / 'apollo_launch_handoff_packet_latest.md').exists())
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('live send confirmation', artifact_text)
+            self.assertIn('apollo_sequence_launch_packet_latest.md', artifact_text)
 
     def test_stackoverflow_lane_does_not_claim_progress_when_no_drafts_created(self):
         now = datetime(2026, 5, 23, 14, 8, 31)

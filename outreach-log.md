@@ -6647,3 +6647,7 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Apollo monitor
 - **When:** 2026-05-25 23:55:30
 - **Note:** Apollo status changed from `login_succeeded` to `cloudflare_auth_blocked`.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 00:38:29
+- **Note:** Momentum check found: reddit_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Pending repairs: primary_repo_flat, outcome_system_underpowered, same_family_publisher_overlap, mirror_repo_flat. Cloudflare/auth protection blocks login.

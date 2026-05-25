@@ -1,15 +1,16 @@
 # Apollo.io Channel Status
 
-**Last checked:** 2026-05-25 21:02 (Europe/Berlin)
-**Status:** ✅ Login Succeeded
+**Last checked:** 2026-05-26 01:02 (Europe/Berlin)
+**Status:** 🔒 Cloudflare Auth Blocked
 
 ## Blocker State
-None — Apollo is accessible and downstream-ready.
+Cloudflare challenge/turnstile is actively blocking automated browser access. Apollo cannot be reached programmatically at this time.
 
 ## Details
-- Cloudflare protection: not triggered
-- Login attempted: no (session was already authenticated)
+- Cloudflare protection: **triggered** (challenge interstitial detected)
+- Login attempted: no
 - Final URL: https://app.apollo.io/#/home
+- Blocker type: Cloudflare Turnstile / challenge-platform interstitial
 
 ## Notes
-Apollo was already on an authenticated app surface before form automation. Channel is actionable — no mailbox verification or login blockers present.
+Apollo was already on an authenticated surface when the script ran, but Cloudflare's challenge platform intercepted all subsequent requests. This blocks the headless/browser automation path. The session cannot be used for downstream outreach actions until the Cloudflare challenge resolves (typically requires human interaction or a non-challenged IP/session).

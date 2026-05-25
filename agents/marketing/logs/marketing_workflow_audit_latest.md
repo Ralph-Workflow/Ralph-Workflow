@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-26T00:25:51.260634
+- Generated: 2026-05-26T01:00:35.459148
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -12,11 +12,11 @@
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 8 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
-- The most recent runtime activity was owned_content_allowed, but the latest meaningful external/replacement execution remains apollo_sequence_launch; do not confuse follow-through with fresh outcome-bearing distribution.
-- The most recent marketing artifact (owned_content_allowed) was preparation/follow-through work, not a live external execution, so it should not be mistaken for outcome movement.
+- The most recent runtime activity was distribution_architecture_repair, but the latest meaningful external/replacement execution remains apollo_sequence_launch; do not confuse follow-through with fresh outcome-bearing distribution.
+- The most recent marketing artifact (distribution_architecture_repair) was preparation/follow-through work, not a live external execution, so it should not be mistaken for outcome movement.
 
 ## What actually worked
-- Internal repair/follow-through is still running reliably: owned_content_allowed.
+- Internal repair/follow-through is still running reliably: distribution_architecture_repair.
 
 ## What did not work
 - Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.

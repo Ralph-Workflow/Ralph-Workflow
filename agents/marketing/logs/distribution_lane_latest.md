@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-26T00:30:21
-Chosen lane: **distribution_architecture_repair**
+Generated: 2026-05-26T01:01:06
+Chosen lane: **owned_content**
 
 ## Why this lane
-- The current execution-board fingerprint is still empty even though a third-strike churn guard and guard follow-through already exist for this review window; perform a concrete distribution-architecture repair now instead of logging another guard pause.
+- No stronger autonomous lane detected.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 directory submissions already shipped in the last 24 hours.
 - 2 curator contact attempts already shipped in the last 24 hours.
@@ -12,6 +12,7 @@ Chosen lane: **distribution_architecture_repair**
 - Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
+- Apollo already has a verified non-zero list and launch-ready packet, but no live send confirmation yet; the truthful next move is launch/send follow-through, not another generic outbound packet refresh.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
 - Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
@@ -28,10 +29,6 @@ Chosen lane: **distribution_architecture_repair**
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
-- 1 prior distribution-architecture repair run(s) already hit this same empty-board window.
-- A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
-- 7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.
-- 9 prior guard pause run(s) already reused this same fingerprint in the current review window.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -39,8 +36,6 @@ Chosen lane: **distribution_architecture_repair**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 
-## Immediate lane-architecture repair work
-- Do not emit another measurement hold once the short review window has already cleared
-- Treat this as a process-repair slot: replace stale lane-selection logic, prompts, or scheduling rules that still point back to idle holds
-- Preserve Codeberg as the primary CTA while forcing the next post-hold slot to choose either a truthful untouched lane or a concrete runtime repair
-- Use the execution board and shared findings as the truth source for what is actually blocked, exhausted, or already delivered
+## Owned-content lane remains allowed
+- No distribution-lane override triggered yet
+- If the next measurement window is still flat, escalate away from Telegraph-first output

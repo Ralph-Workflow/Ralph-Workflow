@@ -1,26 +1,31 @@
 {
-  "generated_at": "2026-05-25T23:39:56.255069+02:00",
+  "generated_at": "2026-05-26T00:38:29.623305+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 2.3,
+  "report_age_hours": 3.27,
   "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-22_0728.md",
-  "latest_healthy_report_age_hours": 88.19,
-  "latest_post_age_hours": 132.25,
+  "latest_healthy_report_age_hours": 89.17,
+  "latest_post_age_hours": 133.23,
   "reddit_monitor_runtime": {
     "status": "cooldown_skip",
-    "age_hours": 5.86
+    "age_hours": 6.83
   },
   "reddit_execution_status": {
     "status": "blocked_pending_praw_credentials",
-    "age_hours": 3.38,
+    "age_hours": 4.36,
     "blocking_reason": "Reddit blocks this server IP on both www.reddit.com/login and old.reddit.com/login with HTTP 403, so the Playwright/browser path cannot be recovered locally. The PRAW fallback code path exists and is now hardened to reject placeholder credentials, but TOOLS.md still contains placeholder Reddit OAuth app values instead of a real script client_id/client_secret."
   },
   "adoption_flat": true,
-  "pending_repairs": [],
+  "pending_repairs": [
+    "primary_repo_flat",
+    "outcome_system_underpowered",
+    "same_family_publisher_overlap",
+    "mirror_repo_flat"
+  ],
   "blocked_distribution_channels": [],
   "apollo": {
-    "status": "login_succeeded",
-    "age_hours": 2.62,
-    "cloudflare_blocked": false
+    "status": "cloudflare_auth_blocked",
+    "age_hours": 0.72,
+    "cloudflare_blocked": true
   },
   "measurement_hold": {
     "active": false,
@@ -30,10 +35,11 @@
   },
   "actions": [
     "reddit_channel_blocked",
-    "outcome_system_repair_missing"
+    "primary_repo_adoption_flat",
+    "pending_repairs_detected"
   ],
   "watch_actions": [
-    "primary_repo_adoption_flat"
+    "apollo_channel_blocked"
   ],
   "status": "needs_attention"
 }
