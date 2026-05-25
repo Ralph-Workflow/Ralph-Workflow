@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-25T21:33:14.683097
+- Generated: 2026-05-25T22:46:07.982831
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -12,8 +12,30 @@
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 8 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
+- The most recent runtime activity was apollo_truthfulness_repair, but the latest meaningful external/replacement execution remains saashub_secondary_surface_comment_execution; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did attempt a live marketing action recently (saashub_secondary_surface_comment_execution), but the execution evidence is still low-signal or unusable, so it should not count as real distribution progress yet.
-- Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
+
+## What actually worked
+- Execution path still produced a live external action artifact: saashub_secondary_surface_comment_execution.
+
+## What did not work
+- Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.
+- Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface.
+
+## What is repetitive
+- Repeated outreach opening: Honestly the part I'd optimize first is the handoff, not the model stack.
+- 8 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.
+
+## What is low-signal
+- saashub_secondary_surface_comment_execution: Live execution is still pending manual approval/moderation, so it should not count as visible outcome movement yet.
+- Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
+
+## What should change now
+- REPAIR the managed outbound execution path. A recent Apollo/live-outbound action exists, but the evidence says the asset is not usable yet. In the same run, refresh the execution packet with import/count verification and sequence-launch gates, and do not count Apollo progress until a non-zero list or live sequence exists.
+- REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.
+- REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.
+- HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.
+- Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
 ## Observed risks
 - Repetition risk in outreach opening: "Honestly the part I'd optimize first is the handoff, not the model stack."
@@ -56,10 +78,10 @@
 ## Latest executed marketing action
 - Type: saashub_secondary_surface_comment_execution
 - Title: SaaSHub alternatives-page Codeberg routing correction comment
-- Status: submitted_pending_email_confirmation (ok=True)
+- Status: submitted_and_email_confirmed_pending_manual_approval (ok=True)
 - Outcome-ready: False
 - Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_saashub_secondary_surface_comment_execution.json
-- Warning: Live execution is still blocked on email confirmation before the public action is actually approved.
+- Warning: Live execution is still pending manual approval/moderation, so it should not count as visible outcome movement yet.
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

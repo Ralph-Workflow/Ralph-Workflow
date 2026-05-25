@@ -441,24 +441,17 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 ## Weekly Review — 2026-05-25
 
 ### SEO Health
-**SEO Score:** 100/100 (A) | Ranked keywords: 0 | Backlinks: 2 | DR: None
-**Trends:** ranks 0.0
+**SEO Score:** unknown | Ranked keywords: ? | Backlinks: ? | DR: ?
+**Trends:** ranks ?
 
 ### Content Performance
-- conversion-asset: 1 posts, 0 total views, 0.0 avg views/publish
-- philosophy: 1 posts, 0 total views, 0.0 avg views/publish
-- seo-guide: 1 posts, 0 total views, 0.0 avg views/publish
-- technical: 1 posts, 0 total views, 0.0 avg views/publish
-- unknown: 33 posts, 0 total views, 0.0 avg views/publish
-- usecase: 1 posts, 0 total views, 0.0 avg views/publish
+- No measurable posts yet.
 
 ### Weekly Decisions
-- **[HIGH]** MARK AS FAILING: Current content/distribution tactics are not driving repo adoption. — Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)
-- **[INFO]** Do not infer a winning owned-content format yet. — Current content-performance logs show zero measurable views, so format recommendations would be guesswork.
-- **[MEDIUM]** Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move. — Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes.
-- **[MEDIUM]** Ship comparison-led backlink outreach packets whenever the curator queue is already full. — A follow-through note is not enough when the queue is saturated; the loop needs a fresh executable distribution asset tied to existing comparison pages.
+- **[HIGH]** Build backlinks — submit to directories and pursue guest post opportunities. — Zero backlinks detected. Link acquisition is the highest-leverage SEO activity right now.
+- **[ONGOING]** Continue only the owned/distribution channels that have current runtime proof, and keep Codeberg as the primary CTA. — When adoption is moving, scale the channels with live execution proof instead of relying on stale channel doctrine.
 - **[MEDIUM]** Leverage competitor comparison pages in content and outreach. — Monitoring 8 competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked.
-- **[INFO]** Note: hermes-agent has 166965 GitHub stars — lean into Ralph's cost and flexibility advantages. — Competitor intelligence for positioning decisions.
+- **[INFO]** Note: hermes-agent has 167100 GitHub stars — lean into Ralph's cost and flexibility advantages. — Competitor intelligence for positioning decisions.
 
 ### Priority Actions (from SEO analysis)
 - Collect more data

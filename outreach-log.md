@@ -6627,3 +6627,11 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-25 21:44:10
 - **Note:** Momentum check found: reddit_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Pending repairs: primary_repo_flat, outcome_system_underpowered, managed_outbound_not_yet_usable, same_family_publisher_overlap, mirror_repo_flat.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 22:26:51
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 22:50:40
+- **Note:** Momentum check found: reddit_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Pending repairs: primary_repo_flat, outcome_system_underpowered, managed_outbound_not_yet_usable, same_family_publisher_overlap, mirror_repo_flat.

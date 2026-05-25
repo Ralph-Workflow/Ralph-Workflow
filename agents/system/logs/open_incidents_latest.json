@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-25T20:00:45.647028+00:00",
+  "updated_at": "2026-05-25T21:03:50.246789+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 85,
+      "repeat_count": 86,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -244,7 +244,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-25T20:00:12.079402+00:00",
+      "last_seen": "2026-05-25T21:03:50.246739+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
@@ -1170,7 +1170,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 166,
+      "repeat_count": 168,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1870,8 +1870,8 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-25T20:00:12.079466+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-25T21:43:21.495257+02:00\"\n}",
+      "last_seen": "2026-05-25T21:03:50.246774+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-25T22:26:20.581090+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
       "closed_at": "2026-05-25T20:00:31.774741+00:00"
@@ -3987,7 +3987,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T05:06:09.078715+00:00",
-      "repeat_count": 31,
+      "repeat_count": 32,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4043,7 +4043,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-25T20:00:45.647009+00:00",
+      "last_seen": "2026-05-25T20:49:58.231562+00:00",
       "last_error": "status='fail'",
       "likely_cause": "Agentic review returned a contradictory pass artifact; contract normalization failed it closed.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
@@ -4326,7 +4326,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 28,
+      "repeat_count": 31,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4405,7 +4405,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-25T20:00:45.647005+00:00",
+      "last_seen": "2026-05-25T21:03:50.246768+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -5849,7 +5849,7 @@
       "name": "docs_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-23T15:57:16.529082+00:00",
-      "repeat_count": 59,
+      "repeat_count": 62,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -5947,7 +5947,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-25T20:00:45.646993+00:00",
+      "last_seen": "2026-05-25T21:03:50.246763+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
@@ -6005,7 +6005,7 @@
       "name": "docs_verifier_stability",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T15:57:16.529187+00:00",
-      "repeat_count": 64,
+      "repeat_count": 67,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -6138,7 +6138,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-25T20:00:45.647017+00:00",
+      "last_seen": "2026-05-25T21:03:50.246772+00:00",
       "last_error": "latest docs verifier verdict is not pass: 'fail'",
       "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
@@ -7314,12 +7314,13 @@
           "outcome": "no_progress"
         }
       ],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
       "last_seen": "2026-05-25T20:00:45.647011+00:00",
       "last_error": "Push the 'keep your keys to yourself' / trust-boundary advantage into a prominent public surface \u2014 the GitHub README or START_HERE is the right place. The positioning document treats this as a durable differentiator and the docs currently skip it.",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Push the 'keep your keys to yourself' / trust-boundary advantage into a prominent public surface \u2014 the GitHub README or START_HERE is the right place. The positioning document treats this as a durable differentiator and the docs currently skip it.",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-25T20:28:51.122304+00:00"
     },
     "docs_agentic_review_mustFix_remove-relocate-or-drastically-shorten-the-repo::review_followup_required": {
       "key": "docs_agentic_review_mustFix_remove-relocate-or-drastically-shorten-the-repo::review_followup_required",
@@ -7338,12 +7339,30 @@
           "outcome": "no_progress"
         }
       ],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
       "last_seen": "2026-05-25T20:00:45.647015+00:00",
       "last_error": "Remove, relocate, or drastically shorten the 'repo-root docs families mapped clearly' section in docs/README. It is internal maintainer archaeology (Rust-era vs Python-era, archival status) that does not belong in the end-user docs map.",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Remove, relocate, or drastically shorten the 'repo-root docs families mapped clearly' section in docs/README. It is internal maintainer archaeology (Rust-era vs Python-era, archival status) that does not belong in the end-user docs map.",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-25T20:28:51.122306+00:00"
+    },
+    "docs_agentic_review_mustFix_replace-the-identical-opening-boilerplate-senten::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_replace-the-identical-opening-boilerplate-senten::review_followup_required",
+      "name": "docs_agentic_review_mustFix_replace-the-identical-opening-boilerplate-senten",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-25T20:49:58.231565+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-25T20:49:58.231695+00:00",
+      "last_error": "Replace the identical opening boilerplate sentence across every Sphinx page with a shorter phrase or remove it from pages that follow a direct navigation-from-sibling \u2014 it creates a mechanical, pasted tone over time",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Replace the identical opening boilerplate sentence across every Sphinx page with a shorter phrase or remove it from pages that follow a direct navigation-from-sibling \u2014 it creates a mechanical, pasted tone over time",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-25T21:03:50.246786+00:00"
     }
   }
 }

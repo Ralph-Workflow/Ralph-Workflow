@@ -2119,7 +2119,7 @@ class DistributionLaneSelectorManualContactFreshnessTests(unittest.TestCase):
 
 
 class ApolloSequenceStatusTests(unittest.TestCase):
-    def test_marks_recent_launch_as_measurement_pending(self):
+    def test_marks_recent_live_send_as_measurement_pending(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             log_dir = tmp / 'logs'
@@ -2128,7 +2128,12 @@ class ApolloSequenceStatusTests(unittest.TestCase):
             launch.write_text(json.dumps({
                 'timestamp': '2026-05-23T00:12:00+02:00',
                 'chosen_action': {'type': 'apollo_sequence_launch'},
-                'result': {'outcome_ready': True, 'record_count': 5, 'sequence_name': 'test sequence'},
+                'result': {
+                    'status': 'verified_live_sequence',
+                    'outcome_ready': True,
+                    'record_count': 5,
+                    'sequence_name': 'test sequence',
+                },
             }), encoding='utf-8')
 
             with patch.object(apollo_sequence_status, 'LOG_DIR', log_dir), \

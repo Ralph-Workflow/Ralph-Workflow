@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.marketing import apollo_outbound_verifier, apollo_sequence_status, distribution_hunter, run
+from agents.marketing import apollo_outbound_verifier, apollo_sequence_launcher, apollo_sequence_status, distribution_hunter, run
 
 
 class TelegraphViewsTests(unittest.TestCase):
@@ -43,6 +43,35 @@ class ApolloSequenceStatusTests(unittest.TestCase):
         self.assertTrue(payload['needs_live_verification'])
         self.assertEqual(payload['record_count'], 5)
 
+    def test_build_status_downgrades_legacy_launch_ready_log_without_live_send(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            live_list = log_dir / 'marketing_2026-05-25_apollo_list_verification.json'
+            live_list.write_text(json.dumps({
+                'timestamp': '2026-05-25T10:00:00+02:00',
+                'chosen_action': {'type': 'apollo_list_verification'},
+                'result': {'record_count': 5, 'final_url': 'https://app.apollo.io/#/lists', 'evidence': ['5 visible records']},
+            }), encoding='utf-8')
+            launch = log_dir / 'marketing_2026-05-25_apollo_sequence_launch.json'
+            launch.write_text(json.dumps({
+                'timestamp': '2026-05-25T11:00:00+02:00',
+                'chosen_action': {'type': 'apollo_sequence_launch', 'sequence_name': 'Seq'},
+                'result': {
+                    'status': 'executed',
+                    'outcome_ready': True,
+                    'record_count': 5,
+                    'sequence_name': 'Seq',
+                    'notes': ['If human/browser automation launches the emails, keep this sequence name unchanged.'],
+                },
+            }), encoding='utf-8')
+            with patch.object(apollo_sequence_status, 'LOG_DIR', log_dir), \
+                 patch.object(apollo_sequence_status, 'STATUS_JSON', log_dir / 'apollo_sequence_status_latest.json'), \
+                 patch.object(apollo_sequence_status, 'STATUS_MD', log_dir / 'apollo_sequence_status_latest.md'):
+                payload = apollo_sequence_status.build_status(datetime.fromisoformat('2026-05-25T12:00:00+02:00'))
+        self.assertEqual(payload['status'], 'launch_ready_unverified_send')
+        self.assertFalse(payload['measurement_pending'])
+        self.assertTrue(payload['needs_live_verification'])
+
     def test_apollo_outbound_verifier_separates_launch_ready_from_live_send(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
@@ -59,6 +88,38 @@ class ApolloSequenceStatusTests(unittest.TestCase):
                 payload = apollo_outbound_verifier.build_verification(datetime.fromisoformat('2026-05-25T12:00:00+02:00'))
         self.assertEqual(payload['result']['status'], 'launch_ready_needs_send_confirmation')
         self.assertFalse(payload['result']['outcome_ready'])
+
+
+class ApolloSequenceLauncherTests(unittest.TestCase):
+    def test_launcher_logs_launch_ready_not_live_send(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            verification_path = log_dir / 'marketing_2026-05-25_apollo_list_verification.json'
+            verification_path.write_text(json.dumps({
+                'result': {
+                    'record_count': 5,
+                    'outcome_ready': True,
+                    'final_url': 'https://app.apollo.io/#/lists/example',
+                }
+            }), encoding='utf-8')
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('# Outreach Log\n\n', encoding='utf-8')
+
+            with patch.object(apollo_sequence_launcher, 'LOG_DIR', log_dir), \
+                 patch.object(apollo_sequence_launcher, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(apollo_sequence_launcher, 'OUTREACH_LOG', outreach_path):
+                rc = apollo_sequence_launcher.main()
+
+            self.assertEqual(rc, 0)
+            launch_log = log_dir / f"marketing_{datetime.now().astimezone().strftime('%Y-%m-%d')}_apollo_sequence_launch.json"
+            payload = json.loads(launch_log.read_text(encoding='utf-8'))
+            self.assertEqual(payload['result']['status'], 'launch_ready_packet_created')
+            self.assertFalse(payload['result']['live_external_action'])
+            self.assertFalse(payload['result']['outcome_ready'])
 
 
 class DistributionHunterTests(unittest.TestCase):
