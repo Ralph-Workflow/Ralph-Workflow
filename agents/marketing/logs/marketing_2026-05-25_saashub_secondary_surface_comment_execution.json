@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-25T21:19:37+02:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "saashub_secondary_surface_comment_execution",
+    "channel": "directory_confirmation",
+    "title": "SaaSHub alternatives-page Codeberg routing correction comment",
+    "target_url": "https://www.saashub.com/ralph-workflow-alternatives"
+  },
+  "why_this_action": {
+    "summary": "The execution board named the directory secondary-surface repair packet as the only truthful do-now asset. SaaSHub already has a live Ralph Workflow alternatives page that still exposes the GitHub mirror but not the canonical Codeberg repo, so a native on-page correction comment was the strongest executable follow-through.",
+    "shared_findings_used": [
+      "agents/marketing/logs/adoption_metrics_latest.json: Codeberg remains flat and is still the primary success gate",
+      "agents/marketing/logs/distribution_lane_latest.json: current lane is directory_confirmation",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json: avoid another same-family publisher burst during the active review window",
+      "drafts/marketing_execution_board_latest.md: directory secondary-surface repair packet is the current do-now asset",
+      "agents/marketing/logs/backlink_status_latest.json: SaaSHub alternatives page is live and currently GitHub-only",
+      "agents/marketing/logs/reddit_post_analysis_latest.json: Reddit remains suspended and should not consume this slot"
+    ]
+  },
+  "request": {
+    "surface": "SaaSHub discussion comment",
+    "post_url": "https://www.saashub.com/comments",
+    "body": "Small correction from the project side: the canonical Ralph Workflow repo lives on Codeberg, with GitHub kept as a mirror. The main SaaSHub product page already reflects that, but this alternatives page currently exposes only the GitHub repo link. If you surface repo links here, please add the primary repo first: https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+  },
+  "result": {
+    "status": "submitted_and_email_confirmed_pending_manual_approval",
+    "ok": true,
+    "live_external_action": true,
+    "http_status": 200,
+    "confirmation_required": false,
+    "confirmation_channel": "email",
+    "platform_response": "Thanks for confirming your comment! It will appear online as soon as we have manually approved it.",
+    "blocking_factors": [
+      "SaaSHub manual moderation is still required before the public comment becomes visible."
+    ],
+    "manual_approval_pending": true,
+    "email_confirmed_at": "2026-05-25T21:39:51+02:00",
+    "email_confirmation_result": "Thanks for confirming your comment! It will appear online as soon as we have manually approved it.",
+    "review_after": "2026-05-25T23:07:41+02:00"
+  }
+}

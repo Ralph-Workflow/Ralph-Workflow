@@ -457,6 +457,36 @@ def fetch_writeas_views(url: str) -> int:
         return 0
 
 
+def fetch_telegraph_views(url: str) -> int:
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return 0
+    slug = parsed.path.lstrip('/')
+    if not slug:
+        return 0
+    api_url = f"https://api.telegra.ph/getViews/{slug}"
+    try:
+        req = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        if payload.get('ok') and isinstance(payload.get('result'), dict):
+            return int(payload['result'].get('views') or 0)
+    except Exception:
+        return 0
+    return 0
+
+
+def fetch_post_views(post: dict) -> int:
+    platform = str(post.get('platform') or '').strip().lower()
+    url = str(post.get('url') or '').strip()
+    if not url:
+        return 0
+    if platform == 'telegraph' or 'telegra.ph/' in url:
+        return fetch_telegraph_views(url)
+    return fetch_writeas_views(url)
+
+
 # ── Post performance helpers ─────────────────────────────────────────────────
 
 def load_posted_records() -> list[dict]:
@@ -502,7 +532,7 @@ def enrich_posts_with_views(posts: list[dict]) -> list[dict]:
     enriched = []
     for post in posts:
         item = dict(post)
-        item["views"] = fetch_writeas_views(post.get("url", "")) if post.get("url") else 0
+        item["views"] = fetch_post_views(post)
         enriched.append(item)
     return enriched
 

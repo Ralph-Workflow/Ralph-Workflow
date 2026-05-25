@@ -1,162 +1,108 @@
 {
-  "timestamp": "2026-05-25T19:57:05.340598",
+  "timestamp": "2026-05-25T22:06:15.725572",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "Unattended coding agent \u2014 Ralph Workflow",
-      "meta_description": "Open-source unattended coding agent for Claude Code, Codex CLI, and OpenCode. Start one real task before bed and wake up to tested code ready to review.",
-      "canonical": "https://ralphworkflow.com/",
+      "title": "Ralph Workflow",
+      "meta_description": "Preconfigured AI engineering workflow.",
+      "canonical": "https://ralphworkflow.com",
       "og_tags": {
-        "description": "Open-source unattended coding agent for Claude Code, Codex CLI, and OpenCode. Start one real task before bed and wake up to tested code ready to review.",
-        "title": "Unattended coding agent \u2014 Ralph Workflow",
-        "type": "website",
-        "url": "https://ralphworkflow.com/",
-        "site_name": "Ralph Workflow",
-        "image": "https://ralphworkflow.com/icon.png"
+        "title": "x",
+        "description": "x",
+        "url": "x",
+        "type": "website"
       },
-      "twitter_card": "summary_large_image",
+      "twitter_card": "summary",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6401,
+      "word_count": 22,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
     },
     "robots": {
       "status": 200,
-      "directive_count": 9,
+      "directive_count": 0,
       "sitemap_url": "https://ralphworkflow.com/sitemap.xml"
     },
     "sitemap": {
       "status": 200,
-      "url_count": 80,
+      "url_count": 247,
       "urls": [
-        "https://ralphworkflow.com/",
-        "https://ralphworkflow.com/privacy",
-        "https://ralphworkflow.com/terms",
-        "https://ralphworkflow.com/install",
-        "https://ralphworkflow.com/aider-alternative",
-        "https://ralphworkflow.com/conductor-alternative",
-        "https://ralphworkflow.com/hermes-alternative",
-        "https://ralphworkflow.com/claude-code-alternative",
-        "https://ralphworkflow.com/cursor-alternative",
-        "https://ralphworkflow.com/continue-alternative",
-        "https://ralphworkflow.com/copilot-alternative",
-        "https://ralphworkflow.com/docs/",
-        "https://ralphworkflow.com/contact",
-        "https://ralphworkflow.com/docs/advanced-artifact-configuration",
-        "https://ralphworkflow.com/docs/advanced-mcp-configuration",
-        "https://ralphworkflow.com/docs/advanced-pipeline-configuration",
-        "https://ralphworkflow.com/docs/after-your-first-run",
-        "https://ralphworkflow.com/docs/agents",
-        "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
-        "https://ralphworkflow.com/docs/ai-agent-workflow-composer"
+        "https://ralphworkflow.com/1",
+        "https://ralphworkflow.com/2",
+        "https://ralphworkflow.com/3",
+        "https://ralphworkflow.com/4",
+        "https://ralphworkflow.com/5",
+        "https://ralphworkflow.com/6",
+        "https://ralphworkflow.com/7",
+        "https://ralphworkflow.com/8",
+        "https://ralphworkflow.com/9",
+        "https://ralphworkflow.com/10",
+        "https://ralphworkflow.com/11",
+        "https://ralphworkflow.com/12",
+        "https://ralphworkflow.com/13",
+        "https://ralphworkflow.com/14",
+        "https://ralphworkflow.com/15",
+        "https://ralphworkflow.com/16",
+        "https://ralphworkflow.com/17",
+        "https://ralphworkflow.com/18",
+        "https://ralphworkflow.com/19",
+        "https://ralphworkflow.com/20"
       ]
     }
   },
   "onpage": {
     "score": 100,
     "grade": "A",
-    "issues": [],
-    "recommendations": []
-  },
-  "ranks": {
-    "unattended coding agent": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "AI agent orchestration CLI": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "spec-driven AI agent": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "AI coding workflow automation": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "Claude Code automation": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "Claude Code unattended": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "AI agent workflow composer": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "Ralph Workflow": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    }
-  },
-  "backlinks": {
-    "count_approx": 2,
-    "google_count_approx": 0,
-    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data",
-    "verified_live_listings": 2,
-    "verified_live_listing_source": "backlink_status_latest.json",
-    "verified_live_listing_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_status_latest.json",
-    "verified_live_listing_directories": [
-      "SaaSHub",
-      "ToolWise"
+    "issues": [
+      {
+        "severity": "warning",
+        "item": "Homepage content seems thin",
+        "detail": "~22 words. Aim for 300+ words."
+      }
+    ],
+    "recommendations": [
+      "Expand homepage content with clear value proposition, features, and use cases"
     ]
   },
+  "ranks": {},
+  "backlinks": {
+    "count_approx": 0
+  },
   "domain_rating": {
-    "dr": null,
-    "status": 0
+    "dr": null
   },
   "competitors": {
     "claude.ai/code": {
-      "status": 0,
-      "ok": false,
+      "status": 200,
+      "ok": true,
       "title": ""
     },
     "cursor.com": {
       "status": 200,
       "ok": true,
-      "title": "Cursor: The best coding agent"
+      "title": ""
     },
     "github.com/features/copilot": {
       "status": 200,
       "ok": true,
-      "title": "GitHub Copilot \u00b7 Your AI pair programmer \u00b7 GitHub"
+      "title": ""
     },
     "aider.chat": {
       "status": 200,
       "ok": true,
-      "title": "Aider - AI Pair Programming in Your Terminal"
+      "title": ""
     },
     "continue.dev": {
       "status": 200,
       "ok": true,
-      "title": "Continue \u2022 Quality control for your software factory. | Continue"
+      "title": ""
     }
   },
   "content_gap": {
-    "gaps": [],
-    "covered": [
+    "gaps": [
       "unattended coding agent",
       "AI agent orchestration CLI",
       "spec-driven AI agent",
@@ -166,13 +112,14 @@
       "AI agent workflow composer",
       "Ralph Workflow"
     ],
-    "coverage_pct": 100.0
+    "covered": [],
+    "coverage_pct": 0.0
   },
   "serp": {
-    "position": null,
-    "people_also_ask": false,
-    "related_searches": false,
     "keyword": "unattended coding agent"
   },
-  "priority_actions": []
+  "priority_actions": [
+    "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+    "Build backlinks: submit to directories, guest post, earn citations"
+  ]
 }

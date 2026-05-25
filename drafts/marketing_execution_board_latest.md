@@ -16,11 +16,9 @@ Generated: 2026-05-25T20:54:48
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 
 ## Best executable assets still waiting
-### 1. Directory secondary-surface repair packet
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/directory_confirmation_execution_latest.md
-- Targets: SaaSHub
-- Why this matters: A live third-party surface still routes repo intent away from Codeberg or leaves it unclear, so correcting that surface is a real adoption-moving follow-through asset.
+- None in the current short-window hold.
+- The prior do-now asset (Directory secondary-surface repair packet → SaaSHub) was executed and email-confirmed at 2026-05-25 21:39 CEST; it is now waiting on SaaSHub manual approval.
+- Re-enter after the scheduled hold release at **2026-05-25T23:07:41+02:00** unless a fresh approval/reply signal creates an earlier truthful action.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing

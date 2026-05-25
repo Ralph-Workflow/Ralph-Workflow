@@ -448,6 +448,55 @@ class DistributionLaneSelectorTests(unittest.TestCase):
             self.assertTrue(summary['reddit_blocked'])
             self.assertEqual(summary['execution_status'], 'network_security_blocked')
 
+    def test_prefers_confirmation_follow_through_when_live_action_needs_email_approval(self):
+        now = datetime(2026, 5, 25, 21, 30, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption_metrics_latest.json'
+            channel_path = log_dir / 'channel_discovery.json'
+            outreach_path = tmp / 'outreach-log.md'
+            audit_path = log_dir / 'marketing_workflow_audit_latest.json'
+
+            adoption_path.write_text(json.dumps({'evaluation': {'failing_signals': ['primary_repo_flat']}}), encoding='utf-8')
+            channel_path.write_text(json.dumps({'working': []}), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            audit_path.write_text(json.dumps({}), encoding='utf-8')
+            (log_dir / 'marketing_2026-05-25_saashub_secondary_surface_comment_execution.json').write_text(json.dumps({
+                'timestamp': '2026-05-25T21:19:37+02:00',
+                'chosen_action': {
+                    'type': 'saashub_secondary_surface_comment_execution',
+                    'title': 'SaaSHub alternatives-page Codeberg routing correction comment',
+                    'target_url': 'https://www.saashub.com/ralph-workflow-alternatives',
+                },
+                'result': {
+                    'status': 'submitted_pending_email_confirmation',
+                    'ok': True,
+                    'live_external_action': True,
+                    'confirmation_required': True,
+                    'confirmation_channel': 'email',
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'AUDIT_LATEST_JSON', audit_path), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=True):
+                decision = distribution_lane_selector.choose_distribution_lane(
+                    now,
+                    write_action_log=False,
+                    persist_latest_artifacts=False,
+                )
+
+            self.assertEqual(decision.lane, 'distribution_confirmation_follow_through')
+            self.assertIn('email confirmation', decision.reason)
+
     def test_prefers_directory_submission_when_content_is_saturated_and_new_easy_channel_exists(self):
         now = datetime(2026, 5, 22, 6, 0, 0)
         adoption = {
@@ -4803,6 +4852,19 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
 
             self.assertEqual(payload['chosen_action']['type'], 'aigearbase_free_listing_submission')
             self.assertTrue(payload['result']['live_external_action'])
+
+    def test_action_outcome_ready_rejects_confirmation_pending_live_action(self):
+        ready, warning = marketing_workflow_audit.action_outcome_ready({
+            'status': 'submitted_pending_email_confirmation',
+            'result': {
+                'ok': True,
+                'live_external_action': True,
+                'confirmation_required': True,
+            },
+        })
+
+        self.assertFalse(ready)
+        self.assertIn('email confirmation', warning)
 
     def test_load_latest_marketing_action_prefers_live_action_over_newer_apollo_packet_stub(self):
         with tempfile.TemporaryDirectory() as tmpdir:

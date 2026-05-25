@@ -1,13 +1,13 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-25T21:00:26
-Chosen lane: **directory_confirmation**
+Generated: 2026-05-25T21:24:00
+Chosen lane: **distribution_confirmation_follow_through**
 
 ## Why this lane
-- A current directory secondary-surface repair packet already targets a live page that still misroutes or obscures Codeberg repo intent; reuse that packet as the truthful follow-through surface instead of falling back to measurement hold.
+- A live directory/surface correction already shipped, but it is still blocked on email confirmation; advance that follow-through instead of pretending the action is already outcome-ready or stacking another lane.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 directory submissions already shipped in the last 24 hours.
 - 2 curator contact attempts already shipped in the last 24 hours.
-- 2 live external marketing action(s) already shipped in the last 6 hours.
+- 5 live external marketing action(s) already shipped in the last 6 hours.
 - If no new outcome lands first, this short-window congestion clears at 2026-05-25T23:07:41. Before then, another live outbound action would mostly blur measurement.
 - Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
@@ -19,6 +19,7 @@ Chosen lane: **directory_confirmation**
 - No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.
 - Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.
+- 1 live external action(s) are still blocked on email confirmation (SaaSHub alternatives-page Codeberg routing correction comment), so the loop should advance that follow-through before treating them as shipped outcomes.
 - An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.
 - Some remaining publisher targets only expose non-runtime-executable channels (AI Saying, TLDL), so they should not keep this lane looking actionable until a sendable path exists.
 - All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.
@@ -38,8 +39,8 @@ Chosen lane: **directory_confirmation**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate directory confirmation work
-- Re-run `agents/marketing/backlink_status.py` and reuse `backlink_status_latest.json` as the canonical live-listing snapshot
-- Treat live listings as proof assets to reuse in curator/comparison packets instead of pretending all submissions are still pending black boxes
-- Identify which approved listings already route to Codeberg first and which still need follow-up or evidence capture
-- Do not count another net-new directory submission as progress until this confirmation pass is refreshed
+## Immediate confirmation follow-through
+- Reuse the existing confirmation-required action instead of creating another surface correction or directory submission
+- Treat email confirmation as a real blocker: the action is not outcome-ready until the platform approves it
+- Keep the target page and Codeberg-first routing ask exactly the same; only complete the pending platform confirmation step
+- Do not let the execution board claim there is no truthful do-now packet while a confirmation-required action is still waiting

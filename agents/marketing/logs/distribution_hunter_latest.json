@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-05-25T12:00:00+02:00",
+  "repair_types_seen": [
+    "outcome_system_underpowered"
+  ],
+  "selected_lane": "directory_confirmation",
+  "selected_action_type": "directory_confirmation_execution",
+  "execution_status": "executed",
+  "live_external_action": false,
+  "artifact_path": "/tmp/execution.json",
+  "summary": "Refreshed proof",
+  "expected_outcome": "Convert prior directory submissions into verified live-listing/backlink proof.",
+  "measurement_window": "Recheck listing approval/backlink evidence in 3-7 days.",
+  "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
+  "decision": {},
+  "execution": {}
+}

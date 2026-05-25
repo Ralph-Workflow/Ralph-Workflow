@@ -1,5 +1,18 @@
 # Outreach Log
 
+## 2026-05-25 (Monday) — Reddit monitoring (19:22 UTC / 21:22 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-25_2122.md`
+- **Scan summary:** forced-refresh local monitor returned **13 scanned / 2 shortlisted** with **ok=3 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
+- **Coverage note:** still a **partial-visibility** pass. I re-ran the local content-first monitor, then cross-checked the shape against fresh indexed-web rescue so a blocked provider window would not be misread as a quiet market.
+- **Current verdict:** still **not** a posting pass. Honest RalphWorkflow mention fit remains **medium-low** even though discussion-fit is real.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
+  - `r/AI_Agents` — "Seedance 2.0 is impressive. it’s still not a production workflow."
+  - Adjacent validation still visible in recent indexed rescue: `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+- **Repeated pains worth tracking:** context continuity, state drift, supervision overhead, review tax, and workflows that look impressive without producing a finish you would actually merge.
+- **Self-improving lesson:** keep **context continuity / visible state / review tax** as the lead content families, but add a stronger **plug-saturation split** — several adjacent threads are useful research while already too crowded with tool drops to be honest RalphWorkflow mention targets.
+- **Posting note:** No posting attempted. Research-first only while coverage remains partial.
+
 ## 2026-05-25 (Monday) — Homepage SEO title/meta + keyword-gap guard repaired (15:46 UTC / 17:46 CEST)
 - **What I executed:** patched `Ralph-Site/app/views/pages/home.html.erb` to fix the two live on-page issues from `seo-reports/2026-05-25.md`: the homepage title is now shorter and keyword-front-loaded (**Unattended coding agent**), and the meta description is now length-safe while keeping the real product path (**Claude Code, Codex CLI, OpenCode, tested code, ready to review**). In the same pass I added the exact missing keyword intents **Claude Code unattended workflows** and **AI agent workflow composer** into the homepage search-intent section.
 - **Runtime enforcement added:** patched `Ralph-Site/spec/requests/pages_spec.rb` so future regressions fail if the homepage title grows past **60** characters, if the meta description leaves the **150-160** range, or if those two keyword-gap phrases disappear from the page.
@@ -6606,3 +6619,11 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-25 20:13:20
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 21:12:10
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 21:44:10
+- **Note:** Momentum check found: reddit_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Pending repairs: primary_repo_flat, outcome_system_underpowered, managed_outbound_not_yet_usable, same_family_publisher_overlap, mirror_repo_flat.
