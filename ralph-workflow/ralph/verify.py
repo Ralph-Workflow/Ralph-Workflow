@@ -152,6 +152,14 @@ def _run_fast_pytest(*, cwd: Path, timeout: float | None) -> ProcessResult:
     for index, path in enumerate(remaining_root_tests):
         root_shards[index % len(root_shards)].append(path)
 
+    priority_heavy_root_groups: tuple[tuple[str, ...], ...] = (
+        heavy_root_groups[2],
+        heavy_root_groups[5],
+    )
+    remaining_heavy_root_groups = tuple(
+        group for group in heavy_root_groups if group not in priority_heavy_root_groups
+    )
+
     shard_args: tuple[tuple[str, ...], ...] = (
         (
             "run",
@@ -212,7 +220,7 @@ def _run_fast_pytest(*, cwd: Path, timeout: float | None) -> ProcessResult:
                 "-m",
                 "not subprocess_e2e",
             )
-            for heavy_root_group in heavy_root_groups
+            for heavy_root_group in remaining_heavy_root_groups
         ),
         *tuple(
             (
@@ -229,6 +237,28 @@ def _run_fast_pytest(*, cwd: Path, timeout: float | None) -> ProcessResult:
             if root_shard
         ),
     )
+    priority_shard_args: tuple[tuple[str, ...], ...] = (
+        (
+            "run",
+            "python",
+            "-m",
+            "pytest",
+            *heavy_root_groups[2],
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "run",
+            "python",
+            "-m",
+            "pytest",
+            *heavy_root_groups[5],
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+    )
 
     def _run(args: tuple[str, ...]) -> ProcessResult:
         return run_process(
@@ -237,29 +267,56 @@ def _run_fast_pytest(*, cwd: Path, timeout: float | None) -> ProcessResult:
             options=ProcessRunOptions(cwd=cwd, timeout=timeout),
         )
 
-    with ThreadPoolExecutor(
-        max_workers=min(_VERIFY_FAST_PYTEST_MAX_WORKERS, len(shard_args))
-    ) as executor:
-        future_to_args = {executor.submit(_run, args): args for args in shard_args}
-        stdout_parts: list[str] = []
-        stderr_parts: list[str] = []
-        returncode = 0
-        for future in as_completed(future_to_args):
-            result = future.result()
-            if result.stdout:
-                stdout_parts.append(result.stdout)
-            if result.stderr:
-                stderr_parts.append(result.stderr)
-            if returncode == 0 and result.returncode not in (0, 5):
-                returncode = result.returncode
-        return ProcessResult(
-            command=("uv", *_VERIFY_PYTEST_ARGS),
-            returncode=returncode,
-            stdout="".join(stdout_parts),
-            stderr="".join(stderr_parts),
-        )
+    def _run_batch(batch_args: tuple[tuple[str, ...], ...]) -> ProcessResult:
+        if not batch_args:
+            return ProcessResult(
+                command=("uv", *_VERIFY_PYTEST_ARGS),
+                returncode=0,
+                stdout="",
+                stderr="",
+            )
+        with ThreadPoolExecutor(
+            max_workers=min(_VERIFY_FAST_PYTEST_MAX_WORKERS, len(batch_args))
+        ) as executor:
+            future_to_args = {executor.submit(_run, args): args for args in batch_args}
+            stdout_parts: list[str] = []
+            stderr_parts: list[str] = []
+            returncode = 0
+            for future in as_completed(future_to_args):
+                result = future.result()
+                if result.stdout:
+                    stdout_parts.append(result.stdout)
+                if result.stderr:
+                    stderr_parts.append(result.stderr)
+                if returncode == 0 and result.returncode not in (0, 5):
+                    returncode = result.returncode
+            return ProcessResult(
+                command=("uv", *_VERIFY_PYTEST_ARGS),
+                returncode=returncode,
+                stdout="".join(stdout_parts),
+                stderr="".join(stderr_parts),
+            )
 
-
+    batch_results = [
+        _run_batch(priority_shard_args),
+        _run_batch(shard_args),
+    ]
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    returncode = 0
+    for result in batch_results:
+        if result.stdout:
+            stdout_parts.append(result.stdout)
+        if result.stderr:
+            stderr_parts.append(result.stderr)
+        if returncode == 0 and result.returncode not in (0, 5):
+            returncode = result.returncode
+    return ProcessResult(
+        command=("uv", *_VERIFY_PYTEST_ARGS),
+        returncode=returncode,
+        stdout="".join(stdout_parts),
+        stderr="".join(stderr_parts),
+    )
 def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
     """Run all verification steps and return the first non-zero exit code, or 0."""
     print("Running full verification...", flush=True)
