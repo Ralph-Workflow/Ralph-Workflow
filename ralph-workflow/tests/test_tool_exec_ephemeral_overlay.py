@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
@@ -301,3 +302,29 @@ class TestOverlayIsolationEndToEnd:
 
         assert result.returncode == 0
         assert (tmp_git_repo / "README.md").read_text(encoding="utf-8") == before
+
+    @pytest.mark.subprocess_e2e
+    def test_real_subprocess_does_not_see_source_workspace_pwd(
+        self, tmp_path: Path
+    ) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        overlay_dir = tmp_path / "overlay"
+        overlay_dir.mkdir()
+
+        def fake_overlay(workspace_root: Path) -> AbstractContextManager[Path]:
+            del workspace_root
+            return nullcontext(overlay_dir)
+
+        result = run_command(
+            sys.executable,
+            ["-c", "import os; print(os.environ.get('PWD', ''))"],
+            workspace,
+            5000,
+            deps=ExecRunDeps(overlay_factory=fake_overlay),
+        )
+
+        pwd = result.stdout.decode(encoding="utf-8").strip()
+        assert result.returncode == 0
+        assert pwd != str(workspace)
+        assert pwd in {"", str(overlay_dir)}

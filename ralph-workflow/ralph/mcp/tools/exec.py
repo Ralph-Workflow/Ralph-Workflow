@@ -6,6 +6,7 @@ inside an ephemeral workspace overlay after capability checks and policy filteri
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 from pathlib import Path
@@ -420,6 +421,13 @@ def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) 
     return cwd_provider()
 
 
+def _child_process_env(cwd: Path) -> dict[str, str]:
+    env = dict(os.environ)
+    env["PWD"] = str(cwd)
+    env.pop("OLDPWD", None)
+    return env
+
+
 def run_command(
     command: str,
     args: list[str],
@@ -456,6 +464,7 @@ def _run_subprocess(
         command,
         SpawnOptions(
             cwd=str(cwd),
+            env=_child_process_env(cwd),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             label=f"mcp-exec:{command[0]}",
