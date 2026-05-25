@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-25T17:04:00
+Generated: 2026-05-25T17:44:00
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -13,17 +13,17 @@ Generated: 2026-05-25T17:04:00
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 
 ## Best executable assets still waiting
-### 1. Primary-repo-flat publisher contact packet
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
-- Targets: TIMEWELL, Toolradar, Morph
-- Why this matters: Fresh developer-native publisher contacts are already discovered for the flat-Codeberg repair lane.
-
-### 2. Manual community discussion asset
+### 1. Manual community discussion asset
 - When: Do now
 - Packet: /home/mistlight/.openclaw/workspace/drafts/reddit_discussion_handoff_packet_latest.md
 - Targets: reddit discussion handoff packet latest
-- Why this matters: The same empty-board distribution-architecture failure is still under an active third-strike churn guard, but this review window already reused that pause for the current fingerprint; perform a concrete distribution-architecture repair now instead of logging another guard pause.
+- Why this matters: The primary-repo-flat publisher packet was fully consumed in this review window (TIMEWELL already live, Toolradar sent, Morph sent), so the remaining truthful do-now asset is the current manual discussion packet rather than another duplicate publisher burst.
+
+### 2. Primary-repo-flat publisher contact packet
+- When: Wait for reply/citation review windows or a refreshed untouched target set
+- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
+- Targets already live this window: TIMEWELL, Toolradar, Morph
+- Why this matters: Keep the packet as the canonical evidence/source bundle, but do not treat it as a fresh send slot again until the target set changes or review dates expire.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing

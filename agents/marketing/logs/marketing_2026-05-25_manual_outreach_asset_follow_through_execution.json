@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-25T17:26:18.124012",
+  "timestamp": "2026-05-25T17:47:51.259907",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "manual_outreach_asset_follow_through",
@@ -17,8 +17,7 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "targets_prepared": [
-      "TIMEWELL",
-      "Morph"
+      "TIMEWELL"
     ]
   },
   "result": {

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T17:26:37.147107",
+  "generated_at": "2026-05-25T17:48:11.163436",
   "source": "competitor_analysis.py",
   "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
   "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-25.md",
@@ -51,7 +51,7 @@
       "name": "Hermes Agent",
       "positioning": "Self-improving agent that learns from experience",
       "site_status": 200,
-      "github_stars": 166805,
+      "github_stars": 166836,
       "key_features_found": [
         "Persistent memory"
       ]
@@ -78,7 +78,7 @@
       "name": "Aider",
       "positioning": "Terminal-based AI pair programming in your git repo",
       "site_status": 200,
-      "github_stars": 45293,
+      "github_stars": 45295,
       "key_features_found": []
     },
     "continue": {

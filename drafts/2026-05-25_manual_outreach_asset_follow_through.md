@@ -1,5 +1,5 @@
 # Ralph Workflow Manual Handoff Follow-Through
-Generated: 2026-05-25T17:26:18
+Generated: 2026-05-25T17:47:51
 
 ## Why this exists now
 - The active repair window still blocks another net-new publisher burst, but a channel-ready manual publisher outreach asset already exists for an untouched Codeberg-primary target; use that packet as the truthful follow-through surface instead of hiding behind another measurement hold.
@@ -12,7 +12,6 @@ Generated: 2026-05-25T17:26:18
 
 ## Top prepared targets still waiting for execution
 - TIMEWELL
-- Morph
 
 ## Process rule now in force
 - Do not regenerate this packet unless the top prepared set changes.
