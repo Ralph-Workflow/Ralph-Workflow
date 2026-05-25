@@ -6635,3 +6635,15 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-25 22:50:40
 - **Note:** Momentum check found: reddit_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Pending repairs: primary_repo_flat, outcome_system_underpowered, managed_outbound_not_yet_usable, same_family_publisher_overlap, mirror_repo_flat.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 23:06:21
+- **Note:** Momentum check found: reddit_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Pending repairs: primary_repo_flat, outcome_system_underpowered, managed_outbound_not_yet_usable, same_family_publisher_overlap, mirror_repo_flat.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 23:39:56
+- **Note:** Momentum check found: reddit_channel_blocked, outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, same_family_publisher_overlap. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Apollo monitor
+- **When:** 2026-05-25 23:55:30
+- **Note:** Apollo status changed from `login_succeeded` to `cloudflare_auth_blocked`.

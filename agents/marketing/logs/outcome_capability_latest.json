@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-05-25T23:27:19.508338",
+  "type": "outcome_capability_runner",
+  "status": "executed",
+  "selected_lane": "apollo_outreach",
+  "selected_action_type": "apollo_outreach_execution",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_apollo_outreach_execution.md",
+  "summary": "Prepared a managed Apollo outbound execution packet from the shared comparison, curator, and demand-signal artifacts.",
+  "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "direct_codeberg_linkage": {
+    "cta": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "why": "Every generated asset must keep Codeberg as the primary repo target so adoption movement is attributable to the canonical upstream."
+  },
+  "outcome_capability": {
+    "new_runtime_capability": "forced_non_reddit_distribution_lane",
+    "allowed_lanes": [
+      "apollo_outreach",
+      "comparison_backlink_outreach",
+      "directory_confirmation",
+      "distribution_confirmation_follow_through",
+      "manual_outreach_asset_follow_through",
+      "primary_repo_flat_contact_handoff_packet",
+      "stackoverflow_answer"
+    ],
+    "fresh_targets_prepared": [
+      "Codeberg-first autonomous coding proof",
+      "Comparison-led migration / evaluation",
+      "Morning-after review packet pain"
+    ],
+    "comparison_queue_prepared_count": 8
+  },
+  "fake_green_guard": "This capability only counts because it created or refreshed an executable non-Reddit lane artifact tied to Codeberg-primary adoption movement.",
+  "shared_findings_used": [
+    "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+    "channel_discovery.json: validated easy-submit directory lanes",
+    "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+    "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+    "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+  ]
+}

@@ -1,6 +1,6 @@
 # Apollo Outbound Verification
 
-- Timestamp: `2026-05-25T22:22:37.154357+02:00`
+- Timestamp: `2026-05-25T23:11:13.797986+02:00`
 - Status: `launch_ready_needs_send_confirmation`
 - Outcome ready: `False`
 - Record count: `5`

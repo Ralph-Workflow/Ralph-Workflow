@@ -116,6 +116,63 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertIn('## What is low-signal', text)
             self.assertIn('## What should change now', text)
 
+    def test_outcome_capability_runner_satisfies_system_design_repair(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            logs = tmp / 'logs'
+            logs.mkdir()
+            outreach = tmp / 'outreach-log.md'
+            outreach.write_text('# Outreach Log\n', encoding='utf-8')
+            adoption = logs / 'adoption_metrics_latest.json'
+            adoption.write_text(json.dumps({
+                'metrics': [
+                    {'platform': 'Codeberg', 'stars': 10, 'watchers': 2, 'forks': 2, 'open_issues': 5, 'html_url': 'https://codeberg.org/RalphWorkflow/Ralph-Workflow'},
+                    {'platform': 'GitHub', 'stars': 0, 'watchers': 2, 'forks': 0, 'open_issues': 0, 'html_url': 'https://github.com/Ralph-Workflow/Ralph-Workflow'},
+                ],
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                    'GitHub': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                },
+                'evaluation': {'findings': ['Codeberg is flat.'], 'failing_signals': ['primary_repo_flat']},
+            }), encoding='utf-8')
+            retro = logs / 'reddit_post_analysis.json'
+            retro.write_text(json.dumps({'recent_posts': [], 'repeated_openings': []}), encoding='utf-8')
+            apollo = logs / 'apollo_sequence_status_latest.json'
+            apollo.write_text(json.dumps({'measurement_pending': False}), encoding='utf-8')
+            outcome_capability = logs / 'outcome_capability_latest.json'
+            outcome_capability.write_text(json.dumps({
+                'timestamp': '2026-05-25T23:27:19',
+                'status': 'executed',
+                'selected_lane': 'apollo_outreach',
+                'codeberg_primary': 'https://codeberg.org/RalphWorkflow/Ralph-Workflow',
+            }), encoding='utf-8')
+            reddit_monitor = tmp / 'reddit_monitor_latest.md'
+            reddit_monitor.write_text('reddit blocked', encoding='utf-8')
+            prior_audit = logs / 'marketing_workflow_audit_latest.json'
+            prior_audit.write_text(json.dumps({'repair_actions': []}), encoding='utf-8')
+            latest_action = logs / 'marketing_2026-05-25_apollo_outreach_execution.json'
+            latest_action.write_text(json.dumps({
+                'timestamp': '2026-05-25T23:27:19+02:00',
+                'chosen_action': {'type': 'apollo_outreach_execution', 'title': 'Apollo packet'},
+                'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+            }), encoding='utf-8')
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(marketing_workflow_audit, 'OUT_DIR', logs))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'AUDIT_MD', logs / 'marketing_workflow_audit_latest.md'))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'AUDIT_JSON', prior_audit))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'OUTREACH', outreach))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'ADOPTION', adoption))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'RETRO', retro))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'APOLLO_SEQUENCE_STATUS', apollo))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'OUTCOME_CAPABILITY_STATUS', outcome_capability))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'REDDIT_MONITOR_LATEST', reddit_monitor))
+                rc = marketing_workflow_audit.main()
+
+            self.assertEqual(rc, 0)
+            payload = json.loads(prior_audit.read_text(encoding='utf-8'))
+            self.assertNotIn('outcome_system_underpowered', [item['failure_type'] for item in payload['repair_actions']])
+
 
 if __name__ == '__main__':
     unittest.main()

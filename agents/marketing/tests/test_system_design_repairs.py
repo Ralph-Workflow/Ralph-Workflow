@@ -7,7 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.marketing import apollo_outbound_verifier, apollo_sequence_launcher, apollo_sequence_status, distribution_hunter, run
+from agents.marketing import apollo_outbound_verifier, apollo_sequence_launcher, apollo_sequence_status, distribution_hunter, outcome_capability_runner, run
+from agents.marketing.distribution_lane_selector import LaneDecision
 
 
 class TelegraphViewsTests(unittest.TestCase):
@@ -161,6 +162,86 @@ class DistributionHunterTests(unittest.TestCase):
                 self.assertTrue(status_json.exists())
         self.assertEqual(payload['selected_lane'], 'directory_confirmation')
         self.assertEqual(payload['selected_action_type'], 'directory_confirmation_execution')
+
+
+class OutcomeCapabilityRunnerTests(unittest.TestCase):
+    def test_accepts_frozen_apollo_lane_and_does_not_force_comparison_fallback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            log_dir = root / 'logs'
+            log_dir.mkdir()
+            queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            queue_path.write_text(json.dumps({'targets': [{'status': 'prepared'}]}), encoding='utf-8')
+            frozen_decision = LaneDecision(
+                lane='apollo_outreach',
+                reason='apollo ready',
+                reasons=['apollo ready'],
+                owned_content_posts_last_36h=0,
+                unsubmitted_directory_channels=[],
+                shared_findings_used=['apollo_status.json'],
+                artifact_path='/tmp/brief.md',
+            )
+            fake_execution = type('Execution', (), {
+                'lane': 'apollo_outreach',
+                'action_type': 'apollo_outreach_execution',
+                'status': 'prepared',
+                'artifact_path': '/tmp/apollo.md',
+                'summary': 'Prepared Apollo packet',
+                'targets_prepared': ['Example target'],
+                'shared_findings_used': ['apollo_status.json'],
+                'live_external_action': False,
+                'blocking_factors': [],
+            })()
+            with patch.object(outcome_capability_runner, 'LOG_DIR', log_dir), \
+                 patch.object(outcome_capability_runner, 'STATUS_JSON', log_dir / 'outcome_capability_latest.json'), \
+                 patch.object(outcome_capability_runner, 'STATUS_MD', log_dir / 'outcome_capability_latest.md'), \
+                 patch.object(outcome_capability_runner, 'QUEUE_PATH', queue_path), \
+                 patch('agents.marketing.outcome_capability_runner.choose_distribution_lane', return_value=frozen_decision), \
+                 patch('agents.marketing.outcome_capability_runner.execute_distribution_lane', return_value=fake_execution):
+                payload = outcome_capability_runner.run(datetime.fromisoformat('2026-05-25T23:22:00+02:00'))
+        self.assertEqual(payload['selected_lane'], 'apollo_outreach')
+        self.assertEqual(payload['selected_action_type'], 'apollo_outreach_execution')
+
+    def test_forces_non_reddit_capability_lane_and_logs_codeberg_linkage(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            log_dir = root / 'logs'
+            log_dir.mkdir()
+            queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            queue_path.write_text(json.dumps({'targets': [{'status': 'prepared'}, {'status': 'prepared'}]}), encoding='utf-8')
+            fake_decision = type('Decision', (), {
+                'lane': 'measurement_hold',
+                'reason': 'hold',
+                'reasons': ['hold'],
+                'owned_content_posts_last_36h': 0,
+                'unsubmitted_directory_channels': [],
+                'shared_findings_used': ['x'],
+                'artifact_path': '/tmp/brief.md',
+                'short_review_window_release_at': None,
+                'skip_directory_submissions': True,
+                'skip_curator_outreach': True,
+            })()
+            fake_execution = type('Execution', (), {
+                'lane': 'comparison_backlink_outreach',
+                'action_type': 'comparison_backlink_outreach_execution',
+                'status': 'prepared',
+                'artifact_path': '/tmp/out.md',
+                'summary': 'Prepared comparison asset',
+                'targets_prepared': ['Morph'],
+                'shared_findings_used': ['x'],
+                'live_external_action': False,
+                'blocking_factors': [],
+            })()
+            with patch.object(outcome_capability_runner, 'LOG_DIR', log_dir), \
+                 patch.object(outcome_capability_runner, 'STATUS_JSON', log_dir / 'outcome_capability_latest.json'), \
+                 patch.object(outcome_capability_runner, 'STATUS_MD', log_dir / 'outcome_capability_latest.md'), \
+                 patch.object(outcome_capability_runner, 'QUEUE_PATH', queue_path), \
+                 patch('agents.marketing.outcome_capability_runner.choose_distribution_lane', return_value=fake_decision), \
+                 patch('agents.marketing.outcome_capability_runner.execute_distribution_lane', return_value=fake_execution):
+                payload = outcome_capability_runner.run(datetime.fromisoformat('2026-05-25T12:00:00+02:00'))
+        self.assertEqual(payload['selected_lane'], 'comparison_backlink_outreach')
+        self.assertEqual(payload['direct_codeberg_linkage']['cta'], 'https://codeberg.org/RalphWorkflow/Ralph-Workflow')
+        self.assertEqual(payload['outcome_capability']['comparison_queue_prepared_count'], 2)
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-25T22:00:45.648925",
+  "ts": "2026-05-25T23:39:42.579246",
   "jobs_checked": 21,
-  "issues_found": 12,
+  "issues_found": 6,
   "issues": [
     {
       "job_id": "__artifacts__",
@@ -16,33 +16,9 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 252.31,
+      "artifact_age_minutes": 351.23,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review",
-      "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "status='fail'",
-      "likely_cause": "Agentic review returned a contradictory pass artifact; contract normalization failed it closed."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_push-the-keep-your-keys-to-yourself-trust-bounda",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "Push the 'keep your keys to yourself' / trust-boundary advantage into a prominent public surface \u2014 the GitHub README or START_HERE is the right place. The positioning document treats this as a durable differentiator and the docs currently skip it.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Push the 'keep your keys to yourself' / trust-boundary advantage into a prominent public surface \u2014 the GitHub README or START_HERE is the right place. The positioning document treats this as a durable differentiator and the docs currently skip it."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_remove-relocate-or-drastically-shorten-the-repo",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "Remove, relocate, or drastically shorten the 'repo-root docs families mapped clearly' section in docs/README. It is internal maintainer archaeology (Rust-era vs Python-era, archival status) that does not belong in the end-user docs map.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Remove, relocate, or drastically shorten the 'repo-root docs families mapped clearly' section in docs/README. It is internal maintainer archaeology (Rust-era vs Python-era, archival status) that does not belong in the end-user docs map."
     },
     {
       "job_id": "__artifacts__",
@@ -59,8 +35,8 @@
       "name": "docs_verifier_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=59",
-      "repeats_in_recent_history": 59,
+      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=66",
+      "repeats_in_recent_history": 66,
       "owner_domain": "docs",
       "incident_key": "docs_verifier::artifact_contract_fail",
       "escalation_level": "critical",
@@ -71,8 +47,8 @@
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:stale_artifact repeat_count=28",
-      "repeats_in_recent_history": 28,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:stale_artifact repeat_count=35",
+      "repeats_in_recent_history": 35,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification::stale_artifact",
       "escalation_level": "critical",
@@ -82,47 +58,11 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "docs_agentic_review_escalation",
-      "category": "escalation_required",
-      "last_error": "status='fail'",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=31",
-      "repeats_in_recent_history": 31,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review::loop_verification_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_push-the-keep-your-keys-to-yourself-trust-bounda_escalation",
-      "category": "escalation_required",
-      "last_error": "Push the 'keep your keys to yourself' / trust-boundary advantage into a prominent public surface \u2014 the GitHub README or START_HERE is the right place. The positioning document treats this as a durable differentiator and the docs currently skip it.",
-      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_push-the-keep-your-keys-to-yourself-trust-bounda:review_followup_required repeat_count=2",
-      "repeats_in_recent_history": 2,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review_mustFix_push-the-keep-your-keys-to-yourself-trust-bounda::review_followup_required",
-      "escalation_level": "owner",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_remove-relocate-or-drastically-shorten-the-repo_escalation",
-      "category": "escalation_required",
-      "last_error": "Remove, relocate, or drastically shorten the 'repo-root docs families mapped clearly' section in docs/README. It is internal maintainer archaeology (Rust-era vs Python-era, archival status) that does not belong in the end-user docs map.",
-      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_remove-relocate-or-drastically-shorten-the-repo:review_followup_required repeat_count=2",
-      "repeats_in_recent_history": 2,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review_mustFix_remove-relocate-or-drastically-shorten-the-repo::review_followup_required",
-      "escalation_level": "owner",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
       "name": "docs_verifier_stability_escalation",
       "category": "escalation_required",
       "last_error": "latest docs verifier verdict is not pass: 'fail'",
-      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=64",
-      "repeats_in_recent_history": 64,
+      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=71",
+      "repeats_in_recent_history": 71,
       "owner_domain": "docs",
       "incident_key": "docs_verifier_stability::loop_verification_fail",
       "escalation_level": "critical",
@@ -131,76 +71,28 @@
   ],
   "repairs_attempted": [
     {
-      "type": "rerun_docs_verifier",
-      "job": "docs_agentic_review",
-      "ok": false,
-      "detail": "SKIP: another Ralph docs loop process already holds the global lock"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_push-the-keep-your-keys-to-yourself-trust-bounda",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779739214286:25\"\n}"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_remove-relocate-or-drastically-shorten-the-repo",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
       "type": "rerun_docs_verifier_for_stability",
       "job": "docs_verifier_stability",
       "ok": false,
-      "detail": "SKIP: another Ralph docs loop process already holds the global lock"
-    },
-    {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
-    },
-    {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-25T22:00:18.945476+02:00\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779739221126:26\"\n}"
+      "detail": "independent verifier failed signoff\nSTOP_REASON: stopped after remediation pass 2 because the runner reported no repair and the docs state did not change\nCHECKER\nDOCS_QUALITY_FAIL\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror:1: [repo-dirty] Ralph Workflow repo has uncommi"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_verifier_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779745173423:33\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779739225418:27\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779745175224:34\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_verifier_stability_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779739231744:28\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779745176998:35\"\n}"
     }
   ]
 }
