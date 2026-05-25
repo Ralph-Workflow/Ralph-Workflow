@@ -125,6 +125,31 @@ class TestManagedProcessCommunicateAndCleanup:
         assert stderr == b"err"
         assert handle.record.status == ProcessStatus.EXITED
 
+    def test_kills_root_late_spawn_descendants(self) -> None:
+        late_spawn = TreeProcess(pid=2001, stubborn=True)
+        root = TreeProcess(pid=1)
+        fake_psutil = FakePsutil()
+        fake_psutil._processes = {1: root, 2001: late_spawn}
+        handle = _make_handle(fake_psutil=fake_psutil)
+
+        def communicate(
+            input: bytes | None = None,
+            timeout: float | None = None,
+        ) -> tuple[bytes, bytes]:
+            del input, timeout
+            root._direct_children = [late_spawn]
+            root._recursive_children = [late_spawn]
+            return b"ok", b""
+
+        handle._proc.communicate = communicate
+
+        stdout, stderr = handle.communicate_and_cleanup()
+
+        assert stdout == b"ok"
+        assert stderr == b""
+        assert late_spawn._killed is True
+        assert handle.record.status == ProcessStatus.EXITED
+
     def test_kills_all_snapshot_descendants(self) -> None:
         child_one = TreeProcess(pid=1001, stubborn=True)
         child_two = TreeProcess(pid=1002, stubborn=True)

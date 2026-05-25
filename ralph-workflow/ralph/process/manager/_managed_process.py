@@ -106,8 +106,23 @@ class ManagedProcess:
                     )
             raise
 
-        if snapshot_descendants and psutil_mod is not None:
-            self._cleanup_descendant_waves(psutil_mod, snapshot_descendants, cleanup_grace_period_s)
+        if psutil_mod is not None:
+            live_descendants = list(snapshot_descendants)
+            root_descendants = self._snapshot_live_descendants()
+            if root_descendants:
+                seen_pids: set[int] = set()
+                live_descendants = []
+                for proc in [*snapshot_descendants, *root_descendants]:
+                    raw_pid: object = getattr(proc, "pid", None)
+                    proc_pid = int(raw_pid) if isinstance(raw_pid, int) else id(proc)
+                    if proc_pid in seen_pids:
+                        continue
+                    seen_pids.add(proc_pid)
+                    live_descendants.append(proc)
+            if live_descendants:
+                self._cleanup_descendant_waves(
+                    psutil_mod, live_descendants, cleanup_grace_period_s
+                )
         return stdout, stderr
 
     def _snapshot_live_descendants(self) -> list[_PsutilProcessLike]:
