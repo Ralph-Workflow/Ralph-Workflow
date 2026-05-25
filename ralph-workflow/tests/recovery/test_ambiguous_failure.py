@@ -392,7 +392,7 @@ def test_plan_artifact_validation_error_via_controller_does_not_debit_budget() -
 )
 def test_all_typed_artifact_validation_errors_route_to_artifact_validation(
     normalize_target: str,
-    malformed_payload: dict,
+    malformed_payload: dict[str, object],
     expected_type_name: str,
 ) -> None:
     """For every typed ValidationError class produced by an artifact normalize function,
