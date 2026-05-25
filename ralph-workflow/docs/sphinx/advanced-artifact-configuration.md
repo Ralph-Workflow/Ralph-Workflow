@@ -1,5 +1,9 @@
 # Advanced Artifact Configuration
 
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This page is for operators who want to change the **typed outputs Ralph Workflow expects and records**.
 Use it when you need to edit contracts, decision vocabularies, or summary paths without guessing how those outputs connect back to the workflow.
 

@@ -1,5 +1,11 @@
 # Configuration Reference
 
+> **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) before diving into config details.
+
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Use this page when your question is about files, precedence, validation commands, or configuration edits. If you want docs routed by use case instead of page type, open [End-User Stories](user-stories.md).
 
 This page answers the operator question quickly: which file do I edit, at which scope, and how do I validate the change safely?

@@ -1,11 +1,12 @@
 # Documentation Map
 
-Use this page after [README.md](../README.md) and [START_HERE.md](../START_HERE.md).
-Those pages explain what Ralph Workflow is, why the simple core matters, and how to judge one honest first run.
-This page is the switchboard for the next question you actually have.
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
 
-Ralph Workflow works with the coding agents you already use.
-Keep your existing setup and keep your keys to yourself unless you explicitly choose a direct integration path.
+
+Use this page after [README.md](../README.md) and [START_HERE.md](../START_HERE.md).
+Those pages explain what Ralph Workflow is and how to judge one honest first run.
+This page routes you to the next page that best matches your question.
 
 ## Choose one route
 
