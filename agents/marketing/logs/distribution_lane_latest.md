@@ -1,15 +1,17 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-25T02:17:53
+Generated: 2026-05-25T03:25:42
 Chosen lane: **primary_repo_flat_contact_handoff_packet**
 
 ## Why this lane
-- Fresh primary-repo-flat publisher targets now have verified public contact paths; turn them into one Codeberg-first execution packet instead of stalling inside measurement hold.
+- The StackOverflow recovery lane is exhausted and fresh primary-repo-flat publisher targets now have verified public contact paths; turn them into one Codeberg-first execution packet instead of hiding inside measurement hold.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 6 directory submissions already shipped in the last 24 hours.
-- 5 curator contact attempts already shipped in the last 24 hours.
-- 1 live external marketing action(s) already shipped in the last 6 hours.
+- 5 directory submissions already shipped in the last 24 hours.
+- 6 curator contact attempts already shipped in the last 24 hours.
+- 5 live external marketing action(s) already shipped in the last 6 hours.
+- If no new outcome lands first, this short-window congestion clears at 2026-05-25T07:20:16. Before then, another live outbound action would mostly blur measurement.
+- Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.
 - Active repair window says to pause net-new directory submissions until current approval windows mature.
-- Active repair window says to hold another same-family curator-contact burst and use a different lane.
+- Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
@@ -17,10 +19,10 @@ Chosen lane: **primary_repo_flat_contact_handoff_packet**
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
 - No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.
-- Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.
-- Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, Bollwerk / Werkstatt, HidsTech), so those targets should not be re-queued immediately.
+- Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
+- Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, Beam, Bollwerk / Werkstatt), so those targets should not be re-queued immediately.
 - Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum), so they should not keep this lane looking actionable until a sendable path exists.
-- Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (ToolChase, Beam), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.
+- Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (NxCode, TIMEWELL), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.

@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-05-25T03:25:42",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "primary_repo_flat_contact_route_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Promoted fresh publisher targets into sendable contact routes for post-hold execution",
+    "artifact": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_primary_repo_flat_contact_handoff_packet.md"
+  },
+  "why_this_action": {
+    "summary": "The first expansion pass still left NxCode and TIMEWELL classified as non-runtime-sendable, so I repaired contact-route extraction to consume explicit contact/legal pages and strip noisy font assets before refreshing the publisher packet.",
+    "shared_findings_used": [
+      "primary_repo_flat_contact_discovery_latest.json: NxCode and TIMEWELL were present but still downgraded to non-runtime-sendable",
+      "marketing_execution_board_latest.md: board truth still reported no do-now packet in the current hold window",
+      "adoption_metrics_latest.json: Codeberg remains flat and is still the only success gate that matters",
+      "market_intelligence_latest.json: reuse comparison framing instead of inventing a new lane from scratch"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Repaired primary-repo-flat contact extraction, refreshed discovery outputs, and regenerated the canonical publisher packet/execution board so the scheduled post-hold run now has fresh email-sendable reserve targets.",
+    "targets_prepared": [
+      "NxCode",
+      "TIMEWELL"
+    ],
+    "verification": {
+      "primary_repo_flat_discovery_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json",
+      "primary_repo_flat_packet_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_primary_repo_flat_contact_handoff_packet.md",
+      "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md",
+      "distribution_lane": "primary_repo_flat_contact_handoff_packet",
+      "distribution_lane_reason": "The StackOverflow recovery lane is exhausted and fresh primary-repo-flat publisher targets now have verified public contact paths; turn them into one Codeberg-first execution packet instead of hiding inside measurement hold."
+    }
+  }
+}

@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-05-25T01:49:13.141972+02:00",
+  "checked_at": "2026-05-25T02:42:05.138381+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-25T01:49:13.118616"
+      "summary": "runner ok=True generated_at=2026-05-25T02:42:05.118690"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
@@ -13,7 +13,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "repair_window_status=measurement_pending; failing_tactics=['primary_repo_flat_window', 'mirror_repo_flat_window', 'same_family_distribution_overlap', 'same_family_outreach_overlap']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat', 'same_family_distribution_overlap', 'same_family_outreach_overlap']"
+      "summary": "repair_window_status=measurement_pending; failing_tactics=['primary_repo_flat_window', 'mirror_repo_flat_window', 'same_family_distribution_overlap']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat', 'same_family_distribution_overlap']"
     }
   ],
   "watchpoints": [

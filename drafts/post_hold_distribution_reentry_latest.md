@@ -1,6 +1,6 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-05-25T01:47:40
-- Hold release at: 2026-05-25T02:05:05
+Generated: 2026-05-25T02:59:00
+- Hold release at: 2026-05-25T07:20:16
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot
@@ -10,7 +10,7 @@ Generated: 2026-05-25T01:47:40
 
 ## Current blocked-lane truth to preserve
 - Remaining publisher discovery is still non-runtime-sendable here and requires public-path/Telegram follow-through: ctxt.dev / Signum.
-- Manual-executable primary-repo-flat publisher targets would still be: ToolChase, Beam.
+- No fresh manual-executable primary-repo-flat publisher targets are currently available.
 - StackOverflow is exhausted for this review window; do not spend the re-entry slot refreshing that packet.
 - Curator/comparison/manual-contact packets that were already delivered in the current review window remain reference artifacts, not fresh actions.
 - Apollo remains inside its existing review window, so do not mistake "still measuring" for a reason to idle again.

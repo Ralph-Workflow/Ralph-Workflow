@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-25T02:17:53.540713",
+  "timestamp": "2026-05-25T02:40:45.623435",
   "weekly_mode": true,
   "marketing_status": "measurement_hold",
   "measurement_hold": {
@@ -10,22 +10,24 @@
     "reason": "The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search."
   },
   "distribution_lane": {
-    "lane": "primary_repo_flat_contact_handoff_packet",
-    "reason": "Fresh primary-repo-flat publisher targets now have verified public contact paths; turn them into one Codeberg-first execution packet instead of stalling inside measurement hold.",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_distribution_action_brief.md"
+    "lane": "measurement_hold",
+    "reason": "The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_023723_measurement_hold_follow_through.md"
   },
   "distribution_execution": {
-    "action_type": "primary_repo_flat_contact_handoff_follow_through",
-    "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_primary_repo_flat_contact_handoff_follow_through.md",
-    "summary": "Detected that the primary-repo-flat publisher contact packet already matches the discovered target set, so this run enforced follow-through instead of regenerating the same packet.",
-    "targets_prepared": [],
+    "action_type": "measurement_hold_follow_through",
+    "status": "executed",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_023723_measurement_hold_follow_through.md",
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Scheduled an automatic post-hold marketer rerun at the exact short-window release time. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
+    "targets_prepared": [
+      "Beam"
+    ],
     "live_external_action": false,
     "blocking_factors": [],
-    "reused_existing_follow_through": false
+    "reused_existing_follow_through": true
   },
   "seo": {
-    "timestamp": "2026-05-25T02:17:53.604577",
+    "timestamp": "2026-05-25T02:40:45.714983",
     "onpage_score": "90/100 (A)",
     "homepage_ok": true,
     "sitemap_urls": 80,
@@ -71,6 +73,6 @@
     "stdout": "skipped: active measurement-hold cooldown",
     "stderr": ""
   },
-  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_021753_measurement_hold_skip.json",
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_021753_primary_repo_flat_contact_handoff_follow_through.json"
+  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_024045_measurement_hold_skip.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_023723_measurement_hold_follow_through.json"
 }

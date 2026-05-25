@@ -377,6 +377,80 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('prompt and post-hold re-entry repairs are already in place', artifact_text)
         self.assertIn('suppress duplicate follow-through', execution.summary)
 
+    def test_measurement_hold_churn_guard_uses_global_repairs_and_escalates_on_third_event(self):
+        now = datetime(2026, 5, 25, 3, 11, 0)
+        decision = LaneDecision(
+            lane='measurement_hold',
+            reason='Hold for truthful re-entry after the short review window clears.',
+            reasons=['multiple fresh external actions already overlap'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+            short_review_window_release_at='2026-05-25T07:20:16',
+        )
+        active_hold = {
+            'hold_started_at': datetime(2026, 5, 25, 1, 47, 40, 177303),
+            'hold_until': datetime(2026, 5, 25, 7, 20, 16),
+            'source_log': '/tmp/hold.json',
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            repeated_logs = [
+                ('marketing_2026-05-25_014740_measurement_hold_execution.json', '2026-05-25T01:47:40.177303', 'measurement_hold_execution'),
+                ('marketing_2026-05-25_023723_measurement_hold_follow_through.json', '2026-05-25T02:37:23.000000', 'measurement_hold_follow_through'),
+                ('marketing_2026-05-24_234934_active_loop_prompt_repair.json', '2026-05-24T23:49:34.370467', 'active_loop_prompt_repair'),
+                ('marketing_2026-05-24_235759_post_hold_reentry_contract_repair.json', '2026-05-24T23:57:59.977354+02:00', 'post_hold_reentry_contract_repair'),
+                ('marketing_2026-05-25_023723_measurement_hold_release_cron.json', '2026-05-25T02:37:23.000000', 'measurement_hold_release_cron'),
+            ]
+            for filename, timestamp, action_type in repeated_logs:
+                (log_dir / filename).write_text(
+                    json.dumps({
+                        'timestamp': timestamp,
+                        'chosen_action': {'type': action_type},
+                        'review_window': {'scheduled_run_at': '2026-05-25T07:20:16'} if action_type == 'measurement_hold_release_cron' else {},
+                        'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                    }),
+                    encoding='utf-8',
+                )
+
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'short_review_window_release_at': '2026-05-25T07:20:16'}),
+                encoding='utf-8',
+            )
+            (log_dir / 'apollo_sequence_status_latest.json').write_text(json.dumps({}), encoding='utf-8')
+            (log_dir / 'curator_outreach_queue_latest.json').write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (log_dir / 'comparison_backlink_queue_latest.json').write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (log_dir / 'curator_contact_discovery_latest.json').write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md').write_text('# packet\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'), \
+                 patch.object(distribution_lane_executor, 'CURATOR_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'curator_contact_discovery_latest.json'), \
+                 patch.object(distribution_lane_executor, 'latest_measurement_hold_window', return_value=active_hold), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.return_value.returncode = 1
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+
+        self.assertEqual(execution.action_type, 'measurement_hold_churn_guard_repair')
+        self.assertIn('hold event #3', artifact_text)
+        self.assertIn('already in place for this hold cycle', artifact_text)
+        self.assertIn('third hold-window event', execution.summary)
+
     def test_measurement_hold_execution_schedules_post_hold_rerun(self):
         now = datetime(2026, 5, 24, 21, 57, 0)
         decision = LaneDecision(
@@ -949,6 +1023,94 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('https://toolwise.ai/tools/ralph-workflow', comparison_text)
         self.assertIn('curator handoff packet', artifact_text)
         self.assertIn('comparison handoff packet', artifact_text)
+
+    def test_measurement_hold_rewrites_execution_board_after_primary_repo_flat_packet_refresh(self):
+        now = datetime(2026, 5, 25, 2, 51, 0)
+        decision = LaneDecision(
+            lane='measurement_hold',
+            reason='Hold for follow-through.',
+            reasons=['fresh external actions already shipped'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'adoption_metrics_latest.json').write_text(
+                json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}),
+                encoding='utf-8',
+            )
+            (log_dir / 'backlink_status_latest.json').write_text(
+                json.dumps({
+                    'directories': {
+                        'SaaSHub': {'listing_live': True, 'listing_url': 'https://saashub.com/ralph-workflow'},
+                        'ToolWise': {'listing_live': True, 'listing_url': 'https://toolwise.ai/tools/ralph-workflow'},
+                    }
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_measurement_hold_execution.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T02:30:00',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'why_this_action': {'summary': 'Existing short review window hold.'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'short_review_window_release_at': '2026-05-25T07:20:16'}),
+                encoding='utf-8',
+            )
+            (log_dir / 'curator_outreach_queue_latest.json').write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (log_dir / 'comparison_backlink_queue_latest.json').write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'Beam',
+                            'article_url': 'https://getbeam.dev/blog/ai-coding-agents-comparison-2026.html',
+                            'root_url': 'https://getbeam.dev/',
+                            'hook': 'Claude Code vs Cursor vs Codex comparison for terminal-first builders',
+                            'reason': 'Highly adjacent audience already thinking about agent autonomy, workflow fit, and terminal-native execution.',
+                            'outreach_subject': 'Ralph Workflow as a workflow-system reference for your coding agents comparison',
+                            'channels': [
+                                {'type': 'email', 'value': 'frank@nextuptechnologies.co', 'label': 'email'}
+                            ],
+                            'recommended_next_step': 'email/contact send path is now identified',
+                        }
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text(
+                '# Ralph Workflow Primary-Repo-Flat Publisher Contact Packet\n\n### 1. Beam\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', log_dir / 'adoption_metrics_latest.json'), \
+                 patch.object(distribution_lane_executor, 'BACKLINK_STATUS_LATEST_PATH', log_dir / 'backlink_status_latest.json'), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.return_value.returncode = 1
+                distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            board_text = (drafts_dir / 'marketing_execution_board_latest.md').read_text(encoding='utf-8')
+
+        self.assertIn('A refreshed primary-repo-flat publisher packet now exists for the new target set, but the short review window is still active', board_text)
+        self.assertNotIn('Primary-repo-flat publisher discovery has changed, but the canonical handoff packet is stale', board_text)
 
     def test_execution_board_skips_already_delivered_curator_manual_contact_packet(self):
         now = datetime(2026, 5, 24, 10, 40, 0)

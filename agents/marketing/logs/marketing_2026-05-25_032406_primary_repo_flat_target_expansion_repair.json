@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-05-25T03:24:06",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "primary_repo_flat_target_expansion_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Expanded publisher-contact reserve with fresh sendable comparison targets",
+    "artifact": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_primary_repo_flat_contact_handoff_packet.md"
+  },
+  "why_this_action": {
+    "summary": "The active hold window had no truthful do-now packet, so I expanded the primary-repo-flat publisher reserve with fresh sendable targets and refreshed the canonical handoff assets for the scheduled post-hold rerun.",
+    "shared_findings_used": [
+      "market_intelligence_latest.json: comparison framing and product truths",
+      "adoption_metrics_latest.json: Codeberg remains the primary success gate",
+      "marketing_workflow_audit_latest.json: primary bottleneck is still distribution + conversion to Codeberg",
+      "distribution_lane_latest.json: active lane is measurement_hold with post-hold rerun already scheduled",
+      "marketing_execution_board_latest.md: no truthful do-now packet existed in the current review window"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Added NxCode and TIMEWELL as fresh publisher-contact targets, regenerated the primary-repo-flat discovery artifact, refreshed the canonical publisher packet, and rewrote the execution board/lane snapshot so the scheduled post-hold run sees truthful fresh reserve targets.",
+    "targets_prepared": [],
+    "verification": {
+      "primary_repo_flat_discovery_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json",
+      "primary_repo_flat_packet_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_primary_repo_flat_contact_handoff_packet.md",
+      "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md",
+      "distribution_lane": "measurement_hold",
+      "distribution_lane_reason": "The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search."
+    }
+  }
+}

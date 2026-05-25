@@ -1,11 +1,9 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-24 23:49 UTC
+Timestamp: 2026-05-25 00:40 UTC
 
 ## ralph-docs-watchdog
 - Status: ok
-- Repairs:
-  - runner artifact was stale; executed runner
 - Checker: `DOCS_QUALITY_OK`
 
 ## autonomous-marketing-stack
@@ -19,8 +17,8 @@ Timestamp: 2026-05-24 23:49 UTC
   - runner failed after checker failure
   - independent verifier failed after remediation
   - checker still failing after remediation/verifier pass
-- Checker: `MARKETING_LOOP_FAIL: stale artifacts: /home/mistlight/.openclaw/workspace/drafts/reddit_next_window_packets_latest.md`
-- Checker after repair: `MARKETING_LOOP_FAIL: stale artifacts: /home/mistlight/.openclaw/workspace/drafts/reddit_next_window_packets_latest.md`
+- Checker: `MARKETING_LOOP_FAIL: primary repo adoption remains flat inside a measurement-pending repair window; do not certify health yet`
+- Checker after repair: `MARKETING_LOOP_FAIL: primary repo adoption remains flat inside a measurement-pending repair window; do not certify health yet`
 
 ## ralph-site-owner-loop
 - Status: owner_only

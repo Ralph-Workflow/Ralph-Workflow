@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-24T22:35:25.758867+00:00",
+  "generated_at": "2026-05-25T01:25:27.172422+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -69,27 +69,123 @@
       "recommended_next_step": "email/contact send path is now identified"
     },
     {
-      "target": "Beam",
-      "article_url": "https://getbeam.dev/blog/ai-coding-agents-comparison-2026.html",
-      "root_url": "https://getbeam.dev/",
-      "hook": "Claude Code vs Cursor vs Codex comparison for terminal-first builders",
-      "reason": "Highly adjacent audience already thinking about agent autonomy, workflow fit, and terminal-native execution.",
-      "outreach_subject": "Ralph Workflow as a workflow-system reference for your coding agents comparison",
+      "target": "NxCode",
+      "article_url": "https://www.nxcode.io/resources/news/codex-vs-cursor-vs-claude-code-2026",
+      "root_url": "https://www.nxcode.io/",
+      "hook": "Codex vs Cursor vs Claude Code comparison with workflow-specific tradeoffs",
+      "reason": "Direct AI-coding comparison audience already evaluating when autonomous background agents beat interactive editors.",
+      "outreach_subject": "Ralph Workflow as a workflow-system addition to your AI coding tools comparison",
       "channels": [
         {
           "type": "email",
-          "value": "frank@nextuptechnologies.co",
+          "value": "legal@nxcode.io",
+          "label": "email"
+        },
+        {
+          "type": "email",
+          "value": "privacy@nxcode.io",
+          "label": "email"
+        },
+        {
+          "type": "email",
+          "value": "support@nxcode.io",
           "label": "email"
         },
         {
           "type": "website",
-          "value": "https://getbeam.dev/blog/claude-code-agent-teams-guide.html",
+          "value": "https://www.nxcode.io/ar/contact",
           "label": "contact page"
         },
         {
           "type": "website",
-          "value": "https://getbeam.dev",
-          "label": "website"
+          "value": "https://www.nxcode.io/company/about",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://www.nxcode.io/company/careers",
+          "label": "contact page"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/intent/tweet?text=Codex%20vs%20Cursor%20vs%20Claude%20Code%3A%20AI%20Coding%20Tool%20Comparison%20(2026)&url=https%3A%2F%2Fwww.nxcode.io%2Fresources%2Fnews%2Fcodex-vs-cursor-vs-claude-code-2026",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/nxcode",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/nxcode",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fwww.nxcode.io%2Fresources%2Fnews%2Fcodex-vs-cursor-vs-claude-code-2026",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "TIMEWELL",
+      "article_url": "https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026",
+      "root_url": "https://timewell.jp/en/",
+      "hook": "AI coding tools benchmark focused on agent-style development and review discipline",
+      "reason": "Strong adjacent audience for process-layer framing because the article already centers on briefing, review, and multi-tool operating models.",
+      "outreach_subject": "Ralph Workflow for your next AI coding tools benchmark update",
+      "channels": [
+        {
+          "type": "email",
+          "value": "timewell@timewell.jp",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://timewell.jp/about",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://timewell.jp/company",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://timewell.jp/company/members",
+          "label": "contact page"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/intent/tweet?url=&text=AI%20Coding%20Tools%20Compared%20%5BLatest%202026%5D%3A%20Claude%20Code%2C%20Cursor%2C%20Copilot%2C%20Cline%2C%20Continue%2C%20Devin%2C%20Codex%20-%20A%20Thorough%20Benchmark",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/TIMEWELL_PR",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/TIMEWELL_PR\\\\\\",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/timewell-corp",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/timewell-corp/\\\\\\",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/sharing/share-offsite/?url=",
+          "label": "LinkedIn"
         }
       ],
       "recommended_next_step": "email/contact send path is now identified"
@@ -97,6 +193,7 @@
   ],
   "omitted_recent_targets": [
     "AXME Code",
+    "Beam",
     "Bollwerk / Werkstatt",
     "WyeWorks"
   ]

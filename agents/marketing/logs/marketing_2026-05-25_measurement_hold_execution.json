@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-25T01:47:40.177303",
+  "timestamp": "2026-05-25T02:59:00",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "measurement_hold_execution",
     "channel": "measurement_hold",
     "title": "Distribution lane execution: measurement_hold",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_014740_measurement_hold.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_025900_measurement_hold.md"
   },
   "why_this_action": {
     "summary": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions.",

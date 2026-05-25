@@ -1,5 +1,14 @@
 # Outreach Log
 
+## 2026-05-25 (Monday) — ToolChase publisher outreach executed (00:24 UTC / 02:24 CEST)
+- **What I executed:** submitted Ralph Workflow to **ToolChase** through its live public contact form at `https://toolchase.com/contact/` after verifying the developer-native comparison fit and the confirmation page path. The pitch stayed **Codeberg-first**, with GitHub explicitly framed as the mirror.
+- **Verification:** the delivery log at `agents/marketing/logs/marketing_2026-05-25_002428_toolchase_contact_form_submission.json` recorded HTTP **200** and the confirmation URL `https://toolchase.com/contact-received/`; the summary log at `agents/marketing/logs/marketing_2026-05-25_toolchase_publisher_outreach.json` records the executed contact-form action.
+- **Why this action:** this was the strongest truthful do-now asset on the execution board after checking the current review windows. Codeberg adoption is still flat, same-family directory/curator lanes are already saturated, and ToolChase had a real public contact path that could be executed immediately without regenerating another packet.
+- **Shared findings reused:** `MARKETING_WORKFLOW_PRINCIPLES.md`, `FOUR_MARKETING_QUESTIONS.md`, `ADOPTION_FUNNEL_NEXT.md`, `market_intelligence_latest.json`, `marketing_workflow_audit_latest.md`, `adoption_metrics_latest.json`, `primary_repo_flat_contact_discovery_latest.json`, and `primary_repo_flat_contact_handoff_packet_latest.md`.
+- **Expected outcome:** a comparison inclusion, workflow citation, or follow-up mention that sends qualified evaluators to the **primary Codeberg repo**.
+- **Measurement window:** reply review through **2026-06-01** and citation review through **2026-06-08**.
+- **Type:** **EXECUTED / DISTRIBUTION**
+
 ## 2026-05-24 (Sunday) — Reddit monitoring (20:15 UTC / 22:15 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-24_2215.md`
 - **Scan summary:** forced-refresh local monitor returned **37 scanned / 4 shortlisted** with **ok=5 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
@@ -6376,4 +6385,16 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-25 02:18:54
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-25T02:47:40.177303.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 02:38:53
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-25T02:47:40.177303.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 02:40:36
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-25T02:47:40.177303.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 02:42:05
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-25T02:47:40.177303.

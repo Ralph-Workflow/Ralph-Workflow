@@ -205,6 +205,42 @@ class MarketingDecisionTests(unittest.TestCase):
 
 
 class PrimaryRepoFlatTruthfulnessTests(unittest.TestCase):
+    def test_primary_repo_flat_contact_discovery_enriches_explicit_contact_urls_for_email(self):
+        from agents.marketing import primary_repo_flat_contact_discovery
+
+        target = primary_repo_flat_contact_discovery.Target(
+            name='NxCode',
+            article_url='https://example.com/article',
+            root_url='https://example.com/',
+            hook='Hook',
+            reason='Reason',
+            outreach_subject='Subject',
+            contact_urls=(
+                'https://example.com/contact',
+                'https://example.com/legal',
+            ),
+        )
+
+        html_map = {
+            'https://example.com/article': '<html><body><a href="/contact">Contact</a></body></html>',
+            'https://example.com/': '<html><body><a href="/_next/static/media/font.woff2">font</a></body></html>',
+            'https://example.com/contact': '<html><body>Reach us at support@example.org</body></html>',
+            'https://example.com/legal': '<html><body><a href="mailto:legal@example.org">Legal</a></body></html>',
+        }
+
+        with patch.object(primary_repo_flat_contact_discovery, 'http_get', side_effect=lambda url, timeout=20: html_map.get(url, '')):
+            finding = primary_repo_flat_contact_discovery.enrich_target(target)
+
+        channels = finding['channels']
+        emails = [row['value'] for row in channels if row['type'] == 'email']
+        websites = [row['value'] for row in channels if row['type'] == 'website']
+
+        self.assertIn('support@example.org', emails)
+        self.assertIn('legal@example.org', emails)
+        self.assertIn('https://example.com/contact', websites)
+        self.assertNotIn('https://example.com/_next/static/media/font.woff2', websites)
+        self.assertEqual(finding['recommended_next_step'], 'email/contact send path is now identified')
+
     def test_primary_repo_flat_contact_discovery_output_uses_live_audit_not_stale_repair_memo(self):
         from agents.marketing import primary_repo_flat_contact_discovery
 

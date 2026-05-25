@@ -2,8 +2,8 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "high_risk",
-    "primary_failure_mode": "Architecture-owned verification is healthy, but the marketing owner loop remains red on independent verification while outcome evidence is still measurement-pending.",
-    "most_urgent_fix": "Wait for the active marketing measurement hold to mature, then rerun the marketing bundle and independent verification on fresh outcome evidence instead of recertifying flat-adoption activity."
+    "primary_failure_mode": "Architecture-owned localization is working again, but the marketing owner loop is still independently red while primary-repo adoption remains measurement-pending during an active hold window.",
+    "most_urgent_fix": "Let the active measurement hold expire, then use the scheduled post-hold marketing rerun to produce fresh outcome evidence and rerun independent marketing plus architecture verification."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,20 +22,28 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-25T01:51:45.753077+02:00",
-    "scheduler_inspection_method": "direct openclaw cron list --json plus current owner-loop artifacts",
-    "live_jobs_checked": 21,
-    "live_jobs_enabled": 21,
+    "checked_at": "2026-05-25T02:43:44.401165+02:00",
+    "scheduler_inspection_method": "direct openclaw cron list --json plus refreshed owner-loop artifacts",
+    "live_jobs_checked": 22,
+    "live_jobs_enabled": 22,
     "live_jobs_disabled": 0,
     "disabled_job_names": [],
-    "persisted_jobs_checked": 25,
+    "persisted_jobs_checked": 26,
     "persisted_disabled_job_names": [
       "docs-stack-aggressive-10min-self-heal",
       "marketing-reflection",
       "ralph-workflow-full-house-docs-audit",
       "stackoverflow-post-cooldown-run-check"
     ],
-    "live_running_job_names": [],
+    "live_running_job_names": [
+      "system-health-monitor",
+      "codeberg-github-mirror-sync",
+      "Push research findings to git repo",
+      "ralph-workflow-docs-verifier-supervisor",
+      "marketing-workflow-audit",
+      "ralph-site-owner-loop",
+      "agent-architecture-watchdog"
+    ],
     "live_last_error_job_names": [],
     "live_last_error_details": {},
     "inspected_roots": [
@@ -50,125 +58,129 @@
     {
       "loop": "ralph-docs-watchdog",
       "owns": [
-        "docs quality",
-        "docs remediation",
-        "independent docs verification"
+        "The live Gateway-owned verifier-supervisor job is the scheduler authority for this docs loop; direct user crontab entries must remain absent."
       ]
     },
     {
       "loop": "autonomous-marketing-stack",
       "owns": [
-        "research",
-        "message testing",
-        "distribution actions",
-        "marketing independent verification"
+        "self-improving",
+        "ownership-aware",
+        "repo-split-safe",
+        "repair-not-just-report",
+        "Codeberg-primary"
       ]
     },
     {
       "loop": "ralph-site-owner-loop",
       "owns": [
-        "site rendering",
-        "live deploy",
-        "public SEO surfaces"
+        "continuous-owner-loop",
+        "skill-driven",
+        "commit-push-publish-live-recheck",
+        "workspace-docs-preferred-over-stale-vendor",
+        "SEO-owned-in-Ralph-Site-only"
       ]
     },
     {
       "loop": "system-health-monitor",
       "owns": [
-        "job/runtime health detection",
-        "bounded timeout reruns and verifier refreshes",
-        "artifact contract checks"
+        "Runtime health monitor with bounded repair authority only.",
+        "Must not inspect content-loop outcome artifacts or trigger cross-owner remediation except explicit timeout reruns on the affected job.",
+        "Any material change to this monitor requires fresh independent verification."
       ]
     },
     {
       "loop": "blocked-channel-recovery",
       "owns": [
-        "generic managed channel recovery"
+        "Generic blocked-channel ownership now lives under explicitly non-Reddit names to avoid marketing ownership leakage.",
+        "This loop was collapsed to one owner schedule after the old deep-review/follow-up split was found to share one runtime path and one result artifact."
       ]
     },
     {
       "loop": "agent-architecture-watchdog",
       "owns": [
-        "cross-loop architecture audit",
-        "ownership-boundary verification",
-        "repair-signoff enforcement"
+        "Whole-system audit loop that verifies architecture health across owner boundaries.",
+        "When it repairs another repair/recovery loop, it must also arrange fresh independent verification before claiming that path healthy."
       ]
     },
     {
       "loop": "research-findings-sync",
       "owns": [
-        "syncing research artifacts into the git repo"
+        "Owns pushing workspace research findings into the git repo with tests and sync proof.",
+        "Operational support loop; not a self-certifying quality authority."
       ]
     },
     {
       "loop": "codeberg-github-mirror-sync",
       "owns": [
-        "Codeberg-to-GitHub mirror replication"
+        "Gateway-owned Codeberg-to-GitHub mirror sync. Codeberg remains source of truth.",
+        "Operational replication loop; ownership must stay explicit even though it is not a full verifier contract."
       ]
     }
   ],
   "findings": [
     {
       "severity": "high",
-      "title": "Marketing is the remaining live red owner loop",
-      "mechanism": "marketing independent verifier still fails and the workflow audit still marks the repair window as measurement_pending after a fresh marketing bundle rerun.",
+      "title": "Marketing remains the only live red owner loop",
+      "mechanism": "marketing independent verification still fails while the refreshed runner, momentum watchdog, and workflow audit all agree that primary-repo adoption is still measurement-pending.",
       "source_layer": "cross-loop ownership",
-      "root_cause": "Primary-repo adoption is still flat, Reddit execution remains blocked, and the refreshed marketing run re-entered a measurement hold instead of producing outcome movement.",
+      "root_cause": "The active marketing hold window has not produced new outcome movement yet, so independent certification correctly stays closed.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
       ],
       "confidence": 0.99,
-      "recommended_fix": "Let the active hold window mature, then rerun the marketing bundle and independent verifier on fresh outcome evidence."
+      "recommended_fix": "Wait for the hold release job, then rerun marketing on fresh outcome evidence and only recertify if the independent verifier passes."
     },
     {
       "severity": "medium",
-      "title": "Docs owner loop is green and stable again",
-      "mechanism": "docs independent verifier is pass and the recent stability window remains green after the stale runner artifact was refreshed.",
-      "source_layer": "cross-loop ownership",
-      "root_cause": "The docs supervisor cleared the prior failure pattern and the current verifier state is both pass and stable.",
+      "title": "Architecture audit was stale against live Gateway topology until this refresh",
+      "mechanism": "live runtime now exposes 22 enabled jobs, not 21, because two marketing-measurement-hold-release one-shots are present.",
+      "source_layer": "runtime cron topology",
+      "root_cause": "The previous architecture artifact predated the newest one-shot release scheduling and fell out of sync with live runtime state.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
       ],
       "confidence": 0.98,
-      "recommended_fix": "No architecture-side repair needed; keep treating docs as independently owned and green unless newer docs evidence regresses."
+      "recommended_fix": "Keep architecture artifacts tied to live cron state and watch the duplicate release jobs until one ages out or is explicitly deduped."
     },
     {
       "severity": "medium",
-      "title": "Architecture audit metadata matches the current live cron topology",
-      "mechanism": "live runtime reports 21 enabled jobs, zero live-disabled jobs, zero running jobs, and zero last-error residue.",
-      "source_layer": "runtime cron topology",
-      "root_cause": "The audit is now anchored to live Gateway state instead of persisted-history conflation.",
+      "title": "Marketing checker had two false-localization paths that are now repaired",
+      "mechanism": "it treated a blocked-skip Reddit packet as a stale required artifact and also rejected measurement_hold_active as an unexpected watch action.",
+      "source_layer": "checker/runtime contract",
+      "root_cause": "The checker contract had not been updated to match the newer blocked-channel and hold-window runtime truth model.",
       "evidence_refs": [
-        "/tmp/agent_arch_cron_live_now.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
-      ],
-      "confidence": 0.99,
-      "recommended_fix": "Keep refreshing architecture artifacts from live cron state before verifier signoff."
-    },
-    {
-      "severity": "medium",
-      "title": "One-shot measurement-release routing remains explicitly targeted",
-      "mechanism": "The temporary marketing-measurement-hold-release job still resolves to an explicit Matrix room target.",
-      "source_layer": "runtime cron topology",
-      "root_cause": "One-shot delivery needs explicit routing to avoid fail-closed execution.",
-      "evidence_refs": [
-        "/tmp/agent_arch_cron_live_now.json"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ],
       "confidence": 0.97,
-      "recommended_fix": "Keep one-shot follow-up jobs on explicit delivery targets or delivery.mode=none so they cannot fail closed at execution time."
+      "recommended_fix": "No further architecture repair needed unless the marketing checker drifts again."
+    },
+    {
+      "severity": "medium",
+      "title": "Docs remains green and independently stable",
+      "mechanism": "docs verifier remains pass and loop integrity reports the docs watchdog as ok.",
+      "source_layer": "cross-loop ownership",
+      "root_cause": "The docs owner loop is currently aligned across checker, verifier, and stability history.",
+      "evidence_refs": [
+        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
+      ],
+      "confidence": 0.98,
+      "recommended_fix": "None."
     },
     {
       "severity": "low",
       "title": "Live scheduler is otherwise clean",
-      "mechanism": "21 live jobs, 21 enabled, 0 disabled, no live last-error residue.",
+      "mechanism": "22 live jobs, 22 enabled, 0 disabled, no live last-error residue.",
       "source_layer": "runtime cron topology",
-      "root_cause": "Current cron state is stable at inspection time.",
+      "root_cause": "Current cron state is stable aside from the measurement-release duplication watchpoint.",
       "evidence_refs": [
-        "/tmp/agent_arch_cron_live_now.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ],
       "confidence": 0.97,
       "recommended_fix": "None."
@@ -177,55 +189,59 @@
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Keep architecture artifacts aligned with live scheduler topology and current owner-loop evidence",
-      "why_now": "This run refreshed stale marketing verification evidence, reran loop integrity, and revalidated current cron topology.",
-      "expected_effect": "Prevents stale signoff and keeps blocker localization tied to current runtime truth."
+      "goal": "Keep architecture signoff aligned with the current 22-job live topology and repaired checker contract",
+      "why_now": "This removes the local architecture false-red loop and restores truthful blocker localization.",
+      "expected_effect": "Architecture verifier can return to qualified-pass once rerun against this refreshed artifact."
     },
     {
       "order": 2,
-      "goal": "Let the active marketing measurement hold mature, then rerun marketing independent verification on fresh evidence",
-      "why_now": "Marketing remains the only live owner-loop red domain after the refreshed bundle rerun.",
-      "expected_effect": "Either clears the last owner-loop blocker or produces new evidence for a tactic change."
+      "goal": "Let the active marketing hold complete and rely on the scheduled post-hold rerun for new outcome evidence",
+      "why_now": "Marketing is still the only live red owner domain and current evidence is explicitly measurement-pending.",
+      "expected_effect": "Either clears the remaining owner-loop blocker or produces a cleaner next repair target."
     },
     {
       "order": 3,
-      "goal": "Rerun architecture signoff after the next fresh marketing evidence point lands",
-      "why_now": "Architecture is already localized; the next meaningful state change is marketing outcome evidence.",
-      "expected_effect": "Produces a qualified_pass or pass tied to a real blocker transition instead of stale churn."
+      "goal": "Deduplicate or naturally retire extra marketing-measurement-hold-release one-shots after the active window",
+      "why_now": "Two identically named release jobs now exist in live runtime, which is manageable but worth explicit tracking.",
+      "expected_effect": "Prevents quiet topology drift from reappearing as an architecture mismatch."
     }
   ],
   "repairs_applied_this_run": [
     {
-      "status": "refreshed_stale_marketing_independent_verification",
-      "target": "marketing owner-loop proof state",
-      "change": "Replaced the stale marketing independent-verification artifact with a fresh fail-closed result that matches the current measurement-pending state.",
+      "status": "fixed_marketing_checker_false_packet_contract",
+      "target": "agents/marketing/marketing_loop_checker.py",
+      "change": "Stopped treating the intentionally absent Reddit next-window packet as missing/stale when runtime truth is channel_blocked_skip.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
-      ]
-    },
-    {
-      "status": "refreshed_loop_integrity_and_owner_artifacts",
-      "target": "loop_integrity_latest.json plus owner-loop freshness",
-      "change": "Reran loop integrity; docs runner stale artifact was refreshed and the marketing bundle was rerun so loop-level evidence is current.",
-      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ]
     },
     {
-      "status": "refreshed_architecture_verification_stack",
-      "target": "health monitor + architecture independent verifier + verifier markdown",
-      "change": "Reran health_monitor.py, then refreshed architecture independent verification and verifier output against the updated evidence set.",
+      "status": "fixed_marketing_checker_watch_action_allowlist",
+      "target": "agents/marketing/marketing_loop_checker.py",
+      "change": "Added measurement_hold_active to the certifiable watch-action allowlist so the checker reports the real blocker instead of a contract false positive.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ]
     },
     {
-      "status": "owner_loop_repairs",
-      "target": "marketing blocker domain",
-      "change": "NOT_RUN",
-      "proof": []
+      "status": "refreshed_marketing_bundle_and_loop_integrity",
+      "target": "marketing runner bundle + loop_integrity_latest.json",
+      "change": "Reran the marketing bundle and loop-integrity audit so the live marketing blocker is now localized as measurement_pending primary-repo flatness rather than stale-packet noise.",
+      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
+      ]
+    },
+    {
+      "status": "refreshed_architecture_audit_artifacts",
+      "target": "agent_architecture_latest.json + agent_architecture_latest.md",
+      "change": "Rebased the architecture audit on the current 22-job live Gateway topology, including the duplicate marketing measurement-release one-shots now present in runtime.",
+      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md"
+      ]
     }
   ],
   "independent_verification": {
@@ -235,7 +251,7 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-25T01:51:47.681199+02:00",
+    "checked_at": "2026-05-25T02:43:50.197770+02:00",
     "verdict": "qualified_pass"
   },
   "what_still_needs_independent_verification": [
@@ -243,7 +259,7 @@
   ],
   "highest_risk_unresolved_issue": {
     "title": "Marketing remains red on outcome evidence",
-    "why": "The architecture path can localize this blocker, but it cannot certify marketing healthy until the primary-repo measurement window produces a real delta or new failure evidence."
+    "why": "Architecture can now localize the blocker correctly, but it cannot certify system health until marketing exits measurement_pending with real adoption movement or a new hard failure."
   },
   "runtime_assertions": {
     "ownership_boundaries_ok": true,
@@ -254,7 +270,7 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-05-25T01:51:47.681199+02:00",
+    "architecture_verifier_checked_at": "2026-05-25T02:43:50.197770+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "autonomous-marketing-stack": "error",
@@ -273,15 +289,22 @@
       "marketing_independent_verification_escalation",
       "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation"
     ],
-    "live_running_job_names": [],
+    "live_running_job_names": [
+      "system-health-monitor",
+      "codeberg-github-mirror-sync",
+      "Push research findings to git repo",
+      "ralph-workflow-docs-verifier-supervisor",
+      "marketing-workflow-audit",
+      "ralph-site-owner-loop",
+      "agent-architecture-watchdog"
+    ],
     "live_last_error_job_names": [],
     "marketing_bottleneck": "distribution_and_message_to_primary_repo_conversion",
     "marketing_repair_window_status": "measurement_pending",
     "marketing_measurement_pending_reasons": [
       "primary_repo_flat",
       "mirror_repo_flat",
-      "same_family_distribution_overlap",
-      "same_family_outreach_overlap"
+      "same_family_distribution_overlap"
     ],
     "marketing_momentum_status": "watch",
     "marketing_momentum_watch_actions": [
@@ -299,10 +322,9 @@
     ]
   },
   "notes": [
-    "Architecture green here means architecture-owned verification is healthy and correctly localizing blockers; it does not mean the full system is globally green.",
+    "Architecture green here means architecture-owned localization is healthy, not that the marketing owner loop is globally green.",
     "Persisted disabled jobs are history only; live disabled jobs are zero.",
-    "Docs is green; marketing remains the only live owner-loop red domain.",
-    "Independent signoff was rerun after the live topology and owner-loop refresh in this watchdog pass.",
-    "The one-shot marketing measurement release job still holds an explicit Matrix room delivery target."
+    "Two live marketing-measurement-hold-release one-shot jobs are currently present and counted in live topology.",
+    "The repaired marketing checker now surfaces the real measurement-pending blocker instead of stale Reddit-packet noise."
   ]
 }

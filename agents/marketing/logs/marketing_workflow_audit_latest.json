@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T01:49:12.897456",
+  "generated_at": "2026-05-25T02:51:38.446364",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -54,8 +54,7 @@
   "failing_tactics": [
     "primary_repo_flat_window",
     "mirror_repo_flat_window",
-    "same_family_distribution_overlap",
-    "same_family_outreach_overlap"
+    "same_family_distribution_overlap"
   ],
   "dormant_risks": [
     "reddit_style_repetition_suspended_while_channel_blocked"
@@ -83,17 +82,6 @@
       "repair_acknowledged_at": "2026-05-24T00:57:32.198736"
     },
     {
-      "target_tactic": "curator_outreach_burst",
-      "failure_type": "same_family_outreach_overlap",
-      "repair_kind": "tactic",
-      "action": "HOLD another same-day curator-contact burst. Reuse the prepared/manual-contact artifacts already in queue and spend the next active cycle on a different lane that can create clearer demand or cleaner follow-through measurement.",
-      "kill_condition": "Another audit adds more same-family curator outreach before the existing reply/backlink windows have materially aged or produced evidence",
-      "success_metric": "Next execution lane advances a different family or executes an existing manual-contact packet instead of starting another same-day curator burst",
-      "priority": 2,
-      "repair_state": "pending_measurement",
-      "repair_acknowledged_at": "2026-05-24T00:57:32.198736"
-    },
-    {
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
@@ -108,8 +96,7 @@
   "measurement_pending_reasons": [
     "primary_repo_flat",
     "mirror_repo_flat",
-    "same_family_distribution_overlap",
-    "same_family_outreach_overlap"
+    "same_family_distribution_overlap"
   ],
   "has_failing_tactics": true,
   "reasons": [
@@ -119,8 +106,7 @@
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
     "6 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.",
-    "6 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.",
-    "The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains saashub_repo_routing_execution; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The most recent runtime activity was primary_repo_flat_contact_handoff_follow_through, but the latest meaningful external/replacement execution remains saashub_repo_routing_execution; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (saashub_repo_routing_execution), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
@@ -155,15 +141,15 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25.json",
-    "type": "measurement_hold_execution",
-    "title": "Distribution lane execution: measurement_hold",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_primary_repo_flat_contact_handoff_packet_execution.json",
+    "type": "primary_repo_flat_contact_handoff_follow_through",
+    "title": "Distribution lane execution: primary_repo_flat_contact_handoff_packet",
     "status": "prepared",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_014740_measurement_hold.md"
+    "url": null
   },
   "latest_executed_action": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_saashub_repo_routing_execution.json",
@@ -177,7 +163,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-25T01:48:00.576263+02:00",
+    "generated_at": "2026-05-25T02:08:12.203484+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",

@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-05-25T02:24:28+02:00",
+  "action_type": "publisher_contact_form_submission",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "target": "ToolChase",
+  "channel": "contact_form",
+  "submit_url": "https://toolchase.com/contact/",
+  "final_url": "https://toolchase.com/contact-received/",
+  "http_status": 200,
+  "contact_route": "https://toolchase.com/contact/",
+  "recipient_label": "ToolChase contact form",
+  "subject": "Advertising & partnerships",
+  "primary_repo_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "mirror_repo_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_toolchase_contact_form_message.txt",
+  "response_excerpt": "Message received | ToolChase"
+}
