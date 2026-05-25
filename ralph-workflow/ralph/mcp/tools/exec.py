@@ -9,7 +9,7 @@ from __future__ import annotations
 import shlex
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
@@ -23,6 +23,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.mcp.tools.exec_overlay import create_ephemeral_overlay
 from ralph.process.manager import SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
@@ -42,7 +43,6 @@ _EXEC_USAGE_EXAMPLES = (
 )
 
 _BLACKLIST_DESCRIPTIONS = {
-    "version_control": "version control system",
     "privilege_escalation": "privilege escalation",
     "destructive_system": "destructive system operation",
     "network_exfiltration": "network/exfiltration",
@@ -51,7 +51,6 @@ _BLACKLIST_DESCRIPTIONS = {
     "multi_file_operation": "multi-file operation",
 }
 
-_VERSION_CONTROL_COMMANDS = {"git", "svn", "hg", "fossil", "bzr", "darcs"}
 _PRIVILEGE_ESCALATION_COMMANDS = {"sudo", "su", "doas", "pkexec", "runuser"}
 _DESTRUCTIVE_SYSTEM_COMMANDS = {"shutdown", "reboot", "halt", "poweroff", "killall"}
 _NETWORK_TUNNEL_COMMANDS = {"nc", "ncat", "netcat", "socat"}
@@ -157,7 +156,6 @@ def check_command(command: str, args: list[str]) -> str | None:
         return None
 
     for checker in (
-        check_version_control,
         check_privilege_escalation,
         check_destructive_system,
         check_network_exfiltration,
@@ -185,18 +183,6 @@ def _lower_args(args: list[str]) -> list[str]:
 
 def _contains_any(arg_list: list[str], targets: set[str]) -> bool:
     return any(arg in targets for arg in arg_list)
-
-
-def check_version_control(command: str, _args: list[str]) -> str | None:
-    """Return a denial reason if the command is a version control tool."""
-    key = _command_key(command)
-    if key in _VERSION_CONTROL_COMMANDS:
-        desc = _description("version_control")
-        return (
-            f"Command '{command}' is blacklisted: {desc} commands must go through "
-            "Ralph's git capabilities"
-        )
-    return None
 
 
 def check_privilege_escalation(command: str, _args: list[str]) -> str | None:
@@ -421,9 +407,12 @@ def apply_exec_policy(command: str, args: list[str]) -> None:
 
 
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
-    if isinstance(workspace, WorkspaceWithRoot):
-        return workspace.root
-    root_value = cast("Path | str | None", getattr(workspace, "root", None))
+    if isinstance(workspace, Path):
+        return workspace
+    if isinstance(workspace, str):
+        return Path(workspace)
+
+    root_value: object | None = getattr(workspace, "root", None)
     if isinstance(root_value, Path):
         return root_value
     if isinstance(root_value, str):
@@ -438,24 +427,26 @@ def run_command(
     timeout_ms: int,
     deps: ExecRunDeps | None = None,
 ) -> _CompletedProcessAdapter:
-    """Execute a subprocess in the workspace root."""
+    """Execute a subprocess in a private overlay rooted at the workspace."""
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
     command_runner = resolved_deps.runner or _run_subprocess
+    overlay_factory = resolved_deps.overlay_factory or create_ephemeral_overlay
     cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
     timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
-    try:
-        return command_runner([command, *args], cwd, timeout_seconds)
-    except FileNotFoundError as exc:
-        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
-    except PermissionError as exc:
-        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise ExecutionError(
-            f"Failed to execute '{command}': timed out after {timeout_ms}ms"
-        ) from exc
-    except OSError as exc:
-        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+    with overlay_factory(cwd) as overlay_cwd:
+        try:
+            return command_runner([command, *args], overlay_cwd, timeout_seconds)
+        except FileNotFoundError as exc:
+            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+        except PermissionError as exc:
+            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ExecutionError(
+                f"Failed to execute '{command}': timed out after {timeout_ms}ms"
+            ) from exc
+        except OSError as exc:
+            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
 
 
 def _run_subprocess(
@@ -471,7 +462,7 @@ def _run_subprocess(
         ),
     )
     try:
-        stdout, stderr = handle.communicate(timeout=timeout_seconds)
+        stdout, stderr = handle.communicate_and_cleanup(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
         raise

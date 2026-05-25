@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock
+from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools.exec import (
     ExecRunDeps,
     ExecutionError,
@@ -14,8 +16,16 @@ from ralph.mcp.tools.exec import (
 )
 from tests.mock_workspace_root import MockWorkspaceRoot
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 CUSTOM_TIMEOUT_MS = 5000
 EXPECTED_TIMEOUT_SECONDS = 2.5
+
+
+@contextmanager
+def _passthrough_overlay(workspace_root: Path) -> Iterator[Path]:
+    yield workspace_root
 
 
 class TestRunCommand:
@@ -43,9 +53,11 @@ class TestRunCommand:
     def test_uses_injected_cwd_provider_when_workspace_has_no_root(self) -> None:
         seen: dict[str, object] = {}
 
-        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None) -> object:
+        def fake_runner(
+            command: list[str], cwd: Path, timeout_seconds: float | None
+        ) -> _CompletedProcessAdapter:
             seen["cwd"] = cwd
-            return MagicMock(returncode=0, stdout=b"ok", stderr=b"")
+            return _CompletedProcessAdapter(stdout=b"ok", stderr=b"", returncode=0)
 
         fallback = Path("/virtual/fallback")
         run_command(
@@ -53,7 +65,11 @@ class TestRunCommand:
             ["--version"],
             object(),
             1000,
-            deps=ExecRunDeps(runner=fake_runner, cwd_provider=lambda: fallback),
+            deps=ExecRunDeps(
+                runner=fake_runner,
+                cwd_provider=lambda: fallback,
+                overlay_factory=_passthrough_overlay,
+            ),
         )
 
         assert seen["cwd"] == fallback
@@ -62,18 +78,20 @@ class TestRunCommand:
         seen: dict[str, object] = {}
         workspace = MockWorkspaceRoot(tmp_path)
 
-        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None) -> object:
+        def fake_runner(
+            command: list[str], cwd: Path, timeout_seconds: float | None
+        ) -> _CompletedProcessAdapter:
             seen["command"] = command
             seen["cwd"] = cwd
             seen["timeout"] = timeout_seconds
-            return MagicMock(returncode=0, stdout=b"ok", stderr=b"")
+            return _CompletedProcessAdapter(stdout=b"ok", stderr=b"", returncode=0)
 
         result = run_command(
             "python",
             ["--version"],
             workspace,
             2500,
-            deps=ExecRunDeps(runner=fake_runner),
+            deps=ExecRunDeps(runner=fake_runner, overlay_factory=_passthrough_overlay),
         )
 
         assert result.returncode == 0

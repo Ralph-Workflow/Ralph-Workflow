@@ -20,9 +20,12 @@ class TestApplyExecPolicy:
     def test_allowed_command_passes(self) -> None:
         apply_exec_policy("ls", ["-la"])
 
+    def test_git_command_is_allowed(self) -> None:
+        apply_exec_policy("git", ["status"])
+
     def test_denied_command_raises(self) -> None:
         with pytest.raises(CapabilityDeniedError):
-            apply_exec_policy("git", ["status"])
+            apply_exec_policy("sudo", ["ls"])
 
     def test_embedded_blacklisted_command_is_denied_after_parse(self) -> None:
         parsed = parse_exec_params({"command": "sudo ls"})

@@ -81,6 +81,31 @@ class ManagedProcess:
             self._manager._mark_exited(self._record, rc)
         return stdout, stderr
 
+    def communicate_and_cleanup(
+        self,
+        input: bytes | None = None,
+        timeout: float | None = None,
+        cleanup_grace_period_s: float = 0.0,
+    ) -> tuple[bytes | None, bytes | None]:
+        """Drain output and make a best-effort attempt to remove lingering descendants."""
+        try:
+            stdout, stderr = self.communicate(input=input, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(Exception):
+                self.terminate(grace_period_s=cleanup_grace_period_s)
+            raise
+
+        if self.has_live_descendants():
+            with contextlib.suppress(Exception):
+                self.terminate(grace_period_s=cleanup_grace_period_s)
+        if self.has_live_descendants():
+            with contextlib.suppress(Exception):
+                self.kill()
+        if self.has_live_descendants():
+            with contextlib.suppress(Exception):
+                self.wait(timeout=cleanup_grace_period_s)
+        return stdout, stderr
+
     def terminate(self, grace_period_s: float | None = None) -> None:
         gp = (
             grace_period_s
@@ -155,3 +180,6 @@ class ManagedProcess:
         if self._record.status not in _TERMINAL_STATUSES:
             with contextlib.suppress(Exception):
                 self._proc.wait()
+
+
+__all__ = ["ManagedProcess"]
