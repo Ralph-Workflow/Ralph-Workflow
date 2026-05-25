@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-25T19:49:00
-Chosen lane: **distribution_architecture_guard_pause**
+Generated: 2026-05-25T21:00:26
+Chosen lane: **directory_confirmation**
 
 ## Why this lane
-- The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.
+- A current directory secondary-surface repair packet already targets a live page that still misroutes or obscures Codeberg repo intent; reuse that packet as the truthful follow-through surface instead of falling back to measurement hold.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 directory submissions already shipped in the last 24 hours.
 - 2 curator contact attempts already shipped in the last 24 hours.
@@ -25,14 +25,11 @@ Chosen lane: **distribution_architecture_guard_pause**
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
+- A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
-- 4 prior distribution-architecture repair run(s) already hit this same empty-board window.
-- A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
-- 7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.
-- 5 prior guard pause run(s) already reused this same fingerprint in the current review window.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -41,7 +38,8 @@ Chosen lane: **distribution_architecture_guard_pause**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate lane-architecture guard pause work
-- Do not emit another duplicate guard follow-through note for the same execution-board fingerprint in this review window
-- Preserve the current empty-board truth until a blocker clears or a genuinely new executable asset appears
-- When the fingerprint changes, force the next run to choose either a real untouched lane or a fresh architecture repair
+## Immediate directory confirmation work
+- Re-run `agents/marketing/backlink_status.py` and reuse `backlink_status_latest.json` as the canonical live-listing snapshot
+- Treat live listings as proof assets to reuse in curator/comparison packets instead of pretending all submissions are still pending black boxes
+- Identify which approved listings already route to Codeberg first and which still need follow-up or evidence capture
+- Do not count another net-new directory submission as progress until this confirmation pass is refreshed

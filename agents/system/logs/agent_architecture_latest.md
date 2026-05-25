@@ -1,16 +1,16 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-25T20:04:02.748226+02:00
+- Checked: 2026-05-25T21:07:46.498647+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by the marketing independent fail on primary-repo outcome evidence.
 - Most urgent fix: Do not certify green until marketing produces a fresh independent pass backed by measurable Codeberg movement.
-- Verifier status: pending_refresh
-- Verifier verdict: pending
+- Verifier status: independently_verified_pass
+- Verifier verdict: qualified_pass
 
 ## Live topology
 
-- Live Gateway jobs: 20 total / 20 enabled / 0 disabled
-- Live running jobs now: agent-architecture-watchdog, codeberg-github-mirror-sync, competitor-analysis, system-health-monitor
+- Live Gateway jobs: 21 total / 21 enabled / 0 disabled
+- Live running jobs now: none
 - Live last-error residue: none
 - Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-reflection, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
 - User crontab ownership: ok
@@ -21,8 +21,8 @@
    - Mechanism: Marketing independent verification is still fail and the unresolved blocker remains primary-repo adoption measurement pending.
    - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green.
 
-2. **Medium — Live Gateway topology is coherent and freshly localized**
-   - Mechanism: Direct live cron inspection shows 20 enabled/total jobs, 0 disabled jobs, 4 active runners, and 0 live last-error jobs.
+2. **Medium — Live Gateway topology is clean and architecture-owned runtime checks are green**
+   - Mechanism: Direct live cron inspection shows 21 enabled jobs, 0 disabled jobs, 0 running jobs, and 0 live last-error jobs; the remaining blocker is outside architecture ownership.
    - Recommended fix: Keep live-topology verification tied to direct cron inspection on each watchdog run and avoid treating external blocker clearance as an architecture repair.
 
 3. **Medium — Architecture verifier path is green on freshness and ownership gates**
@@ -35,22 +35,21 @@
 
 ## Repaired this run
 
-- **refreshed_live_topology** — refreshed the audit against the current live view: 20 enabled jobs, 0 disabled jobs, 4 active runners, and 0 live last-error jobs.
+- **refreshed_live_topology** — refreshed the audit against the current live view: 21 enabled jobs, 0 disabled jobs, 0 active runners, and 0 live last-error jobs.
 - **revalidated_architecture_stack_inputs** — revalidated loop integrity, docs independent pass, health-monitor localization, and shared market-intelligence consumption before rerunning independent verification.
 
 ## Still red
 
-- Fresh architecture independent verification after this audit refresh.
 - Fresh marketing independent pass backed by measurable primary-repo movement.
 - Highest-risk unresolved issue: Marketing remains red on Codeberg-primary outcome evidence.
 
 ## Independent verification
 
-- Performed: NOT_RUN
-- Verdict: pending
-- Summary: Waiting for the post-refresh independent verification rerun.
-- Checked at: NOT_RUN
+- Performed: yes
+- Verdict: qualified_pass
+- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
+- Checked at: 2026-05-25T21:07:51.091163+02:00
 
 ## Small gate passed
 
-- NOT_RUN
+- `python3 agents/system/agent_architecture_independent_verify.py && python3 agents/system/agent_architecture_verifier.py && python3 agents/system/agent_architecture_checker.py`

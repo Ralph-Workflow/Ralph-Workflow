@@ -1,17 +1,17 @@
 {
-  "generated_at": "2026-05-25T19:46:30.246655+02:00",
+  "generated_at": "2026-05-25T20:13:20.752906+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 1.31,
+  "report_age_hours": 1.75,
   "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-22_0728.md",
-  "latest_healthy_report_age_hours": 84.3,
-  "latest_post_age_hours": 128.36,
+  "latest_healthy_report_age_hours": 84.75,
+  "latest_post_age_hours": 128.81,
   "reddit_monitor_runtime": {
     "status": "cooldown_skip",
-    "age_hours": 1.97
+    "age_hours": 2.42
   },
   "reddit_execution_status": {
     "status": "network_security_blocked",
-    "age_hours": 31.34,
+    "age_hours": 31.79,
     "blocking_reason": "Reddit login/posting is blocked across both local headless Chromium and Browserless from this run."
   },
   "adoption_flat": true,
@@ -19,7 +19,7 @@
   "blocked_distribution_channels": [],
   "apollo": {
     "status": "login_succeeded",
-    "age_hours": 2.67,
+    "age_hours": 3.12,
     "cloudflare_blocked": false
   },
   "measurement_hold": {

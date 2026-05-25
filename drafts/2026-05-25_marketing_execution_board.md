@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-25T19:49:00
+Generated: 2026-05-25T20:54:48
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -10,20 +10,18 @@ Generated: 2026-05-25T19:49:00
 - Apollo next review: 2026-05-30T00:14:49.075391+02:00
 - Apollo launch review: 2026-05-30T00:14:49.075391+02:00
 - Short review-window congestion clears at: 2026-05-25T23:07:41
+- Post-hold marketer rerun scheduled: 2026-05-25T23:07:41.000Z
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Primary-repo-flat publisher contact packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 
 ## Best executable assets still waiting
-- No do-now handoff packet is currently truthful in this review window.
-- Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum, AI Saying, TLDL.
-- Fresh publisher outreach already shipped in the current review window for: Morph, ToolChase, Toolradar.
-- Primary-repo-flat publisher contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
-- Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
-- Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.
-- Comparison backlink packet exists, but it was already manually delivered in the current review window.
-- StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.
-- If this board is still empty after one of these blockers clears, the lane architecture needs another repair.
+### 1. Directory secondary-surface repair packet
+- When: Do now
+- Packet: /home/mistlight/.openclaw/workspace/drafts/directory_confirmation_execution_latest.md
+- Targets: SaaSHub
+- Why this matters: A live third-party surface still routes repo intent away from Codeberg or leaves it unclear, so correcting that surface is a real adoption-moving follow-through asset.
+
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
 - adoption_metrics_latest.json → Codeberg movement remains the primary success gate

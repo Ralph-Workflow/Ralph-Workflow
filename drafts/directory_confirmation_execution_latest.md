@@ -1,18 +1,20 @@
 # Ralph Workflow directory confirmation execution
-Generated: 2026-05-24T23:07:53+00:00
-- Backlink snapshot refreshed: 2026-05-24T23:07:53.353894+00:00
+Generated: 2026-05-25T20:54:48
+- Backlink snapshot refreshed: 2026-05-25T18:54:48.772016+00:00
 - Live directory listings detected: 2
-- Live listings routing to Codeberg first: 1
+- Live listings routing to Codeberg first: 2
 - Search queries indexed: 1 / 18
+- Live secondary surfaces needing routing repair: 2
 
 ## Why this run exists
 - Recent low-intent directory submissions already stacked into the same measurement window.
 - The loop needs fresh approval/backlink evidence before it claims another directory action is useful.
 - Live listings should be reused as proof assets in the next curator/comparison packets instead of being left invisible.
+- If a live third-party surface still routes repo intent to GitHub-only or leaves repo routing unclear, fixing that surface is a higher-truth next move than pretending the board is empty.
 
 ## Live listings to reuse now
 - **SaaSHub** — https://saashub.com/ralph-workflow
-  - Route: GitHub-only listing
+  - Route: Includes both Codeberg and GitHub links
 - **ToolWise** — https://toolwise.ai/tools/ralph-workflow
   - Route: Routes to Codeberg first
   - Note: Existing ToolWise listing already live and pointing to the primary Codeberg repo.
@@ -38,7 +40,23 @@ Generated: 2026-05-24T23:07:53+00:00
 - **TheToolify** — https://submit.thetoolify.dev/tools/ralph-workflow
   - Note: Submitted 2026-05-23 via headless browser; HTTP 200 success; pending review.
 
+## Live secondary surfaces that still need Codeberg-routing repair
+- **SaaSHub** — https://www.saashub.com/ralph-workflow-alternatives
+  - Current route: GitHub-only live surface
+  - Proof spine: main listing already live at https://saashub.com/ralph-workflow
+  - Action now: ask the editor/owner to add or elevate the primary Codeberg repo on this already-live surface.
+- **SaaSHub** — https://www.saashub.com/best-workflow-automation-software
+  - Current route: Live surface with repo target still unclear
+  - Proof spine: main listing already live at https://saashub.com/ralph-workflow
+  - Action now: ask the editor/owner to add or elevate the primary Codeberg repo on this already-live surface.
+
+## Suggested manual repair ask
+- Thanks for already listing Ralph Workflow. One live surface still routes repo intent away from the primary Codeberg repo (or leaves it unclear).
+- Please add the primary repo as **https://codeberg.org/RalphWorkflow/Ralph-Workflow** on the affected live page and keep GitHub only as the mirror if needed.
+- Why this matters: Codeberg is the canonical upstream, so this fixes repo-discovery truth on a page that is already ranking / already visible.
+
 ## Next actions
 - Reuse the live listing URLs above in the next curator/comparison/manual-contact packets as third-party proof.
 - Keep Codeberg as the primary CTA whenever a live listing already points there; do not restart the directory-submission loop first.
+- If live secondary surfaces still need routing repair, treat this packet as a real follow-through asset instead of calling the board empty.
 - If search indexing is still weak, treat these live listings as trust assets and keep the next active lane focused on higher-intent demand capture or citation follow-through.

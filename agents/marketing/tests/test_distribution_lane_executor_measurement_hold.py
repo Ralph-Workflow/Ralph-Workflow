@@ -996,7 +996,6 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                         }
                     ]}), stderr=''),
                     SimpleNamespace(returncode=0, stdout=json.dumps({'ok': True}), stderr=''),
-                    SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': []}), stderr=''),
                     SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'fresh-cron', 'name': 'marketing-measurement-hold-release'}}), stderr=''),
                 ]
 
@@ -1013,6 +1012,47 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertEqual(schedule['job_id'], 'fresh-cron')
         self.assertEqual(schedule['removed_stale_jobs'][0]['job_id'], 'stale-cron')
         self.assertEqual(cron_log['cleanup']['removed_stale_jobs'][0]['job_id'], 'stale-cron')
+
+    def test_measurement_hold_scheduler_ignores_stale_release_log_without_live_job(self):
+        now = datetime(2026, 5, 25, 20, 30, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'marketing_2026-05-25_142310_measurement_hold_release_cron.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T14:23:10.404832',
+                    'chosen_action': {'type': 'measurement_hold_release_cron'},
+                    'review_window': {'scheduled_run_at': '2026-05-25T15:07:03'},
+                    'result': {'status': 'scheduled', 'ok': True, 'live_external_action': False},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.side_effect = [
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': []}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'fresh-cron', 'name': 'marketing-measurement-hold-release'}}), stderr=''),
+                ]
+
+                schedule = distribution_lane_executor._schedule_measurement_hold_release_run(
+                    now=now,
+                    release_at='2026-05-25T23:07:41',
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    reentry_contract_path=str(drafts_dir / 'post_hold_distribution_reentry_latest.md'),
+                )
+
+            cron_log = json.loads((log_dir / 'marketing_2026-05-25_203000_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(schedule['status'], 'scheduled')
+        self.assertEqual(schedule['job_id'], 'fresh-cron')
+        self.assertEqual(schedule['scheduled_run_at'], '2026-05-25T23:07:41')
+        self.assertEqual(cron_log['review_window']['scheduled_run_at'], '2026-05-25T23:07:41')
 
     def test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_when_post_cooldown_run_is_already_scheduled(self):
         now = datetime(2026, 5, 24, 5, 20, 0)

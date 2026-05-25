@@ -314,6 +314,37 @@ class RunRepairModeTests(unittest.TestCase):
             finally:
                 run.LOG_DIR = original_log_dir
 
+    def test_latest_measurement_hold_window_prefers_latest_release_over_stale_cron_log(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_payload = {
+                    'timestamp': '2026-05-25T14:23:10.404832',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'why_this_action': {'summary': 'measurement hold is active'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }
+                stale_release_payload = {
+                    'timestamp': '2026-05-25T14:23:10.404900',
+                    'chosen_action': {'type': 'measurement_hold_release_cron'},
+                    'review_window': {'scheduled_run_at': '2026-05-25T15:07:03'},
+                    'result': {'status': 'scheduled', 'ok': True, 'live_external_action': False},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-25_measurement_hold_execution.json').write_text(json.dumps(hold_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-25_measurement_hold_release_cron.json').write_text(json.dumps(stale_release_payload), encoding='utf-8')
+                (run.LOG_DIR / 'distribution_lane_latest.json').write_text(
+                    json.dumps({'short_review_window_release_at': '2026-05-25T23:07:41'}),
+                    encoding='utf-8',
+                )
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 25, 20, 30, 0))
+
+                self.assertIsNotNone(hold)
+                self.assertEqual(hold['hold_until'], datetime(2026, 5, 25, 23, 7, 41))
+            finally:
+                run.LOG_DIR = original_log_dir
+
     def test_latest_measurement_hold_window_clears_after_new_live_external_action(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR

@@ -1,7 +1,7 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-05-25T15:04:46
-- Hold release at: 2026-05-25T15:07:03
-- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md
+Generated: 2026-05-25T20:30:00
+- Hold release at: 2026-05-25T23:07:41
+- Execution board: /home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md
 
 ## Hard rule for the first post-hold slot
 - If the execution board is still empty after the hold clears, choose distribution_architecture_repair instead of another measurement_hold.
@@ -10,7 +10,7 @@ Generated: 2026-05-25T15:04:46
 
 ## Current blocked-lane truth to preserve
 - Remaining publisher discovery is still non-runtime-sendable here and requires public-path/Telegram follow-through: ctxt.dev / Signum, AI Saying, TLDL.
-- Manual-executable primary-repo-flat publisher targets would still be: TIMEWELL, Toolradar, Morph.
+- Manual-executable primary-repo-flat publisher targets would still be: TIMEWELL.
 - StackOverflow is exhausted for this review window; do not spend the re-entry slot refreshing that packet.
 - Curator/comparison/manual-contact packets that were already delivered in the current review window remain reference artifacts, not fresh actions.
 - Apollo remains inside its existing review window, so do not mistake "still measuring" for a reason to idle again.
