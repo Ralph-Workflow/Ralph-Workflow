@@ -1790,6 +1790,59 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertEqual(execution.blocking_factors, [])
         self.assertIn('Reused manual-ready draft', artifact_text)
 
+    def test_delivered_manual_outreach_asset_is_not_reused_on_execution_side(self):
+        now = datetime(2026, 5, 25, 5, 49, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            asset_path = drafts_dir / '2026-05-24_ctxtdev_publisher_outreach_ready.md'
+            asset_path.write_text('# ctxt.dev / Signum publisher outreach — ready to send\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_ctxtdev_channel_ready_outreach.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T08:20:00+02:00',
+                    'chosen_action': {
+                        'type': 'ctxtdev_channel_ready_outreach_asset',
+                        'channel': 'manual_contact_asset',
+                        'title': 'Create a single-target channel-ready outreach draft for ctxt.dev / Signum',
+                        'artifact': str(asset_path),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-05-31T08:20:00+02:00'
+                    },
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_manual_outreach_asset_follow_through_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T05:39:00+02:00',
+                    'chosen_action': {
+                        'type': 'manual_outreach_asset_follow_through',
+                        'channel': 'current_chat_manual_handoff',
+                        'title': 'Delivered ctxt.dev / Signum manual outreach asset to current chat',
+                        'draft': str(asset_path),
+                    },
+                    'result': {
+                        'status': 'delivered_to_current_chat',
+                        'ok': True,
+                        'manual_handoff_required': True,
+                        'next_review_at': '2026-05-31T00:00:00+02:00',
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir):
+                assets = distribution_lane_executor._manual_outreach_assets_waiting_for_execution(now)
+
+        self.assertEqual(assets, [])
+
     def test_distribution_architecture_guard_follow_through_suppresses_duplicate_repair(self):
         now = datetime(2026, 5, 25, 4, 32, 0)
         decision = LaneDecision(

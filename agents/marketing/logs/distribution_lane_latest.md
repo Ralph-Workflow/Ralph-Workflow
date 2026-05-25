@@ -1,11 +1,11 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-25T05:20:00
-Chosen lane: **manual_outreach_asset_follow_through**
+Generated: 2026-05-25T06:01:00
+Chosen lane: **distribution_architecture_guard_follow_through**
 
 ## Why this lane
-- A channel-ready manual publisher outreach asset already exists for an untouched Codeberg-primary target; use that packet as the truthful follow-through surface instead of hiding behind another measurement hold.
+- The same empty-board distribution-architecture failure is already under an active third-strike churn guard for this review window; suppress another identical repair and reuse the guard until the board fingerprint or blocker set materially changes.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 2 directory submissions already shipped in the last 24 hours.
+- 1 directory submissions already shipped in the last 24 hours.
 - 6 curator contact attempts already shipped in the last 24 hours.
 - 5 live external marketing action(s) already shipped in the last 6 hours.
 - If no new outcome lands first, this short-window congestion clears at 2026-05-25T07:20:16. Before then, another live outbound action would mostly blur measurement.
@@ -20,7 +20,6 @@ Chosen lane: **manual_outreach_asset_follow_through**
 - No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.
 - Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, Beam, Bollwerk / Werkstatt), so those targets should not be re-queued immediately.
-- A channel-ready manual publisher outreach asset already exists (ctxt.dev / Signum), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.
 - Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, NxCode, TIMEWELL), so they should not keep this lane looking actionable until a sendable path exists.
 - All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
@@ -31,6 +30,8 @@ Chosen lane: **manual_outreach_asset_follow_through**
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
+- 4 prior distribution-architecture repair run(s) already hit this same empty-board window.
+- A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -39,8 +40,6 @@ Chosen lane: **manual_outreach_asset_follow_through**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate manual outreach follow-through
-- Reuse the existing single-target manual outreach asset instead of generating another packet
-- Treat that asset as the truthful follow-through surface during this hold window
-- Keep Codeberg as the primary CTA and do not dilute the target-specific proof angle
-- Do not claim the board is empty while a current manual outreach asset still exists
+## Owned-content lane remains allowed
+- No distribution-lane override triggered yet
+- If the next measurement window is still flat, escalate away from Telegraph-first output

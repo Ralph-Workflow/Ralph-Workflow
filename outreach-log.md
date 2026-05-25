@@ -6406,3 +6406,7 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-25 04:44:33
 - **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, same_family_outreach_overlap, mirror_repo_flat.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-25 05:44:49
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-25T06:20:00.

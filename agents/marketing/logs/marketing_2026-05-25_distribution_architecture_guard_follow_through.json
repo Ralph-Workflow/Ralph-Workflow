@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-25T05:04:00",
+  "timestamp": "2026-05-25T06:01:00",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -18,7 +18,7 @@
     "reasoning": "The same empty-board distribution-architecture failure is already under an active third-strike churn guard for this review window; suppress another identical repair and reuse the guard until the board fingerprint or blocker set materially changes.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
-      "2 directory submissions already shipped in the last 24 hours.",
+      "1 directory submissions already shipped in the last 24 hours.",
       "6 curator contact attempts already shipped in the last 24 hours.",
       "5 live external marketing action(s) already shipped in the last 6 hours.",
       "If no new outcome lands first, this short-window congestion clears at 2026-05-25T07:20:16. Before then, another live outbound action would mostly blur measurement.",
@@ -52,6 +52,6 @@
     "ok": true
   },
   "verification": {
-    "execution_board_fingerprint": "abb3d77b80891220d9fadfab626f707a96ccefb9"
+    "execution_board_fingerprint": "0a55c35272aed2b5e1b0a067974db463706ecd01"
   }
 }

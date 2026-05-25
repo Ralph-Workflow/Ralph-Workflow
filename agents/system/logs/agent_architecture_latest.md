@@ -1,16 +1,16 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-25T05:23:28.201096+02:00
+- Checked: 2026-05-25T05:58:19.355812+02:00
 - Overall health: high_risk
-- Primary failure mode: Architecture-owned verifier/runtime topology is currently coherent; the remaining live red owner loop is marketing because Codeberg-primary adoption is still flat.
-- Most urgent fix: Let the queued marketing re-entry job fire at 2026-05-25T07:20:16.000Z and only recertify fully once marketing independent verification passes.
+- Primary failure mode: Architecture-owned verifier/runtime topology is coherent; the only live red remains marketing because primary-repo adoption is still flat and marketing independent verification is fail.
+- Most urgent fix: Do not recertify the full stack until the marketing loop produces a fresh independent pass backed by measurable Codeberg movement.
 - Verifier status: independently_verified_pass
 - Verifier verdict: qualified_pass
 
 ## Live topology
 
-- Live Gateway jobs: 21 total / 21 enabled / 0 disabled
-- Live running jobs now: marketing-workflow-audit, apollo-channel-monitor, reddit-pipeline-watchdog, system-health-monitor, codeberg-github-mirror-sync, agent-architecture-watchdog
+- Live Gateway jobs: 20 total / 20 enabled / 0 disabled
+- Live running jobs now: none
 - Live last-error residue: none
 - Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-reflection, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
 - User crontab ownership: ok
@@ -19,36 +19,36 @@
 
 1. **High — Marketing remains the only live red owner loop**
    - Mechanism: marketing independent verification is still fail and the latest workflow audit still shows flat Codeberg and GitHub adoption deltas across the recent window.
-   - Recommended fix: Use the queued marketing re-entry at 2026-05-25T07:20:16.000Z to produce a new measurable lane, then rerun marketing independent verification.
+   - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before architecture calls the whole stack green.
 
 2. **Medium — Architecture audit metadata matches the live Gateway topology**
-   - Mechanism: live runtime now shows 21 jobs, 21 enabled, 0 disabled, and the refreshed audit matches that state.
-   - Recommended fix: preserve direct live-topology checks on every watchdog run.
+   - Mechanism: Live runtime currently shows 20 jobs, 20 enabled, 0 disabled, and the refreshed audit matches that state.
+   - Recommended fix: Keep direct live-topology checks on every watchdog run; do not infer live-disabled jobs from persisted history.
 
-3. **Medium — Architecture verifier path reran cleanly against refreshed live evidence**
-   - Mechanism: checker, independent verification, and verifier all pass for the architecture-owned path after the refreshed audit is in place.
-   - Recommended fix: keep rerunning independent verification after any material architecture refresh.
+3. **Medium — Architecture verifier path is green with only an external qualifier**
+   - Mechanism: checker is green and the remaining architecture verifier status is qualified-pass because the only live blocker is external marketing evidence, not an architecture-owned fault.
+   - Recommended fix: Keep independent verification fresh after each material architecture refresh.
 
 4. **Low — Docs remains independently green and stable**
-   - Mechanism: docs verifier is presently pass and does not contribute a live architecture fault.
-   - Recommended fix: none.
+   - Mechanism: Docs verifier is pass and does not contribute a live architecture fault.
+   - Recommended fix: None.
 
 ## Repaired this run
 
-- **refreshed_architecture_audit_artifacts** — rebased the audit on the current 21-job live Gateway topology and current owner-loop artifacts.
-- **reran_architecture_independent_verification** — reran independent verification against the refreshed architecture audit and live runtime evidence.
-- **reran_architecture_verifier** — reran the architecture verifier after fresh independent verification; the architecture-owned path is green.
+- **refreshed_architecture_audit_artifacts** — Refreshed the architecture audit against the current 20-job live Gateway topology and latest verifier/health-monitor state.
+- **reran_architecture_independent_verification** — Reran independent verification after the latest live health-monitor/verifier refresh.
+- **reran_architecture_verifier** — Reran the architecture verifier after fresh independent verification; architecture-owned verification is green with a qualified pass because marketing remains externally red.
 
 ## Still red
 
-- Marketing independent verification still fails.
-- Primary repo adoption is still flat across the recent window.
+- Fresh marketing independent pass backed by measurable primary-repo movement.
+- Highest-risk unresolved issue: Marketing remains red on Codeberg-primary outcome evidence.
 
 ## Independent verification
 
 - Performed: yes
 - Verdict: qualified_pass
-- Summary: Independent verification confirms the architecture-owned verifier/runtime path is green and that the remaining blocker is external marketing outcome evidence.
+- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
 
 ## Small gate passed
 
