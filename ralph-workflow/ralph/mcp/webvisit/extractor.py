@@ -38,7 +38,7 @@ _MAX_LINKS = 100
 _ReadabilityDocument: type[_ReadabilityDocumentProtocol] | None = None
 _HTMLParser: type[_HTMLParserProtocol] | None = None
 try:
-    from readability import Document as _RawDocument  # type: ignore[import-untyped]
+    from readability import Document as _RawDocument
     from selectolax.parser import HTMLParser as _RawHTMLParser
 
     _ReadabilityDocument = cast("type[_ReadabilityDocumentProtocol]", _RawDocument)

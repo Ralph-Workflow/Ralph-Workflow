@@ -59,6 +59,20 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
     }
 )
 
+# Typed *ValidationError class names that should route to ARTIFACT_VALIDATION.
+# Matched by type(exc).__name__ to avoid circular imports between ralph.recovery
+# and ralph.mcp/ralph.pipeline.
+_ARTIFACT_VALIDATION_TYPE_NAMES: frozenset[str] = frozenset(
+    {
+        "PlanArtifactValidationError",
+        "DevelopmentResultValidationError",
+        "TypedArtifactValidationError",
+        "SmokeTestResultValidationError",
+        "ProductSpecValidationError",
+        "WorkUnitsValidationError",
+    }
+)
+
 
 def _is_environmental_exc(exc: BaseException) -> bool:
     """Return True if this exception is clearly an environmental/network fault."""
@@ -187,19 +201,28 @@ class FailureClassifier:
     ) -> tuple[FailureCategory, bool, bool] | None:
         if _is_user_config_exc(exc):
             return FailureCategory.USER_CONFIG, False, False
+        # Route typed *ValidationError exceptions by type name BEFORE environmental
+        # checks so a future validation error that wraps an OSError is still caught here.
+        if type(exc).__name__ in _ARTIFACT_VALIDATION_TYPE_NAMES:
+            return FailureCategory.ARTIFACT_VALIDATION, False, False
         if _is_environmental_exc(exc):
             return FailureCategory.ENVIRONMENTAL, False, False
         type_name = type(exc).__name__
         if type_name == "AgentInactivityTimeoutError":
             return FailureCategory.AGENT, True, False
         if type_name == "AgentInvocationError":
-            if contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS):
-                return FailureCategory.AGENT, True, True
-            msg_lower = raw_message.lower()
-            if not _message_looks_environmental(raw_message) and (
-                "empty" in msg_lower or "no output" in msg_lower or "timed out" in msg_lower
+            reset_session = contains_casefolded_marker(
+                detail_parts, SESSION_NOT_FOUND_SUBSTRINGS
+            )
+            if reset_session or (
+                not _message_looks_environmental(raw_message)
+                and (
+                    "empty" in (msg_lower := raw_message.lower())
+                    or "no output" in msg_lower
+                    or "timed out" in msg_lower
+                )
             ):
-                return FailureCategory.AGENT, True, False
+                return FailureCategory.AGENT, True, reset_session
         return None
 
     def _categorize(
