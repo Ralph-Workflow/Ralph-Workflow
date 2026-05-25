@@ -273,11 +273,26 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
-                 patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(
-                     returncode=0,
-                     stdout=json.dumps({'job': {'id': 'cron-123', 'name': 'marketing-measurement-hold-release'}}),
-                     stderr='',
-                 )):
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                state = {'added': False}
+
+                def fake_run(command, *args, **kwargs):
+                    if command[:3] == ['openclaw', 'cron', 'list']:
+                        jobs = [] if not state['added'] else [{
+                            'id': 'cron-123',
+                            'name': 'marketing-measurement-hold-release',
+                            'enabled': True,
+                            'schedule': {'kind': 'at', 'at': '2026-05-25T02:05:05'},
+                        }]
+                        return SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': jobs}), stderr='')
+                    if command[:3] == ['openclaw', 'cron', 'add']:
+                        state['added'] = True
+                        return SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'cron-123', 'name': 'marketing-measurement-hold-release'}}), stderr='')
+                    if command[:3] == ['openclaw', 'cron', 'show']:
+                        return SimpleNamespace(returncode=1, stdout='{}', stderr='')
+                    return SimpleNamespace(returncode=1, stdout='{}', stderr='')
+
+                mock_run.side_effect = fake_run
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
                 board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
 
@@ -478,11 +493,26 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
-                 patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(
-                     returncode=0,
-                     stdout=json.dumps({'job': {'id': 'cron-first-hold', 'name': 'marketing-measurement-hold-release'}}),
-                     stderr='',
-                 )):
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                state = {'added': False}
+
+                def fake_run(command, *args, **kwargs):
+                    if command[:3] == ['openclaw', 'cron', 'list']:
+                        jobs = [] if not state['added'] else [{
+                            'id': 'cron-first-hold',
+                            'name': 'marketing-measurement-hold-release',
+                            'enabled': True,
+                            'schedule': {'kind': 'at', 'at': '2026-05-25T02:05:05'},
+                        }]
+                        return SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': jobs}), stderr='')
+                    if command[:3] == ['openclaw', 'cron', 'add']:
+                        state['added'] = True
+                        return SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'cron-first-hold', 'name': 'marketing-measurement-hold-release'}}), stderr='')
+                    if command[:3] == ['openclaw', 'cron', 'show']:
+                        return SimpleNamespace(returncode=1, stdout='{}', stderr='')
+                    return SimpleNamespace(returncode=1, stdout='{}', stderr='')
+
+                mock_run.side_effect = fake_run
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
                 board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
 
@@ -499,6 +529,47 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('Post-hold marketer rerun scheduled: 2026-05-25T02:05:05', board_text)
         self.assertIn('Treat another idle hold as a process failure.', reentry_contract)
         self.assertEqual(cron_log['cron_job']['id'], 'cron-first-hold')
+
+    def test_measurement_hold_scheduler_removes_stale_live_release_job_before_adding_new_one(self):
+        now = datetime(2026, 5, 25, 2, 37, 23)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.side_effect = [
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': [
+                        {
+                            'id': 'stale-cron',
+                            'name': 'marketing-measurement-hold-release',
+                            'enabled': True,
+                            'schedule': {'kind': 'at', 'at': '2026-05-25T04:05:05'},
+                        }
+                    ]}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'ok': True}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': []}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'fresh-cron', 'name': 'marketing-measurement-hold-release'}}), stderr=''),
+                ]
+
+                schedule = distribution_lane_executor._schedule_measurement_hold_release_run(
+                    now=now,
+                    release_at='2026-05-25T07:20:16',
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    reentry_contract_path=str(drafts_dir / 'post_hold_distribution_reentry_latest.md'),
+                )
+
+            cron_log = json.loads((log_dir / 'marketing_2026-05-25_023723_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(schedule['status'], 'scheduled')
+        self.assertEqual(schedule['job_id'], 'fresh-cron')
+        self.assertEqual(schedule['removed_stale_jobs'][0]['job_id'], 'stale-cron')
+        self.assertEqual(cron_log['cleanup']['removed_stale_jobs'][0]['job_id'], 'stale-cron')
 
     def test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_when_post_cooldown_run_is_already_scheduled(self):
         now = datetime(2026, 5, 24, 5, 20, 0)
@@ -1622,6 +1693,52 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('Comparison backlink packet exists, but it was already manually delivered in the current review window.', board_text)
         self.assertIn('StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.', board_text)
 
+    def test_execution_board_surfaces_existing_manual_outreach_asset(self):
+        now = datetime(2026, 5, 25, 5, 20, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            asset_path = drafts_dir / '2026-05-24_ctxtdev_publisher_outreach_ready.md'
+            asset_path.write_text('# ctxt.dev / Signum publisher outreach — ready to send\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-24_ctxtdev_channel_ready_outreach.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T08:20:00+02:00',
+                    'chosen_action': {
+                        'type': 'ctxtdev_channel_ready_outreach_asset',
+                        'channel': 'manual_contact_asset',
+                        'title': 'Create a single-target channel-ready outreach draft for ctxt.dev / Signum',
+                        'artifact': str(asset_path),
+                    },
+                    'why_this_action': {
+                        'summary': 'A verified Telegram-first manual outreach asset already exists for the strongest untouched publisher target.'
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-05-31T08:20:00+02:00'
+                    },
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('### 1. Manual publisher outreach asset', board_text)
+        self.assertIn(str(asset_path), board_text)
+        self.assertIn('ctxt.dev / Signum', board_text)
+        self.assertNotIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+
     def test_stackoverflow_execution_counts_reused_existing_draft_as_prepared(self):
         now = datetime(2026, 5, 24, 11, 25, 0)
         decision = LaneDecision(
@@ -1673,6 +1790,63 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertEqual(execution.blocking_factors, [])
         self.assertIn('Reused manual-ready draft', artifact_text)
 
+    def test_distribution_architecture_guard_follow_through_suppresses_duplicate_repair(self):
+        now = datetime(2026, 5, 25, 4, 32, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_guard_follow_through',
+            reason='An active churn guard already covers this same empty-board fingerprint.',
+            reasons=['A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            board_path = drafts_dir / 'marketing_execution_board_latest.md'
+            board_path.write_text(
+                '# Ralph Workflow Marketing Execution Board\n\n'
+                '## Best executable assets still waiting\n'
+                '- No do-now handoff packet is currently truthful in this review window.\n',
+                encoding='utf-8',
+            )
+            fingerprint = distribution_lane_selector.hashlib.sha1(board_path.read_text(encoding='utf-8').encode('utf-8')).hexdigest()
+            for filename, timestamp, action_type in [
+                ('marketing_2026-05-25_013107_distribution_architecture_repair.json', '2026-05-25T01:31:07', 'distribution_architecture_repair'),
+                ('marketing_2026-05-25_020752_distribution_architecture_repair.json', '2026-05-25T02:07:52', 'distribution_architecture_repair'),
+                ('marketing_2026-05-25_042100_distribution_architecture_churn_guard_repair.json', '2026-05-25T04:21:00', 'distribution_architecture_churn_guard_repair'),
+            ]:
+                (log_dir / filename).write_text(
+                    json.dumps({
+                        'timestamp': timestamp,
+                        'chosen_action': {'type': action_type},
+                        'verification': {'execution_board_fingerprint': fingerprint},
+                        'result': {'status': 'executed', 'ok': True},
+                    }),
+                    encoding='utf-8',
+                )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(board_path, [])), \
+                 patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', board_path), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=datetime(2026, 5, 25, 7, 20, 16)), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+
+        self.assertEqual(execution.action_type, 'distribution_architecture_guard_follow_through')
+        self.assertIn('suppressed another duplicate structural repair', artifact_text.lower())
+        self.assertIn('third-strike churn guard', artifact_text.lower())
+
     def test_distribution_architecture_repair_executes_instead_of_idle_hold(self):
         now = datetime(2026, 5, 25, 9, 0, 0)
         decision = LaneDecision(
@@ -1696,7 +1870,9 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
-                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(drafts_dir / 'board.md', ['ctxt.dev / Signum'])):
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(drafts_dir / 'board.md', ['ctxt.dev / Signum'])), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
+                 patch.object(distribution_lane_selector, '_distribution_architecture_repair_state', return_value={'third_strike': False, 'repeat_count': 0, 'execution_board_fingerprint': ''}):
                 (drafts_dir / 'board.md').write_text('# board\n', encoding='utf-8')
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
 
@@ -1706,6 +1882,60 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertEqual(execution.status, 'executed')
         self.assertIn('structural repair', artifact_text.lower())
         self.assertIn('ctxt.dev / Signum', artifact_text)
+
+
+    def test_distribution_architecture_repair_third_strike_installs_churn_guard(self):
+        now = datetime(2026, 5, 25, 4, 21, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='The same empty-board distribution-architecture failure already repeated twice in this short-review window; escalate the third event into a churn-guard repair instead of another plain architecture note.',
+            reasons=['2 prior distribution-architecture repair run(s) already hit this same empty-board window.'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            board_path = drafts_dir / 'marketing_execution_board_latest.md'
+            board_path.write_text(
+                '# Ralph Workflow Marketing Execution Board\n\n'
+                '## Best executable assets still waiting\n'
+                '- No do-now handoff packet is currently truthful in this review window.\n',
+                encoding='utf-8',
+            )
+            for idx, timestamp in enumerate(('2026-05-25T01:31:07', '2026-05-25T02:07:52'), start=1):
+                (log_dir / f'marketing_2026-05-25_0{idx}0000_distribution_architecture_repair.json').write_text(
+                    json.dumps({
+                        'timestamp': timestamp,
+                        'chosen_action': {'type': 'distribution_architecture_repair'},
+                        'result': {'status': 'executed', 'ok': True},
+                    }),
+                    encoding='utf-8',
+                )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(board_path, [])), \
+                 patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', board_path), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=datetime(2026, 5, 25, 7, 20, 16)), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            guard_text = (drafts_dir / 'distribution_architecture_guard_latest.md').read_text(encoding='utf-8')
+
+        self.assertEqual(execution.action_type, 'distribution_architecture_churn_guard_repair')
+        self.assertIn('third strike', artifact_text.lower())
+        self.assertIn('execution-board fingerprint', artifact_text.lower())
+        self.assertIn('suppress another plain distribution_architecture_repair', guard_text.lower())
 
 
 if __name__ == '__main__':

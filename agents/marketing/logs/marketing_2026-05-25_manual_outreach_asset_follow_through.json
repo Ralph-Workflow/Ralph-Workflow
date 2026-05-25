@@ -3,8 +3,8 @@
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
-    "channel": "measurement_hold",
-    "title": "Distribution lane decision: measurement_hold",
+    "channel": "manual_outreach_asset_follow_through",
+    "title": "Distribution lane decision: manual_outreach_asset_follow_through",
     "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_distribution_action_brief.md"
   },
   "why_this_action": {
@@ -15,7 +15,7 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "reasoning": "The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.",
+    "reasoning": "A channel-ready manual publisher outreach asset already exists for an untouched Codeberg-primary target; use that packet as the truthful follow-through surface instead of hiding behind another measurement hold.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 directory submissions already shipped in the last 24 hours.",
@@ -33,6 +33,7 @@
       "No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, Beam, Bollwerk / Werkstatt), so those targets should not be re-queued immediately.",
+      "A channel-ready manual publisher outreach asset already exists (ctxt.dev / Signum), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, NxCode, TIMEWELL), so they should not keep this lane looking actionable until a sendable path exists.",
       "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",

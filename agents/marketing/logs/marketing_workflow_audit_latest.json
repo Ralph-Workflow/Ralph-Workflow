@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T04:16:56.893550",
+  "generated_at": "2026-05-25T05:36:30.754543",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -104,7 +104,7 @@
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
     "6 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.",
-    "The most recent runtime activity was distribution_architecture_repair, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The most recent runtime activity was manual_outreach_asset_follow_through, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
@@ -139,10 +139,10 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_distribution_architecture_repair_execution.json",
-    "type": "distribution_architecture_repair",
-    "title": "Distribution lane execution: distribution_architecture_repair",
-    "status": "executed",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_manual_outreach_asset_follow_through_execution.json",
+    "type": "manual_outreach_asset_follow_through",
+    "title": "Distribution lane execution: manual_outreach_asset_follow_through",
+    "status": "prepared",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,

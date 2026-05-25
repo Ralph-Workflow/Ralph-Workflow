@@ -1,15 +1,15 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-25T03:57:00
-Chosen lane: **distribution_architecture_repair**
+Generated: 2026-05-25T05:20:00
+Chosen lane: **manual_outreach_asset_follow_through**
 
 ## Why this lane
-- The short review window is still active, but the execution board is already empty and both post-hold rerun repairs were already used in this window; repair the lane architecture instead of logging another hold.
+- A channel-ready manual publisher outreach asset already exists for an untouched Codeberg-primary target; use that packet as the truthful follow-through surface instead of hiding behind another measurement hold.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 4 directory submissions already shipped in the last 24 hours.
+- 2 directory submissions already shipped in the last 24 hours.
 - 6 curator contact attempts already shipped in the last 24 hours.
 - 5 live external marketing action(s) already shipped in the last 6 hours.
 - If no new outcome lands first, this short-window congestion clears at 2026-05-25T07:20:16. Before then, another live outbound action would mostly blur measurement.
-- Active repair window says to pause net-new directory submissions until current approval windows mature.
+- Active repair window says to hold another same-family curator-contact burst and use a different lane.
 - Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
@@ -20,11 +20,11 @@ Chosen lane: **distribution_architecture_repair**
 - No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.
 - Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, Beam, Bollwerk / Werkstatt), so those targets should not be re-queued immediately.
+- A channel-ready manual publisher outreach asset already exists (ctxt.dev / Signum), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.
 - Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, NxCode, TIMEWELL), so they should not keep this lane looking actionable until a sendable path exists.
 - All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
-- Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.
 - Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
 - A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
@@ -39,8 +39,8 @@ Chosen lane: **distribution_architecture_repair**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate lane-architecture repair work
-- Do not emit another measurement hold once the short review window has already cleared
-- Treat this as a process-repair slot: replace stale lane-selection logic, prompts, or scheduling rules that still point back to idle holds
-- Preserve Codeberg as the primary CTA while forcing the next post-hold slot to choose either a truthful untouched lane or a concrete runtime repair
-- Use the execution board and shared findings as the truth source for what is actually blocked, exhausted, or already delivered
+## Immediate manual outreach follow-through
+- Reuse the existing single-target manual outreach asset instead of generating another packet
+- Treat that asset as the truthful follow-through surface during this hold window
+- Keep Codeberg as the primary CTA and do not dilute the target-specific proof angle
+- Do not claim the board is empty while a current manual outreach asset still exists
