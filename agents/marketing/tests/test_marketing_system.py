@@ -4326,7 +4326,7 @@ class MarketingLoopRunnerTests(unittest.TestCase):
             self.assertTrue(payload['operational_ok'])
             self.assertFalse(payload['certification_ok'])
 
-    def test_runner_forces_fresh_reddit_monitor_pass(self):
+    def test_runner_allows_reddit_monitor_cache_reuse(self):
         reddit_cmds = []
 
         def fake_run(cmd, capture_output=True, text=True):
@@ -4342,7 +4342,7 @@ class MarketingLoopRunnerTests(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         self.assertEqual(len(reddit_cmds), 1)
-        self.assertEqual(reddit_cmds[0][-1], '--force-refresh')
+        self.assertEqual(reddit_cmds[0], ['python3', str(marketing_loop_runner.ROOT / 'agents/marketing/reddit_monitor.py')])
 
 
 class MarketingMomentumWatchdogTests(unittest.TestCase):

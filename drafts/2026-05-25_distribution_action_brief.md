@@ -1,14 +1,14 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-25T08:19:00
-Chosen lane: **distribution_architecture_guard_pause**
+Generated: 2026-05-25T10:25:00
+Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
-- The same empty-board distribution-architecture failure is still guarded and was already acknowledged once in this review window; pause further duplicate guard follow-through churn until the board fingerprint or blocker set materially changes.
+- The current execution-board fingerprint is still empty even though a third-strike churn guard and guard follow-through already exist for this review window; perform a concrete distribution-architecture repair now instead of logging another guard pause.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 directory submissions already shipped in the last 24 hours.
 - 5 curator contact attempts already shipped in the last 24 hours.
-- 4 live external marketing action(s) already shipped in the last 6 hours.
-- If no new outcome lands first, this short-window congestion clears at 2026-05-25T08:24:28. Before then, another live outbound action would mostly blur measurement.
+- 2 live external marketing action(s) already shipped in the last 6 hours.
+- If no new outcome lands first, this short-window congestion clears at 2026-05-25T15:07:03. Before then, another live outbound action would mostly blur measurement.
 - Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.
 - Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
@@ -19,8 +19,9 @@ Chosen lane: **distribution_architecture_guard_pause**
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
 - No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.
 - Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
-- Fresh publisher outreach already shipped in the current 7-day review window (AXME Code, Beam, Bollwerk / Werkstatt), so those targets should not be re-queued immediately.
-- Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum), so they should not keep this lane looking actionable until a sendable path exists.
+- Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.
+- An active manual publisher handoff already covers (ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.
+- Some remaining publisher targets only expose non-runtime-executable channels (AI Saying, Toolradar, TLDL), so they should not keep this lane looking actionable until a sendable path exists.
 - The primary-repo-flat publisher contact packet was already manually delivered in the current review window, so another packet refresh right now would be fake progress.
 - A refreshed primary-repo-flat packet already has a live review window, so the loop should not re-select that same packet until the window expires or the target set materially changes.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
@@ -32,7 +33,8 @@ Chosen lane: **distribution_architecture_guard_pause**
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
 - 4 prior distribution-architecture repair run(s) already hit this same empty-board window.
 - A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
-- 8 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.
+- 7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.
+- 1 prior guard pause run(s) already reused this same fingerprint in the current review window.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -41,7 +43,8 @@ Chosen lane: **distribution_architecture_guard_pause**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate lane-architecture guard pause work
-- Do not emit another duplicate guard follow-through note for the same execution-board fingerprint in this review window
-- Preserve the current empty-board truth until a blocker clears or a genuinely new executable asset appears
-- When the fingerprint changes, force the next run to choose either a real untouched lane or a fresh architecture repair
+## Immediate lane-architecture repair work
+- Do not emit another measurement hold once the short review window has already cleared
+- Treat this as a process-repair slot: replace stale lane-selection logic, prompts, or scheduling rules that still point back to idle holds
+- Preserve Codeberg as the primary CTA while forcing the next post-hold slot to choose either a truthful untouched lane or a concrete runtime repair
+- Use the execution board and shared findings as the truth source for what is actually blocked, exhausted, or already delivered

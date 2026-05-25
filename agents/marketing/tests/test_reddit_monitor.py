@@ -57,7 +57,7 @@ class RedditMonitorTests(unittest.TestCase):
             self.assertEqual(payload['scanned'], 12)
             self.assertEqual(payload['shortlisted'], 2)
 
-    def test_fresh_report_reuse_payload_rejects_partial_visibility_report(self):
+    def test_fresh_report_reuse_payload_accepts_partial_visibility_report_with_results(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             search_dir = Path(tmpdir)
             latest = search_dir / 'reddit_monitor_latest.md'
@@ -71,7 +71,9 @@ class RedditMonitorTests(unittest.TestCase):
             )
             with patch.object(reddit_monitor, 'SEARCH_DIR', search_dir):
                 payload = reddit_monitor._fresh_report_reuse_payload()
-            self.assertIsNone(payload)
+            self.assertIsNotNone(payload)
+            self.assertEqual(payload['scanned'], 12)
+            self.assertEqual(payload['shortlisted'], 4)
 
     def test_force_refresh_requested_accepts_cli_flag_and_env(self):
         self.assertTrue(reddit_monitor._force_refresh_requested(['--force-refresh']))
@@ -237,6 +239,15 @@ class RedditMonitorTests(unittest.TestCase):
         self.assertEqual(len(rejected), 1)
 
 
+
+    def test_report_is_usable_for_reuse_rejects_zero_result_degraded_report(self):
+        report = (
+            '# Reddit monitor\n\n'
+            '- **Threads/posts scanned:** 0\n'
+            '- **Shortlisted:** 0\n'
+            '- **No reliable coverage yet**: the monitor is currently being challenged by the search provider.\n'
+        )
+        self.assertFalse(reddit_monitor.report_is_usable_for_reuse(report))
 
     def test_watchdog_skips_partial_visibility_report_when_looking_for_healthy_one(self):
         with tempfile.TemporaryDirectory() as tmpdir:

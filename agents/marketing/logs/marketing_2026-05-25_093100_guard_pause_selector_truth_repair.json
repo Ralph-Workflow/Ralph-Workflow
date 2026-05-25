@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-05-25T09:31:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "distribution_architecture_repair",
+    "repair": "guard_pause_selector_truth_repair",
+    "channel": "distribution_architecture_guard_pause",
+    "title": "Keep same-fingerprint churn guards alive across a new live-action review window and pause duplicate guard churn"
+  },
+  "why_this_action": {
+    "summary": "The selector was still returning measurement_hold at 2026-05-25 09:24 and 09:31 Europe/Berlin even though the execution board still had no truthful do-now packet and the same execution-board fingerprint already had a third-strike churn guard plus prior guard follow-through logs. A fresh publisher email extended the short review window and accidentally made the selector forget the existing same-fingerprint guard state, which reopened fake-progress hold behavior.",
+    "shared_findings_used": [
+      "agents/marketing/logs/distribution_lane_latest.json: latest lane had fallen back to measurement_hold with no short-window release recorded",
+      "drafts/marketing_execution_board_latest.md: execution board still says no truthful do-now packet exists in the current review window",
+      "agents/marketing/logs/marketing_2026-05-25_072249_distribution_architecture_guard_follow_through.json: this fingerprint was already acknowledged under the churn guard",
+      "agents/marketing/logs/marketing_2026-05-25_nxcode_publisher_outreach.json: a real publisher send moved the short review window without changing the empty-board truth",
+      "agents/marketing/logs/marketing_2026-05-25_093032_recent_live_external_dedupe_repair.json: recent live external counting was already repaired, so the remaining bad state was guard-state forgetting rather than count inflation"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched distribution-lane guard-state accounting so same-fingerprint churn guards survive a newer live-action review window, added selector regression coverage for the active-window pause case, then re-ran the 2026-05-25 09:31 lane selection/execution so the latest lane became distribution_architecture_guard_pause instead of measurement_hold.",
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/tests/test_distribution_lane_selector_repair_pause.py",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/distribution_lane_latest.md",
+      "agents/marketing/logs/marketing_2026-05-25_093100_distribution_architecture_guard_pause.md"
+    ],
+    "verification": {
+      "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_active_short_window_with_guard_follow_through_pauses_duplicate_guard_churn agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_guarded_empty_board_pauses_after_guard_follow_through_already_logged agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_distribution_architecture_guard_pause_skips_duplicate_follow_through_churn -q",
+      "tests_result": "passed",
+      "live_selector_0924": "distribution_architecture_guard_pause",
+      "live_selector_0931": "distribution_architecture_guard_pause",
+      "live_execution_0931": "distribution_architecture_guard_pause -> skipped_repair"
+    }
+  },
+  "replacement_condition": "If the board fingerprint changes or a genuinely new executable packet appears and the selector still pauses under the old guard, escalate into explicit blocker-state diffing rather than another hold or duplicate guard note."
+}

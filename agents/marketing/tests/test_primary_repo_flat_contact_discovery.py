@@ -49,6 +49,28 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         self.assertNotIn(('linkedin', 'https://www.linkedin.com/sharing/share-offsite/?url='), values)
         self.assertNotIn(('linkedin', 'https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fexample.com'), values)
 
+    def test_extract_channels_does_not_misclassify_same_site_urls_as_x(self):
+        html = ' '.join([
+            '<a href="https://codivox.com/contact">Contact</a>',
+            '<a href="https://codivox.com/hire">Hire</a>',
+            '<a href="https://x.com/codivoxai">X</a>',
+        ])
+
+        channels = discovery.extract_channels('https://codivox.com/comparisons/ai-coding-tools', html)
+        values = {(row['type'], row['value']) for row in channels}
+
+        self.assertIn(('website', 'https://codivox.com/contact'), values)
+        self.assertIn(('website', 'https://codivox.com/hire'), values)
+        self.assertIn(('x', 'https://x.com/codivoxai'), values)
+        self.assertNotIn(('x', 'https://codivox.com/contact'), values)
+        self.assertNotIn(('x', 'https://codivox.com/hire'), values)
+
+    def test_placeholder_email_detection_filters_known_junk_samples(self):
+        self.assertTrue(discovery._looks_placeholder_email('you@example.com'))
+        self.assertTrue(discovery._looks_placeholder_email('jane@acme.com'))
+        self.assertTrue(discovery._looks_placeholder_email('you@work.com'))
+        self.assertFalse(discovery._looks_placeholder_email('info@digitalapplied.com'))
+
     def test_enrich_target_prefers_explicit_work_with_me_telegram_path(self):
         target = discovery.Target(
             name='ctxt.dev / Signum',

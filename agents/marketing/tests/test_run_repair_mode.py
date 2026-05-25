@@ -505,6 +505,15 @@ class RunRepairModeTests(unittest.TestCase):
                     shared_findings_used=['adoption_metrics_latest.json'],
                     artifact_path='',
                 )
+                refreshed = LaneDecision(
+                    lane='distribution_architecture_repair',
+                    reason='board changed after execution',
+                    reasons=['refresh latest truth'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='/tmp/next.md',
+                )
                 execution = SimpleNamespace(
                     action_type='measurement_hold_follow_through',
                     status='executed',
@@ -516,12 +525,13 @@ class RunRepairModeTests(unittest.TestCase):
                 )
 
                 with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
-                     patch.object(run, 'choose_distribution_lane', return_value=decision) as choose_mock, \
+                     patch.object(run, 'choose_distribution_lane', side_effect=[decision, refreshed]) as choose_mock, \
                      patch.object(run, 'execute_distribution_lane', return_value=execution) as execute_mock:
                     rc = run.main()
 
                 self.assertEqual(rc, 0)
-                choose_mock.assert_called_once()
+                self.assertEqual(choose_mock.call_count, 2)
+                self.assertEqual(choose_mock.call_args_list[1].kwargs.get('write_action_log'), False)
                 execute_mock.assert_called_once()
                 daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
                 payload = json.loads(daily_log.read_text(encoding='utf-8'))
@@ -529,9 +539,26 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/refreshed_hold.md')
                 self.assertEqual(payload['distribution_execution']['targets_prepared'], ['Refreshed target'])
                 self.assertNotEqual(payload['distribution_execution_log'], str(prior_log))
+                self.assertEqual(payload['post_execution_distribution_lane']['lane'], 'distribution_architecture_repair')
             finally:
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir
+
+    def test_refresh_distribution_lane_after_execution_skips_duplicate_action_log(self):
+        initial = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='initial',
+            reasons=['initial'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/initial.md',
+        )
+        with patch.object(run, 'choose_distribution_lane', return_value=initial) as choose_mock:
+            refreshed = run._refresh_distribution_lane_after_execution(datetime(2026, 5, 25, 9, 13, 0), [])
+
+        self.assertEqual(refreshed.lane, 'distribution_architecture_repair')
+        self.assertEqual(choose_mock.call_args.kwargs.get('write_action_log'), False)
 
     def test_write_distribution_execution_log_records_short_review_window_release_for_measurement_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-05-25T09:23:30+02:00",
+  "chosen_action": {
+    "type": "distribution_architecture_repair",
+    "repair": "distribution_lane_post_execution_truth_refresh"
+  },
+  "why_this_action": {
+    "problem": "run.py could leave distribution_lane_latest.json and the daily marketing snapshot pointing at pre-execution lane truth even after an internal repair or follow-through changed what the next truthful lane actually was",
+    "risk": "the always-on loop could reuse stale lane state, misread the execution board, and spend the next slot on fake progress or the wrong repair family",
+    "shared_findings_used": [
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "drafts/marketing_execution_board_latest.md",
+      "agents/marketing/logs/marketing_2026-05-25.json",
+      "agents/marketing/logs/adoption_metrics_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/run.py",
+      "agents/marketing/tests/test_run_repair_mode.py"
+    ],
+    "verification": {
+      "tests": "python3 -m unittest agents.marketing.tests.test_run_repair_mode agents.marketing.tests.test_distribution_lane_selector_repair_pause agents.marketing.tests.test_distribution_lane_executor_measurement_hold -q",
+      "result": "OK",
+      "tests_run": 96
+    },
+    "summary": "Patched the marketing loop to refresh post-execution lane truth without emitting duplicate lane-switch logs, and to persist that refreshed truth into the daily marketing snapshot."
+  },
+  "replacement_condition": "If post-execution truth still drifts from the latest board after future runs, escalate from snapshot refresh into a dedicated stale-truth verifier for run.py outputs."
+}

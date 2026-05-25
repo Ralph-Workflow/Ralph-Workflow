@@ -242,6 +242,13 @@ def _apply_repair_mode_overrides(distribution_lane: Any, pending_repairs: list[d
     return distribution_lane
 
 
+def _refresh_distribution_lane_after_execution(now: datetime, pending_repairs: list[dict[str, Any]] | None = None) -> Any:
+    refreshed = choose_distribution_lane(now, write_action_log=False)
+    if pending_repairs:
+        refreshed = _apply_repair_mode_overrides(refreshed, pending_repairs)
+    return refreshed
+
+
 # ── Run seo_daily.py ──────────────────────────────────────────────────────────
 
 def run_seo_daily() -> dict:
@@ -862,6 +869,7 @@ def main() -> int:
                 execution=distribution_execution,
                 now=now,
             )
+            refreshed_lane = _refresh_distribution_lane_after_execution(now, pending_repairs)
             lane_name = distribution_lane.lane
             lane_reason = distribution_lane.reason
             lane_artifact_path = getattr(distribution_lane, "artifact_path", "")
@@ -915,6 +923,12 @@ def main() -> int:
             "skip_log": str(skip_log),
             "distribution_execution_log": str(distribution_execution_log),
         }
+        if not reused_existing_follow_through:
+            payload["post_execution_distribution_lane"] = {
+                "lane": refreshed_lane.lane,
+                "reason": refreshed_lane.reason,
+                "artifact_path": getattr(refreshed_lane, "artifact_path", ""),
+            }
         log_file = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d')}.json"
         log_file.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
         if reused_existing_follow_through:
@@ -1058,6 +1072,7 @@ def main() -> int:
         execution=distribution_execution,
         now=now,
     )
+    refreshed_distribution_lane = _refresh_distribution_lane_after_execution(now, pending_repairs)
     print(f"[run.py] Chosen distribution lane: {distribution_lane.lane}", flush=True)
     print(f"[run.py] Distribution execution log: {distribution_execution_log}", flush=True)
     if distribution_execution.artifact_path:
@@ -1131,6 +1146,7 @@ def main() -> int:
         "distribution_lane": distribution_lane.__dict__,
         "distribution_execution": distribution_execution.__dict__,
         "distribution_execution_log": str(distribution_execution_log),
+        "post_execution_distribution_lane": refreshed_distribution_lane.__dict__,
         "failure_signals": [d["action"] for d in decisions if d.get("is_failing_signal")],
         "marketing_status": "failing" if any(d.get("is_failing_signal") for d in decisions) else "mixed" if decisions else "initial",
         "content_generation": {

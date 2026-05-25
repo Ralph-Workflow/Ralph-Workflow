@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T05:16:06.172947+00:00",
+  "generated_at": "2026-05-25T08:11:04.593632+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -69,47 +69,6 @@
       "recommended_next_step": "email/contact send path is now identified"
     },
     {
-      "target": "NxCode",
-      "article_url": "https://www.nxcode.io/resources/news/codex-vs-cursor-vs-claude-code-2026",
-      "root_url": "https://www.nxcode.io/",
-      "hook": "Codex vs Cursor vs Claude Code comparison with workflow-specific tradeoffs",
-      "reason": "Direct AI-coding comparison audience already evaluating when autonomous background agents beat interactive editors.",
-      "outreach_subject": "Ralph Workflow as a workflow-system addition to your AI coding tools comparison",
-      "channels": [
-        {
-          "type": "website",
-          "value": "https://www.nxcode.io/ar/company/about",
-          "label": "contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://www.nxcode.io/ar/company/careers",
-          "label": "contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://www.nxcode.io/ar/contact",
-          "label": "contact page"
-        },
-        {
-          "type": "email",
-          "value": "support@nxcode.io",
-          "label": "email"
-        },
-        {
-          "type": "x",
-          "value": "https://twitter.com/nxcode",
-          "label": "X/Twitter"
-        },
-        {
-          "type": "linkedin",
-          "value": "https://www.linkedin.com/company/nxcode",
-          "label": "LinkedIn"
-        }
-      ],
-      "recommended_next_step": "email/contact send path is now identified"
-    },
-    {
       "target": "TIMEWELL",
       "article_url": "https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026",
       "root_url": "https://timewell.jp/en/",
@@ -149,12 +108,142 @@
         }
       ],
       "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "AI Saying",
+      "article_url": "https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix",
+      "root_url": "https://aisaying.net/",
+      "hook": "AI Coding Tools Compared: The Complete 2026 Matrix (14 Tools Ranked)",
+      "reason": "Fresh AI coding tools comparison audience already evaluating terminal agents, editors, and workflow tradeoffs.",
+      "outreach_subject": "Ralph Workflow for your AI coding tools comparison update",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://aisaying.net",
+          "label": "website"
+        }
+      ],
+      "recommended_next_step": "public website contact path is now identified"
+    },
+    {
+      "target": "Toolradar",
+      "article_url": "https://toolradar.com/guides/best-ai-coding-tools",
+      "root_url": "https://toolradar.com/",
+      "hook": "Best AI Coding Tools in 2026",
+      "reason": "B2B buyer guide audience already comparing coding-agent tradeoffs and adjacent workflow layers.",
+      "outreach_subject": "Ralph Workflow as a workflow-system addition to your AI coding tools guide",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://toolradar.com/about",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://toolradar.com/advertise",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://toolradar.com/advertise/content-rerun",
+          "label": "contact page"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/toolradar",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/louiscorneloup",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://linkedin.com/company/toolradar",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/in/louis-corneloup-0036b5138",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "public website contact path is now identified"
+    },
+    {
+      "target": "TLDL",
+      "article_url": "https://www.tldl.io/resources/ai-coding-tools-2026",
+      "root_url": "https://www.tldl.io/",
+      "hook": "AI Coding Tools Compared (2026): Cursor vs Claude Code vs Copilot \u2014 Benchmarks & Pricing",
+      "reason": "Comparison audience overlaps strongly with evaluators looking for autonomous coding workflows, not just single tools.",
+      "outreach_subject": "Ralph Workflow for your next AI coding tools comparison refresh",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://www.tldl.io/about",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://www.tldl.io",
+          "label": "website"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/shenli3514",
+          "label": "X/Twitter"
+        }
+      ],
+      "recommended_next_step": "public website contact path is now identified"
+    },
+    {
+      "target": "Codivox",
+      "article_url": "https://codivox.com/comparisons/ai-coding-tools/",
+      "root_url": "https://codivox.com/",
+      "hook": "AI Coding Tools Comparison 2026",
+      "reason": "Direct AI coding comparison page with a public email path and a fit for workflow-layer positioning.",
+      "outreach_subject": "Ralph Workflow for your AI coding tools comparison page",
+      "channels": [
+        {
+          "type": "email",
+          "value": "hello@codivox.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://codivox.com/about",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://codivox.com/contact",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://codivox.com/hire",
+          "label": "contact page"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/codivox",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/codivox",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
     }
   ],
   "omitted_recent_targets": [
     "AXME Code",
     "Beam",
     "Bollwerk / Werkstatt",
+    "NxCode",
     "WyeWorks"
   ]
 }

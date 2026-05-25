@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-05-25T08:49:30+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "primary_repo_flat_manual_handoff_truth_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Exclude already-handed-off manual publisher targets from fresh primary-repo-flat packet selection"
+  },
+  "why_this_action": {
+    "summary": "The latest selector state could still treat ctxt.dev / Signum as a fresh primary-repo-flat packet target even though a manual outreach asset for that target had already been delivered in the current review window. That made the runtime capable of re-surfacing the primary-repo-flat packet instead of honoring the execution board's no-truthful-packet state.",
+    "shared_findings_used": [
+      "drafts/marketing_execution_board_latest.md: no truthful do-now packet remains in the current review window",
+      "agents/marketing/logs/distribution_lane_latest.json: selector had drifted into primary_repo_flat_contact_handoff_packet",
+      "agents/marketing/logs/marketing_2026-05-25_manual_outreach_asset_follow_through_delivery.json: ctxt.dev / Signum was already handed off to current chat",
+      "agents/marketing/logs/marketing_2026-05-25_primary_repo_flat_contact_manual_delivery_refresh.json: the refreshed packet already has a live review window",
+      "agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json: discovered publisher targets still included ctxt.dev / Signum alongside NxCode and TIMEWELL"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched the selector to subtract actively handed-off manual publisher targets from fresh primary-repo-flat packet selection, then re-ran the 2026-05-25 08:49 lane decision so the latest lane artifact returned to distribution_architecture_repair instead of packet churn.",
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/tests/test_distribution_lane_selector_repair_pause.py",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/distribution_lane_latest.md",
+      "agents/marketing/logs/marketing_2026-05-25_distribution_architecture_repair.json"
+    ],
+    "verification": {
+      "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause -q",
+      "tests_result": "passed",
+      "selector_0849": "distribution_architecture_repair",
+      "selector_0900": "measurement_hold"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-05-25T09:57:14+02:00",
+  "action_type": "publisher_email_outreach",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "target": "LangPop",
+  "recipient": "hello@langpop.com",
+  "subject": "Ralph Workflow as a workflow-system reference for LangPop's AI coding assistant comparison",
+  "hook": "AI Coding Assistant Comparison 2026",
+  "primary_repo_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "supporting_artifacts": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/adoption_metrics_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_lane_latest.json",
+    "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
+    "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_langpop_publisher_outreach_email.txt"
+  ],
+  "smtp_delivery": {
+    "server": "smtp.ionos.com",
+    "port": 587,
+    "tls": true,
+    "accepted_by_server": true,
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_075714_langpop_publisher_email.json"
+  },
+  "expected_outcome": "Publisher awareness and a possible comparison-page mention that sends qualified evaluators to the Codeberg primary repo first.",
+  "review_window": {
+    "reply_review_at": "2026-06-01T09:57:14+02:00",
+    "citation_review_at": "2026-06-08T09:57:14+02:00"
+  },
+  "replacement_condition": "If no reply or public mention signal appears by the review window, replace this with a different untouched comparison or publisher surface instead of resending LangPop immediately."
+}

@@ -1,5 +1,5 @@
 # Ralph Workflow Manual Handoff Follow-Through
-Generated: 2026-05-25T08:00:00
+Generated: 2026-05-25T10:24:23
 
 ## Why this exists now
 - The short review window is still active, but the primary-repo-flat publisher packet is stale while fresh targets already have verified public contact paths; refresh the Codeberg-first execution packet now so the next slot has a truthful asset.
@@ -11,8 +11,8 @@ Generated: 2026-05-25T08:00:00
 - Primary-repo-flat publisher contact packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
 
 ## Top prepared targets still waiting for execution
-- NxCode
 - TIMEWELL
+- Codivox
 
 ## Process rule now in force
 - Do not regenerate this packet unless the top prepared set changes.
