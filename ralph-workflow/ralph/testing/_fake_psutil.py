@@ -13,8 +13,8 @@ if TYPE_CHECKING:
 class FakePsutil:
     """Fake psutil module for testing without real process operations."""
 
-    NoSuchProcess = Exception
-    AccessDenied = Exception
+    NoSuchProcess: type[BaseException] = Exception
+    AccessDenied: type[BaseException] = Exception
 
     def __init__(self) -> None:
         self._processes: dict[int, FakePsutilProcess] = {}

@@ -1,65 +1,116 @@
-"""Tests for ralph/mcp/tools/exec_overlay.py."""
+"""Tests for ralph.mcp.tools.exec_overlay."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from contextlib import AbstractContextManager, nullcontext
+from pathlib import Path
 
 import pytest
 
+from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
+from ralph.mcp.tools._exec_run_deps import ExecRunDeps
 from ralph.mcp.tools.exec import run_command
-from ralph.mcp.tools.exec_overlay import (
-    _ensure_git_isolation,
-    _mirror_workspace,
-    _setup_private_gitdir,
-    create_ephemeral_overlay,
-)
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from ralph.mcp.tools.exec_overlay import create_ephemeral_overlay
+from tests.mock_workspace_root import MockWorkspaceRoot
 
 
 class TestCreateEphemeralOverlay:
-    def test_yields_private_overlay_directory(self, tmp_path: Path) -> None:
+    def test_mirrors_workspace_files(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
-        (workspace / "note.txt").write_text("hello", encoding="utf-8")
+        (workspace / "root.txt").write_text("root", encoding="utf-8")
 
         with create_ephemeral_overlay(workspace) as overlay:
             assert overlay.is_dir()
             assert overlay != workspace
-            assert (overlay / "note.txt").read_text(encoding="utf-8") == "hello"
+            assert (overlay / "root.txt").read_text(encoding="utf-8") == "root"
 
-    def test_copies_nested_directories(self, tmp_path: Path) -> None:
-        workspace = tmp_path / "workspace"
-        nested = workspace / "nested" / "dir"
-        nested.mkdir(parents=True)
-        (nested / "data.txt").write_text("nested", encoding="utf-8")
-
-        with create_ephemeral_overlay(workspace) as overlay:
-            assert (overlay / "nested" / "dir" / "data.txt").read_text(encoding="utf-8") == "nested"
-
-    def test_preserves_file_contents(self, tmp_path: Path) -> None:
+    def test_yields_path_inside_temp_dir(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
-        (workspace / "a.txt").write_text("alpha", encoding="utf-8")
-        (workspace / "b.txt").write_text("bravo", encoding="utf-8")
 
         with create_ephemeral_overlay(workspace) as overlay:
-            assert (overlay / "a.txt").read_text(encoding="utf-8") == "alpha"
-            assert (overlay / "b.txt").read_text(encoding="utf-8") == "bravo"
+            assert overlay.is_dir()
+            assert overlay != workspace
+            assert overlay.parent != workspace.parent
 
-    def test_writes_in_overlay_do_not_touch_source(self, tmp_path: Path) -> None:
+    def test_mirrors_nested_directories(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
-        source_file = workspace / "state.txt"
-        source_file.write_text("original", encoding="utf-8")
+        nested_file = workspace / "nested" / "inner.txt"
+        nested_file.parent.mkdir(parents=True)
+        nested_file.write_text("inner", encoding="utf-8")
 
         with create_ephemeral_overlay(workspace) as overlay:
-            (overlay / "state.txt").write_text("overlay", encoding="utf-8")
+            assert (overlay / "nested" / "inner.txt").read_text(encoding="utf-8") == "inner"
 
-        assert source_file.read_text(encoding="utf-8") == "original"
+    def test_dereferences_symlinked_files(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        target = workspace / "target.txt"
+        target.write_text("real content", encoding="utf-8")
+        link = workspace / "link.txt"
+        try:
+            link.symlink_to(target)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlinks are not supported in this environment")
 
-    def test_overlay_is_cleaned_up_after_exit(self, tmp_path: Path) -> None:
+        with create_ephemeral_overlay(workspace) as overlay:
+            copied = overlay / "link.txt"
+            assert copied.exists()
+            assert not copied.is_symlink()
+            assert copied.read_text(encoding="utf-8") == "real content"
+
+    def test_writes_through_copied_symlinks_do_not_escape(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        target = workspace / "target.txt"
+        target.write_text("original", encoding="utf-8")
+        link = workspace / "link.txt"
+        try:
+            link.symlink_to(target)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlinks are not supported in this environment")
+
+        with create_ephemeral_overlay(workspace) as overlay:
+            (overlay / "link.txt").write_text("overlay", encoding="utf-8")
+
+        assert target.read_text(encoding="utf-8") == "original"
+
+    def test_isolates_writes_from_real_workspace(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (workspace / "file.txt").write_text("original", encoding="utf-8")
+
+        with create_ephemeral_overlay(workspace) as overlay:
+            (overlay / "file.txt").write_text("modified", encoding="utf-8")
+            (overlay / "new_file.txt").write_text("new", encoding="utf-8")
+
+        assert (workspace / "file.txt").read_text(encoding="utf-8") == "original"
+        assert not (workspace / "new_file.txt").exists()
+
+    def test_excludes_generated_dirs(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        exclusions = {
+            ".venv": "lib.py",
+            ".mypy_cache": "cache.json",
+            ".pytest_cache": "cache.json",
+            "__pycache__": "module.pyc",
+            "node_modules": "package.json",
+            ".tox": "tox.ini",
+            ".nox": "session.log",
+        }
+        for directory, filename in exclusions.items():
+            path = workspace / directory
+            path.mkdir(parents=True)
+            (path / filename).write_text(directory, encoding="utf-8")
+
+        with create_ephemeral_overlay(workspace) as overlay:
+            for directory, filename in exclusions.items():
+                assert not (overlay / directory / filename).exists()
+
+    def test_cleanup_removes_temporary_overlay(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
 
@@ -69,92 +120,111 @@ class TestCreateEphemeralOverlay:
 
         assert not overlay_path.exists()
 
-    def test_ignores_agent_tmp_directory(self, tmp_path: Path) -> None:
+    def test_includes_regular_repo_git_directory(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
-        (workspace / ".agent" / "tmp").mkdir(parents=True)
-        (workspace / ".agent" / "tmp" / "ephemeral.txt").write_text("nope", encoding="utf-8")
+        git_dir = workspace / ".git"
+        git_dir.mkdir(parents=True)
+        (git_dir / "refs" / "heads").mkdir(parents=True)
+        (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+        (git_dir / "config").write_text("[core]\n\trepositoryformatversion = 0\n", encoding="utf-8")
 
         with create_ephemeral_overlay(workspace) as overlay:
-            assert not (overlay / ".agent" / "tmp" / "ephemeral.txt").exists()
+            assert (overlay / ".git").is_dir()
+            head = (overlay / ".git" / "HEAD").read_text(encoding="utf-8")
+            assert head == "ref: refs/heads/main\n"
 
-    def test_separate_calls_create_distinct_paths(self, tmp_path: Path) -> None:
+    def test_worktree_git_file_creates_private_gitdir(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
 
-        with (
-            create_ephemeral_overlay(workspace) as first,
-            create_ephemeral_overlay(workspace) as second,
-        ):
-            assert first != second
-            assert first.exists()
-            assert second.exists()
-
-    def test_mirror_workspace_omits_git_directory(self, tmp_path: Path) -> None:
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        (workspace / ".git").mkdir()
-        (workspace / ".git" / "config").write_text("[core]\n", encoding="utf-8")
-        destination = tmp_path / "overlay"
-        destination.mkdir()
-
-        _mirror_workspace(workspace, destination)
-
-        assert not (destination / ".git").exists()
-
-    def test_ensure_git_isolation_copies_git_directory(self, tmp_path: Path) -> None:
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
-        source_git = workspace / ".git"
-        source_git.mkdir()
-        (source_git / "config").write_text("[core]\n", encoding="utf-8")
-        overlay = tmp_path / "overlay"
-        overlay.mkdir()
-
-        _ensure_git_isolation(workspace, overlay)
-
-        assert (overlay / ".git" / "config").read_text(encoding="utf-8") == "[core]\n"
-
-    def test_setup_private_gitdir_copies_git_metadata(self, tmp_path: Path) -> None:
-        source_git = tmp_path / "source-git"
-        source_git.mkdir()
-        (source_git / "HEAD").write_text("ref: refs/heads/main", encoding="utf-8")
-        overlay_git = tmp_path / "overlay" / ".git"
-
-        _setup_private_gitdir(source_git, overlay_git)
-
-        assert (overlay_git / "HEAD").read_text(encoding="utf-8") == "ref: refs/heads/main"
-
-    def test_private_gitdir_does_not_modify_source_git(self, tmp_path: Path) -> None:
-        source_git = tmp_path / "source-git"
-        source_git.mkdir()
-        (source_git / "HEAD").write_text("ref: refs/heads/main", encoding="utf-8")
-        overlay_git = tmp_path / "overlay" / ".git"
-
-        _setup_private_gitdir(source_git, overlay_git)
-        (overlay_git / "HEAD").write_text("ref: refs/heads/feature", encoding="utf-8")
-
-        assert (source_git / "HEAD").read_text(encoding="utf-8") == "ref: refs/heads/main"
-
-    def test_overlay_handles_source_without_git(self, tmp_path: Path) -> None:
-        workspace = tmp_path / "workspace"
-        workspace.mkdir()
+        shared_gitdir = tmp_path / "shared-git"
+        worktree_gitdir = shared_gitdir / "worktrees" / "sample"
+        worktree_gitdir.mkdir(parents=True)
+        (shared_gitdir / "refs" / "heads").mkdir(parents=True)
+        (shared_gitdir / "objects").mkdir(parents=True)
+        (shared_gitdir / "refs" / "heads" / "main").write_text("abcdef\n", encoding="utf-8")
+        (shared_gitdir / "packed-refs").write_text("# packed refs\n", encoding="utf-8")
+        (worktree_gitdir / "commondir").write_text("../..\n", encoding="utf-8")
+        (worktree_gitdir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+        (worktree_gitdir / "index").write_bytes(b"index-bytes")
+        (worktree_gitdir / "config").write_text(
+            "[core]\n\trepositoryformatversion = 0\n\tbare = false\n",
+            encoding="utf-8",
+        )
+        (workspace / ".git").write_text(f"gitdir: {worktree_gitdir}\n", encoding="utf-8")
+        (workspace / "note.txt").write_text("hello", encoding="utf-8")
 
         with create_ephemeral_overlay(workspace) as overlay:
-            assert not (overlay / ".git").exists()
-
-    def test_overlay_makes_git_commands_available_in_private_copy(self, tmp_git_repo: Path) -> None:
-        with create_ephemeral_overlay(tmp_git_repo) as overlay:
-            assert (overlay / ".git").exists()
+            overlay_git = overlay / ".git"
+            assert overlay_git.is_file()
+            private_gitdir = Path(overlay_git.read_text(encoding="utf-8").split(":", 1)[1].strip())
+            assert private_gitdir.is_dir()
+            assert not str(private_gitdir).startswith(str(shared_gitdir))
+            assert (private_gitdir / "HEAD").read_text(encoding="utf-8") == "ref: refs/heads/main\n"
+            assert (private_gitdir / "index").read_bytes() == b"index-bytes"
+            refs_main = private_gitdir / "refs" / "heads" / "main"
+            assert refs_main.read_text(encoding="utf-8") == "abcdef\n"
+            alternates = private_gitdir / "objects" / "info" / "alternates"
+            assert alternates.read_text(encoding="utf-8") == f"{shared_gitdir / 'objects'}\n"
+            config_text = (private_gitdir / "config").read_text(encoding="utf-8")
+            assert f"worktree = {overlay}" in config_text
 
 
 class TestRunCommandOverlayIntegration:
+    def test_run_command_passes_overlay_cwd_to_runner(self, tmp_path: Path) -> None:
+        seen_cwd: list[Path] = []
+        overlay_dir = tmp_path / "overlay"
+        overlay_dir.mkdir()
+
+        def fake_runner(
+            command: list[str], cwd: Path, timeout_seconds: float | None
+        ) -> _CompletedProcessAdapter:
+            seen_cwd.append(cwd)
+            return _CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
+
+        def fake_overlay(workspace_root: Path) -> AbstractContextManager[Path]:
+            del workspace_root
+            return nullcontext(overlay_dir)
+
+        workspace = MockWorkspaceRoot(tmp_path)
+        run_command(
+            "echo",
+            [],
+            workspace,
+            1000,
+            deps=ExecRunDeps(runner=fake_runner, overlay_factory=fake_overlay),
+        )
+
+        assert len(seen_cwd) == 1
+        assert seen_cwd[0] == overlay_dir
+
+    def test_run_command_uses_real_overlay_by_default(self, tmp_path: Path) -> None:
+        seen_cwd: list[Path] = []
+        workspace = MockWorkspaceRoot(tmp_path)
+
+        def fake_runner(
+            command: list[str], cwd: Path, timeout_seconds: float | None
+        ) -> _CompletedProcessAdapter:
+            del command, timeout_seconds
+            seen_cwd.append(cwd)
+            return _CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
+
+        run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner))
+
+        assert len(seen_cwd) == 1
+        assert seen_cwd[0] != tmp_path
+        assert not seen_cwd[0].exists()
+
+
+class TestRunCommandOverlaySubprocessE2E:
     @pytest.mark.subprocess_e2e
     def test_run_command_writes_only_in_overlay(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         target = workspace / "created.txt"
         script = (
-            "from pathlib import Path; Path('created.txt').write_text('overlay', encoding='utf-8')"
+            "from pathlib import Path; "
+            "Path('created.txt').write_text('overlay', encoding='utf-8')"
         )
 
         result = run_command("python", ["-c", script], workspace, 5000)
@@ -182,7 +252,8 @@ class TestOverlayIsolationEndToEnd:
         workspace.mkdir()
         (workspace / "marker.txt").write_text("source", encoding="utf-8")
         script = (
-            "from pathlib import Path; Path('marker.txt').write_text('overlay', encoding='utf-8')"
+            "from pathlib import Path; "
+            "Path('marker.txt').write_text('overlay', encoding='utf-8')"
         )
 
         result = run_command("python", ["-c", script], workspace, 5000)

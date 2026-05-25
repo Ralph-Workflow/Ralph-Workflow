@@ -5,11 +5,16 @@ from __future__ import annotations
 import itertools
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.process.manager import ManagedProcess, ProcessManager, ProcessManagerPolicy, SpawnOptions
-from ralph.testing.fake_process import make_sync_process_factory
+from ralph.process.manager._process_status import ProcessStatus
+from ralph.testing.fake_process import FakePsutil, FakePsutilProcess, make_sync_process_factory
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.1,
@@ -18,141 +23,253 @@ _FAST_POLICY = ProcessManagerPolicy(
 )
 
 
-def _make_handle(returncode: int = 0) -> ManagedProcess:
+class TreeProcess(FakePsutilProcess):
+    def __init__(
+        self,
+        pid: int,
+        *,
+        direct_children: Sequence[FakePsutilProcess] | None = None,
+        recursive_children: Sequence[FakePsutilProcess] | None = None,
+        _running: bool = True,
+        _status: str = "sleeping",
+        _create_time: float = 0.0,
+        _terminated: bool = False,
+        _killed: bool = False,
+        stubborn: bool = False,
+    ) -> None:
+        super().__init__(
+            pid=pid,
+            _running=_running,
+            _status=_status,
+            _create_time=_create_time,
+            _terminated=_terminated,
+            _killed=_killed,
+            stubborn=stubborn,
+        )
+        self._direct_children: Sequence[FakePsutilProcess] = list(direct_children or [])
+        self._recursive_children: Sequence[FakePsutilProcess] = list(recursive_children or [])
+
+    def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+        return list(self._recursive_children if recursive else self._direct_children)
+
+
+def _make_handle(
+    *,
+    fake_psutil: FakePsutil | None,
+    returncode: int | None = 0,
+) -> ManagedProcess:
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=returncode),
+        psutil=fake_psutil,
     )
     return pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="test:managed-process"))
 
 
 class TestManagedProcessCommunicateAndCleanup:
-    def test_returns_output_from_communicate(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        handle = _make_handle()
-        monkeypatch.setattr(
-            handle._proc, "communicate", lambda input=None, timeout=None: (b"out", b"err")
+    def test_cleans_snapshot_survivors_and_late_spawns(self) -> None:
+        live_child = TreeProcess(pid=1001, stubborn=True)
+        live_grandchild = TreeProcess(pid=1002, stubborn=True)
+        late_spawn = TreeProcess(pid=2001, stubborn=True)
+        second_level = TreeProcess(pid=3001, stubborn=True)
+
+        root = TreeProcess(
+            pid=1,
+            direct_children=[live_child],
+            recursive_children=[live_child, live_grandchild],
         )
+        fake_psutil = FakePsutil()
+        fake_psutil._processes = {
+            1: root,
+            1001: live_child,
+            1002: live_grandchild,
+            2001: late_spawn,
+            3001: second_level,
+        }
+        handle = _make_handle(fake_psutil=fake_psutil)
+
+        def communicate(
+            input: bytes | None = None,
+            timeout: float | None = None,
+        ) -> tuple[bytes, bytes]:
+            del input, timeout
+            live_child._direct_children = [late_spawn]
+            late_spawn._direct_children = [second_level]
+            return b"out", b"err"
+
+        handle._proc.communicate = communicate
 
         stdout, stderr = handle.communicate_and_cleanup()
 
         assert stdout == b"out"
         assert stderr == b"err"
+        assert handle.record.status == ProcessStatus.EXITED
+        assert live_child._killed is True
+        assert live_child._terminated is False
+        assert live_grandchild._killed is True
+        assert late_spawn._killed is True
+        assert second_level._killed is True
 
-    def test_no_descendants_skips_cleanup(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        handle = _make_handle()
-        monkeypatch.setattr(
-            handle._proc, "communicate", lambda input=None, timeout=None: (b"", b"")
+    def test_missing_root_still_returns_output(self) -> None:
+        class MissingRootPsutil(FakePsutil):
+            def process_from_pid(self, pid: int) -> FakePsutilProcess:
+                raise self.NoSuchProcess
+
+        fake_psutil = MissingRootPsutil()
+        handle = _make_handle(fake_psutil=fake_psutil)
+        handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"err")
+
+        stdout, stderr = handle.communicate_and_cleanup()
+
+        assert stdout == b"ok"
+        assert stderr == b"err"
+        assert handle.record.status == ProcessStatus.EXITED
+
+    def test_kills_all_snapshot_descendants(self) -> None:
+        child_one = TreeProcess(pid=1001, stubborn=True)
+        child_two = TreeProcess(pid=1002, stubborn=True)
+        child_three = TreeProcess(pid=1003, stubborn=True)
+        root = TreeProcess(
+            pid=1,
+            direct_children=[child_one, child_two, child_three],
+            recursive_children=[child_one, child_two, child_three],
         )
-        monkeypatch.setattr(handle, "has_live_descendants", lambda: False)
-        calls: list[str] = []
-        monkeypatch.setattr(
-            handle, "terminate", lambda grace_period_s=None: calls.append("terminate")
+        fake_psutil = FakePsutil()
+        fake_psutil._processes = {
+            1: root,
+            1001: child_one,
+            1002: child_two,
+            1003: child_three,
+        }
+        handle = _make_handle(fake_psutil=fake_psutil)
+        handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
+
+        stdout, stderr = handle.communicate_and_cleanup()
+
+        assert stdout == b"ok"
+        assert stderr == b""
+        assert child_one._killed is True
+        assert child_two._killed is True
+        assert child_three._killed is True
+
+    def test_kills_descendants_of_snapshot_survivors(self) -> None:
+        child = TreeProcess(pid=1001, stubborn=True)
+        grandchild = TreeProcess(pid=2001, stubborn=True)
+        root = TreeProcess(pid=1, direct_children=[child], recursive_children=[child])
+        fake_psutil = FakePsutil()
+        fake_psutil._processes = {1: root, 1001: child, 2001: grandchild}
+        handle = _make_handle(fake_psutil=fake_psutil)
+
+        def communicate(
+            input: bytes | None = None,
+            timeout: float | None = None,
+        ) -> tuple[bytes, bytes]:
+            del input, timeout
+            child._direct_children = [grandchild]
+            return b"ok", b""
+
+        handle._proc.communicate = communicate
+
+        stdout, stderr = handle.communicate_and_cleanup()
+
+        assert stdout == b"ok"
+        assert stderr == b""
+        assert child._killed is True
+        assert grandchild._killed is True
+
+    def test_kills_second_level_late_spawn_descendants(self) -> None:
+        child = TreeProcess(pid=1001, stubborn=True)
+        grandchild = TreeProcess(pid=2001, stubborn=True)
+        great_grandchild = TreeProcess(pid=3001, stubborn=True)
+        root = TreeProcess(pid=1, direct_children=[child], recursive_children=[child])
+        fake_psutil = FakePsutil()
+        fake_psutil._processes = {
+            1: root,
+            1001: child,
+            2001: grandchild,
+            3001: great_grandchild,
+        }
+        handle = _make_handle(fake_psutil=fake_psutil)
+
+        def communicate(
+            input: bytes | None = None,
+            timeout: float | None = None,
+        ) -> tuple[bytes, bytes]:
+            del input, timeout
+            child._direct_children = [grandchild]
+            grandchild._direct_children = [great_grandchild]
+            return b"ok", b""
+
+        handle._proc.communicate = communicate
+
+        stdout, stderr = handle.communicate_and_cleanup()
+
+        assert stdout == b"ok"
+        assert stderr == b""
+        assert child._killed is True
+        assert grandchild._killed is True
+        assert great_grandchild._killed is True
+
+    def test_marks_process_as_exited(self) -> None:
+        fake_psutil = FakePsutil()
+        handle = _make_handle(fake_psutil=fake_psutil)
+        handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
+
+        stdout, stderr = handle.communicate_and_cleanup()
+
+        assert stdout == b"ok"
+        assert stderr == b""
+        assert handle.record.status == ProcessStatus.EXITED
+
+    def test_handles_no_psutil_gracefully(self) -> None:
+        handle = _make_handle(fake_psutil=None)
+        handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
+
+        stdout, stderr = handle.communicate_and_cleanup()
+
+        assert stdout == b"ok"
+        assert stderr == b""
+        assert handle.record.status == ProcessStatus.EXITED
+
+    def test_already_dead_descendants_are_ignored(self) -> None:
+        live_child = TreeProcess(pid=1001, stubborn=True)
+        dead_child = TreeProcess(pid=1002, _running=True, _status="zombie")
+        root = TreeProcess(
+            pid=1,
+            direct_children=[live_child, dead_child],
+            recursive_children=[live_child, dead_child],
         )
-        monkeypatch.setattr(handle, "kill", lambda: calls.append("kill"))
+        fake_psutil = FakePsutil()
+        fake_psutil._processes = {
+            1: root,
+            1001: live_child,
+            1002: dead_child,
+        }
+        handle = _make_handle(fake_psutil=fake_psutil)
+        handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
 
-        handle.communicate_and_cleanup()
+        stdout, stderr = handle.communicate_and_cleanup()
 
-        assert calls == []
+        assert stdout == b"ok"
+        assert stderr == b""
+        assert live_child._killed is True
+        assert dead_child._killed is False
+        assert dead_child._terminated is False
 
-    def test_live_descendants_trigger_terminate(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        handle = _make_handle()
-        monkeypatch.setattr(
-            handle._proc, "communicate", lambda input=None, timeout=None: (b"", b"")
+    def test_timeout_still_terminates_root(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake_psutil = FakePsutil()
+        handle = _make_handle(fake_psutil=fake_psutil)
+        handle._proc.communicate = lambda input=None, timeout=None: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired(cmd=[sys.executable], timeout=0.1)
         )
-        state = iter([True, False, False])
-        calls: list[float | str | None] = []
-        monkeypatch.setattr(handle, "has_live_descendants", lambda: next(state))
+        seen: list[float | None] = []
         monkeypatch.setattr(
             handle,
             "terminate",
-            lambda grace_period_s=None: calls.append(grace_period_s),
-        )
-        monkeypatch.setattr(handle, "kill", lambda: calls.append("kill"))
-
-        handle.communicate_and_cleanup(cleanup_grace_period_s=0.25)
-
-        assert calls == [0.25]
-
-    def test_persistent_descendants_trigger_kill(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        handle = _make_handle()
-        monkeypatch.setattr(
-            handle._proc, "communicate", lambda input=None, timeout=None: (b"", b"")
-        )
-        state = iter([True, True, False])
-        calls: list[str] = []
-        monkeypatch.setattr(handle, "has_live_descendants", lambda: next(state))
-        monkeypatch.setattr(
-            handle, "terminate", lambda grace_period_s=None: calls.append("terminate")
-        )
-        monkeypatch.setattr(handle, "kill", lambda: calls.append("kill"))
-
-        handle.communicate_and_cleanup()
-
-        assert calls == ["terminate", "kill"]
-
-    def test_cleanup_uses_grace_period(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        handle = _make_handle()
-        monkeypatch.setattr(
-            handle._proc, "communicate", lambda input=None, timeout=None: (b"", b"")
-        )
-        state = iter([True, False, False])
-        seen: list[float | None] = []
-        monkeypatch.setattr(handle, "has_live_descendants", lambda: next(state))
-        monkeypatch.setattr(
-            handle, "terminate", lambda grace_period_s=None: seen.append(grace_period_s)
-        )
-        monkeypatch.setattr(handle, "kill", lambda: None)
-
-        handle.communicate_and_cleanup(cleanup_grace_period_s=0.75)
-
-        assert seen == [0.75]
-
-    def test_timeout_triggers_terminate(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        handle = _make_handle()
-        monkeypatch.setattr(
-            handle,
-            "communicate",
-            lambda input=None, timeout=None: (_ for _ in ()).throw(
-                subprocess.TimeoutExpired(cmd=["python"], timeout=0.1)
-            ),
-        )
-        calls: list[str] = []
-        monkeypatch.setattr(
-            handle, "terminate", lambda grace_period_s=None: calls.append("terminate")
+            lambda grace_period_s=None: seen.append(grace_period_s),
         )
 
         with pytest.raises(subprocess.TimeoutExpired):
-            handle.communicate_and_cleanup()
+            handle.communicate_and_cleanup(cleanup_grace_period_s=0.25)
 
-        assert calls == ["terminate"]
-
-    def test_timeout_propagates(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        handle = _make_handle()
-        monkeypatch.setattr(
-            handle,
-            "communicate",
-            lambda input=None, timeout=None: (_ for _ in ()).throw(
-                subprocess.TimeoutExpired(cmd=["python"], timeout=0.1)
-            ),
-        )
-        monkeypatch.setattr(handle, "terminate", lambda grace_period_s=None: None)
-
-        with pytest.raises(subprocess.TimeoutExpired):
-            handle.communicate_and_cleanup()
-
-    def test_descendants_are_rechecked_before_kill(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        handle = _make_handle()
-        monkeypatch.setattr(
-            handle._proc, "communicate", lambda input=None, timeout=None: (b"", b"")
-        )
-        state = iter([True, True, True, False])
-        checks: list[bool] = []
-        monkeypatch.setattr(
-            handle, "has_live_descendants", lambda: checks.append(next(state)) or checks[-1]
-        )
-        monkeypatch.setattr(handle, "terminate", lambda grace_period_s=None: None)
-        monkeypatch.setattr(handle, "kill", lambda: None)
-
-        handle.communicate_and_cleanup()
-
-        assert checks[:3] == [True, True, True]
+        assert seen == [0.25]

@@ -11,7 +11,11 @@ from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
     from ralph.process.manager._process_manager import ProcessManager
-    from ralph.process.manager._process_manager_types import _SyncProcessLike
+    from ralph.process.manager._process_manager_types import (
+        _PsutilModuleLike,
+        _PsutilProcessLike,
+        _SyncProcessLike,
+    )
     from ralph.process.manager._process_record import ProcessRecord
 
 
@@ -87,24 +91,115 @@ class ManagedProcess:
         timeout: float | None = None,
         cleanup_grace_period_s: float = 0.0,
     ) -> tuple[bytes | None, bytes | None]:
-        """Drain output and make a best-effort attempt to remove lingering descendants."""
+        """Drain output and clean up any descendant processes with psutil."""
+        psutil_mod = self._manager._psutil
+        snapshot_descendants = self._snapshot_live_descendants() if psutil_mod is not None else []
         try:
             stdout, stderr = self.communicate(input=input, timeout=timeout)
         except subprocess.TimeoutExpired:
             with contextlib.suppress(Exception):
                 self.terminate(grace_period_s=cleanup_grace_period_s)
+            if snapshot_descendants and psutil_mod is not None:
+                with contextlib.suppress(Exception):
+                    self._cleanup_descendant_waves(
+                        psutil_mod, snapshot_descendants, cleanup_grace_period_s
+                    )
             raise
 
-        if self.has_live_descendants():
-            with contextlib.suppress(Exception):
-                self.terminate(grace_period_s=cleanup_grace_period_s)
-        if self.has_live_descendants():
-            with contextlib.suppress(Exception):
-                self.kill()
-        if self.has_live_descendants():
-            with contextlib.suppress(Exception):
-                self.wait(timeout=cleanup_grace_period_s)
+        if snapshot_descendants and psutil_mod is not None:
+            self._cleanup_descendant_waves(psutil_mod, snapshot_descendants, cleanup_grace_period_s)
         return stdout, stderr
+
+    def _snapshot_live_descendants(self) -> list[_PsutilProcessLike]:
+        psutil_mod = self._manager._psutil
+        if psutil_mod is None:
+            return []
+        try:
+            root = psutil_mod.process_from_pid(self.pid)
+            descendants = root.children(recursive=True)
+        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+            return []
+        return [
+            proc for proc in descendants if self._is_live_psutil_process(psutil_mod, proc)
+        ]
+
+    def _is_live_psutil_process(
+        self, psutil_mod: _PsutilModuleLike, proc: _PsutilProcessLike
+    ) -> bool:
+        try:
+            return proc.is_running() and proc.status() != "zombie"
+        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+            return False
+
+    def _collect_live_direct_children(
+        self, psutil_mod: _PsutilModuleLike, processes: list[_PsutilProcessLike]
+    ) -> list[_PsutilProcessLike]:
+        live_children: list[_PsutilProcessLike] = []
+        seen_pids: set[int] = set()
+        for proc in processes:
+            try:
+                children = proc.children(recursive=False)
+            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                continue
+            for child in children:
+                if not self._is_live_psutil_process(psutil_mod, child):
+                    continue
+                raw_pid: object = getattr(child, "pid", None)
+                child_pid = int(raw_pid) if isinstance(raw_pid, int) else id(child)
+                if child_pid in seen_pids:
+                    continue
+                seen_pids.add(child_pid)
+                live_children.append(child)
+        return live_children
+
+    def _terminate_psutil_wave(
+        self,
+        psutil_mod: _PsutilModuleLike,
+        procs: list[_PsutilProcessLike],
+        grace_period_s: float,
+    ) -> list[_PsutilProcessLike]:
+        if not procs:
+            return []
+        for proc in procs:
+            with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                proc.terminate()
+        _, alive = psutil_mod.wait_procs(procs, timeout=grace_period_s)
+        return [proc for proc in alive if self._is_live_psutil_process(psutil_mod, proc)]
+
+    def _kill_psutil_wave(
+        self,
+        psutil_mod: _PsutilModuleLike,
+        procs: list[_PsutilProcessLike],
+    ) -> list[_PsutilProcessLike]:
+        if not procs:
+            return []
+        for proc in procs:
+            with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                proc.kill()
+        _, still_alive = psutil_mod.wait_procs(
+            procs, timeout=self._manager.policy.kill_followup_timeout_s
+        )
+        return [proc for proc in still_alive if self._is_live_psutil_process(psutil_mod, proc)]
+
+    def _cleanup_descendant_waves(
+        self,
+        psutil_mod: _PsutilModuleLike,
+        snapshot_descendants: list[_PsutilProcessLike],
+        cleanup_grace_period_s: float,
+    ) -> None:
+        snapshot_survivors = self._terminate_psutil_wave(
+            psutil_mod, snapshot_descendants, cleanup_grace_period_s
+        )
+        if snapshot_survivors:
+            self._kill_psutil_wave(psutil_mod, snapshot_survivors)
+
+        first_late_spawns = self._collect_live_direct_children(psutil_mod, snapshot_descendants)
+        if first_late_spawns:
+            self._kill_psutil_wave(psutil_mod, first_late_spawns)
+
+        second_late_spawns = self._collect_live_direct_children(psutil_mod, first_late_spawns)
+        if second_late_spawns:
+            self._kill_psutil_wave(psutil_mod, second_late_spawns)
 
     def terminate(self, grace_period_s: float | None = None) -> None:
         gp = (

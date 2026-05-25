@@ -1,7 +1,7 @@
 """MCP exec tool handler.
 
 Ports the Rust MCP `exec` tool so agents can execute bounded subprocesses
-from the workspace root after capability checks and blacklist filtering.
+inside an ephemeral workspace overlay after capability checks and policy filtering.
 """
 
 from __future__ import annotations
@@ -499,7 +499,7 @@ def handle_exec_command(
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
-    """Execute a bounded subprocess in the workspace root."""
+    """Execute a bounded subprocess inside an ephemeral workspace overlay."""
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
     apply_exec_policy(parsed.command, parsed.args)
