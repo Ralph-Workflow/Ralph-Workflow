@@ -29,6 +29,26 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         self.assertNotIn(('website', 'https://schema.org'), values)
         self.assertNotIn(('website', 'https://other.example/contact'), values)
 
+    def test_extract_channels_drops_social_share_junk_and_normalizes_backslashes(self):
+        html = ' '.join([
+            '<a href="https://x.com/TIMEWELL_PR\\\\\\">X</a>',
+            '<a href="https://x.com/intent/tweet?url=&text=hello">Share</a>',
+            '<a href="https://www.linkedin.com/company/timewell-corp/\\\\\\">LinkedIn</a>',
+            '<a href="https://www.linkedin.com/sharing/share-offsite/?url=">LinkedIn share</a>',
+            '<a href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fexample.com">LinkedIn share with url</a>',
+        ])
+
+        channels = discovery.extract_channels('https://timewell.jp/en/columns/example', html)
+        values = {(row['type'], row['value']) for row in channels}
+
+        self.assertIn(('x', 'https://x.com/TIMEWELL_PR'), values)
+        self.assertIn(('linkedin', 'https://www.linkedin.com/company/timewell-corp'), values)
+        self.assertNotIn(('x', 'https://x.com/TIMEWELL_PR\\\\\\'), values)
+        self.assertNotIn(('x', 'https://x.com/intent/tweet?url=&text=hello'), values)
+        self.assertNotIn(('linkedin', 'https://www.linkedin.com/company/timewell-corp/\\\\\\'), values)
+        self.assertNotIn(('linkedin', 'https://www.linkedin.com/sharing/share-offsite/?url='), values)
+        self.assertNotIn(('linkedin', 'https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fexample.com'), values)
+
     def test_enrich_target_prefers_explicit_work_with_me_telegram_path(self):
         target = discovery.Target(
             name='ctxt.dev / Signum',
@@ -100,6 +120,41 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
             {'type': 'email', 'value': 'you@example.com', 'label': 'email'},
             enriched['channels'],
         )
+
+    def test_enrich_target_prefers_contact_page_over_weak_role_emails(self):
+        target = discovery.Target(
+            name='NxCode',
+            article_url='https://www.nxcode.io/resources/news/codex-vs-cursor-vs-claude-code-2026',
+            root_url='https://www.nxcode.io/',
+            hook='Hook',
+            reason='Fit',
+            outreach_subject='Subject',
+            contact_urls=('https://www.nxcode.io/ar/contact',),
+        )
+
+        def fake_get(url: str, timeout: int = 20) -> str:
+            normalized = url.rstrip('/')
+            if normalized == 'https://www.nxcode.io/resources/news/codex-vs-cursor-vs-claude-code-2026':
+                return '<a href="/ar/contact">Contact</a>'
+            if normalized == 'https://www.nxcode.io':
+                return '<a href="mailto:legal@nxcode.io">Legal</a><a href="mailto:support@nxcode.io">Support</a>'
+            if normalized == 'https://www.nxcode.io/ar/contact':
+                return '<form></form><a href="/company/about">About</a>'
+            if normalized == 'https://www.nxcode.io/company/about':
+                return '<p>About page</p>'
+            return ''
+
+        original = discovery.http_get
+        discovery.http_get = fake_get
+        try:
+            enriched = discovery.enrich_target(target)
+        finally:
+            discovery.http_get = original
+
+        self.assertEqual(enriched['recommended_next_step'], 'public website contact path is now identified')
+        self.assertEqual(enriched['channels'][0], {'type': 'website', 'value': 'https://www.nxcode.io/ar/contact', 'label': 'contact page'})
+        self.assertIn({'type': 'email', 'value': 'legal@nxcode.io', 'label': 'email'}, enriched['channels'])
+        self.assertIn({'type': 'email', 'value': 'support@nxcode.io', 'label': 'email'}, enriched['channels'])
 
     def test_recent_contact_targets_omits_recent_live_publisher_outreach(self):
         with TemporaryDirectory() as tmpdir:

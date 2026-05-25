@@ -4713,7 +4713,53 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertTrue(normalized['result']['live_external_action'])
             self.assertEqual(normalized['result']['status'], 'sent')
 
-        
+    def test_audit_treats_publisher_summary_logs_with_action_type_as_live_replacement_actions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            out_dir = tmp / 'logs'
+            out_dir.mkdir()
+
+            beam = out_dir / 'marketing_2026-05-25_beam_publisher_outreach.json'
+            toolchase = out_dir / 'marketing_2026-05-25_toolchase_publisher_outreach.json'
+            beam.write_text(json.dumps({
+                'timestamp': '2026-05-25T02:58:32+02:00',
+                'action_type': 'publisher_email_outreach',
+                'status': 'executed',
+                'ok': True,
+                'live_external_action': True,
+                'outcome_ready': True,
+                'target': 'Beam',
+                'recipient': 'frank@example.com',
+            }), encoding='utf-8')
+            toolchase.write_text(json.dumps({
+                'timestamp': '2026-05-25T02:24:28+02:00',
+                'action_type': 'publisher_contact_form_submission',
+                'status': 'executed',
+                'ok': True,
+                'live_external_action': True,
+                'outcome_ready': True,
+                'target': 'ToolChase',
+                'delivery': {'submit_url': 'https://toolchase.com/contact/'},
+            }), encoding='utf-8')
+            normalized = marketing_workflow_audit.normalize_marketing_action(json.loads(beam.read_text(encoding='utf-8')), beam)
+            self.assertEqual(normalized['chosen_action']['type'], 'publisher_email_outreach')
+            self.assertTrue(normalized['result']['live_external_action'])
+            self.assertEqual(normalized['result']['status'], 'executed')
+
+            normalized_form = marketing_workflow_audit.normalize_marketing_action(json.loads(toolchase.read_text(encoding='utf-8')), toolchase)
+            self.assertEqual(normalized_form['chosen_action']['type'], 'publisher_contact_form_submission')
+            self.assertTrue(normalized_form['result']['live_external_action'])
+
+            toolchase.touch()
+            beam.touch()
+            beam_stat = beam.stat()
+            os.utime(beam, (beam_stat.st_atime + 2, beam_stat.st_mtime + 2))
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir):
+                latest_meaningful = marketing_workflow_audit.load_latest_marketing_action()
+
+            self.assertEqual(latest_meaningful['chosen_action']['type'], 'publisher_email_outreach')
+            self.assertEqual(latest_meaningful['chosen_action']['title'], 'publisher email outreach')
+
     def test_audit_does_not_treat_curator_follow_through_as_shipped_system_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

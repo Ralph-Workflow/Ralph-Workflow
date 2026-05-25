@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-25T01:25:27+00:00
+Generated: 2026-05-25T01:47:18+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -40,33 +40,23 @@ Generated: 2026-05-25T01:25:27+00:00
 ### 3. NxCode
 - Hook: Codex vs Cursor vs Claude Code comparison with workflow-specific tradeoffs
 - Article/root: https://www.nxcode.io/resources/news/codex-vs-cursor-vs-claude-code-2026 / https://www.nxcode.io/
-- Recommended next step: email/contact send path is now identified
+- Recommended next step: public website contact path is now identified
 - Suggested subject: Ralph Workflow as a workflow-system addition to your AI coding tools comparison
 - Discovered channels:
-  - email: legal@nxcode.io
-  - email: privacy@nxcode.io
-  - email: support@nxcode.io
+  - contact page: https://www.nxcode.io/ar/company/about
+  - contact page: https://www.nxcode.io/ar/company/careers
   - contact page: https://www.nxcode.io/ar/contact
-  - contact page: https://www.nxcode.io/company/about
-  - contact page: https://www.nxcode.io/company/careers
-  - X/Twitter: https://twitter.com/intent/tweet?text=Codex%20vs%20Cursor%20vs%20Claude%20Code%3A%20AI%20Coding%20Tool%20Comparison%20(2026)&url=https%3A%2F%2Fwww.nxcode.io%2Fresources%2Fnews%2Fcodex-vs-cursor-vs-claude-code-2026
   - X/Twitter: https://twitter.com/nxcode
   - LinkedIn: https://www.linkedin.com/company/nxcode
-  - LinkedIn: https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fwww.nxcode.io%2Fresources%2Fnews%2Fcodex-vs-cursor-vs-claude-code-2026
 
 ### 4. TIMEWELL
 - Hook: AI coding tools benchmark focused on agent-style development and review discipline
 - Article/root: https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026 / https://timewell.jp/en/
-- Recommended next step: email/contact send path is now identified
+- Recommended next step: public website contact path is now identified
 - Suggested subject: Ralph Workflow for your next AI coding tools benchmark update
 - Discovered channels:
-  - email: timewell@timewell.jp
   - about page: https://timewell.jp/about
   - contact page: https://timewell.jp/company
   - contact page: https://timewell.jp/company/members
-  - X/Twitter: https://x.com/intent/tweet?url=&text=AI%20Coding%20Tools%20Compared%20%5BLatest%202026%5D%3A%20Claude%20Code%2C%20Cursor%2C%20Copilot%2C%20Cline%2C%20Continue%2C%20Devin%2C%20Codex%20-%20A%20Thorough%20Benchmark
   - X/Twitter: https://x.com/TIMEWELL_PR
-  - X/Twitter: https://x.com/TIMEWELL_PR\\\
   - LinkedIn: https://www.linkedin.com/company/timewell-corp
-  - LinkedIn: https://www.linkedin.com/company/timewell-corp/\\\
-  - LinkedIn: https://www.linkedin.com/sharing/share-offsite/?url=

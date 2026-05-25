@@ -1,33 +1,31 @@
 {
-  "timestamp": "2026-05-25T02:40:45.623435",
+  "timestamp": "2026-05-25T03:55:40.494021",
   "weekly_mode": true,
   "marketing_status": "measurement_hold",
   "measurement_hold": {
     "active": true,
-    "hold_started_at": "2026-05-25T01:47:40.177303",
-    "hold_until": "2026-05-25T02:47:40.177303",
-    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_014740_measurement_hold_execution.json",
-    "reason": "The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search."
+    "hold_started_at": "2026-05-25T02:59:00",
+    "hold_until": "2026-05-25T03:59:00",
+    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_measurement_hold_execution.json",
+    "reason": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions."
   },
   "distribution_lane": {
     "lane": "measurement_hold",
     "reason": "The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_023723_measurement_hold_follow_through.md"
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_distribution_action_brief.md"
   },
   "distribution_execution": {
     "action_type": "measurement_hold_follow_through",
     "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_023723_measurement_hold_follow_through.md",
-    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Scheduled an automatic post-hold marketer rerun at the exact short-window release time. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
-    "targets_prepared": [
-      "Beam"
-    ],
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_035540_measurement_hold_follow_through.md",
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
+    "targets_prepared": [],
     "live_external_action": false,
     "blocking_factors": [],
-    "reused_existing_follow_through": true
+    "reused_existing_follow_through": false
   },
   "seo": {
-    "timestamp": "2026-05-25T02:40:45.714983",
+    "timestamp": "2026-05-25T03:55:40.559151",
     "onpage_score": "90/100 (A)",
     "homepage_ok": true,
     "sitemap_urls": 80,
@@ -73,6 +71,6 @@
     "stdout": "skipped: active measurement-hold cooldown",
     "stderr": ""
   },
-  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_024045_measurement_hold_skip.json",
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_023723_measurement_hold_follow_through.json"
+  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_035540_measurement_hold_skip.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_035540_measurement_hold_follow_through.json"
 }

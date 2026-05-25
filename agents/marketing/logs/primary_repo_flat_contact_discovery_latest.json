@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T01:25:27.172422+00:00",
+  "generated_at": "2026-05-25T01:47:18.205052+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -77,39 +77,19 @@
       "outreach_subject": "Ralph Workflow as a workflow-system addition to your AI coding tools comparison",
       "channels": [
         {
-          "type": "email",
-          "value": "legal@nxcode.io",
-          "label": "email"
+          "type": "website",
+          "value": "https://www.nxcode.io/ar/company/about",
+          "label": "contact page"
         },
         {
-          "type": "email",
-          "value": "privacy@nxcode.io",
-          "label": "email"
-        },
-        {
-          "type": "email",
-          "value": "support@nxcode.io",
-          "label": "email"
+          "type": "website",
+          "value": "https://www.nxcode.io/ar/company/careers",
+          "label": "contact page"
         },
         {
           "type": "website",
           "value": "https://www.nxcode.io/ar/contact",
           "label": "contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://www.nxcode.io/company/about",
-          "label": "contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://www.nxcode.io/company/careers",
-          "label": "contact page"
-        },
-        {
-          "type": "x",
-          "value": "https://twitter.com/intent/tweet?text=Codex%20vs%20Cursor%20vs%20Claude%20Code%3A%20AI%20Coding%20Tool%20Comparison%20(2026)&url=https%3A%2F%2Fwww.nxcode.io%2Fresources%2Fnews%2Fcodex-vs-cursor-vs-claude-code-2026",
-          "label": "X/Twitter"
         },
         {
           "type": "x",
@@ -120,14 +100,9 @@
           "type": "linkedin",
           "value": "https://www.linkedin.com/company/nxcode",
           "label": "LinkedIn"
-        },
-        {
-          "type": "linkedin",
-          "value": "https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fwww.nxcode.io%2Fresources%2Fnews%2Fcodex-vs-cursor-vs-claude-code-2026",
-          "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "email/contact send path is now identified"
+      "recommended_next_step": "public website contact path is now identified"
     },
     {
       "target": "TIMEWELL",
@@ -137,11 +112,6 @@
       "reason": "Strong adjacent audience for process-layer framing because the article already centers on briefing, review, and multi-tool operating models.",
       "outreach_subject": "Ralph Workflow for your next AI coding tools benchmark update",
       "channels": [
-        {
-          "type": "email",
-          "value": "timewell@timewell.jp",
-          "label": "email"
-        },
         {
           "type": "website",
           "value": "https://timewell.jp/about",
@@ -159,36 +129,16 @@
         },
         {
           "type": "x",
-          "value": "https://x.com/intent/tweet?url=&text=AI%20Coding%20Tools%20Compared%20%5BLatest%202026%5D%3A%20Claude%20Code%2C%20Cursor%2C%20Copilot%2C%20Cline%2C%20Continue%2C%20Devin%2C%20Codex%20-%20A%20Thorough%20Benchmark",
-          "label": "X/Twitter"
-        },
-        {
-          "type": "x",
           "value": "https://x.com/TIMEWELL_PR",
-          "label": "X/Twitter"
-        },
-        {
-          "type": "x",
-          "value": "https://x.com/TIMEWELL_PR\\\\\\",
           "label": "X/Twitter"
         },
         {
           "type": "linkedin",
           "value": "https://www.linkedin.com/company/timewell-corp",
           "label": "LinkedIn"
-        },
-        {
-          "type": "linkedin",
-          "value": "https://www.linkedin.com/company/timewell-corp/\\\\\\",
-          "label": "LinkedIn"
-        },
-        {
-          "type": "linkedin",
-          "value": "https://www.linkedin.com/sharing/share-offsite/?url=",
-          "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "email/contact send path is now identified"
+      "recommended_next_step": "public website contact path is now identified"
     }
   ],
   "omitted_recent_targets": [

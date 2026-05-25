@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime
@@ -401,7 +402,7 @@ class RunRepairModeTests(unittest.TestCase):
                     rc = run.main()
 
                 self.assertEqual(rc, 0)
-                daily_log = run.LOG_DIR / 'marketing_2026-05-24.json'
+                daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
                 payload = json.loads(daily_log.read_text(encoding='utf-8'))
                 self.assertEqual(payload['marketing_status'], 'measurement_hold')
                 self.assertEqual(payload['distribution_execution']['action_type'], 'measurement_hold_follow_through')
@@ -414,7 +415,10 @@ class RunRepairModeTests(unittest.TestCase):
     def test_main_reuses_existing_follow_through_during_same_active_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR
+            original_drafts_dir = run.DRAFTS_DIR
             run.LOG_DIR = Path(tmpdir)
+            run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
+            run.DRAFTS_DIR.mkdir()
             try:
                 hold_window = {
                     'hold_started_at': datetime(2026, 5, 24, 6, 52, 32),
@@ -447,7 +451,7 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertEqual(rc, 0)
                 choose_mock.assert_not_called()
                 execute_mock.assert_not_called()
-                daily_log = run.LOG_DIR / 'marketing_2026-05-24.json'
+                daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
                 payload = json.loads(daily_log.read_text(encoding='utf-8'))
                 self.assertTrue(payload['distribution_execution']['reused_existing_follow_through'])
                 self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_hold.md')
@@ -455,6 +459,79 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertEqual(payload['distribution_execution_log'], str(prior_log))
             finally:
                 run.LOG_DIR = original_log_dir
+                run.DRAFTS_DIR = original_drafts_dir
+
+    def test_main_refreshes_follow_through_when_truth_artifact_changed_after_prior_run(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            original_drafts_dir = run.DRAFTS_DIR
+            run.LOG_DIR = Path(tmpdir)
+            run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
+            run.DRAFTS_DIR.mkdir()
+            try:
+                hold_window = {
+                    'hold_started_at': datetime(2026, 5, 24, 6, 52, 32),
+                    'hold_until': datetime(2026, 5, 24, 7, 52, 32),
+                    'source_log': '/tmp/marketing_2026-05-24_measurement_hold_execution.json',
+                    'reason': 'Existing hold still active.',
+                }
+                prior_log = run.LOG_DIR / 'marketing_2026-05-24_070000_measurement_hold_follow_through.json'
+                prior_log.write_text(json.dumps({
+                    'timestamp': '2026-05-24T07:00:00',
+                    'chosen_action': {
+                        'type': 'measurement_hold_follow_through',
+                        'channel': 'measurement_hold',
+                        'draft': '/tmp/existing_hold.md',
+                    },
+                    'result': {
+                        'status': 'executed',
+                        'summary': 'Active hold respected and follow-through surfaced.',
+                        'targets_prepared': ['Existing target'],
+                        'live_external_action': False,
+                        'blocking_factors': [],
+                    },
+                }), encoding='utf-8')
+                changed_packet = run.DRAFTS_DIR / 'primary_repo_flat_contact_handoff_packet_latest.md'
+                changed_packet.write_text('# refreshed packet\n', encoding='utf-8')
+                changed_mtime = datetime(2026, 5, 24, 7, 5, 0).timestamp()
+                os.utime(changed_packet, (changed_mtime, changed_mtime))
+
+                decision = LaneDecision(
+                    lane='measurement_hold',
+                    reason='Hold for follow-through.',
+                    reasons=['fresh external actions already shipped'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='',
+                )
+                execution = SimpleNamespace(
+                    action_type='measurement_hold_follow_through',
+                    status='executed',
+                    artifact_path='/tmp/refreshed_hold.md',
+                    summary='Refreshed hold follow-through after packet drift.',
+                    targets_prepared=['Refreshed target'],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
+                     patch.object(run, 'choose_distribution_lane', return_value=decision) as choose_mock, \
+                     patch.object(run, 'execute_distribution_lane', return_value=execution) as execute_mock:
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                choose_mock.assert_called_once()
+                execute_mock.assert_called_once()
+                daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
+                payload = json.loads(daily_log.read_text(encoding='utf-8'))
+                self.assertFalse(payload['distribution_execution']['reused_existing_follow_through'])
+                self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/refreshed_hold.md')
+                self.assertEqual(payload['distribution_execution']['targets_prepared'], ['Refreshed target'])
+                self.assertNotEqual(payload['distribution_execution_log'], str(prior_log))
+            finally:
+                run.LOG_DIR = original_log_dir
+                run.DRAFTS_DIR = original_drafts_dir
 
     def test_write_distribution_execution_log_records_short_review_window_release_for_measurement_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:

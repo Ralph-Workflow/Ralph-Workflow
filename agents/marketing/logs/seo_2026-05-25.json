@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-25T02:40:45.714983",
+  "timestamp": "2026-05-25T03:55:40.559151",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -120,15 +120,14 @@
   "backlinks": {
     "count_approx": 2,
     "google_count_approx": 0,
+    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data",
     "verified_live_listings": 2,
     "verified_live_listing_source": "backlink_status_latest.json",
     "verified_live_listing_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_status_latest.json",
     "verified_live_listing_directories": [
       "SaaSHub",
       "ToolWise"
-    ],
-    "error": "HTTP Error 429: Too Many Requests",
-    "note": "Google search failed; reused verified live directory listings as the truthful backlink floor."
+    ]
   },
   "domain_rating": {
     "dr": null,
@@ -177,7 +176,9 @@
     "coverage_pct": 75.0
   },
   "serp": {
-    "error": "HTTP Error 429: Too Many Requests",
+    "position": null,
+    "people_also_ask": false,
+    "related_searches": false,
     "keyword": "unattended coding agent"
   },
   "priority_actions": [

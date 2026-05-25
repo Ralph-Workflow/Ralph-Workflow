@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T02:51:38.446364",
+  "generated_at": "2026-05-25T04:16:56.893550",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -54,7 +54,7 @@
   "failing_tactics": [
     "primary_repo_flat_window",
     "mirror_repo_flat_window",
-    "same_family_distribution_overlap"
+    "same_family_outreach_overlap"
   ],
   "dormant_risks": [
     "reddit_style_repetition_suspended_while_channel_blocked"
@@ -71,15 +71,14 @@
       "repair_state": "pending_measurement"
     },
     {
-      "target_tactic": "directory_submission_burst",
-      "failure_type": "same_family_distribution_overlap",
+      "target_tactic": "curator_outreach_burst",
+      "failure_type": "same_family_outreach_overlap",
       "repair_kind": "tactic",
-      "action": "PAUSE net-new low-intent directory submissions for now. Let the existing listing approvals mature, then use the next run on higher-intent demand capture or conversion-moving lanes such as StackOverflow answers, manual curator/contact execution packets, or direct comparison-backlink follow-through.",
-      "kill_condition": "Another audit adds more directory submissions before current listing windows have produced approval/backlink evidence or aged past their review checkpoints",
-      "success_metric": "Next execution lane is not another directory submission burst and produces a cleaner measurement path toward Codeberg movement",
-      "priority": 1,
-      "repair_state": "pending_measurement",
-      "repair_acknowledged_at": "2026-05-24T00:57:32.198736"
+      "action": "HOLD another same-day curator-contact burst. Reuse the prepared/manual-contact artifacts already in queue and spend the next active cycle on a different lane that can create clearer demand or cleaner follow-through measurement.",
+      "kill_condition": "Another audit adds more same-family curator outreach before the existing reply/backlink windows have materially aged or produced evidence",
+      "success_metric": "Next execution lane advances a different family or executes an existing manual-contact packet instead of starting another same-day curator burst",
+      "priority": 2,
+      "repair_state": "needs_execution"
     },
     {
       "target_tactic": "github_mirror_outreach",
@@ -92,11 +91,10 @@
       "repair_state": "pending_measurement"
     }
   ],
-  "repair_window_status": "measurement_pending",
+  "repair_window_status": "needs_repair",
   "measurement_pending_reasons": [
     "primary_repo_flat",
-    "mirror_repo_flat",
-    "same_family_distribution_overlap"
+    "mirror_repo_flat"
   ],
   "has_failing_tactics": true,
   "reasons": [
@@ -105,9 +103,9 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "6 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.",
-    "The most recent runtime activity was primary_repo_flat_contact_handoff_follow_through, but the latest meaningful external/replacement execution remains saashub_repo_routing_execution; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (saashub_repo_routing_execution), so the system is still shipping output even though outcome movement is not visible yet.",
+    "6 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.",
+    "The most recent runtime activity was distribution_architecture_repair, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
   "next_moves": [
@@ -141,10 +139,10 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_primary_repo_flat_contact_handoff_packet_execution.json",
-    "type": "primary_repo_flat_contact_handoff_follow_through",
-    "title": "Distribution lane execution: primary_repo_flat_contact_handoff_packet",
-    "status": "prepared",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_distribution_architecture_repair_execution.json",
+    "type": "distribution_architecture_repair",
+    "title": "Distribution lane execution: distribution_architecture_repair",
+    "status": "executed",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
@@ -152,9 +150,9 @@
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_saashub_repo_routing_execution.json",
-    "type": "saashub_repo_routing_execution",
-    "title": "SaaSHub listing management: Codeberg-first repo routing repair",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_beam_publisher_outreach.json",
+    "type": "publisher_email_outreach",
+    "title": "publisher email outreach",
     "status": "executed",
     "ok": true,
     "live_external_action": true,

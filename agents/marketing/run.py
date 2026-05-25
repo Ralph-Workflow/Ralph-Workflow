@@ -36,6 +36,7 @@ LOG_DIR = AGENTS_DIR / "logs"
 STRATEGY_FILE = AGENTS_DIR / "STRATEGY.md"
 POSTED_FILE = LOG_DIR / "posted_urls.json"
 SEO_REPORTS_DIR = ROOT / "seo-reports"
+DRAFTS_DIR = ROOT / "drafts"
 ADOPTION_FILE = LOG_DIR / "adoption_metrics_latest.json"
 MARKET_INTELLIGENCE_FILE = LOG_DIR / "market_intelligence_latest.json"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -775,6 +776,39 @@ def _latest_measurement_hold_follow_through(hold_window: dict[str, Any]) -> dict
     return None
 
 
+def _measurement_hold_truth_artifact_paths() -> list[Path]:
+    return [
+        LOG_DIR / "distribution_lane_latest.json",
+        LOG_DIR / "primary_repo_flat_contact_discovery_latest.json",
+        LOG_DIR / "curator_outreach_queue_latest.json",
+        LOG_DIR / "comparison_backlink_queue_latest.json",
+        LOG_DIR / "curator_contact_discovery_latest.json",
+        LOG_DIR / "stackoverflow_answer_lane_latest.json",
+        LOG_DIR / "apollo_sequence_status_latest.json",
+        DRAFTS_DIR / "primary_repo_flat_contact_handoff_packet_latest.md",
+        DRAFTS_DIR / "curator_handoff_packet_latest.md",
+        DRAFTS_DIR / "curator_contact_handoff_packet_latest.md",
+        DRAFTS_DIR / "comparison_backlink_handoff_packet_latest.md",
+        DRAFTS_DIR / "stackoverflow_answer_handoff_packet_latest.md",
+    ]
+
+
+def _measurement_hold_follow_through_is_stale(recent_follow_through: dict[str, Any] | None) -> bool:
+    if not recent_follow_through:
+        return False
+    follow_through_timestamp = recent_follow_through.get("timestamp")
+    if not isinstance(follow_through_timestamp, datetime):
+        return True
+
+    for path in _measurement_hold_truth_artifact_paths():
+        try:
+            if path.exists() and datetime.fromtimestamp(path.stat().st_mtime) > follow_through_timestamp:
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def main() -> int:
     now = datetime.now()
     weekday = now.weekday()
@@ -801,7 +835,10 @@ def main() -> int:
                 audit = {}
 
         recent_follow_through = _latest_measurement_hold_follow_through(hold_window)
-        reused_existing_follow_through = recent_follow_through is not None
+        reused_existing_follow_through = (
+            recent_follow_through is not None
+            and not _measurement_hold_follow_through_is_stale(recent_follow_through)
+        )
 
         if reused_existing_follow_through:
             lane_name = "measurement_hold"
