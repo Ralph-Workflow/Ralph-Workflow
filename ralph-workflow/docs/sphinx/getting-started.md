@@ -3,9 +3,11 @@
 New to Ralph Workflow? This page takes you from install to one honest unattended run in a repository you already care about.
 If you already know the shape of the product and just want the shortest checklist, use [Quickstart](quickstart.md).
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
-It turns that simple structure into a stronger composable workflow for substantial, well-specified repo work by moving through planning, implementation, and verification instead of stopping at one long agent session.
-The default workflow is already strong for writing software; start there first, then extend later only when you know why.
+Ralph Workflow is an AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for substantial, well-specified repo work, and this guide is about getting that default workflow running once, honestly, before you customize anything.
+
+Bring your existing coding agents. Keep your existing setup. Keep your keys to yourself.
+Ralph Workflow is designed to plug into the agent CLIs you already use instead of making secret handoff the main adoption story.
 
 ## What this page gives you
 
@@ -71,6 +73,6 @@ If your first run goes sideways, use [Troubleshooting](troubleshooting.md).
 ## Recommended next clicks after your first run
 
 - Need the shortest operator checklist? Use [Quickstart](quickstart.md).
-- Need to inspect what trustworthy output looks like? Use [What Good Ralph Workflow Output Looks Like](../../../docs/reviewable-output.md).
+- Need to inspect what trustworthy output looks like? Use [What Good Ralph Workflow Output Looks Like](reviewable-output.md).
 - Need to change settings or file locations? Use [Configuration Reference](configuration.md).
 - Need docs by goal instead of by section? Use [End-User Stories](user-stories.md).

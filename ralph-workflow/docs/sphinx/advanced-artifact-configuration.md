@@ -1,10 +1,10 @@
 # Advanced Artifact Configuration
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-
 This page is for operators who want to change the **typed outputs Ralph Workflow expects and records**.
+Use it when you need to edit contracts, decision vocabularies, or summary paths without guessing how those outputs connect back to the workflow.
+
+Treat artifacts as operator-facing contracts, not generic notes.
+The goal is to keep the workflow reviewable and predictable while the core loop stays simple.
 
 If your question is about workflow routing, use [Advanced Pipeline Configuration](advanced-pipeline-configuration.md). If your question is about MCP servers, use [Advanced MCP Configuration](advanced-mcp-configuration.md).
 

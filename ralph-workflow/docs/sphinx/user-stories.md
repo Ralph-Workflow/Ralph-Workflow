@@ -81,7 +81,7 @@ ralph --explain-policy
 
 ## I want to see proof before I install anything
 
-- [What Good Ralph Workflow Output Looks Like](../../../docs/reviewable-output.md)
+- [What Good Ralph Workflow Output Looks Like](reviewable-output.md)
 
 ## I want the command and flag reference
 
