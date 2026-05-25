@@ -10,10 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
+from ralph.mcp.tools import exec_overlay
 from ralph.mcp.tools._exec_run_deps import ExecRunDeps
 from ralph.mcp.tools.exec import run_command
-from ralph.mcp.tools.exec_overlay import _compute_exec_base_str, create_ephemeral_overlay
 from tests.mock_workspace_root import MockWorkspaceRoot
 
 
@@ -23,7 +22,7 @@ class TestCreateEphemeralOverlay:
         workspace.mkdir()
         (workspace / "root.txt").write_text("root", encoding="utf-8")
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             assert overlay.is_dir()
             assert overlay != workspace
             assert (overlay / "root.txt").read_text(encoding="utf-8") == "root"
@@ -32,7 +31,7 @@ class TestCreateEphemeralOverlay:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             assert overlay.is_dir()
             assert overlay != workspace
             assert overlay.parent != workspace.parent
@@ -44,7 +43,7 @@ class TestCreateEphemeralOverlay:
         nested_file.parent.mkdir(parents=True)
         nested_file.write_text("inner", encoding="utf-8")
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             assert (overlay / "nested" / "inner.txt").read_text(encoding="utf-8") == "inner"
 
     def test_dereferences_symlinked_files(self, tmp_path: Path) -> None:
@@ -58,7 +57,7 @@ class TestCreateEphemeralOverlay:
         except (OSError, NotImplementedError):
             pytest.skip("symlinks are not supported in this environment")
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             copied = overlay / "link.txt"
             assert copied.exists()
             assert not copied.is_symlink()
@@ -75,7 +74,7 @@ class TestCreateEphemeralOverlay:
         except (OSError, NotImplementedError):
             pytest.skip("symlinks are not supported in this environment")
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             (overlay / "link.txt").write_text("overlay", encoding="utf-8")
 
         assert target.read_text(encoding="utf-8") == "original"
@@ -85,7 +84,7 @@ class TestCreateEphemeralOverlay:
         workspace.mkdir()
         (workspace / "file.txt").write_text("original", encoding="utf-8")
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             (overlay / "file.txt").write_text("modified", encoding="utf-8")
             (overlay / "new_file.txt").write_text("new", encoding="utf-8")
 
@@ -109,7 +108,7 @@ class TestCreateEphemeralOverlay:
             path.mkdir(parents=True)
             (path / filename).write_text(directory, encoding="utf-8")
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             for directory, filename in exclusions.items():
                 assert not (overlay / directory / filename).exists()
 
@@ -117,7 +116,7 @@ class TestCreateEphemeralOverlay:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             overlay_path = overlay
             assert overlay_path.exists()
 
@@ -128,7 +127,10 @@ class TestCreateEphemeralOverlay:
         workspace.mkdir()
         overlay_path = workspace
 
-        with pytest.raises(RuntimeError), create_ephemeral_overlay(workspace) as overlay:
+        with (
+            pytest.raises(RuntimeError),
+            exec_overlay.create_ephemeral_overlay(workspace),
+        ) as overlay:
             overlay_path = overlay
             raise RuntimeError("boom")
 
@@ -138,7 +140,7 @@ class TestCreateEphemeralOverlay:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             assert overlay.is_dir()
             assert overlay != workspace
 
@@ -150,7 +152,7 @@ class TestCreateEphemeralOverlay:
         (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
         (git_dir / "config").write_text("[core]\n\trepositoryformatversion = 0\n", encoding="utf-8")
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             assert (overlay / ".git").is_dir()
             head = (overlay / ".git" / "HEAD").read_text(encoding="utf-8")
             assert head == "ref: refs/heads/main\n"
@@ -176,7 +178,7 @@ class TestCreateEphemeralOverlay:
         (workspace / ".git").write_text(f"gitdir: {worktree_gitdir}\n", encoding="utf-8")
         (workspace / "note.txt").write_text("hello", encoding="utf-8")
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             overlay_git = overlay / ".git"
             assert overlay_git.is_file()
             private_gitdir = Path(overlay_git.read_text(encoding="utf-8").split(":", 1)[1].strip())
@@ -198,7 +200,7 @@ class TestCreateEphemeralOverlay:
         workspace.mkdir()
         (workspace / ".git").write_text("not a gitdir pointer\n", encoding="utf-8")
 
-        with create_ephemeral_overlay(workspace) as overlay:
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
             overlay_git = overlay / ".git"
             assert overlay_git.is_file()
             assert overlay_git.read_text(encoding="utf-8") == "not a gitdir pointer\n"
@@ -209,14 +211,16 @@ class TestComputeExecBaseStr:
 
     def test_windows_uses_localappdata(self, tmp_path: Path) -> None:
         local_app = str(tmp_path / "AppData" / "Local")
-        result = _compute_exec_base_str("nt", local_app, str(tmp_path / "home"), "/tmp")
+        result = exec_overlay._compute_exec_base_str(
+            "nt", local_app, str(tmp_path / "home"), "/tmp"
+        )
         assert result == str(Path(local_app) / "ralph" / "exec")
 
     def test_windows_falls_back_to_home_when_localappdata_absent(
         self, tmp_path: Path
     ) -> None:
         home_str = str(tmp_path / "home" / "user")
-        result = _compute_exec_base_str("nt", None, home_str, "/tmp")
+        result = exec_overlay._compute_exec_base_str("nt", None, home_str, "/tmp")
         assert result == str(Path(home_str) / "ralph" / "exec")
 
     def test_posix_normal_uses_home_cache(self, tmp_path: Path) -> None:
@@ -224,19 +228,33 @@ class TestComputeExecBaseStr:
         fake_home.mkdir(parents=True)
         system_tmp = tmp_path / "system-tmp"
         system_tmp.mkdir()
-        result = _compute_exec_base_str("posix", None, str(fake_home), str(system_tmp))
+        result = exec_overlay._compute_exec_base_str("posix", None, str(fake_home), str(system_tmp))
         assert result == str(fake_home / ".cache" / "ralph" / "exec")
 
     def test_posix_home_cache_in_temp_uses_var_tmp(self, tmp_path: Path) -> None:
         fake_home = tmp_path / "user"
         fake_home.mkdir()
-        result = _compute_exec_base_str("posix", None, str(fake_home), str(tmp_path))
+        result = exec_overlay._compute_exec_base_str("posix", None, str(fake_home), str(tmp_path))
         assert result == str(Path("/var/tmp") / "ralph" / "exec")
 
 
 @pytest.mark.timeout_seconds(30)
 class TestOverlayPrivateDirectoryPlacement:
     """Observer-based proof that the exec overlay is not in the system temp directory."""
+
+    def test_overlay_base_dir_has_private_permissions(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
+            base = overlay.parent.parent
+
+        assert base.exists(), "overlay base directory should exist"
+        if os.name != "nt":
+            mode = base.stat().st_mode & 0o777
+            assert mode == 0o700, f"Expected 0o700, got 0o{mode:03o}"
+        else:
+            assert base.is_dir()
 
     @pytest.mark.subprocess_e2e
     def test_overlay_cwd_is_not_in_system_temp_dir(self, tmp_path: Path) -> None:
@@ -287,11 +305,10 @@ class TestRunCommandOverlayIntegration:
         overlay_dir = tmp_path / "overlay"
         overlay_dir.mkdir()
 
-        def fake_runner(
-            command: list[str], cwd: Path, timeout_seconds: float | None
-        ) -> _CompletedProcessAdapter:
+        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None) -> object:
+            del command, timeout_seconds
             seen_cwd.append(cwd)
-            return _CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
+            return type("Result", (), {"stdout": b"", "stderr": b"", "returncode": 0})()
 
         def fake_overlay(workspace_root: Path) -> AbstractContextManager[Path]:
             del workspace_root
@@ -313,12 +330,10 @@ class TestRunCommandOverlayIntegration:
         seen_cwd: list[Path] = []
         workspace = MockWorkspaceRoot(tmp_path)
 
-        def fake_runner(
-            command: list[str], cwd: Path, timeout_seconds: float | None
-        ) -> _CompletedProcessAdapter:
+        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None) -> object:
             del command, timeout_seconds
             seen_cwd.append(cwd)
-            return _CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
+            return type("Result", (), {"stdout": b"", "stderr": b"", "returncode": 0})()
 
         run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner))
 
@@ -354,6 +369,7 @@ class TestRunCommandOverlaySubprocessE2E:
         assert result.returncode == 0
         assert readme.read_text(encoding="utf-8") == "modified in source copy\n"
         assert readme.read_text(encoding="utf-8") != original
+
 
 
 @pytest.mark.timeout_seconds(30)
@@ -428,10 +444,11 @@ class TestExecOrphanProcessCleanup:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         script = (
-            "import subprocess, sys; "
-            "p = subprocess.Popen("
+            "import sys; "
+            "p = getattr(__import__('subprocess'), 'Popen')("
             "    [sys.executable, '-c', 'import time; time.sleep(60)'], "
-            "    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL"
+            "    stdout=getattr(__import__('subprocess'), 'DEVNULL'), "
+            "    stderr=getattr(__import__('subprocess'), 'DEVNULL')"
             "); "
             "print(p.pid)"
         )
