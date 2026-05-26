@@ -3,8 +3,8 @@
 Ralph Workflow
 ==============
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph loop core.
-It turns that simple structure into a stronger composable workflow for substantial, well-specified repo work, and the default workflow is already good enough to start using before you customize anything.
+Ralph Workflow is the maintained manual for the operating system for autonomous coding.
+Start with the shipped default workflow, learn the simple core, and then branch into deeper operator docs only when you need them.
 
 This page is the maintained operator manual home.
 If you are brand new, start with :doc:`getting-started`.
