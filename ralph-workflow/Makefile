@@ -260,9 +260,9 @@ policy-loader-smoke:
 	@python -c "import sys; sys.stderr = open('/dev/null', 'w'); from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"
 
 packaging-smoke:
-	-@rm -rf $(shell realpath .)/../tmp/packaging-smoke
 	@mkdir -p $(shell realpath .)/../tmp
-	@uv venv $(shell realpath .)/../tmp/packaging-smoke
+	@rm -rf $(shell realpath .)/../tmp/packaging-smoke
+	@python -m venv --without-pip $(shell realpath .)/../tmp/packaging-smoke
 	@PYTHONPATH="" uv pip install --quiet --python $(shell realpath .)/../tmp/packaging-smoke/bin/python $(shell realpath .)/../ralph-workflow/
 	@ls -la $(shell realpath .)/../tmp/packaging-smoke/bin/ralph-prompt
 	@PYTHONPATH="" $(shell realpath .)/../tmp/packaging-smoke/bin/python -c "from ralph.cli._prompt_helper_entry import main; print('entrypoint importable')"

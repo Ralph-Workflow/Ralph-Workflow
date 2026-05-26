@@ -19,12 +19,17 @@ def _set_defaults(
 
 if TYPE_CHECKING:
     import asyncio
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
     from typing import IO, Protocol
 
     from ralph.process.manager._spawn_options import SpawnOptions
 
     class _PsutilProcessLike(Protocol):
+        pid: int
+
+        @property
+        def info(self) -> dict[str, int]: ...
+
         def children(self, recursive: bool = False) -> Sequence[_PsutilProcessLike]: ...
         def terminate(self) -> None: ...
         def kill(self) -> None: ...
@@ -35,8 +40,13 @@ if TYPE_CHECKING:
     class _PsutilModuleLike(Protocol):
         NoSuchProcess: type[BaseException]
         AccessDenied: type[BaseException]
+        Process: Callable[[int], _PsutilProcessLike]
 
         def process_from_pid(self, pid: int) -> _PsutilProcessLike: ...
+
+        def process_iter(
+            self, attrs: Sequence[str] | None = None
+        ) -> Iterable[_PsutilProcessLike]: ...
 
         def wait_procs(
             self,

@@ -8,6 +8,7 @@ class FakePsutilProcess:
     """Minimal psutil.Process-like fake for descendant_snapshot tests."""
 
     pid: int
+    ppid: int = 0
     _running: bool = True
     _status: str = "sleeping"
     _create_time: float = 0.0
@@ -15,6 +16,10 @@ class FakePsutilProcess:
     _killed: bool = False
     _children: list[FakePsutilProcess] = field(default_factory=list)
     stubborn: bool = False
+
+    @property
+    def info(self) -> dict[str, int]:
+        return {"pid": self.pid, "ppid": self.ppid}
 
     def is_running(self) -> bool:
         return (

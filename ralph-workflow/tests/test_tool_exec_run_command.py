@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock
+from typing import TYPE_CHECKING
 
 import pytest
 
+import ralph.mcp.tools._exec_completed_process as exec_completed_process
+from ralph.mcp.tools import exec as exec_tool
 from ralph.mcp.tools.exec import (
     ExecRunDeps,
     ExecutionError,
@@ -14,69 +17,168 @@ from ralph.mcp.tools.exec import (
 )
 from tests.mock_workspace_root import MockWorkspaceRoot
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 CUSTOM_TIMEOUT_MS = 5000
 EXPECTED_TIMEOUT_SECONDS = 2.5
 
 
-class TestRunCommand:
-    def test_successful_command(self, tmp_path: Path) -> None:
-        result = run_command("echo", ["hello"], tmp_path, 5000)
-        assert result.returncode == 0
-        assert "hello" in result.stdout.decode()
+@contextmanager
+def _passthrough_overlay(workspace_root: Path) -> Iterator[Path]:
+    yield workspace_root
 
-    def test_failing_command(self, tmp_path: Path) -> None:
-        result = run_command("false", [], tmp_path, 5000)
-        assert result.returncode != 0
 
-    def test_file_not_found_raises_execution_error(self, tmp_path: Path) -> None:
-        with pytest.raises(ExecutionError):
-            run_command("nonexistent_command_xyz", [], tmp_path, 5000)
+def test_posix_replaces_source_root_in_value() -> None:
+    result = exec_tool._rewrite_env_path(
+        "/home/user/proj/main.py",
+        "/home/user/proj",
+        "/overlay",
+        "posix",
+    )
 
-    def test_zero_timeout_means_no_timeout(self, tmp_path: Path) -> None:
-        result = run_command("echo", ["test"], tmp_path, 0)
-        assert result.returncode == 0
+    assert result == "/overlay/main.py"
 
-    def test_workspace_with_str_root(self, tmp_path: Path) -> None:
-        result = run_command("echo", ["test"], str(tmp_path), 5000)
-        assert result.returncode == 0
+def test_posix_passes_through_unrelated_value() -> None:
+    value = "/etc/hosts"
 
-    def test_uses_injected_cwd_provider_when_workspace_has_no_root(self) -> None:
-        seen: dict[str, object] = {}
+    result = exec_tool._rewrite_env_path(value, "/home/user/proj", "/overlay", "posix")
 
-        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None) -> object:
-            seen["cwd"] = cwd
-            return MagicMock(returncode=0, stdout=b"ok", stderr=b"")
+    assert result == value
 
-        fallback = Path("/virtual/fallback")
-        run_command(
-            "python",
-            ["--version"],
-            object(),
-            1000,
-            deps=ExecRunDeps(runner=fake_runner, cwd_provider=lambda: fallback),
+def test_windows_replaces_with_different_casing() -> None:
+    result = exec_tool._rewrite_env_path(
+        r"c:\users\user\proj\file.txt",
+        r"C:\Users\User\proj",
+        r"D:\overlay",
+        "nt",
+    )
+
+    assert result == r"D:\overlay\file.txt"
+
+def test_windows_passes_through_when_absent() -> None:
+    value = r"C:\Windows\System32"
+
+    result = exec_tool._rewrite_env_path(value, r"C:\proj", r"D:\overlay", "nt")
+
+    assert result == value
+
+def test_source_root_as_substring_is_also_replaced() -> None:
+    result = exec_tool._rewrite_env_path(
+        "/home/user/proj_old/data",
+        "/home/user/proj",
+        "/overlay",
+        "posix",
+    )
+
+    assert result == "/overlay_old/data"
+
+
+def test_successful_command(tmp_path: Path) -> None:
+    result = run_command("echo", ["hello"], tmp_path, 5000)
+    assert result.returncode == 0
+    assert "hello" in result.stdout.decode()
+
+def test_failing_command(tmp_path: Path) -> None:
+    result = run_command("false", [], tmp_path, 5000)
+    assert result.returncode != 0
+
+def test_file_not_found_raises_execution_error(tmp_path: Path) -> None:
+    with pytest.raises(ExecutionError):
+        run_command("nonexistent_command_xyz", [], tmp_path, 5000)
+
+def test_zero_timeout_means_no_timeout(tmp_path: Path) -> None:
+    result = run_command("echo", ["test"], tmp_path, 0)
+    assert result.returncode == 0
+
+def test_workspace_with_str_root(tmp_path: Path) -> None:
+    result = run_command("echo", ["test"], str(tmp_path), 5000)
+    assert result.returncode == 0
+
+def test_uses_injected_cwd_provider_when_workspace_has_no_root() -> None:
+    seen: dict[str, object] = {}
+
+    def fake_runner(
+        command: list[str], cwd: Path, timeout_seconds: float | None
+    ) -> exec_completed_process._CompletedProcessAdapter:
+        seen["cwd"] = cwd
+        return exec_completed_process._CompletedProcessAdapter(
+            stdout=b"ok", stderr=b"", returncode=0
         )
 
-        assert seen["cwd"] == fallback
+    fallback = Path("/virtual/fallback")
+    run_command(
+        "python",
+        ["--version"],
+        object(),
+        1000,
+        deps=ExecRunDeps(
+            runner=fake_runner,
+            cwd_provider=lambda: fallback,
+            overlay_factory=_passthrough_overlay,
+        ),
+    )
 
-    def test_uses_injected_runner(self, tmp_path: Path) -> None:
-        seen: dict[str, object] = {}
-        workspace = MockWorkspaceRoot(tmp_path)
+    assert seen["cwd"] == fallback
 
-        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None) -> object:
-            seen["command"] = command
-            seen["cwd"] = cwd
-            seen["timeout"] = timeout_seconds
-            return MagicMock(returncode=0, stdout=b"ok", stderr=b"")
+def test_uses_injected_runner(tmp_path: Path) -> None:
+    seen: dict[str, object] = {}
+    workspace = MockWorkspaceRoot(tmp_path)
 
-        result = run_command(
-            "python",
-            ["--version"],
-            workspace,
-            2500,
-            deps=ExecRunDeps(runner=fake_runner),
+    def fake_runner(
+        command: list[str], cwd: Path, timeout_seconds: float | None
+    ) -> exec_completed_process._CompletedProcessAdapter:
+        seen["command"] = command
+        seen["cwd"] = cwd
+        seen["timeout"] = timeout_seconds
+        return exec_completed_process._CompletedProcessAdapter(
+            stdout=b"ok", stderr=b"", returncode=0
         )
 
-        assert result.returncode == 0
-        assert seen["command"] == ["python", "--version"]
-        assert seen["cwd"] == tmp_path
-        assert seen["timeout"] == EXPECTED_TIMEOUT_SECONDS
+    result = run_command(
+        "python",
+        ["--version"],
+        workspace,
+        2500,
+        deps=ExecRunDeps(runner=fake_runner, overlay_factory=_passthrough_overlay),
+    )
+
+    assert result.returncode == 0
+    assert seen["command"] == ["python", "--version"]
+    assert seen["cwd"] == tmp_path
+    assert seen["timeout"] == EXPECTED_TIMEOUT_SECONDS
+
+
+def test_sets_pwd_to_overlay_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANYVAR", "value")
+
+    env = exec_tool._child_process_env(tmp_path / "workspace", tmp_path / "overlay")
+
+    assert env["PWD"] == str(tmp_path / "overlay")
+
+def test_removes_oldpwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OLDPWD", "/old")
+
+    env = exec_tool._child_process_env(tmp_path / "workspace", tmp_path / "overlay")
+
+    assert "OLDPWD" not in env
+
+def test_replaces_source_root_in_env_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    overlay_root = tmp_path / "overlay"
+    monkeypatch.setenv("SOMEVAR", f"{workspace_root}/sub")
+
+    env = exec_tool._child_process_env(workspace_root, overlay_root)
+
+    assert env["SOMEVAR"] == f"{overlay_root}/sub"
+
+def test_passes_through_unrelated_env_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("UNRELATED", "/etc/hosts")
+
+    env = exec_tool._child_process_env(tmp_path / "workspace", tmp_path / "overlay")
+
+    assert env["UNRELATED"] == "/etc/hosts"

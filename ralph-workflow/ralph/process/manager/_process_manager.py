@@ -17,10 +17,7 @@ from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
 from ralph.process.manager._process_event import ProcessEvent
 from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
-from ralph.process.manager._process_manager_runtime import (
-    load_psutil_module,
-    loguru_event_listener,
-)
+from ralph.process.manager._process_manager_runtime import loguru_event_listener
 from ralph.process.manager._process_manager_types import (
     _async_cell,
     _AsyncProcessFactory,
@@ -41,9 +38,6 @@ from ralph.process.manager._spawn_options import SpawnOptions
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
-
-
-_psutil_module: _PsutilModuleLike | None = load_psutil_module()
 
 
 class ProcessManager:

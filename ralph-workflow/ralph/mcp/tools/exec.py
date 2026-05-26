@@ -1,15 +1,18 @@
 """MCP exec tool handler.
 
 Ports the Rust MCP `exec` tool so agents can execute bounded subprocesses
-from the workspace root after capability checks and blacklist filtering.
+inside an ephemeral workspace overlay after capability checks and policy filtering.
 """
 
 from __future__ import annotations
 
+import contextlib
+import os
 import shlex
+import signal
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
@@ -23,10 +26,14 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.mcp.tools.exec_overlay import create_ephemeral_overlay
 from ralph.process.manager import SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from ralph.process.manager import ProcessManager
+    from ralph.process.manager._process_manager_types import _PsutilModuleLike, _PsutilProcessLike
 
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
 DEFAULT_TIMEOUT_MS = 30_000
@@ -42,7 +49,6 @@ _EXEC_USAGE_EXAMPLES = (
 )
 
 _BLACKLIST_DESCRIPTIONS = {
-    "version_control": "version control system",
     "privilege_escalation": "privilege escalation",
     "destructive_system": "destructive system operation",
     "network_exfiltration": "network/exfiltration",
@@ -51,7 +57,6 @@ _BLACKLIST_DESCRIPTIONS = {
     "multi_file_operation": "multi-file operation",
 }
 
-_VERSION_CONTROL_COMMANDS = {"git", "svn", "hg", "fossil", "bzr", "darcs"}
 _PRIVILEGE_ESCALATION_COMMANDS = {"sudo", "su", "doas", "pkexec", "runuser"}
 _DESTRUCTIVE_SYSTEM_COMMANDS = {"shutdown", "reboot", "halt", "poweroff", "killall"}
 _NETWORK_TUNNEL_COMMANDS = {"nc", "ncat", "netcat", "socat"}
@@ -157,7 +162,6 @@ def check_command(command: str, args: list[str]) -> str | None:
         return None
 
     for checker in (
-        check_version_control,
         check_privilege_escalation,
         check_destructive_system,
         check_network_exfiltration,
@@ -185,18 +189,6 @@ def _lower_args(args: list[str]) -> list[str]:
 
 def _contains_any(arg_list: list[str], targets: set[str]) -> bool:
     return any(arg in targets for arg in arg_list)
-
-
-def check_version_control(command: str, _args: list[str]) -> str | None:
-    """Return a denial reason if the command is a version control tool."""
-    key = _command_key(command)
-    if key in _VERSION_CONTROL_COMMANDS:
-        desc = _description("version_control")
-        return (
-            f"Command '{command}' is blacklisted: {desc} commands must go through "
-            "Ralph's git capabilities"
-        )
-    return None
 
 
 def check_privilege_escalation(command: str, _args: list[str]) -> str | None:
@@ -421,14 +413,85 @@ def apply_exec_policy(command: str, args: list[str]) -> None:
 
 
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
-    if isinstance(workspace, WorkspaceWithRoot):
-        return workspace.root
-    root_value = cast("Path | str | None", getattr(workspace, "root", None))
+    if isinstance(workspace, Path):
+        return workspace
+    if isinstance(workspace, str):
+        return Path(workspace)
+
+    root_value: object | None = getattr(workspace, "root", None)
     if isinstance(root_value, Path):
         return root_value
     if isinstance(root_value, str):
         return Path(root_value)
     return cwd_provider()
+
+
+def _rewrite_env_path(value: str, source_root: str, overlay_root: str, os_name: str) -> str:
+    if not source_root:
+        return value
+    if os_name != "nt":
+        return value.replace(source_root, overlay_root)
+
+    value_lower = value.lower()
+    source_root_lower = source_root.lower()
+    rewritten = value
+    while True:
+        idx = value_lower.find(source_root_lower)
+        if idx < 0:
+            return rewritten
+        rewritten = (
+            rewritten[:idx]
+            + overlay_root
+            + rewritten[idx + len(source_root) :]
+        )
+        value_lower = rewritten.lower()
+
+
+def _child_process_env(workspace_root: Path, cwd: Path) -> dict[str, str]:
+    source_root = str(workspace_root)
+    overlay_root = str(cwd)
+    env = {
+        key: _rewrite_env_path(value, source_root, overlay_root, os.name)
+        for key, value in os.environ.items()
+    }
+    env["PWD"] = overlay_root
+    env.pop("OLDPWD", None)
+    return env
+
+
+def _kill_orphan_tree_windows(root_pid: int, psutil_mod: _PsutilModuleLike | None) -> None:
+    """Recursively kill orphaned descendants of root_pid on Windows."""
+    if psutil_mod is None or root_pid <= 0:
+        return
+    frontier: set[int] = {root_pid}
+    seen: set[int] = set()
+    while frontier:
+        children_found: dict[int, _PsutilProcessLike] = {}
+        with contextlib.suppress(Exception):
+            for proc in psutil_mod.process_iter(["pid", "ppid"]):
+                with contextlib.suppress(Exception):
+                    info = proc.info
+                    ppid = info.get("ppid")
+                    pid = proc.pid
+                    if ppid in frontier and pid not in seen:
+                        children_found[pid] = proc
+        if not children_found:
+            break
+        seen.update(children_found)
+        for proc in children_found.values():
+            with contextlib.suppress(Exception):
+                proc.kill()
+        frontier = set(children_found)
+
+
+def _cleanup_exec_orphans(pgid: int, root_pid: int, psutil_mod: _PsutilModuleLike | None) -> None:
+    """Kill orphaned processes after the exec root exits."""
+    if hasattr(os, "killpg"):
+        if pgid > 1:
+            with contextlib.suppress(OSError):
+                os.killpg(pgid, signal.SIGKILL)
+    else:
+        _kill_orphan_tree_windows(root_pid, psutil_mod)
 
 
 def run_command(
@@ -438,43 +501,62 @@ def run_command(
     timeout_ms: int,
     deps: ExecRunDeps | None = None,
 ) -> _CompletedProcessAdapter:
-    """Execute a subprocess in the workspace root."""
+    """Execute a subprocess in a private overlay rooted at the workspace."""
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
-    command_runner = resolved_deps.runner or _run_subprocess
+    overlay_factory = resolved_deps.overlay_factory or create_ephemeral_overlay
     cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
     timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
-    try:
-        return command_runner([command, *args], cwd, timeout_seconds)
-    except FileNotFoundError as exc:
-        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
-    except PermissionError as exc:
-        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise ExecutionError(
-            f"Failed to execute '{command}': timed out after {timeout_ms}ms"
-        ) from exc
-    except OSError as exc:
-        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+    with overlay_factory(cwd) as overlay_cwd:
+        try:
+            if resolved_deps.runner is not None:
+                return resolved_deps.runner([command, *args], overlay_cwd, timeout_seconds)
+            return _run_subprocess(
+                [command, *args],
+                overlay_cwd,
+                timeout_seconds,
+                cwd,
+                resolved_deps.process_manager,
+            )
+        except FileNotFoundError as exc:
+            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+        except PermissionError as exc:
+            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ExecutionError(
+                f"Failed to execute '{command}': timed out after {timeout_ms}ms"
+            ) from exc
+        except OSError as exc:
+            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
 
 
 def _run_subprocess(
-    command: list[str], cwd: Path, timeout_seconds: float | None
+    command: list[str],
+    cwd: Path,
+    timeout_seconds: float | None,
+    workspace_root: Path,
+    pm: ProcessManager | None = None,
 ) -> _CompletedProcessAdapter:
-    handle = get_process_manager().spawn(
+    effective_pm = pm if pm is not None else get_process_manager()
+    handle = effective_pm.spawn(
         command,
         SpawnOptions(
             cwd=str(cwd),
+            env=_child_process_env(workspace_root, cwd),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             label=f"mcp-exec:{command[0]}",
         ),
     )
+    stdout: bytes | None = b""
+    stderr: bytes | None = b""
     try:
-        stdout, stderr = handle.communicate(timeout=timeout_seconds)
+        stdout, stderr = handle.communicate_and_cleanup(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
         raise
+    finally:
+        _cleanup_exec_orphans(handle.record.pgid, handle.record.pid, effective_pm._psutil)
     return _CompletedProcessAdapter(
         stdout=stdout or b"",
         stderr=stderr or b"",
@@ -508,7 +590,7 @@ def handle_exec_command(
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
-    """Execute a bounded subprocess in the workspace root."""
+    """Execute a bounded subprocess inside an ephemeral workspace overlay."""
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
     apply_exec_policy(parsed.command, parsed.args)

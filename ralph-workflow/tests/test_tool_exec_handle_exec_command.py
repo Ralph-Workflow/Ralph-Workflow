@@ -45,10 +45,21 @@ class TestHandleExecCommand:
         with pytest.raises(CapabilityDeniedError):
             handle_exec_command(session, workspace, params)
 
+    def test_exec_allows_git_command(self, tmp_path: Path) -> None:
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "git", "args": ["--version"]}
+
+        result = handle_exec_command(session, workspace, params)
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, ToolContent)
+        assert "git version" in content.text.lower()
+
     def test_exec_with_blacklisted_command_raises(self, tmp_path: Path) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
-        params: dict[str, object] = {"command": "git", "args": ["status"]}
+        params: dict[str, object] = {"command": "sudo", "args": ["ls"]}
 
         with pytest.raises(CapabilityDeniedError):
             handle_exec_command(session, workspace, params)

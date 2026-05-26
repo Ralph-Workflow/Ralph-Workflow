@@ -20,7 +20,7 @@ from ralph.runtime import (
 TIMEOUT_EXCEEDED_SECONDS = 0.05
 SLOW_COMMAND_SECONDS = 0.2
 RAW_PYTEST_TIMEOUT_EXIT_CODE = 124
-RAW_PYTEST_MAX_ELAPSED_SECONDS = 4.0
+RAW_PYTEST_MAX_ELAPSED_SECONDS = 2.5
 
 
 def test_timeout_seconds_from_env_uses_default_when_missing(

@@ -1743,6 +1743,13 @@ ralph.mcp.tools.exec
    :members:
    :show-inheritance:
 
+ralph.mcp.tools.exec_overlay
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.tools.exec_overlay
+   :members:
+   :show-inheritance:
+
 ralph.mcp.tools.git_read
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

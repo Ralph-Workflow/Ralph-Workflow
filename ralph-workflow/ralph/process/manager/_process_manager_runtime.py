@@ -9,7 +9,18 @@ from ralph.process.manager._process_status import ProcessStatus
 
 if TYPE_CHECKING:
     from ralph.process.manager._process_event import ProcessEvent
-    from ralph.process.manager._process_manager_types import _PsutilModuleLike
+    from ralph.process.manager._process_manager_types import _PsutilModuleLike, _PsutilProcessLike
+
+
+class _PsutilModuleAdapter:
+    def __init__(self, module: _PsutilModuleLike) -> None:
+        self._module = module
+
+    def process_from_pid(self, pid: int) -> _PsutilProcessLike:
+        return self._module.Process(pid)
+
+    def __getattr__(self, name: str) -> object:
+        return cast("object", getattr(self._module, name))
 
 
 def load_psutil_module() -> _PsutilModuleLike | None:
@@ -17,7 +28,7 @@ def load_psutil_module() -> _PsutilModuleLike | None:
         psutil_import = importlib.import_module("psutil")
     except ModuleNotFoundError:
         return None
-    return cast("_PsutilModuleLike", psutil_import)
+    return cast("_PsutilModuleLike", _PsutilModuleAdapter(cast("_PsutilModuleLike", psutil_import)))
 
 
 def loguru_event_listener(event: ProcessEvent) -> None:
