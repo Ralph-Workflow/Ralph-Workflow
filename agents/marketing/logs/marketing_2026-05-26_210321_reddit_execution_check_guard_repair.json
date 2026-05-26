@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-05-26T21:03:21+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "reddit_execution_check_guard_repair",
+    "channel": "distribution_architecture_runtime",
+    "title": "Reddit execution-check guard repair",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_210321_reddit_execution_check_guard_repair.md"
+  },
+  "why_this_action": {
+    "summary": "Patched lane selection so an empty board no longer force-routes to reddit_execution_check when the latest Reddit report is guarded and cannot truthfully ship a live post.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "marketing_workflow_audit_latest.json: distribution_and_message_to_primary_repo_conversion is still the bottleneck",
+      "reddit_post_analysis_latest.md: avoid repetitive Reddit churn and weak-fit reuse",
+      "market_intelligence_consumption_latest.json: reuse shared findings artifacts instead of siloed recommendations",
+      "marketing_2026-05-26_distribution_architecture_repair.json: empty-board guard churn was already active in this review window",
+      "marketing_2026-05-26_reddit_execution_check_execution.json: latest reddit_execution_check run ended with autopost_attempted / no live post",
+      "reddit_autopost_state.json: last attempt status was report_guard_skip"
+    ],
+    "targets_prepared": []
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/tests/test_distribution_lane_selector_repair_pause.py"
+    ],
+    "verification": {
+      "tests": [
+        "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_reddit_cooldown_blocks_reddit_execution_check_override agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_report_guard_blocks_reddit_execution_check_override"
+      ],
+      "selector_after_patch": {
+        "checked_at": "2026-05-26T21:03:21+02:00",
+        "lane": "distribution_architecture_repair",
+        "reason": "The current review window already logged a guard pause for this empty-board fingerprint without a same-window guard follow-through; repair the churn-guard bookkeeping now instead of compounding stale pause reuse.",
+        "short_review_window_release_at": "2026-05-26T22:47:35"
+      }
+    }
+  }
+}

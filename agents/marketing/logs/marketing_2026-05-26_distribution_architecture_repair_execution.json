@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-26T19:39:00.103508",
+  "timestamp": "2026-05-26T21:20:24.423448",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "distribution_architecture_churn_guard_repair",
     "channel": "distribution_architecture_repair",
     "title": "Distribution lane execution: distribution_architecture_repair",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_193900_distribution_architecture_repair.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_212024_distribution_architecture_repair.md"
   },
   "why_this_action": {
     "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
@@ -25,6 +25,6 @@
     "blocking_factors": []
   },
   "verification": {
-    "execution_board_fingerprint": "b993082c7f1831796528af794e647801818f0c0e"
+    "execution_board_fingerprint": "9b97c74a95f126df6939b7fc9364d0d3cb6b069c"
   }
 }
