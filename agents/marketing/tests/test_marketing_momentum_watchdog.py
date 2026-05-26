@@ -190,7 +190,7 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
             self.assertIn('reddit_channel_blocked', summary['actions'])
             self.assertEqual(summary['reddit_execution_status']['status'], 'network_security_blocked')
 
-    def test_browser_session_ready_clears_reddit_channel_blocked_watchpoint(self):
+    def test_browser_session_ready_does_not_clear_reddit_channel_blocked_signal(self):
         now = datetime.now().astimezone()
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -241,13 +241,12 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
                  patch('agents.marketing.marketing_momentum_watchdog.subprocess.run'):
                 rc = watchdog.main()
 
-            self.assertEqual(rc, 0)
+            self.assertEqual(rc, 1)
             summary = json.loads((status_dir / 'marketing_momentum_watchdog.json').read_text(encoding='utf-8'))
-            self.assertNotIn('reddit_channel_blocked', summary['actions'])
-            self.assertNotIn('reddit_channel_blocked', summary['watch_actions'])
+            self.assertIn('reddit_channel_blocked', summary['actions'])
             self.assertEqual(summary['reddit_execution_status']['status'], 'browser_session_ready')
 
-    def test_report_signal_treats_partial_reddit_ip_blocking_as_non_blocking_when_results_exist(self):
+    def test_report_signal_treats_partial_reddit_ip_blocking_as_degraded_when_results_exist(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             report = Path(tmpdir) / 'reddit_monitor_latest.md'
             report.write_text(
@@ -256,7 +255,7 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
                 'Important telemetry note: reddit_ip_blocked=3 but ok=6.\n',
                 encoding='utf-8',
             )
-            self.assertEqual(watchdog.report_signal(report), 'opportunities_found')
+            self.assertEqual(watchdog.report_signal(report), 'degraded')
 
 
 if __name__ == '__main__':

@@ -1,9 +1,8 @@
 {
-  "last_attempt_at": "2026-05-26T14:55:18.556624",
+  "last_attempt_at": "2026-05-26T17:10:06.261750",
   "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-26_1119.md",
-  "last_thread_url": "https://www.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a",
-  "last_comment_url": "https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a/onyqq6t/",
-  "last_attempt_status": "posted",
-  "last_poster_status": "posted",
-  "last_detail": ""
+  "last_attempt_status": "cooldown_skip",
+  "last_detail": "global_cooldown_active:22m_since_last_post",
+  "retry_after_minutes": 22,
+  "next_safe_post_at": "2026-05-26T17:32:44"
 }

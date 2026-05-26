@@ -1,14 +1,15 @@
 {
-  "generated_at": "2026-05-26T14:55:28.979965",
-  "count": 26,
-  "total_logged_rows": 86,
-  "cadence_records_filtered": 60,
-  "recent_window_count": 1,
+  "generated_at": "2026-05-26T16:55:13.698551",
+  "count": 27,
+  "total_logged_rows": 88,
+  "cadence_records_filtered": 61,
+  "recent_window_count": 2,
   "by_account": {
-    "Informal-Salt827": 1
+    "Informal-Salt827": 2
   },
   "by_community": {
-    "r/AI_Agents": 1
+    "r/AI_Agents": 1,
+    "unknown": 1
   },
   "top_title_words": [
     "reddit",
@@ -19,28 +20,30 @@
     "workflow"
   ],
   "top_body_tokens": [
-    "code",
-    "review",
+    "most",
     "finish",
     "state",
     "ralph",
     "workflow",
+    "failure",
+    "code",
+    "review",
+    "answer",
+    "changed",
     "coding",
+    "merge",
+    "team",
+    "worth",
+    "problem",
     "thread",
     "angle",
     "agree",
-    "most",
     "production",
-    "failure",
-    "useful",
-    "simple",
-    "babysitting",
-    "finished",
-    "tested",
-    "ready",
-    "clear"
+    "useful"
   ],
-  "phrase_hits": {},
+  "phrase_hits": {
+    "diff": 1
+  },
   "repeated_openings": [],
   "account_switches": [],
   "recent_posts": [
@@ -51,6 +54,14 @@
       "title": "Reddit reddit.com › r/ai_agents › seedance 2.0 is impressive. it’s still not a production workflow. r/AI_Agents",
       "comment_url": "https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a/onyqq6t/",
       "opening_line": "The thread angle I agree with most is production failure; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed. That is the finish-state bar I use in Ralph Workflow, the free/open-source operating system for autonomous coding. If you want one concrete finish-state example instead of a pitch, this is the proof surface I use:"
+    },
+    {
+      "timestamp": "2026-05-26T16:47:35.135478",
+      "account": "Informal-Salt827",
+      "community": "unknown",
+      "title": "",
+      "comment_url": "https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small",
+      "opening_line": "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
     }
   ],
   "recommendations": [

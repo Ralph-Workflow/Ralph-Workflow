@@ -282,6 +282,50 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertNotIn('Manual community discussion asset', board_text)
         self.assertIn('No do-now handoff packet is currently truthful in this review window.', board_text)
 
+    def test_execution_board_hides_live_published_reddit_comment_asset(self):
+        now = datetime(2026, 5, 26, 15, 12, 43)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            artifact = log_dir / 'marketing_2026-05-26_145518_reddit_comment_published.md'
+            artifact.write_text('# Reddit comment published\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-26_145518_reddit_comment_published.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-26T14:55:18.485562',
+                    'chosen_action': {
+                        'type': 'reddit_comment_published',
+                        'channel': 'reddit',
+                        'title': 'Reddit comment published: Seedance thread',
+                        'url': 'https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a/onyqq6t/',
+                        'draft': str(artifact),
+                    },
+                    'result': {
+                        'ok': True,
+                        'status': 'published',
+                        'live_external_action': True,
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=datetime(2026, 5, 26, 20, 55, 18)), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('Manual community discussion asset', board_text)
+        self.assertNotIn('marketing_2026-05-26_145518_reddit_comment_published.md', board_text)
+
     def test_execution_board_falls_back_to_live_short_window_release_when_latest_lane_json_omits_it(self):
         now = datetime(2026, 5, 25, 19, 23, 49)
 
@@ -307,6 +351,32 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             board_text = board_path.read_text(encoding='utf-8')
 
         self.assertIn('Short review-window congestion clears at: 2026-05-25T23:07:41', board_text)
+
+    def test_execution_board_drops_expired_short_window_release_marker(self):
+        now = datetime(2026, 5, 26, 15, 2, 45)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'lane': 'distribution_architecture_repair', 'short_review_window_release_at': '2026-05-25T23:07:41'}),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('Short review-window congestion clears at: 2026-05-25T23:07:41', board_text)
 
     def test_non_live_lane_rewrites_execution_board_after_post_hold_rerun_schedule_updates(self):
         now = datetime(2026, 5, 26, 9, 46, 0)

@@ -1,19 +1,19 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-26T14:18:56.414072
+- Generated: 2026-05-26T16:53:54.597940
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
-- Reddit posts analyzed: **0**
+- Reddit posts analyzed: **2**
 
 ## Why this is the bottleneck
 - Owned content and outreach exist, but repo/public adoption signals are still low.
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
-- The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains apollo_outbound_verification; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (apollo_outbound_verification), so the system is still shipping output even though outcome movement is not visible yet.
+- The active loop did execute a live marketing action recently (owned_content_publication), so the system is still shipping output even though outcome movement is not visible yet.
 - A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-06-02T07:23:34.700335+02:00, so the loop should not repackage the same lane before that checkpoint.
+- The loop has repeated the same HN/Lobsters bottleneck multiple times without a fresh autonomous replacement action, so the ceiling itself is now a failing tactic.
 
 ## What actually worked
 - No meaningful tactic produced a trustworthy win in this window.
@@ -21,16 +21,18 @@
 ## What did not work
 - Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.
 - Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface.
+- The loop kept naming the HN/Lobsters handoff bottleneck without shipping a stronger replacement lane.
 
 ## What is repetitive
 - The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 8 times inside the last 48 hours.
 
 ## What is low-signal
-- Recent live external action exists (apollo_outbound_verification), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Recent live external action exists (owned_content_publication), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution.
 
 ## What should change now
 - Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.
+- STOP repeating the same HN/Lobsters-only handoff. Ship a fresh autonomous replacement asset in this run: either a new conversion-focused Telegraph post tied to a current pain angle, or a curator/directory/backlink outreach packet the loop can hand off cleanly without another generic ceiling note.
 - REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
 - Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
@@ -38,6 +40,7 @@
 - No exact repeated outreach opening detected in the latest audit inputs.
 - Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
+- Failing tactic detected: execution_ceiling_repetition
 
 ## Outcome evaluation
 - GitHub: samples=9, stars +0, watchers +0, forks +0
@@ -55,15 +58,19 @@
   - Repair state: pending_measurement
   - Kill condition: N/A (mirror, not primary)
   - Success metric: GitHub mirror shows any adoption delta
+- **execution_ceiling_repetition** (system_design) → STOP repeating the same HN/Lobsters-only handoff. Ship a fresh autonomous replacement asset in this run: either a new conversion-focused Telegraph post tied to a current pain angle, or a curator/directory/backlink outreach packet the loop can hand off cleanly without another generic ceiling note.
+  - Repair state: pending_measurement
+  - Kill condition: Another audit repeats the same HN/Lobsters bottleneck without a new shipped asset
+  - Success metric: A fresh non-monitor marketing asset is shipped and logged before the next audit
 - No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
-- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
+- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, execution_ceiling_repetition
 
 ## Latest executed marketing action
-- Type: apollo_outbound_verification
-- Title: Apollo outbound verification
-- Status: verified_live_sequence (ok=True)
+- Type: owned_content_publication
+- Title: Distribution lane execution: owned_content
+- Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072359_apollo_outbound_verification.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_owned_content_execution.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

@@ -491,7 +491,19 @@
       "error": null,
       "draft_hash": "46b6e5eb78efe374bc5af2efcbf4e978c2fbf41c611bbdd9a99f1a790afaf9f2",
       "experiment_id": "2026-05-26-orchestration"
+    },
+    {
+      "date": "2026-05-26",
+      "draft": "2026-05-26_autonomous_ai_workflows_production_reliability_telegraph.md",
+      "title": "Autonomous AI Workflows for Production Reliability",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Autonomous-AI-Workflows-for-Production-Reliability-05-26",
+      "error": null,
+      "draft_hash": "690d8afd9b4025feb0dce8f5b0ecb6c2be843eb453620b6d4e89db9b4113feb7",
+      "source_path": "/home/mistlight/.openclaw/workspace/content/guides/autonomous_ai_workflows_production_reliability.md"
     }
   ],
-  "last_run": "2026-05-26T13:17:34.036345"
+  "last_run": "2026-05-26T16:51:11.141048"
 }

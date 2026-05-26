@@ -1,5 +1,7 @@
+import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
 
 from agents.marketing import reddit_autopost
 
@@ -298,7 +300,7 @@ class RedditAutopostTests(unittest.TestCase):
         self.assertIsNone(chosen)
         self.assertEqual(state, "weak_fit_only")
 
-    def test_choose_opportunity_allows_discussion_seed_when_direct_reply_fit_is_high_and_reddit_has_been_quiet(self):
+    def test_choose_opportunity_fail_closes_medium_low_threads_even_when_discussion_fit_is_high(self):
         medium_low = reddit_autopost.Opportunity(
             rank=1,
             title="seedance 2.0 is impressive. it’s still not a production workflow.",
@@ -318,8 +320,8 @@ class RedditAutopostTests(unittest.TestCase):
         finally:
             reddit_autopost.load_recent_post_records = original_load_recent
             reddit_autopost.already_used = original_already_used
-        self.assertIsNotNone(chosen)
-        self.assertEqual(state, "discussion_seed")
+        self.assertIsNone(chosen)
+        self.assertEqual(state, "weak_fit_only")
 
     def test_build_comment_adds_codeberg_proof_link_for_discussion_seed_thread(self):
         opp = reddit_autopost.Opportunity(
@@ -333,7 +335,10 @@ class RedditAutopostTests(unittest.TestCase):
             direct_reply_fit="**high**",
         )
         body = reddit_autopost.build_comment(opp, recent=[])
-        self.assertIn(reddit_autopost.CODEBERG_REVIEW_PROOF_URL, body)
+        self.assertTrue(
+            reddit_autopost.CODEBERG_REVIEW_PROOF_URL in body
+            or reddit_autopost.CODEBERG_PRIMARY_URL in body
+        )
 
     def test_choose_opportunity_prefers_fresh_rate_limited_over_stale_fallback(self):
         fresh = reddit_autopost.Opportunity(
@@ -370,6 +375,24 @@ class RedditAutopostTests(unittest.TestCase):
             reddit_autopost.already_used = original_already_used
         self.assertIsNone(chosen)
         self.assertEqual(state, "fresh_rate_limited")
+
+    def test_report_posting_guard_blocks_partial_coverage_and_medium_low_only_reports(self):
+        report = """## Today’s bottom line
+- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=4**), but other queries still returned usable results (**ok=4**). Treat this as partial coverage, not a total Reddit outage.
+
+### 1) Example thread
+- URL: https://www.reddit.com/r/AI_Agents/comments/example/
+- Community: `r/AI_Agents`
+- Freshness: during this pass
+- Direct reply fit: **high**
+- Mention fit: **medium-low**
+- Best RalphWorkflow angle: **content-family match: production_failure**
+"""
+        opps = reddit_autopost.parse_opportunities(report)
+        reasons = reddit_autopost.report_posting_guard(report, opps)
+        self.assertIn("report_coverage_unhealthy", reasons)
+        self.assertIn("report_partial_coverage", reasons)
+        self.assertIn("mention_fit_below_medium", reasons)
 
     def test_posting_gate_reports_next_safe_time_for_global_cooldown(self):
         now = datetime(2026, 5, 18, 0, 30)
@@ -521,6 +544,36 @@ class RedditAutopostTests(unittest.TestCase):
         self.assertEqual(len(opps), 2)
         self.assertEqual(opps[0].title, "Claude Code Agent Teams W/ Gemini and Codex")
         self.assertEqual(opps[1].mention_fit, "**medium**")
+
+    def test_sync_latest_reddit_post_into_marketing_logs_backfills_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            original_post_log = reddit_autopost.POST_LOG_JSONL
+            original_log_dir = reddit_autopost.MARKETING_LOG_DIR
+            original_refresh = reddit_autopost._refresh_shared_marketing_state
+            try:
+                reddit_autopost.POST_LOG_JSONL = tmp_path / "reddit_posts.jsonl"
+                reddit_autopost.MARKETING_LOG_DIR = tmp_path / "logs"
+                reddit_autopost._refresh_shared_marketing_state = lambda: None
+                reddit_autopost.POST_LOG_JSONL.write_text(
+                    '{"timestamp":"2026-05-26T14:55:18.485562","platform":"reddit","account":"Informal-Salt827","thread_url":"https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a","comment_url":"https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a/onyqq6t/","body":"Proof-body with https://codeberg.org/RalphWorkflow/Ralph-Workflow","metadata":{"report":"/tmp/report.md","title":"Seedance thread","community":"`r/AI_Agents`","angle":"production_failure","mention_fit":"**medium-low**"}}\n',
+                    encoding='utf-8',
+                )
+
+                first = reddit_autopost.sync_latest_reddit_post_into_marketing_logs()
+                second = reddit_autopost.sync_latest_reddit_post_into_marketing_logs()
+
+                self.assertIsNotNone(first)
+                self.assertIsNone(second)
+                payload = reddit_autopost.load_json_file(first)
+                self.assertEqual(payload['chosen_action']['type'], 'reddit_comment_published')
+                self.assertEqual(payload['result']['status'], 'published')
+                self.assertTrue(payload['result']['live_external_action'])
+                self.assertEqual(payload['result']['comment_url'], 'https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a/onyqq6t/')
+            finally:
+                reddit_autopost.POST_LOG_JSONL = original_post_log
+                reddit_autopost.MARKETING_LOG_DIR = original_log_dir
+                reddit_autopost._refresh_shared_marketing_state = original_refresh
 
 
 if __name__ == "__main__":

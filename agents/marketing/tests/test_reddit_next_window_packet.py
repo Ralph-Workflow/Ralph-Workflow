@@ -65,7 +65,7 @@ class RedditNextWindowPacketTests(unittest.TestCase):
         self.assertEqual(payload["entries"], 0)
         self.assertTrue(latest_exists)
 
-    def test_browser_session_ready_does_not_force_channel_block_skip(self):
+    def test_main_skips_packet_generation_when_report_guard_blocks_posting(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             drafts_dir = tmp / "drafts"
@@ -77,13 +77,25 @@ class RedditNextWindowPacketTests(unittest.TestCase):
                 "status": "browser_session_ready",
             }), encoding="utf-8")
             report = tmp / "reddit_monitor_latest.md"
-            report.write_text("usable report\n", encoding="utf-8")
+            report.write_text(
+                """## Today’s bottom line
+- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=4**), but other queries still returned usable results (**ok=4**). Treat this as partial coverage, not a total Reddit outage.
+
+### 1) Example thread
+- URL: https://www.reddit.com/r/AI_Agents/comments/example/
+- Community: `r/AI_Agents`
+- Freshness: during this pass
+- Direct reply fit: **high**
+- Mention fit: **medium-low**
+- Best RalphWorkflow angle: **content-family match: production_failure**
+""",
+                encoding="utf-8",
+            )
 
             with patch.object(reddit_next_window_packet, "DRAFTS_DIR", drafts_dir), \
                  patch.object(reddit_next_window_packet, "LATEST_PATH", drafts_dir / "reddit_next_window_packets_latest.md"), \
                  patch.object(reddit_next_window_packet, "REDDIT_EXECUTION_STATUS_PATH", status_path), \
-                 patch.object(reddit_next_window_packet.reddit_autopost, "latest_report", return_value=report), \
-                 patch.object(reddit_next_window_packet, "build_packet", return_value=("# packet\n", [object()])):
+                 patch.object(reddit_next_window_packet.reddit_autopost, "latest_report", return_value=report):
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
                     rc = reddit_next_window_packet.main()
@@ -91,7 +103,9 @@ class RedditNextWindowPacketTests(unittest.TestCase):
             payload = json.loads(stdout.getvalue())
 
         self.assertEqual(rc, 0)
-        self.assertEqual(payload["status"], "packet_generated")
+        self.assertEqual(payload["status"], "report_guard_skip")
+        self.assertEqual(payload["entries"], 0)
+        self.assertEqual(payload["paths"], [])
 
     def test_build_packet_prefers_unused_medium_plus_fit_threads(self):
         report = Path("/tmp/reddit_monitor_2026-05-18_2115.md")

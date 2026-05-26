@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-05-26T16:49:12.570069",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "reddit_execution_check",
+    "channel": "reddit_execution_check",
+    "title": "Distribution lane execution: reddit_execution_check",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/reddit_execution_check_2026-05-26_164912.md"
+  },
+  "why_this_action": {
+    "summary": " Reddit execution check ran: autopost_attempted. No live post this run. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "targets_prepared": []
+  },
+  "result": {
+    "status": "prepared",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": []
+  }
+}

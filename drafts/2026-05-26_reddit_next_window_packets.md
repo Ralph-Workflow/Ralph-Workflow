@@ -1,10 +1,12 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-26 13:51 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-26 16:49 CEST
 
 Live posting is **not** the move right now.
 
 Latest watchdog state references report `reddit_monitor_2026-05-26_1119.md`.
-- `status: weak_fit_only_skip`
-- `detail: opportunity_state:weak_fit_only; opportunities:4`
+- `status: cooldown_skip`
+- `detail: global_cooldown_active:1m_since_last_post`
+- `retry_after_minutes: 43`
+- `next_safe_post_at: 2026-05-26T17:32:44`
 
 So this packet is optimized for the **next safe window**, not for forcing a post now.
 
@@ -18,60 +20,39 @@ Messaging guardrails preserved in every draft:
 
 ---
 
-## 1) `r/AI_Agents` - Reddit reddit.com › r/ai_agents › seedance 2.0 is impressive. it’s still not a production workflow. r/AI_Agents
-- URL: <https://www.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a>
+## 1) `r/ClaudeAI` - Reddit reddit.com › r/claudeai › fully switched my entire coding workflow to ai driven development r/ClaudeAI
+- URL: https://www.reddit.com/r/ClaudeAI/comments/1o90n6b/fully_switched_my_entire_coding_workflow_to_ai
 - Mention fit: medium-low
 - Best landing page to seed:
   - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
 - Why this stays in the packet:
   - pain is already about approval drag, review surface, or what is actually safe to merge
   - landing page keeps the reply anchored to proof and finish-state clarity
-  - best RalphWorkflow angle from the monitor: thread angle: production_failure
+  - best RalphWorkflow angle from the monitor: thread angle: visible_finish_state
 
 ### Draft body A
 Most production pain here is a re-entry problem, not an intelligence problem. If the next person cannot see the finish state, what changed, what passed, and what still looks risky, the workflow still fails at handoff time.
 
-That is why this thread is worth a careful reply: thread angle: production_failure.
-
 https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
 
 ---
 
-## 2) `r/ClaudeAI` - Reddit reddit.com › r/claudeai › fully switched my entire coding workflow to ai driven development r/ClaudeAI
-- URL: <https://www.reddit.com/r/ClaudeAI/comments/1o90n6b/fully_switched_my_entire_coding_workflow_to_ai>
+## 2) `r/AI_Agents` - Reddit reddit.com › r/ai_agents › genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents
+- URL: https://www.reddit.com/r/AI_Agents/comments/1sysynd/genuine_question_for_people_who_have_built
 - Mention fit: medium-low
 - Best landing page to seed:
-  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
+  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
 - Why this stays in the packet:
-  - pain is already about approval drag, review surface, or what is actually safe to merge
-  - landing page keeps the reply anchored to proof and finish-state clarity
-  - best RalphWorkflow angle from the monitor: thread angle: visible_finish_state
+  - still usable as a workflow reply without forcing a product pitch
+  - landing page keeps the CTA on a concrete first-use or proof path
+  - best RalphWorkflow angle from the monitor: thread angle: production_failure
 
 ### Draft body B
 What usually breaks first is not coding speed, it is merge confidence. The run has to leave behind enough proof that someone can decide ship, rerun, or rollback without archaeology.
 
-That is why this thread is worth a careful reply: thread angle: visible_finish_state.
+If the run cannot do that without babysitting, it is still pushing the hard part back onto the human.
 
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
-
----
-
-## 3) `r/cursor` - Reddit reddit.com › r/cursor › after months with ai coding agents, these 5 small workflow changes made the biggest difference r/cursor
-- URL: <https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small>
-- Mention fit: medium-low
-- Best landing page to seed:
-  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
-- Why this stays in the packet:
-  - pain is already about approval drag, review surface, or what is actually safe to merge
-  - landing page keeps the reply anchored to proof and finish-state clarity
-  - best RalphWorkflow angle from the monitor: thread angle: visible_finish_state
-
-### Draft body C
-The useful threshold is a visible finish state. If the run cannot hand back finished code, tested code, and a clean answer to what changed, the human still inherits the hard part.
-
-That is why this thread is worth a careful reply: thread angle: visible_finish_state.
-
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
+https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
 
 ---
 

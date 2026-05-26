@@ -1,12 +1,13 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-26T14:11:00
-Chosen lane: **distribution_architecture_repair**
+Generated: 2026-05-26T16:51:11
+Chosen lane: **owned_content**
 
 ## Why this lane
-- The same primary-repo-flat publisher packet keeps getting regenerated as prepared-only follow-through without entering a live delivery window; repair the distribution architecture now instead of refreshing that handoff again.
+- No stronger autonomous lane detected.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 1 directory submissions already shipped in the last 24 hours.
+- 1 live external marketing action(s) already shipped in the last 6 hours.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
 - Apollo already has an active measurement window until 2026-06-02T07:23:34.700335+02:00, so do not spend this run repackaging the same outbound lane.
@@ -17,6 +18,7 @@ Chosen lane: **distribution_architecture_repair**
 - An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.
 - The primary-repo-flat publisher contact packet is already current for the remaining untouched target set, so the loop should enforce follow-through instead of pretending a fresh packet is needed.
 - The same primary-repo-flat publisher packet has already been prepared 2 time(s) in the last 48 hours without a live delivery window, so selecting it again would be fake progress.
+- The execution board still marks the current primary-repo-flat packet as post-hold only until 2026-05-26T20:55:18, so surfacing it as a do-now lane would be fake progress.
 - The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
@@ -38,8 +40,6 @@ Chosen lane: **distribution_architecture_repair**
 ## Recent owned-content already shipped
 - Distribution lane execution: owned_content (owned_content)
 
-## Immediate lane-architecture repair work
-- Do not emit another measurement hold once the short review window has already cleared
-- Treat this as a process-repair slot: replace stale lane-selection logic, prompts, or scheduling rules that still point back to idle holds
-- Preserve Codeberg as the primary CTA while forcing the next post-hold slot to choose either a truthful untouched lane or a concrete runtime repair
-- Use the execution board and shared findings as the truth source for what is actually blocked, exhausted, or already delivered
+## Owned-content lane remains allowed
+- No distribution-lane override triggered yet
+- If the next measurement window is still flat, escalate away from Telegraph-first output

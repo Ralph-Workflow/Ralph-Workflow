@@ -372,13 +372,14 @@ def _latest_lane_to_persist_after_execution(selected_lane: Any, refreshed_lane: 
 
     if (
         selected_release
-        and not refreshed_release
         and selected_name in DISTRIBUTION_ARCHITECTURE_REUSE_LANES
         and selected_name != 'distribution_architecture_guard_pause'
-        and refreshed_name == 'distribution_architecture_guard_pause'
         and execution_action_type in DISTRIBUTION_ARCHITECTURE_REUSE_ACTION_TYPE_MAP.get(selected_name, set())
     ):
-        return selected_lane
+        if not refreshed_release and refreshed_name == 'distribution_architecture_guard_pause':
+            return selected_lane
+        if refreshed_name == 'owned_content':
+            return selected_lane
 
     return refreshed_lane
 
@@ -1132,41 +1133,124 @@ def _distribution_architecture_truth_artifact_paths() -> list[Path]:
     ]
 
 
+def _distribution_architecture_execution_from_payload(
+    *,
+    path: Path,
+    payload: dict[str, Any],
+    timestamp: datetime,
+    lane: str,
+    action_types: set[str],
+    current_fingerprint: str,
+    expected_reason: str = '',
+) -> dict[str, Any] | None:
+    chosen_action = payload.get("chosen_action") if isinstance(payload.get("chosen_action"), dict) else {}
+    result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+    execution = payload.get("execution") if isinstance(payload.get("execution"), dict) else {}
+
+    logged_lane = str(payload.get("selected_lane") or payload.get("lane") or "").strip()
+    logged_action_type = str(
+        chosen_action.get("type")
+        or execution.get("action_type")
+        or payload.get("selected_action_type")
+        or payload.get("action_type")
+        or ""
+    ).strip()
+    if logged_action_type not in action_types:
+        return None
+    if logged_lane and logged_lane != lane:
+        return None
+
+    verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
+    logged_fingerprint = str(
+        verification.get("execution_board_fingerprint")
+        or payload.get("execution_board_fingerprint")
+        or ""
+    ).strip()
+    if current_fingerprint:
+        if logged_fingerprint:
+            if logged_fingerprint != current_fingerprint:
+                return None
+        else:
+            logged_reason = str((payload.get("why_this_action") or {}).get("summary") or payload.get("summary") or "").strip()
+            if expected_reason and logged_reason != expected_reason:
+                return None
+
+    artifact_path = str(
+        chosen_action.get("draft")
+        or execution.get("artifact_path")
+        or payload.get("artifact_path")
+        or ""
+    ).strip()
+    summary = str(
+        result.get("summary")
+        or execution.get("summary")
+        or payload.get("summary")
+        or "Reused existing distribution-architecture guard artifact."
+    )
+    targets_prepared = result.get("targets_prepared") or execution.get("targets_prepared") or []
+    live_external_action = result.get("live_external_action")
+    if live_external_action is None:
+        live_external_action = execution.get("live_external_action", False)
+    blocking_factors = result.get("blocking_factors") or execution.get("blocking_factors") or []
+    shared_findings_used = list((payload.get("why_this_action") or {}).get("shared_findings_used") or payload.get("shared_findings_used") or [])
+    status = str(result.get("status") or execution.get("status") or payload.get("status") or "executed")
+
+    return {
+        "timestamp": timestamp,
+        "log_path": str(path),
+        "action_type": logged_action_type,
+        "artifact_path": artifact_path,
+        "status": status,
+        "summary": summary,
+        "targets_prepared": list(targets_prepared),
+        "shared_findings_used": shared_findings_used,
+        "live_external_action": bool(live_external_action),
+        "blocking_factors": list(blocking_factors),
+    }
+
+
 def _latest_distribution_architecture_execution(lane: str, expected_reason: str = '') -> dict[str, Any] | None:
     action_types = DISTRIBUTION_ARCHITECTURE_REUSE_ACTION_TYPE_MAP.get(lane)
     if not action_types:
         return None
 
     current_fingerprint = distribution_lane_selector._execution_board_fingerprint()
+    latest_match: dict[str, Any] | None = None
     for path, payload, timestamp in _recent_marketing_log_payloads():
-        chosen_action = payload.get("chosen_action") if isinstance(payload.get("chosen_action"), dict) else {}
-        logged_action_type = str(chosen_action.get("type") or payload.get("action_type") or "").strip()
-        if logged_action_type not in action_types:
+        candidate = _distribution_architecture_execution_from_payload(
+            path=path,
+            payload=payload,
+            timestamp=timestamp,
+            lane=lane,
+            action_types=action_types,
+            current_fingerprint=current_fingerprint,
+            expected_reason=expected_reason,
+        )
+        if candidate is None:
             continue
-        verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
-        logged_fingerprint = str(verification.get("execution_board_fingerprint") or "").strip()
-        if current_fingerprint:
-            if logged_fingerprint:
-                if logged_fingerprint != current_fingerprint:
-                    continue
-            else:
-                logged_reason = str((payload.get("why_this_action") or {}).get("summary") or "").strip()
-                if expected_reason and logged_reason != expected_reason:
-                    continue
-        result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
-        return {
-            "timestamp": timestamp,
-            "log_path": str(path),
-            "action_type": logged_action_type,
-            "artifact_path": chosen_action.get("draft") or payload.get("artifact_path") or "",
-            "status": str(result.get("status") or "executed"),
-            "summary": str(result.get("summary") or "Reused existing distribution-architecture guard artifact."),
-            "targets_prepared": list(result.get("targets_prepared") or []),
-            "shared_findings_used": list((payload.get("why_this_action") or {}).get("shared_findings_used") or []),
-            "live_external_action": bool(result.get("live_external_action", False)),
-            "blocking_factors": list(result.get("blocking_factors") or []),
-        }
-    return None
+        latest_match = candidate
+        break
+
+    outcome_path = outcome_execution_board_runner.STATUS_JSON
+    if outcome_path.exists():
+        outcome_payload = _load_json_file(outcome_path)
+        outcome_timestamp = parse_iso_date(str(outcome_payload.get("timestamp") or ""))
+        if outcome_timestamp is not None:
+            outcome_candidate = _distribution_architecture_execution_from_payload(
+                path=outcome_path,
+                payload=outcome_payload,
+                timestamp=outcome_timestamp,
+                lane=lane,
+                action_types=action_types,
+                current_fingerprint=current_fingerprint,
+                expected_reason=expected_reason,
+            )
+            if outcome_candidate is not None and (
+                latest_match is None or outcome_candidate["timestamp"] >= latest_match["timestamp"]
+            ):
+                latest_match = outcome_candidate
+
+    return latest_match
 
 
 def _latest_distribution_architecture_guard_execution(lane: str, expected_reason: str = '') -> dict[str, Any] | None:
@@ -1378,9 +1462,9 @@ def main() -> int:
         }
         if not reused_existing_follow_through:
             payload["post_execution_distribution_lane"] = {
-                "lane": refreshed_lane.lane,
-                "reason": refreshed_lane.reason,
-                "artifact_path": getattr(refreshed_lane, "artifact_path", ""),
+                "lane": latest_distribution_lane.lane,
+                "reason": latest_distribution_lane.reason,
+                "artifact_path": getattr(latest_distribution_lane, "artifact_path", ""),
             }
         log_file = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d')}.json"
         log_file.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
@@ -1664,7 +1748,7 @@ def main() -> int:
         "distribution_execution": distribution_execution.__dict__,
         "distribution_execution_log": str(distribution_execution_log),
         "post_hold_release_schedule": post_hold_release_schedule,
-        "post_execution_distribution_lane": refreshed_distribution_lane.__dict__,
+        "post_execution_distribution_lane": latest_distribution_lane.__dict__,
         "reused_existing_distribution_execution": reused_existing_distribution_execution,
         "failure_signals": [d["action"] for d in decisions if d.get("is_failing_signal")],
         "marketing_status": "failing" if any(d.get("is_failing_signal") for d in decisions) else "mixed" if decisions else "initial",

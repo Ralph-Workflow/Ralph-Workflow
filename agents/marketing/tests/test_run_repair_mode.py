@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agents.marketing import run
+from agents.marketing import outcome_execution_board_runner, run
 from agents.marketing.distribution_lane_selector import LaneDecision
 
 
@@ -924,6 +924,43 @@ class RunRepairModeTests(unittest.TestCase):
             finally:
                 run.LOG_DIR = original_log_dir
 
+    def test_latest_distribution_architecture_repair_falls_back_to_outcome_runner_status(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            original_status_json = outcome_execution_board_runner.STATUS_JSON
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                status_path = run.LOG_DIR / 'outcome_execution_board_latest.json'
+                status_path.write_text(json.dumps({
+                    'timestamp': '2026-05-26T15:26:35',
+                    'selected_lane': 'distribution_architecture_repair',
+                    'selected_action_type': 'distribution_architecture_churn_guard_repair',
+                    'execution_board_fingerprint': 'abc123',
+                    'execution': {
+                        'action_type': 'distribution_architecture_churn_guard_repair',
+                        'status': 'executed',
+                        'targets_prepared': [],
+                        'live_external_action': False,
+                        'blocking_factors': [],
+                    },
+                    'artifact_path': '/tmp/existing_distribution_architecture_repair.md',
+                    'summary': 'Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window.',
+                    'shared_findings_used': ['adoption_metrics_latest.json'],
+                }), encoding='utf-8')
+
+                with patch.object(outcome_execution_board_runner, 'STATUS_JSON', status_path), \
+                     patch.object(run.distribution_lane_selector, '_execution_board_fingerprint', return_value='abc123'):
+                    found = run._latest_distribution_architecture_execution(
+                        'distribution_architecture_repair',
+                        expected_reason='Repair empty-board churn.',
+                    )
+
+                self.assertIsNotNone(found)
+                self.assertEqual(found['log_path'], str(status_path))
+                self.assertEqual(found['action_type'], 'distribution_architecture_churn_guard_repair')
+            finally:
+                run.LOG_DIR = original_log_dir
+
     def test_latest_lane_to_persist_keeps_active_distribution_architecture_repair_context(self):
         selected = LaneDecision(
             lane='distribution_architecture_repair',
@@ -1248,6 +1285,75 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertEqual(rc, 0)
                 self.assertEqual(choose_mock.call_args_list[0].kwargs.get('persist_latest_artifacts'), False)
                 persist_mock.assert_called_once_with(refreshed, unittest.mock.ANY, write_action_log=False)
+            finally:
+                run.LOG_DIR = original_log_dir
+                run.DRAFTS_DIR = original_drafts_dir
+
+    def test_main_keeps_distribution_architecture_repair_truth_when_refresh_regresses_to_owned_content(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            original_drafts_dir = run.DRAFTS_DIR
+            run.LOG_DIR = Path(tmpdir)
+            run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
+            run.DRAFTS_DIR.mkdir()
+            try:
+                decision = LaneDecision(
+                    lane='distribution_architecture_repair',
+                    reason='selected lane during active short hold',
+                    reasons=['execution board is empty during the active review window'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='/tmp/selected.md',
+                    short_review_window_release_at='2026-05-26T20:55:18',
+                )
+                refreshed = LaneDecision(
+                    lane='owned_content',
+                    reason='fallback drift',
+                    reasons=['stale fallback'],
+                    owned_content_posts_last_36h=1,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='/tmp/refreshed.md',
+                )
+                execution = SimpleNamespace(
+                    lane='distribution_architecture_repair',
+                    action_type='distribution_architecture_churn_guard_repair',
+                    status='executed',
+                    artifact_path='/tmp/post.md',
+                    summary='Installed churn guard for the active review window.',
+                    targets_prepared=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=None), \
+                     patch.object(run, 'run_seo_daily', return_value={'priority_actions': [], 'ranks': {}, 'backlinks': {'count_approx': 0}}), \
+                     patch.object(run, 'load_seo_trends', return_value=[]), \
+                     patch.object(run, 'compute_trends', return_value={}), \
+                     patch.object(run, 'recent_successful_posts', return_value=[]), \
+                     patch.object(run, 'load_posted_records', return_value=[]), \
+                     patch.object(run, 'enrich_posts_with_views', return_value=[]), \
+                     patch.object(run, 'summarize_content_performance', return_value={}), \
+                     patch.object(run, 'competitor_report_is_stale', return_value=False), \
+                     patch.object(run, 'load_shared_market_intelligence', return_value=None), \
+                     patch.object(run, 'load_adoption_data', return_value={}), \
+                     patch.object(run, 'write_seo_insights', return_value=run.LOG_DIR / 'seo-insights.json'), \
+                     patch.object(run, '_write_marketing_execution_board', return_value=(run.DRAFTS_DIR / 'marketing_execution_board_latest.md', [])), \
+                     patch.object(run, 'choose_distribution_lane', side_effect=[decision, refreshed]), \
+                     patch.object(run, 'execute_distribution_lane', return_value=execution), \
+                     patch.object(run.distribution_lane_selector, 'persist_latest_lane_decision') as persist_mock, \
+                     patch.object(run.outcome_execution_board_runner, 'sync_from_execution'):
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                persisted_lane = persist_mock.call_args.args[0]
+                self.assertEqual(persisted_lane.lane, 'distribution_architecture_repair')
+                self.assertEqual(persisted_lane.short_review_window_release_at, '2026-05-26T20:55:18')
+                daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
+                payload = json.loads(daily_log.read_text(encoding='utf-8'))
+                self.assertEqual(payload['post_execution_distribution_lane']['lane'], 'distribution_architecture_repair')
             finally:
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir

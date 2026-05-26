@@ -8,6 +8,8 @@
   "artifact_path": "/tmp/guard-pause.md",
   "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md",
   "execution_board_targets": [],
+  "execution_board_fingerprint": "0740dc2a40328c008eae1b95aa2fc0c175526692",
+  "short_review_window_release_at": "",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.",
   "summary": "Reused existing distribution-architecture guard artifact.",

@@ -6977,3 +6977,46 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-26 14:55:29
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 15:58:44
+- **Note:** Momentum check found: outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 16:07:54
+- **Note:** Momentum check found: outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 16:20:45
+- **Note:** Momentum check found: outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 16:35:21
+- **Note:** Momentum check found: outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 16:38:17
+- **Note:** Momentum check found: outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small
+- **Comment URL:** https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small
+- **Status:** ✅ Published
+- **Notes:** r/cursor workflow changes thread - cadence-distinct body F
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 16:47:47
+- **Note:** Momentum check found: outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 16:50:09
+- **Note:** Momentum check found: outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 16:51:26
+- **Note:** Momentum check found: outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 16:55:13
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.

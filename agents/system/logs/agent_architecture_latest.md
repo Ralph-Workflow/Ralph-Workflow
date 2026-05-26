@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-26T13:57:43.031916+02:00
+- Checked: 2026-05-26T15:57:45.720106+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by the marketing independent fail on primary-repo outcome evidence.
 - Most urgent fix: Do not certify green until marketing produces a fresh independent pass backed by measurable Codeberg movement.
@@ -9,9 +9,9 @@
 
 ## Live topology
 
-- Live Gateway jobs: 22 total / 22 enabled / 0 disabled
-- Live running jobs now: Push research findings to git repo, agent-architecture-watchdog, codeberg-github-mirror-sync, marketing-momentum-watchdog, marketing-workflow-audit, reddit-pipeline-watchdog, repo-adoption-tracker, system-health-monitor
-- Live last-error residue: ralph-site-owner-loop
+- Live Gateway jobs: 23 total / 23 enabled / 0 disabled
+- Live running jobs now: Push research findings to git repo, agent-architecture-watchdog, marketing-momentum-watchdog, ralph-site-owner-loop, ralph-workflow-docs-verifier-supervisor, reddit-pipeline-watchdog, repo-adoption-tracker, system-health-monitor
+- Live last-error residue: none
 - Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-measurement-hold-release, marketing-reflection, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
 - User crontab ownership: ok
 
@@ -22,7 +22,7 @@
    - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green.
 
 2. **Medium — Live Gateway topology matches the current runtime state**
-   - Mechanism: Direct live cron inspection shows 22 enabled/total-visible jobs, 0 disabled jobs, 8 running jobs, and 1 live last-error jobs.
+   - Mechanism: Direct live cron inspection shows 23 enabled/total-visible jobs, 0 disabled jobs, 8 running jobs, and 0 live last-error jobs.
    - Recommended fix: Keep direct cron inspection as the source of truth on each watchdog run and avoid conflating persisted disabled history with live runtime topology.
 
 3. **Medium — Architecture verifier path is green on freshness and ownership gates**
@@ -35,7 +35,7 @@
 
 ## Repaired this run
 
-- **refreshed_live_topology** — Refreshed the audit against the current live view: 22 enabled jobs, 0 disabled jobs, 8 running jobs, and 1 live last-error jobs.
+- **refreshed_live_topology** — Refreshed the audit against the current live view: 23 enabled jobs, 0 disabled jobs, 8 running jobs, and 0 live last-error jobs.
 - **relocalized_runtime_drift** — Removed stale topology mismatch as an architecture-owned blocker so remaining red stays localized to external marketing outcome evidence.
 - **revalidated_shared_findings_consumption** — Reconfirmed that code-backed marketing consumers still expose machine-verifiable shared market-intelligence consumption.
 
@@ -50,7 +50,7 @@
 - Performed: yes
 - Verdict: qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Checked at: 2026-05-26T13:57:41.101100+02:00
+- Checked at: 2026-05-26T15:07:45.040852+02:00
 
 ## Small gate passed
 
