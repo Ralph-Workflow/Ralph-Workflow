@@ -59,6 +59,18 @@ def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(runner, "make_display_context", lambda **_kwargs: ctx)
 
 
+def _stub_prompt_materialization(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "materialize_prompt_for_phase", lambda *args, **kwargs: "noop")
+    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+
+
+def _write_artifact(root: Path, relative_path: str, payload: dict[str, object]) -> None:
+    path = root / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload))
+
+
 @lru_cache(maxsize=1)
 def _default_policy_bundle() -> object:
     return load_policy(DEFAULT_POLICY_DIR)
@@ -320,11 +332,6 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
             return ExitSuccessEffect()
         return original_determine(state, bundle, workspace_scope, config)
 
-    def write_artifact(relative_path: str, payload: dict[str, object]) -> None:
-        path = tmp_path / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload))
-
     def fake_execute_effect(
         effect: object,
         _config: object,
@@ -334,7 +341,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
         nonlocal planning_analysis_calls
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "planning":
-                write_artifact(
+                _write_artifact(tmp_path,
                     ".agent/artifacts/plan.json",
                     {
                         "type": "plan",
@@ -377,7 +384,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
                     if planning_analysis_calls <= MAX_PLANNING_ANALYSIS_ITERATIONS
                     else "completed"
                 )
-                write_artifact(
+                _write_artifact(tmp_path,
                     ".agent/artifacts/planning_analysis_decision.json",
                     {"type": "planning_analysis_decision", "content": {"status": decision}},
                 )
@@ -394,9 +401,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "materialize_prompt_for_phase", lambda *args, **kwargs: "noop")
+    _stub_prompt_materialization(monkeypatch)
     monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(runner, "call_determine_effect_from_policy", stop_at_development)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
@@ -554,11 +559,6 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
             return ExitSuccessEffect()
         return original_determine(state, bundle, workspace_scope, config)
 
-    def write_artifact(relative_path: str, payload: dict[str, object]) -> None:
-        path = tmp_path / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload))
-
     def fake_execute_effect(
         effect: object,
         _config: object,
@@ -568,7 +568,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
         nonlocal development_analysis_calls
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "development":
-                write_artifact(
+                _write_artifact(tmp_path,
                     ".agent/artifacts/development_result.json",
                     {
                         "type": "development_result",
@@ -593,7 +593,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                     if development_analysis_calls <= DEVELOPMENT_CYCLES_THREE
                     else "completed"
                 )
-                write_artifact(
+                _write_artifact(tmp_path,
                     ".agent/artifacts/development_analysis_decision.json",
                     {"type": "development_analysis_decision", "content": {"status": decision}},
                 )
@@ -603,7 +603,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 "development_final_commit_cleanup",
             }:
                 return (
-                    write_artifact(
+                    _write_artifact(tmp_path,
                         ".agent/artifacts/commit_cleanup.json",
                         {"analysis_complete": True, "actions": []},
                     )
@@ -611,7 +611,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 )
             if effect.phase == "development_commit":
                 return (
-                    write_artifact(
+                    _write_artifact(tmp_path,
                         ".agent/tmp/commit_message.json",
                         {
                             "name": "commit_message",
@@ -641,8 +641,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    _stub_prompt_materialization(monkeypatch)
     monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
         runner,
