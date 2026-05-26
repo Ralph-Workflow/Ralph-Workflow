@@ -642,6 +642,60 @@ class RunRepairModeTests(unittest.TestCase):
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir
 
+    def test_latest_distribution_architecture_guard_execution_accepts_legacy_reason_match_without_fingerprint(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                prior_log = run.LOG_DIR / 'marketing_2026-05-25_093100_distribution_architecture_guard_pause.json'
+                prior_log.write_text(json.dumps({
+                    'timestamp': '2026-05-25T09:31:00',
+                    'chosen_action': {
+                        'type': 'distribution_architecture_guard_pause',
+                        'channel': 'distribution_architecture_guard_pause',
+                        'draft': '/tmp/existing_guard_pause.md',
+                    },
+                    'why_this_action': {
+                        'summary': 'Pause duplicate guard churn.',
+                        'shared_findings_used': ['adoption_metrics_latest.json'],
+                    },
+                    'result': {
+                        'status': 'skipped_repair',
+                        'summary': 'Paused duplicate guard churn.',
+                        'targets_prepared': [],
+                        'live_external_action': False,
+                        'blocking_factors': [],
+                    },
+                }), encoding='utf-8')
+
+                with patch.object(run.distribution_lane_selector, '_execution_board_fingerprint', return_value='abc123'):
+                    found = run._latest_distribution_architecture_guard_execution(
+                        'distribution_architecture_guard_pause',
+                        expected_reason='Pause duplicate guard churn.',
+                    )
+
+                self.assertIsNotNone(found)
+                self.assertEqual(found['log_path'], str(prior_log))
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_distribution_architecture_guard_execution_stale_only_when_artifact_or_log_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            artifact = tmp / 'guard.md'
+            artifact.write_text('# guard\n', encoding='utf-8')
+            log = tmp / 'guard.json'
+            log.write_text('{}', encoding='utf-8')
+
+            self.assertFalse(run._distribution_architecture_guard_execution_is_stale({
+                'artifact_path': str(artifact),
+                'log_path': str(log),
+            }))
+            self.assertTrue(run._distribution_architecture_guard_execution_is_stale({
+                'artifact_path': str(tmp / 'missing.md'),
+                'log_path': str(log),
+            }))
+
     def test_main_reuses_existing_distribution_architecture_guard_pause_when_truth_is_unchanged(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR
