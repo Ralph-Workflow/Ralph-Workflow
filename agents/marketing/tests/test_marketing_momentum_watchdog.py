@@ -257,6 +257,69 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
             )
             self.assertEqual(watchdog.report_signal(report), 'degraded')
 
+    def test_degraded_reddit_monitor_becomes_watch_when_non_reddit_repair_is_already_live(self):
+        now = datetime.now().astimezone()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            status_dir = root / 'logs'
+            status_dir.mkdir(parents=True, exist_ok=True)
+            report = root / 'reddit_monitor_latest.md'
+            report.write_text('partial coverage with provider challenge-heavy telemetry\n**Shortlisted:** 1\n', encoding='utf-8')
+            old = now.timestamp() - 2 * 3600
+            import os
+            os.utime(report, (old, old))
+
+            (status_dir / 'adoption_metrics_latest.json').write_text(json.dumps({
+                'evaluation': {'failing_signals': ['primary_repo_flat']}
+            }), encoding='utf-8')
+            (status_dir / 'marketing_workflow_audit_latest.json').write_text(json.dumps({
+                'repair_window_status': 'measurement_pending',
+                'measurement_pending_reasons': ['primary_repo_flat', 'execution_ceiling_repetition'],
+                'has_failing_tactics': True,
+                'failing_tactics': ['primary_repo_flat_window', 'execution_ceiling_repetition'],
+                'repair_actions': [
+                    {'failure_type': 'execution_ceiling_repetition', 'repair_kind': 'system_design', 'repair_state': 'pending_measurement'},
+                ],
+                'latest_executed_action': {
+                    'type': 'owned_content_publication',
+                    'ok': True,
+                    'live_external_action': True,
+                    'outcome_ready': True,
+                },
+            }), encoding='utf-8')
+            (status_dir / 'apollo_status.json').write_text(json.dumps({
+                'status': 'login_succeeded',
+                'cloudflare_blocked': False,
+            }), encoding='utf-8')
+
+            hold_dir = root / 'marketing-logs'
+            hold_dir.mkdir(parents=True, exist_ok=True)
+
+            with patch.object(watchdog, 'STATUS_DIR', status_dir), \
+                 patch.object(watchdog, 'STATUS_PATH', status_dir / 'marketing_momentum_watchdog.json'), \
+                 patch.object(watchdog, 'ADOPTION_PATH', status_dir / 'adoption_metrics_latest.json'), \
+                 patch.object(watchdog, 'AUDIT_PATH', status_dir / 'marketing_workflow_audit_latest.json'), \
+                 patch.object(watchdog, 'APOLLO_STATUS_PATH', status_dir / 'apollo_status.json'), \
+                 patch.object(watchdog, 'REDDIT_EXECUTION_STATUS_PATH', status_dir / 'missing_reddit_execution_status.json'), \
+                 patch.object(watchdog, 'RUNNER_PATH', status_dir / 'missing_runner.json'), \
+                 patch.object(watchdog, 'SEO', root), \
+                 patch.object(watchdog, 'LOG_JSONL', root / 'missing_posts.jsonl'), \
+                 patch.object(watchdog, 'RETRO', root / 'reddit_retrospective.py'), \
+                 patch.object(watchdog.marketing_run, 'LOG_DIR', hold_dir), \
+                 patch.object(watchdog, 'append_note', lambda text: None), \
+                 patch.object(watchdog, 'newest_report', lambda: report), \
+                 patch.object(watchdog, 'report_signal', lambda _report: 'degraded'), \
+                 patch.object(watchdog, 'newest_post_time', lambda: now - timedelta(hours=1)), \
+                 patch.object(watchdog, 'newest_healthy_report_time', lambda _now: (None, None)), \
+                 patch.object(watchdog, 'latest_reddit_monitor_runtime', lambda _now: {'status': None, 'age_hours': None}), \
+                 patch('agents.marketing.marketing_momentum_watchdog.subprocess.run'):
+                rc = watchdog.main()
+
+            self.assertEqual(rc, 0)
+            summary = json.loads((status_dir / 'marketing_momentum_watchdog.json').read_text(encoding='utf-8'))
+            self.assertNotIn('reddit_monitor_degraded', summary['actions'])
+            self.assertIn('reddit_monitor_degraded', summary['watch_actions'])
+
 
 if __name__ == '__main__':
     unittest.main()

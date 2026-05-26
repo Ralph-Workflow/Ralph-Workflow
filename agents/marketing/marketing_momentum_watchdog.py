@@ -103,6 +103,8 @@ def report_signal(report: Path | None) -> str:
         diagnostics.get('reddit_ip_blocked', 0) > 0
         and (diagnostics.get('ok', 0) > 0 or (shortlist_count or 0) > 0)
     )
+    if partial_reddit_blocking:
+        return 'degraded'
     if any(marker in text_l for marker in [
         'reddit is ip-blocked',
         'reddit ip-blocked',
@@ -301,8 +303,6 @@ def main() -> int:
     )
     if execution_blocked:
         monitor_signal = 'blocked'
-    elif execution_ready and monitor_signal == 'blocked':
-        monitor_signal = 'degraded'
 
     if stale_report and not recent_runtime_skip and not active_measurement_hold and not execution_blocked:
         actions.append('reddit_monitor_stale')
@@ -390,6 +390,20 @@ def main() -> int:
     if stale_post and monitor_signal not in {'no_opportunities', 'blocked'} and not recent_shipped_non_reddit_execution and not recent_runtime_skip:
         actions.append('no_recent_reddit_post')
     shipped_replacement_execution = recent_shipped_non_reddit_execution
+
+    # Once a non-Reddit replacement path or live system-design repair is already in motion,
+    # degraded Reddit telemetry should not fail the whole momentum loop again in the same run.
+    if (
+        'reddit_monitor_degraded' in actions
+        and (
+            shipped_replacement_execution
+            or recent_structural_system_repair
+            or bool(live_system_design_repairs)
+        )
+    ):
+        actions.remove('reddit_monitor_degraded')
+        if 'reddit_monitor_degraded' not in watch_actions:
+            watch_actions.append('reddit_monitor_degraded')
 
     # A blocked Reddit lane is a genuine signal, but once a replacement distribution path has
     # already shipped it becomes a managed watchpoint rather than a same-run momentum failure.
