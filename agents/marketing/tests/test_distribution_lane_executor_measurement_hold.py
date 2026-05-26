@@ -10,9 +10,122 @@ from unittest.mock import patch
 from agents.marketing import distribution_lane_selector
 from agents.marketing.distribution_lane_selector import LaneDecision
 from agents.marketing import distribution_lane_executor
+from agents.marketing import run_posting
 
 
 class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
+    def test_owned_content_lane_publishes_unposted_repo_guide(self):
+        now = datetime(2026, 5, 26, 2, 53, 0)
+        decision = LaneDecision(
+            lane='owned_content',
+            reason='No stronger autonomous lane detected.',
+            reasons=['board empty, owned content is the truthful lane'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json: Codeberg movement is the primary success gate'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            source = tmp / 'review_ai_coding_output_before_merge.md'
+            source.write_text(
+                '\n'.join([
+                    '# Review AI Coding Output Before Merge',
+                    '',
+                    'Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.',
+                    '',
+                    'Use the default workflow as-is first, then build your own workflow on top once you know what kind of review bundle you actually need.',
+                    '',
+                    'Before merge, ask whether the diff matches the task, whether the checks really ran, and whether the finish is boring enough to trust.',
+                    '',
+                    'That is the real conversion question for unattended coding: not whether the tool sounded confident, but whether the result is ready to review honestly and worth following on Codeberg first.',
+                ]),
+                encoding='utf-8',
+            )
+
+            posted_file = log_dir / 'posted_urls.json'
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'OWNED_CONTENT_SOURCE_CANDIDATES', [source]), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={}), \
+                 patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stdout='', stderr='')), \
+                 patch.object(distribution_lane_executor, 'post_telegraph', return_value=(True, 'https://telegra.ph/example-review-guide')), \
+                 patch.object(run_posting, 'POSTED_FILE', posted_file):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'owned_content_publication')
+            self.assertEqual(execution.status, 'executed')
+            self.assertTrue(execution.live_external_action)
+            self.assertTrue(Path(execution.artifact_path).exists())
+            self.assertIn('https://telegra.ph/example-review-guide', execution.targets_prepared)
+
+            posted = json.loads(posted_file.read_text(encoding='utf-8'))
+            self.assertEqual(posted['posts'][0]['platform'], 'telegraph')
+            self.assertEqual(posted['posts'][0]['url'], 'https://telegra.ph/example-review-guide')
+
+            action_log = json.loads((log_dir / 'marketing_2026-05-26_owned_content_execution.json').read_text(encoding='utf-8'))
+            self.assertEqual(action_log['chosen_action']['type'], 'owned_content_publication')
+
+    def test_owned_content_lane_skips_when_same_guide_was_already_posted(self):
+        now = datetime(2026, 5, 26, 2, 54, 0)
+        decision = LaneDecision(
+            lane='owned_content',
+            reason='No stronger autonomous lane detected.',
+            reasons=['board empty, owned content is the truthful lane'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json: Codeberg movement is the primary success gate'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            source = tmp / 'review_ai_coding_output_before_merge.md'
+            body = '\n'.join([
+                '# Review AI Coding Output Before Merge',
+                '',
+                'Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.',
+                '',
+                'Use the default workflow as-is first, then build your own workflow on top once you know what kind of review bundle you actually need.',
+                '',
+                'Before merge, ask whether the diff matches the task, whether the checks really ran, and whether the finish is boring enough to trust.',
+            ])
+            source.write_text(body, encoding='utf-8')
+
+            draft_hash = run_posting.digest_text(body.strip())
+            posted_file = log_dir / 'posted_urls.json'
+            posted_file.write_text(json.dumps({'posts': [{
+                'platform': 'telegraph',
+                'ok': True,
+                'draft_hash': draft_hash,
+                'draft': 'already-posted.md',
+            }]}), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'OWNED_CONTENT_SOURCE_CANDIDATES', [source]), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={}), \
+                 patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stdout='', stderr='')), \
+                 patch.object(distribution_lane_executor, 'post_telegraph') as mock_post, \
+                 patch.object(run_posting, 'POSTED_FILE', posted_file):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'owned_content_lane_noop')
+            self.assertEqual(execution.status, 'skipped')
+            mock_post.assert_not_called()
+
     def test_distribution_architecture_repair_creates_manual_reddit_discussion_asset_when_monitor_has_live_opportunities(self):
         now = datetime(2026, 5, 25, 14, 8, 0)
 
@@ -440,7 +553,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             board_text = board_path.read_text(encoding='utf-8')
 
         self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
-        self.assertIn('canonical handoff packet is stale', board_text)
+        self.assertIn('canonical handoff packet no longer covers the current waiting target set', board_text)
 
     def test_execution_board_prefers_delivery_active_blocker_over_false_stale_packet_flag(self):
         now = datetime(2026, 5, 25, 7, 36, 0)
@@ -715,6 +828,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_resolve_measurement_hold_release_delivery', return_value={'channel': 'matrix', 'to': '@mistlight_oriroris:matrix.org'}), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
                  patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
                 state = {'added': False}
@@ -754,10 +868,17 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('distribution_architecture_repair instead of another measurement_hold', reentry_contract)
         self.assertEqual(cron_log['type'], 'measurement_hold_release_cron')
         self.assertEqual(cron_log['cron_job']['id'], 'cron-123')
+        self.assertEqual(cron_log['verification']['delivery_channel'], 'matrix')
+        self.assertEqual(cron_log['verification']['delivery_target'], '@mistlight_oriroris:matrix.org')
         self.assertEqual(
             cron_log['verification']['reentry_contract_path'],
             str(drafts_dir / 'post_hold_distribution_reentry_latest.md'),
         )
+        add_command = next(call.args[0] for call in mock_run.call_args_list if call.args and call.args[0][:3] == ['openclaw', 'cron', 'add'])
+        self.assertIn('--channel', add_command)
+        self.assertIn('matrix', add_command)
+        self.assertIn('--to', add_command)
+        self.assertIn('@mistlight_oriroris:matrix.org', add_command)
 
     def test_repeated_measurement_hold_with_existing_repairs_escalates_to_churn_guard(self):
         now = datetime(2026, 5, 25, 0, 43, 0)
@@ -1054,6 +1175,53 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertEqual(schedule['scheduled_run_at'], '2026-05-25T23:07:41')
         self.assertEqual(cron_log['review_window']['scheduled_run_at'], '2026-05-25T23:07:41')
 
+    def test_measurement_hold_scheduler_removes_stale_running_release_job_before_reschedule(self):
+        now = datetime(2026, 5, 26, 2, 13, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.side_effect = [
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': [
+                        {
+                            'id': 'stale-running-cron',
+                            'name': 'marketing-measurement-hold-release',
+                            'enabled': True,
+                            'status': 'running',
+                            'schedule': {'kind': 'at', 'at': '2026-05-25T23:07:41'},
+                            'state': {'runningAtMs': 1779752163746},
+                        }
+                    ]}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'ok': True}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'fresh-cron', 'name': 'marketing-measurement-hold-release'}}), stderr=''),
+                ]
+
+                schedule = distribution_lane_executor._schedule_measurement_hold_release_run(
+                    now=now,
+                    release_at='2026-05-26T03:05:18',
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    reentry_contract_path=str(drafts_dir / 'post_hold_distribution_reentry_latest.md'),
+                )
+
+                add_call = mock_run.call_args_list[2].args[0]
+
+            cron_log = json.loads((log_dir / 'marketing_2026-05-26_021300_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(schedule['status'], 'scheduled')
+        self.assertEqual(schedule['job_id'], 'fresh-cron')
+        self.assertEqual(schedule['removed_stale_jobs'][0]['job_id'], 'stale-running-cron')
+        self.assertEqual(cron_log['cleanup']['removed_stale_jobs'][0]['job_id'], 'stale-running-cron')
+        message = add_call[add_call.index('--message') + 1]
+        self.assertIn('verify from the latest distribution-lane and execution-board artifacts that the short review window has actually cleared', message)
+        self.assertIn('treat the wake as an early-release scheduling failure', message)
+
     def test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_when_post_cooldown_run_is_already_scheduled(self):
         now = datetime(2026, 5, 24, 5, 20, 0)
         decision = LaneDecision(
@@ -1237,6 +1405,62 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertNotIn('Ready-to-send email draft', artifact_text)
         self.assertNotIn('Short contact-form version', artifact_text)
         mock_board_write.assert_called_once_with(now)
+
+    def test_primary_repo_flat_packet_reschedules_post_hold_rerun_when_short_window_moves_later(self):
+        now = datetime(2026, 5, 26, 4, 1, 0)
+        decision = LaneDecision(
+            lane='primary_repo_flat_contact_handoff_packet',
+            reason='Fresh primary-repo-flat publisher targets now have verified public contact paths.',
+            reasons=['publisher contacts discovered'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json', 'marketing_execution_board_latest.md'],
+            artifact_path='',
+            short_review_window_release_at='2026-05-26T08:57:00',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            discovery = {
+                'targets': [
+                    {'target': 'AI Saying', 'channels': [{'type': 'email', 'value': 'hello@aisaying.com'}]},
+                ]
+            }
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(json.dumps(discovery), encoding='utf-8')
+            board_path = drafts_dir / 'marketing_execution_board_latest.md'
+            reentry_path = drafts_dir / 'post_hold_distribution_reentry_latest.md'
+            board_path.write_text('# board\n', encoding='utf-8')
+            reentry_path.write_text('# reentry\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(board_path, [])), \
+                 patch.object(distribution_lane_executor, '_write_post_hold_reentry_contract', return_value=reentry_path), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.side_effect = [
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': []}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'ok': True}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'fresh-cron', 'name': 'marketing-measurement-hold-release'}}), stderr=''),
+                ]
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_path = Path(execution.artifact_path)
+            artifact_text = artifact_path.read_text(encoding='utf-8')
+            cron_log = json.loads((log_dir / 'marketing_2026-05-26_040100_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(execution.action_type, 'primary_repo_flat_contact_handoff_packet_execution')
+        self.assertIn('Scheduled an automatic post-hold marketer rerun at the updated short-window release time.', execution.summary)
+        self.assertIn('## Post-hold marketer rerun scheduled', artifact_text)
+        self.assertIn('2026-05-26T08:57:00', artifact_text)
+        self.assertEqual(cron_log['review_window']['scheduled_run_at'], '2026-05-26T08:57:00')
+        self.assertNotIn('cleanup', cron_log)
 
     def test_primary_repo_flat_packet_refresh_also_refreshes_execution_board(self):
         now = datetime(2026, 5, 25, 11, 14, 27)
@@ -1714,7 +1938,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             board_text = (drafts_dir / 'marketing_execution_board_latest.md').read_text(encoding='utf-8')
 
-        self.assertIn('A refreshed primary-repo-flat publisher packet now exists for the new target set, but the short review window is still active', board_text)
+        self.assertIn('A refreshed primary-repo-flat publisher packet now exists for the current waiting target set, but the short review window is still active', board_text)
         self.assertNotIn('Primary-repo-flat publisher discovery has changed, but the canonical handoff packet is stale', board_text)
 
     def test_execution_board_skips_already_delivered_curator_manual_contact_packet(self):
@@ -2435,6 +2659,89 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn(str(asset_path), board_text)
         self.assertIn('ctxt.dev / Signum', board_text)
         self.assertNotIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+
+    def test_execution_board_surfaces_due_apollo_followup_review(self):
+        now = datetime(2026, 5, 26, 2, 18, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'apollo_sequence_status_latest.json').write_text(
+                json.dumps({
+                    'status': 'not_outcome_ready',
+                    'measurement_pending': False,
+                    'record_count': 5,
+                    'sequence_name': 'Ralph Workflow curator follow-up — Codeberg CTA',
+                    'needs_live_verification': False,
+                    'next_review_at': '2026-05-26T01:11:13+02:00',
+                    'launch_review_at': '2026-06-01T23:11:13+02:00',
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'apollo_launch_handoff_packet_latest.md').write_text('# Apollo handoff packet\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('Apollo outcome-readiness review packet', board_text)
+        self.assertIn('Ralph Workflow curator follow-up — Codeberg CTA', board_text)
+        self.assertNotIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+
+    def test_execution_board_suppresses_apollo_packet_when_runtime_auth_is_blocked(self):
+        now = datetime(2026, 5, 26, 2, 36, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'apollo_sequence_status_latest.json').write_text(
+                json.dumps({
+                    'status': 'runtime_auth_blocked',
+                    'measurement_pending': False,
+                    'record_count': 5,
+                    'sequence_name': 'Ralph Workflow curator follow-up — Codeberg CTA',
+                    'needs_live_verification': True,
+                    'runtime_blocker_status': 'cloudflare_auth_blocked',
+                    'next_review_at': '2026-05-26T01:11:13+02:00',
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'apollo_status.json').write_text(
+                json.dumps({
+                    'status': 'cloudflare_auth_blocked',
+                    'cloudflare_blocked': True,
+                    'notes': 'Cloudflare interstitial detected on authenticated surface.',
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'apollo_launch_handoff_packet_latest.md').write_text('# Apollo handoff packet\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'APOLLO_STATUS_PATH', log_dir / 'apollo_status.json'), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('Apollo outcome-readiness review packet', board_text)
+        self.assertIn('Apollo has a verified non-zero list, but the current runtime is auth-blocked', board_text)
+        self.assertIn('No do-now handoff packet is currently truthful in this review window.', board_text)
 
     def test_stackoverflow_execution_counts_reused_existing_draft_as_prepared(self):
         now = datetime(2026, 5, 24, 11, 25, 0)

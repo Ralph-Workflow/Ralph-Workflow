@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-26T01:01:24
+Generated: 2026-05-26T05:10:14
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -7,26 +7,21 @@ Generated: 2026-05-26T01:01:24
 - Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
 ## Active review windows
-- Apollo next review: unknown
-- Apollo launch review: unknown
-- Short review-window congestion clears at: 2026-05-26T03:05:18
-- Post-hold marketer rerun scheduled: 2026-05-25T23:07:41.000Z
+- Apollo next review: 2026-05-25T23:11:13.732870+02:00
+- Apollo launch review: 2026-06-01T23:11:13.732870+02:00
+- Short review-window congestion clears at: 2026-05-26T08:57:00
+- Post-hold marketer rerun scheduled: 2026-05-26T08:57:00.000Z
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
-- Primary-repo-flat publisher contact packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
+- A refreshed primary-repo-flat publisher packet now exists for the current waiting target set, but the short review window is still active; hold manual delivery until that congestion clears.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
+- Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
-### 1. Directory secondary-surface repair packet
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/directory_confirmation_execution_latest.md
-- Targets: SaaSHub
-- Why this matters: A live third-party surface still routes repo intent away from Codeberg or leaves it unclear, so correcting that surface is a real adoption-moving follow-through asset.
-
-### 2. Apollo launch / send confirmation packet
-- When: After short-window congestion clears (2026-05-26T03:05:18)
-- Packet: /home/mistlight/.openclaw/workspace/drafts/apollo_sequence_launch_packet_latest.md
-- Targets: Ralph Workflow curator follow-up — Codeberg CTA
-- Why this matters: Apollo already has a verified non-zero list and Codeberg-primary launch packet; the next truthful step is live send confirmation, not another outbound rebuild.
+### 1. Primary-repo-flat publisher contact packet
+- When: After short-window congestion clears (2026-05-26T08:57:00)
+- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
+- Targets: AI Saying
+- Why this matters: Fresh developer-native publisher contacts are already discovered for the flat-Codeberg repair lane. This packet is still human-executable via verified public contact paths even though no direct runtime-sendable email route remains.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing

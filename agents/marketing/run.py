@@ -64,6 +64,19 @@ STRUCTURAL_REPLACEMENT_ACTION_TYPES = {
     "apollo_outreach_execution",
 }
 
+SYSTEM_DESIGN_REPAIR_ACTION_TYPES = {
+    "distribution_architecture_repair",
+    "distribution_architecture_churn_guard_repair",
+    "measurement_hold_churn_guard_repair",
+    "measurement_hold_release_reschedule_repair",
+    "post_hold_release_prompt_guard_repair",
+    "measurement_hold_release_delivery_route_repair",
+    "apollo_truthfulness_repair",
+    "apollo_cloudflare_truthfulness_repair",
+    "apollo_runtime_truth_repair",
+    "apollo_followup_truth_repair",
+}
+
 DIRECTORY_LANE_ACTION_TYPES = {
     "directory_submission_execution",
 }
@@ -133,6 +146,7 @@ def _write_distribution_execution_log(
             'summary': getattr(distribution_lane, 'reason', ''),
             'supporting_reasons': list(getattr(distribution_lane, 'reasons', []) or []),
             'shared_findings_used': list(getattr(execution, 'shared_findings_used', []) or []),
+            'targets_prepared': list(getattr(execution, 'targets_prepared', []) or []),
         },
         'result': {
             'status': getattr(execution, 'status', ''),
@@ -164,6 +178,11 @@ def _repair_counts_as_live_outcome_repair(execution: Any) -> bool:
     return bool(getattr(execution, 'live_external_action', False)) or getattr(execution, 'action_type', '') in STRUCTURAL_REPLACEMENT_ACTION_TYPES
 
 
+def _repair_counts_as_system_design_repair(execution: Any) -> bool:
+    action_type = getattr(execution, 'action_type', '')
+    return _repair_counts_as_live_outcome_repair(execution) or action_type in SYSTEM_DESIGN_REPAIR_ACTION_TYPES
+
+
 def _advance_audit_repairs_for_execution(*, audit: dict[str, Any], execution: Any, now: datetime) -> bool:
     """Advance repair states only when this run actually honored or shipped them.
 
@@ -173,6 +192,7 @@ def _advance_audit_repairs_for_execution(*, audit: dict[str, Any], execution: An
     changed = False
     lane_action = getattr(execution, 'action_type', '')
     shipped_live_repair = _repair_counts_as_live_outcome_repair(execution)
+    shipped_system_design_repair = _repair_counts_as_system_design_repair(execution)
     repair_actions = audit.get('repair_actions', []) or []
 
     for repair in repair_actions:
@@ -191,7 +211,7 @@ def _advance_audit_repairs_for_execution(*, audit: dict[str, Any], execution: An
         elif failure_type == 'same_family_publisher_overlap':
             should_advance = lane_action not in PUBLISHER_LANE_ACTION_TYPES
         elif repair.get('repair_kind') == 'system_design':
-            should_advance = shipped_live_repair
+            should_advance = shipped_system_design_repair
 
         if should_advance:
             repair['repair_state'] = 'pending_measurement'
@@ -221,7 +241,12 @@ def _load_active_pending_repairs(audit: dict[str, Any] | None) -> list[dict[str,
     ]
 
 
-def _apply_repair_mode_overrides(distribution_lane: Any, pending_repairs: list[dict[str, Any]]) -> Any:
+def _apply_repair_mode_overrides(
+    distribution_lane: Any,
+    pending_repairs: list[dict[str, Any]],
+    *,
+    now: datetime | None = None,
+) -> Any:
     if not pending_repairs:
         return distribution_lane
 
@@ -249,16 +274,25 @@ def _apply_repair_mode_overrides(distribution_lane: Any, pending_repairs: list[d
             if current_lane == 'directory_submission' and skip_directory_submissions
             else 'comparison_backlink_outreach'
         )
+        if redirect == 'comparison_backlink_outreach' and distribution_lane_selector._comparison_backlink_lane_manual_only_blocked(
+            now or datetime.now()
+        ):
+            redirect = 'measurement_hold'
+            reason_suffix = (
+                'the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, '
+                'so hold for truthful follow-through instead of fabricating another comparison execution run.'
+            )
+        else:
+            reason_suffix = (
+                'refreshing live directory approval/backlink evidence instead of stacking more low-intent submissions.'
+                if redirect == 'directory_confirmation' else
+                'pushing Codeberg-primary comparison backlinks instead of saturated patterns.'
+            )
         object.__setattr__(distribution_lane, 'lane', redirect)
         object.__setattr__(
             distribution_lane,
             'reason',
-            'Repair override: primary_repo_flat repair active; '
-            + (
-                'refreshing live directory approval/backlink evidence instead of stacking more low-intent submissions.'
-                if redirect == 'directory_confirmation' else
-                'pushing Codeberg-primary comparison backlinks instead of saturated patterns.'
-            ),
+            'Repair override: primary_repo_flat repair active; ' + reason_suffix,
         )
         distribution_lane.reasons.insert(
             0,
@@ -275,7 +309,7 @@ def _refresh_distribution_lane_after_execution(now: datetime, pending_repairs: l
         persist_latest_artifacts=False,
     )
     if pending_repairs:
-        refreshed = _apply_repair_mode_overrides(refreshed, pending_repairs)
+        refreshed = _apply_repair_mode_overrides(refreshed, pending_repairs, now=now)
     return refreshed
 
 
@@ -961,7 +995,7 @@ def main() -> int:
 
         distribution_lane = choose_distribution_lane(now)
         if pending_repairs:
-            distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs)
+            distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs, now=now)
 
         recent_follow_through = _latest_measurement_hold_follow_through(hold_window)
         reused_existing_follow_through = (
@@ -1225,7 +1259,7 @@ def main() -> int:
     distribution_lane = choose_distribution_lane(now)
     if is_repair_mode:
         original_lane = distribution_lane.lane
-        distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs)
+        distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs, now=now)
         if distribution_lane.lane != original_lane:
             print(
                 f"[run.py] repair override active — redirecting from {original_lane} to {distribution_lane.lane}",

@@ -6651,3 +6651,97 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-26 00:38:29
 - **Note:** Momentum check found: reddit_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Pending repairs: primary_repo_flat, outcome_system_underpowered, same_family_publisher_overlap, mirror_repo_flat. Cloudflare/auth protection blocks login.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 01:08:30
+- **Note:** Momentum check found: reddit_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Pending repairs: primary_repo_flat, outcome_system_underpowered, same_family_publisher_overlap, mirror_repo_flat. Cloudflare/auth protection blocks login.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 01:48:40
+- **Note:** Momentum check found: reddit_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Pending repairs: primary_repo_flat, outcome_system_underpowered, same_family_publisher_overlap, mirror_repo_flat. Cloudflare/auth protection blocks login.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 01:52:22
+- **Note:** Momentum check found: reddit_channel_blocked, outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, same_family_publisher_overlap. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 01:53:00
+- **Note:** Momentum check found: reddit_channel_blocked, outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, same_family_publisher_overlap. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 02:10:46
+- **Note:** Momentum check found: reddit_channel_blocked, outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, same_family_publisher_overlap. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:04:04
+- **Note:** Momentum check found: reddit_channel_blocked, outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, same_family_publisher_overlap. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:22:32
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 04:03:36
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 04:51:40
+- **Note:** Momentum check found: reddit_monitor_stale. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, same_family_publisher_overlap, execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+## 2026-05-26
+
+- **AI Saying** — directory submission sent
+  - Log: `agents/marketing/logs/marketing_2026-05-26_035016_aisaying_feedback_submission.json`
+  - Review by: 2026-06-09
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 04:54:32
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 04:55:23
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 05:09:13
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 05:10:01
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 05:10:52
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-25T13:01:14.236331+00:00",
+  "generated_at": "2026-05-26T02:19:28.854829+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -121,65 +121,14 @@
           "type": "website",
           "value": "https://aisaying.net",
           "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix",
+          "label": "feedback form"
         }
       ],
-      "recommended_next_step": "public website contact path is now identified"
-    },
-    {
-      "target": "Toolradar",
-      "article_url": "https://toolradar.com/guides/best-ai-coding-tools",
-      "root_url": "https://toolradar.com/",
-      "hook": "Best AI Coding Tools in 2026",
-      "reason": "B2B buyer guide audience already comparing coding-agent tradeoffs and adjacent workflow layers.",
-      "outreach_subject": "Ralph Workflow as a workflow-system addition to your AI coding tools guide",
-      "channels": [
-        {
-          "type": "email",
-          "value": "editorial@toolradar.com",
-          "label": "email"
-        },
-        {
-          "type": "website",
-          "value": "https://toolradar.com/about",
-          "label": "contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://toolradar.com/advertise",
-          "label": "contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://toolradar.com/advertise/content-rerun",
-          "label": "contact page"
-        },
-        {
-          "type": "x",
-          "value": "https://twitter.com/toolradar",
-          "label": "X/Twitter"
-        },
-        {
-          "type": "x",
-          "value": "https://x.com/louiscorne",
-          "label": "X/Twitter"
-        },
-        {
-          "type": "x",
-          "value": "https://x.com/louiscorneloup",
-          "label": "X/Twitter"
-        },
-        {
-          "type": "linkedin",
-          "value": "https://linkedin.com/company/toolradar",
-          "label": "LinkedIn"
-        },
-        {
-          "type": "linkedin",
-          "value": "https://www.linkedin.com/in/louis-corneloup-0036b5138",
-          "label": "LinkedIn"
-        }
-      ],
-      "recommended_next_step": "email/contact send path is now identified"
+      "recommended_next_step": "public feedback-form contact path is now identified"
     },
     {
       "target": "TLDL",
@@ -206,52 +155,6 @@
         }
       ],
       "recommended_next_step": "public website contact path is now identified"
-    },
-    {
-      "target": "Morph",
-      "article_url": "https://www.morphllm.com/best-ai-coding-agents-2026",
-      "root_url": "https://www.morphllm.com/",
-      "hook": "14 Best AI Coding Agents (2026): Full Rankings",
-      "reason": "Fresh AI coding agent rankings page already comparing terminal agents and multi-agent workflows; good fit for a workflow-system addition that points evaluators to Codeberg first.",
-      "outreach_subject": "Ralph Workflow for your AI coding agents rankings page",
-      "channels": [
-        {
-          "type": "email",
-          "value": "info@morphllm.com",
-          "label": "email"
-        },
-        {
-          "type": "website",
-          "value": "https://www.morphllm.com/about",
-          "label": "contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://www.morphllm.com/contact",
-          "label": "contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://www.morphllm.com/docs",
-          "label": "contact page"
-        },
-        {
-          "type": "x",
-          "value": "https://x.com/CerebrasSystems/status/1978874694825840679",
-          "label": "X/Twitter"
-        },
-        {
-          "type": "x",
-          "value": "https://x.com/morphllm",
-          "label": "X/Twitter"
-        },
-        {
-          "type": "linkedin",
-          "value": "https://www.linkedin.com/company/morphllm",
-          "label": "LinkedIn"
-        }
-      ],
-      "recommended_next_step": "email/contact send path is now identified"
     }
   ],
   "omitted_recent_targets": [
@@ -259,7 +162,9 @@
     "Beam",
     "Bollwerk / Werkstatt",
     "Codivox",
+    "Morph",
     "NxCode",
+    "Toolradar",
     "WyeWorks"
   ]
 }

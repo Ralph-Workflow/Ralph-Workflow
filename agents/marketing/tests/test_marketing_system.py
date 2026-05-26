@@ -1037,6 +1037,93 @@ class DistributionLaneSelectorTests(unittest.TestCase):
             self.assertEqual(decision.lane, 'apollo_launch_handoff_packet')
             self.assertIn('launch/send handoff', decision.reason)
 
+    def test_prefers_apollo_launch_handoff_when_apollo_followup_is_due(self):
+        now = datetime(2026, 5, 26, 4, 20, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            apollo_sequence_status_path = log_dir / 'apollo_sequence_status_latest.json'
+            reddit_monitor_path = tmp / 'reddit_monitor_latest.md'
+
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            apollo_sequence_status_path.write_text(json.dumps({
+                'status': 'not_outcome_ready',
+                'measurement_pending': False,
+                'record_count': 5,
+                'sequence_name': 'Ralph Workflow curator follow-up — Codeberg CTA',
+                'needs_live_verification': False,
+                'next_review_at': '2026-05-26T01:11:13+02:00',
+            }), encoding='utf-8')
+            reddit_monitor_path.write_text('Partial visibility only. Fail closed. reddit_direct_access_degraded=1\n', encoding='utf-8')
+            (drafts_dir / 'apollo_launch_handoff_packet_latest.md').write_text('# Apollo launch handoff packet\n', encoding='utf-8')
+
+            with ExitStack() as stack:
+                for patcher in [
+                    patch.object(distribution_lane_selector, 'LOG_DIR', log_dir),
+                    patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir),
+                    patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path),
+                    patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path),
+                    patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path),
+                    patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json),
+                    patch.object(distribution_lane_selector, 'LATEST_MD', latest_md),
+                    patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_status_path),
+                    patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', reddit_monitor_path),
+                    patch.object(distribution_lane_selector, '_load_recent_monitor_summary', return_value={'provider_degraded': True, 'reddit_blocked': True, 'partial_visibility_only': True}),
+                    patch.object(distribution_lane_selector, '_github_auth_available', return_value=False),
+                    patch.object(distribution_lane_selector, '_apollo_ready', return_value=True),
+                    patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=False),
+                    patch.object(distribution_lane_selector, '_live_curator_queue_count', return_value=0),
+                    patch.object(distribution_lane_selector, '_prepared_curator_target_names', return_value=[]),
+                    patch.object(distribution_lane_selector, '_prepared_curator_targets_waiting_for_handoff', return_value=0),
+                    patch.object(distribution_lane_selector, '_curator_handoff_packet_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_due_curator_followup_targets', return_value=[]),
+                    patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0),
+                    patch.object(distribution_lane_selector, '_contact_discovery_current_for_targets', return_value=False),
+                    patch.object(distribution_lane_selector, '_contact_discovery_has_targets', return_value=False),
+                    patch.object(distribution_lane_selector, '_manual_contact_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_manual_contact_queue_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_manual_outreach_assets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_pending_confirmation_actions', return_value=[]),
+                    patch.object(distribution_lane_selector, '_pending_confirmation_handoff_packet_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_primary_repo_flat_contact_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_primary_repo_flat_non_executable_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_primary_repo_flat_contact_handoff_packet_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_primary_repo_flat_packet_delivery_still_active', return_value=False),
+                    patch.object(distribution_lane_selector, '_comparison_queue_capacity', return_value=(0, 0)),
+                    patch.object(distribution_lane_selector, '_distribution_reset_targets_ready', return_value=0),
+                    patch.object(distribution_lane_selector, '_recent_live_action_family_count', return_value=0),
+                    patch.object(distribution_lane_selector, '_recent_live_external_action_count', return_value=0),
+                    patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None),
+                    patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)),
+                    patch.object(distribution_lane_selector, '_publisher_outreach_paused_by_repair_window', return_value=False),
+                    patch.object(distribution_lane_selector, '_hn_ceiling_repeated', return_value=True),
+                    patch.object(distribution_lane_selector, '_stack_overflow_measurement_pending', return_value=False),
+                    patch.object(distribution_lane_selector, '_stack_overflow_handoff_packet_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False),
+                    patch.object(distribution_lane_selector, '_stack_overflow_lane_recently_empty', return_value=False),
+                    patch.object(distribution_lane_selector, '_stack_overflow_rate_limit_cooldown_active', return_value=(False, None)),
+                    patch.object(distribution_lane_selector, '_recent_executed_action_type', return_value=False),
+                ]:
+                    stack.enter_context(patcher)
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'apollo_launch_handoff_packet')
+            self.assertIn('first review checkpoint', decision.reason)
+
     def test_submitted_channel_log_with_tld_name_counts_as_attempted(self):
         now = datetime(2026, 5, 23, 6, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -2701,6 +2788,38 @@ class MarketingWorkflowAuditBurstTests(unittest.TestCase):
 
             self.assertEqual(decision.lane, 'comparison_backlink_outreach')
 
+    def test_detects_manual_only_block_when_comparison_queue_is_full_and_github_auth_is_missing(self):
+        now = datetime(2026, 5, 26, 1, 50, 0)
+        comparison_queue = {
+            'targets': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+                for idx in range(1, 9)
+            ]
+        }
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'path': f'/comparisons/comp-{idx}.md'}
+                for idx in range(1, 9)
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            market_path = log_dir / 'market_intelligence.json'
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False):
+                blocked = distribution_lane_selector._comparison_backlink_lane_manual_only_blocked(now)
+
+            self.assertTrue(blocked)
+
     def test_prefers_distribution_reset_when_curator_and_comparison_queues_are_both_saturated(self):
         now = datetime(2026, 5, 22, 6, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -3654,6 +3773,80 @@ class DistributionLaneExecutorTests(unittest.TestCase):
 
         self.assertIn('Directory secondary-surface repair packet', text)
         self.assertIn('SaaSHub', text)
+
+    def test_marketing_execution_board_hides_directory_secondary_surface_packet_during_active_followthrough_window(self):
+        now = datetime(2026, 5, 26, 1, 37, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text('{}', encoding='utf-8')
+            (log_dir / 'apollo_sequence_status_latest.json').write_text('{}', encoding='utf-8')
+            (log_dir / 'backlink_status_latest.json').write_text(json.dumps({
+                'directories': {
+                    'SaaSHub': {
+                        'listing_url': 'https://saashub.com/ralph-workflow',
+                        'secondary_surface_targets': [
+                            {
+                                'url': 'https://www.saashub.com/ralph-workflow-alternatives',
+                                'preferred_repo_target': 'github_only',
+                            },
+                            {
+                                'url': 'https://www.saashub.com/best-workflow-automation-software',
+                                'preferred_repo_target': 'unknown',
+                            },
+                        ],
+                    },
+                },
+            }), encoding='utf-8')
+            (drafts_dir / 'directory_confirmation_execution_latest.md').write_text(
+                '# Ralph Workflow directory confirmation execution\n\n'
+                'https://www.saashub.com/ralph-workflow-alternatives\n'
+                'https://www.saashub.com/best-workflow-automation-software\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_saashub_secondary_surface_execution.json').write_text(json.dumps({
+                'timestamp': '2026-05-25T21:05:28+02:00',
+                'chosen_action': {
+                    'type': 'saashub_secondary_surface_execution',
+                    'channel': 'directory_confirmation',
+                },
+                'targets': [
+                    'https://www.saashub.com/ralph-workflow-alternatives',
+                    'https://www.saashub.com/best-workflow-automation-software',
+                ],
+                'review_window': {
+                    'follow_up_not_before': '2026-05-31T00:00:00+02:00',
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'BACKLINK_STATUS_LATEST_PATH', log_dir / 'backlink_status_latest.json'), \
+                 patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}), \
+                 patch.object(distribution_lane_executor, '_current_stackoverflow_scheduled_run', return_value=''), \
+                 patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_manual_outreach_assets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_reddit_discussion_asset_waiting_for_execution', return_value=None), \
+                 patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_measurement_hold_release_run', return_value=''), \
+                 patch.object(distribution_lane_executor, '_adoption_summary', return_value='Codeberg is flat.'), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0):
+                artifact, _prepared = distribution_lane_executor._write_marketing_execution_board(now)
+
+            text = artifact.read_text(encoding='utf-8')
+
+        self.assertNotIn('### 1. Directory secondary-surface repair packet', text)
+        self.assertIn('Directory secondary-surface repair already shipped in the current review window', text)
 
     def test_extract_contact_links_filters_github_asset_noise(self):
         html = '''

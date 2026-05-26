@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-05-26T03:39:21.827731",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "primary_repo_flat_contact_handoff_packet_execution",
+    "channel": "primary_repo_flat_contact_handoff_packet",
+    "title": "Distribution lane execution: primary_repo_flat_contact_handoff_packet",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_primary_repo_flat_contact_handoff_packet.md"
+  },
+  "why_this_action": {
+    "summary": "Refresh the stale primary-repo-flat contact packet after the executor truth fix so active review-window targets stay excluded.",
+    "supporting_reasons": [
+      "primary_repo_flat_contact_discovery_latest.json now exposes AI Saying as a packet-executable feedback-form target.",
+      "The previous packet refresh still included TIMEWELL even though that target is already covered by an active manual review window.",
+      "A truthful Codeberg-first packet for the changed target set is a better asset than another empty-board guard note."
+    ],
+    "shared_findings_used": [
+      "primary_repo_flat_contact_discovery_latest.json",
+      "marketing_execution_board_latest.md",
+      "marketing_workflow_audit_latest.json",
+      "adoption_metrics_latest.json"
+    ]
+  },
+  "result": {
+    "status": "prepared",
+    "ok": true,
+    "summary": "Converted the fresh primary-repo-flat publisher discovery into one canonical Codeberg-first execution packet so the loop can use a genuinely different contact lane during the current measurement window.",
+    "targets_prepared": [
+      "AI Saying"
+    ],
+    "live_external_action": false,
+    "blocking_factors": []
+  }
+}

@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-26T01:00:35.459148
+- Generated: 2026-05-26T05:10:52.705833
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,12 +11,13 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- 8 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
-- The most recent runtime activity was distribution_architecture_repair, but the latest meaningful external/replacement execution remains apollo_sequence_launch; do not confuse follow-through with fresh outcome-bearing distribution.
-- The most recent marketing artifact (distribution_architecture_repair) was preparation/follow-through work, not a live external execution, so it should not be mistaken for outcome movement.
+- 6 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
+- The most recent runtime activity was distribution_architecture_guard_pause, but the latest meaningful external/replacement execution remains publisher_feedback_form_submission; do not confuse follow-through with fresh outcome-bearing distribution.
+- The active loop did execute a live marketing action recently (publisher_feedback_form_submission), so the system is still shipping output even though outcome movement is not visible yet.
+- A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 
 ## What actually worked
-- Internal repair/follow-through is still running reliably: distribution_architecture_repair.
+- No meaningful tactic produced a trustworthy win in this window.
 
 ## What did not work
 - Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.
@@ -24,14 +25,14 @@
 
 ## What is repetitive
 - Repeated outreach opening: Honestly the part I'd optimize first is the handoff, not the model stack.
-- 8 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.
+- 6 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.
 
 ## What is low-signal
+- Recent live external action exists (publisher_feedback_form_submission), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 
 ## What should change now
-- REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.
-- REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.
+- REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
 - HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.
 - Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
@@ -50,14 +51,10 @@
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
 
 ## Repair actions (execute in this run)
-- **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.
+- **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
   - Repair state: pending_measurement
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
-- **outcome_system_underpowered** (system_design) → REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.
-  - Repair state: needs_execution
-  - Kill condition: Another audit still shows flat primary-repo adoption without any new structural marketing capability or replacement execution path
-  - Success metric: A new outcome-oriented agent/process/runtime capability is created and logged before the next audit, with a direct link to Codeberg adoption movement
 - **same_family_publisher_overlap** (tactic) → HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.
   - Repair state: pending_measurement
   - Kill condition: Another audit adds more same-family publisher outreach before the current reply/review windows have materially aged or produced evidence
@@ -70,12 +67,11 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, same_family_publisher_overlap
 
 ## Latest executed marketing action
-- Type: apollo_sequence_launch
-- Title: Apollo sequence launch
-- Status: launch_ready_packet_created (ok=True)
-- Outcome-ready: False
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_apollo_sequence_launch.json
-- URL: https://app.apollo.io/#/lists?sortByField=updated_at&sortAscending=false&groupBy[]=labelModality
+- Type: publisher_feedback_form_submission
+- Title: publisher feedback form submission
+- Status: executed (ok=True)
+- Outcome-ready: True
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_035016_aisaying_feedback_submission.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

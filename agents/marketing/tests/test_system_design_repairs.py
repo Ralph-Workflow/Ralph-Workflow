@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.marketing import apollo_outbound_verifier, apollo_sequence_launcher, apollo_sequence_status, distribution_hunter, outcome_capability_runner, run
+from agents.marketing import apollo_outbound_verifier, apollo_sequence_launcher, apollo_sequence_status, distribution_hunter, marketing_momentum_watchdog, outcome_capability_runner, outcome_execution_board_runner, run
 from agents.marketing.distribution_lane_selector import LaneDecision
 
 
@@ -88,6 +88,51 @@ class ApolloSequenceStatusTests(unittest.TestCase):
                  patch.object(apollo_outbound_verifier, 'OUTPUT_MD', log_dir / 'apollo_outbound_verification_latest.md'):
                 payload = apollo_outbound_verifier.build_verification(datetime.fromisoformat('2026-05-25T12:00:00+02:00'))
         self.assertEqual(payload['result']['status'], 'launch_ready_needs_send_confirmation')
+        self.assertFalse(payload['result']['outcome_ready'])
+
+    def test_build_status_surfaces_runtime_auth_blocker_for_launch_ready_apollo(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            live_list = log_dir / 'marketing_2026-05-25_apollo_list_verification.json'
+            live_list.write_text(json.dumps({
+                'timestamp': '2026-05-25T10:00:00+02:00',
+                'chosen_action': {'type': 'apollo_list_verification'},
+                'result': {'record_count': 5, 'final_url': 'https://app.apollo.io/#/lists', 'evidence': ['5 visible records']},
+            }), encoding='utf-8')
+            runtime_status = log_dir / 'apollo_status.json'
+            runtime_status.write_text(json.dumps({
+                'timestamp': '2026-05-25T11:45:00+02:00',
+                'status': 'cloudflare_auth_blocked',
+                'cloudflare_blocked': True,
+                'final_url': 'https://app.apollo.io/#/home',
+                'notes': 'Cloudflare interstitial detected on authenticated surface.',
+            }), encoding='utf-8')
+            with patch.object(apollo_sequence_status, 'LOG_DIR', log_dir), \
+                 patch.object(apollo_sequence_status, 'STATUS_JSON', log_dir / 'apollo_sequence_status_latest.json'), \
+                 patch.object(apollo_sequence_status, 'STATUS_MD', log_dir / 'apollo_sequence_status_latest.md'):
+                payload = apollo_sequence_status.build_status(datetime.fromisoformat('2026-05-25T12:00:00+02:00'))
+        self.assertEqual(payload['status'], 'runtime_auth_blocked')
+        self.assertEqual(payload['runtime_blocker_status'], 'cloudflare_auth_blocked')
+        self.assertTrue(payload['needs_live_verification'])
+
+    def test_apollo_outbound_verifier_reports_runtime_auth_blocker(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            status_path = log_dir / 'apollo_sequence_status_latest.json'
+            status_path.write_text(json.dumps({
+                'status': 'runtime_auth_blocked',
+                'record_count': 5,
+                'sequence_name': 'Seq',
+                'needs_live_verification': True,
+                'runtime_blocker_status': 'cloudflare_auth_blocked',
+                'runtime_blocker_summary': 'Apollo runtime is blocked by a Cloudflare auth interstitial.',
+            }), encoding='utf-8')
+            with patch.object(apollo_outbound_verifier, 'LOG_DIR', log_dir), \
+                 patch.object(apollo_outbound_verifier, 'STATUS_PATH', status_path), \
+                 patch.object(apollo_outbound_verifier, 'OUTPUT_MD', log_dir / 'apollo_outbound_verification_latest.md'):
+                payload = apollo_outbound_verifier.build_verification(datetime.fromisoformat('2026-05-25T12:00:00+02:00'))
+        self.assertEqual(payload['result']['status'], 'runtime_auth_blocked')
+        self.assertEqual(payload['result']['runtime_blocker_status'], 'cloudflare_auth_blocked')
         self.assertFalse(payload['result']['outcome_ready'])
 
 
@@ -242,6 +287,145 @@ class OutcomeCapabilityRunnerTests(unittest.TestCase):
         self.assertEqual(payload['selected_lane'], 'comparison_backlink_outreach')
         self.assertEqual(payload['direct_codeberg_linkage']['cta'], 'https://codeberg.org/RalphWorkflow/Ralph-Workflow')
         self.assertEqual(payload['outcome_capability']['comparison_queue_prepared_count'], 2)
+
+
+class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
+    def test_executes_current_board_lane_and_logs_structural_capability(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            log_dir = root / 'logs'
+            drafts_dir = root / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            audit_path = log_dir / 'marketing_workflow_audit_latest.json'
+            audit_path.write_text(json.dumps({
+                'repair_actions': [
+                    {'failure_type': 'outcome_system_underpowered', 'repair_state': 'needs_execution'}
+                ]
+            }), encoding='utf-8')
+            fake_decision = LaneDecision(
+                lane='manual_outreach_asset_follow_through',
+                reason='A manual asset already exists.',
+                reasons=['A manual asset already exists.'],
+                owned_content_posts_last_36h=0,
+                unsubmitted_directory_channels=[],
+                shared_findings_used=['adoption_metrics_latest.json'],
+                artifact_path='/tmp/brief.md',
+            )
+            fake_execution = type('Execution', (), {
+                'lane': 'manual_outreach_asset_follow_through',
+                'action_type': 'manual_outreach_asset_follow_through',
+                'status': 'prepared',
+                'artifact_path': '/tmp/manual.md',
+                'summary': 'Reused manual asset.',
+                'targets_prepared': ['Target A'],
+                'shared_findings_used': ['adoption_metrics_latest.json'],
+                'live_external_action': False,
+                'blocking_factors': [],
+            })()
+            with patch.object(outcome_execution_board_runner, 'LOG_DIR', log_dir), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_JSON', log_dir / 'outcome_execution_board_latest.json'), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_MD', log_dir / 'outcome_execution_board_latest.md'), \
+                 patch.object(outcome_execution_board_runner, 'AUDIT_JSON', audit_path), \
+                 patch('agents.marketing.outcome_execution_board_runner._write_marketing_execution_board', return_value=(drafts_dir / 'marketing_execution_board_latest.md', ['Target A'])), \
+                 patch('agents.marketing.outcome_execution_board_runner.choose_distribution_lane', return_value=fake_decision), \
+                 patch('agents.marketing.outcome_execution_board_runner.execute_distribution_lane', return_value=fake_execution):
+                payload = outcome_execution_board_runner.run(datetime.fromisoformat('2026-05-26T01:40:00+02:00'))
+        self.assertEqual(payload['selected_lane'], 'manual_outreach_asset_follow_through')
+        self.assertEqual(payload['structural_capability']['name'], 'execution_board_follow_through_runner')
+        self.assertEqual(payload['execution_board_targets'], ['Target A'])
+        self.assertTrue(payload['repair_needed_at_start'])
+
+
+class SystemDesignRepairAcknowledgementTests(unittest.TestCase):
+    def test_distribution_architecture_repair_advances_system_design_repair(self):
+        audit = {
+            'repair_actions': [
+                {
+                    'failure_type': 'execution_ceiling_repetition',
+                    'repair_kind': 'system_design',
+                    'repair_state': 'needs_execution',
+                }
+            ],
+            'repair_window_status': 'needs_repair',
+            'measurement_pending_reasons': ['primary_repo_flat'],
+        }
+        execution = type('Execution', (), {
+            'action_type': 'distribution_architecture_repair',
+            'live_external_action': False,
+        })()
+
+        changed = run._advance_audit_repairs_for_execution(
+            audit=audit,
+            execution=execution,
+            now=datetime.fromisoformat('2026-05-26T03:17:35+02:00'),
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(audit['repair_actions'][0]['repair_state'], 'pending_measurement')
+        self.assertEqual(audit['repair_window_status'], 'measurement_pending')
+
+    def test_watchdog_treats_structural_repair_as_present_system_repair(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            status_dir = root / 'logs'
+            status_dir.mkdir()
+            seo_dir = root / 'seo-reports'
+            seo_dir.mkdir()
+            report_path = seo_dir / 'reddit_monitor_latest.md'
+            report_path.write_text('Degraded coverage. Partial visibility only. Fail closed.', encoding='utf-8')
+            adoption_path = status_dir / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({
+                'evaluation': {
+                    'failing_signals': ['primary_repo_flat']
+                },
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}
+                }
+            }), encoding='utf-8')
+            audit_path = status_dir / 'marketing_workflow_audit_latest.json'
+            audit_path.write_text(json.dumps({
+                'repair_window_status': 'measurement_pending',
+                'measurement_pending_reasons': ['primary_repo_flat'],
+                'failing_tactics': ['execution_ceiling_repetition'],
+                'repair_actions': [],
+                'latest_executed_action': {
+                    'type': 'distribution_architecture_repair',
+                    'ok': True,
+                    'live_external_action': False,
+                },
+            }), encoding='utf-8')
+            apollo_status_path = status_dir / 'apollo_status.json'
+            apollo_status_path.write_text(json.dumps({'status': 'cloudflare_auth_blocked', 'cloudflare_blocked': True}), encoding='utf-8')
+            reddit_exec_path = status_dir / 'reddit_execution_status_latest.json'
+            reddit_exec_path.write_text(json.dumps({'status': 'blocked_pending_praw_credentials'}), encoding='utf-8')
+            runner_path = status_dir / 'marketing_loop_runner_latest.json'
+            runner_path.write_text(json.dumps({'status': 'ok'}), encoding='utf-8')
+
+            with patch.object(marketing_momentum_watchdog, 'SEO', seo_dir), \
+                 patch.object(marketing_momentum_watchdog, 'STATUS_DIR', status_dir), \
+                 patch.object(marketing_momentum_watchdog, 'STATUS_PATH', status_dir / 'marketing_momentum_watchdog.json'), \
+                 patch.object(marketing_momentum_watchdog, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(marketing_momentum_watchdog, 'AUDIT_PATH', audit_path), \
+                 patch.object(marketing_momentum_watchdog, 'APOLLO_STATUS_PATH', apollo_status_path), \
+                 patch.object(marketing_momentum_watchdog, 'RUNNER_PATH', runner_path), \
+                 patch.object(marketing_momentum_watchdog, 'REDDIT_EXECUTION_STATUS_PATH', reddit_exec_path), \
+                 patch.object(marketing_momentum_watchdog, 'newest_post_time', return_value=None), \
+                 patch.object(marketing_momentum_watchdog, 'newest_healthy_report_time', return_value=(report_path, 1.0)), \
+                 patch.object(marketing_momentum_watchdog, 'latest_reddit_monitor_runtime', return_value={'status': 'cooldown_skip', 'age_hours': 1.0}), \
+                 patch.object(marketing_momentum_watchdog, 'latest_reddit_execution_status', return_value={'status': 'blocked_pending_praw_credentials', 'age_hours': 1.0}), \
+                 patch.object(marketing_momentum_watchdog.marketing_run, '_latest_measurement_hold_window', return_value=None), \
+                 patch.object(marketing_momentum_watchdog, 'subprocess') as subprocess_mock, \
+                 patch.object(marketing_momentum_watchdog, 'datetime') as datetime_mock:
+                subprocess_mock.run.return_value = None
+                fixed_now = datetime.fromisoformat('2026-05-26T03:20:00+02:00')
+                datetime_mock.now.return_value = fixed_now
+                datetime_mock.fromtimestamp.side_effect = datetime.fromtimestamp
+                payload_path = status_dir / 'marketing_momentum_watchdog.json'
+                marketing_momentum_watchdog.main()
+                payload = json.loads(payload_path.read_text(encoding='utf-8'))
+
+        self.assertNotIn('outcome_system_repair_missing', payload['actions'])
 
 
 if __name__ == '__main__':

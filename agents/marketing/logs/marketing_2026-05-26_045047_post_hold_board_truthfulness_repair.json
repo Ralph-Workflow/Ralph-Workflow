@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-05-26T04:50:47+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "post_hold_board_truthfulness_repair",
+    "channel": "marketing_runtime",
+    "title": "Keep post-hold-only execution-board packets from masquerading as do-now assets"
+  },
+  "why_this_action": {
+    "summary": "The highest-leverage move in the active hold window was to fix selector truthfulness around post-hold-only packets so the scheduled rerun re-enters on a real distribution-architecture state instead of another fake active lane.",
+    "shared_findings_used": [
+      "distribution_lane_latest.json: latest reasons already said the primary-repo-flat packet was post-hold only",
+      "marketing_execution_board_latest.md: the current waiting packet is blocked until short-window congestion clears",
+      "marketing_workflow_audit_latest.json/.md: same-run runtime repair is explicitly allowed while Codeberg remains flat",
+      "adoption_metrics_latest.json: Codeberg adoption is still the primary gate",
+      "reddit_post_analysis_latest.json: Reddit is still not a truthful substitute lane"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched the selector so post-hold-only board packets stay non-truthful even when a current manual packet exists, then added regressions for both the board helper and the full selector path.",
+    "verification": {
+      "commands": [
+        "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_execution_board_post_hold_only_packet_counts_as_no_truthful_do_now agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_execution_board_post_hold_only_packet_stays_non_truthful_even_if_manual_asset_exists agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_choose_distribution_lane_repairs_empty_post_hold_board_even_without_runtime_release_timestamp -q",
+        "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause agents.marketing.tests.test_distribution_lane_executor_measurement_hold -q",
+        "python3 - <<'PY'\nfrom datetime import datetime\nfrom agents.marketing.distribution_lane_selector import choose_distribution_lane\nnow = datetime(2026, 5, 26, 2, 37, 0)\nd = choose_distribution_lane(now, write_action_log=False, persist_latest_artifacts=False)\nprint(d.lane)\nprint(d.reason)\nPY"
+      ],
+      "result": "OK"
+    },
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/tests/test_distribution_lane_selector_repair_pause.py"
+    ],
+    "live_selector_check": {
+      "simulated_now_utc": "2026-05-26T02:37:00Z",
+      "lane": "distribution_architecture_guard_pause"
+    }
+  }
+}

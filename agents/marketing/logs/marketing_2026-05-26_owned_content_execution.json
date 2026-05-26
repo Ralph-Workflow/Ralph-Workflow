@@ -1,26 +1,29 @@
 {
-  "timestamp": "2026-05-26T01:01:06.068875",
+  "timestamp": "2026-05-26T02:57:00",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "owned_content_lane_noop",
+    "type": "owned_content_publication",
     "channel": "owned_content",
     "title": "Distribution lane execution: owned_content",
-    "draft": null
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_review_ai_coding_output_before_merge_telegraph.md"
   },
   "why_this_action": {
-    "summary": "Owned-content lane remains active; no non-content distribution execution packet needed.",
+    "summary": "Published a repo-native proof guide to Telegraph so the hold window still creates fresh Codeberg-first demand capture instead of another owned-content noop.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
-      "channel_discovery.json: validated easy-submit directory lanes",
-      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "ADOPTION_FUNNEL_NEXT.md: strongest assets are proof and first-use conversion surfaces",
+      "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion"
     ],
-    "targets_prepared": []
+    "targets_prepared": [
+      "https://telegra.ph/Review-AI-Coding-Output-Before-Merge-05-26",
+      "/home/mistlight/.openclaw/workspace/content/guides/review_ai_coding_output_before_merge.md"
+    ]
   },
   "result": {
-    "status": "skipped",
+    "status": "executed",
     "ok": true,
-    "live_external_action": false,
+    "live_external_action": true,
     "blocking_factors": []
   }
 }

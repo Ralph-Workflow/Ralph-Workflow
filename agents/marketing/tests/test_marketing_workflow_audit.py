@@ -105,6 +105,8 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertIn('should_change_now', payload)
             self.assertFalse(payload['latest_executed_action']['outcome_ready'])
             self.assertIn('manual approval', payload['latest_executed_action']['warning'])
+            self.assertFalse(any('live external action artifact' in item for item in payload['worked']))
+            self.assertTrue(any('measurement-pending' in item for item in payload['low_signal']))
             primary_repo_flat = next(item for item in payload['repair_actions'] if item['failure_type'] == 'primary_repo_flat')
             self.assertEqual(primary_repo_flat['repair_state'], 'pending_measurement')
             self.assertEqual(primary_repo_flat['repair_acknowledged_at'], '2026-05-25T12:38:31.894824')
@@ -139,6 +141,8 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             retro.write_text(json.dumps({'recent_posts': [], 'repeated_openings': []}), encoding='utf-8')
             apollo = logs / 'apollo_sequence_status_latest.json'
             apollo.write_text(json.dumps({'measurement_pending': False}), encoding='utf-8')
+            apollo_runtime = logs / 'apollo_status_latest.json'
+            apollo_runtime.write_text(json.dumps({'status': 'launch_ready', 'cloudflare_blocked': False}), encoding='utf-8')
             outcome_capability = logs / 'outcome_capability_latest.json'
             outcome_capability.write_text(json.dumps({
                 'timestamp': '2026-05-25T23:27:19',
@@ -165,6 +169,7 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
                 stack.enter_context(patch.object(marketing_workflow_audit, 'ADOPTION', adoption))
                 stack.enter_context(patch.object(marketing_workflow_audit, 'RETRO', retro))
                 stack.enter_context(patch.object(marketing_workflow_audit, 'APOLLO_SEQUENCE_STATUS', apollo))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'APOLLO_STATUS', apollo_runtime))
                 stack.enter_context(patch.object(marketing_workflow_audit, 'OUTCOME_CAPABILITY_STATUS', outcome_capability))
                 stack.enter_context(patch.object(marketing_workflow_audit, 'REDDIT_MONITOR_LATEST', reddit_monitor))
                 rc = marketing_workflow_audit.main()

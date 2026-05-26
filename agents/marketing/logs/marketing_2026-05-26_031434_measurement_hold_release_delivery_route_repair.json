@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-05-26T03:14:34.918660+02:00",
+  "type": "measurement_hold_release_delivery_route_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "why": {
+    "summary": "Rotated the scheduled post-hold rerun off the fail-closed last-route delivery and onto the explicit Matrix direct-chat destination."
+  },
+  "result": {
+    "status": "executed",
+    "old_job_id": "0274bd84-4928-4277-ab44-b735ef91b2db",
+    "new_job_id": "d41cacb2-fd0a-4833-a7a8-57a6e22ec270",
+    "scheduled_run_at": "2026-05-26T03:05:18.000Z",
+    "delivery_channel": "matrix",
+    "delivery_target": "@mistlight_oriroris:matrix.org"
+  },
+  "verification": {
+    "removed_job_id": "0274bd84-4928-4277-ab44-b735ef91b2db",
+    "new_job_id": "d41cacb2-fd0a-4833-a7a8-57a6e22ec270",
+    "scheduled_run_at": "2026-05-26T03:05:18.000Z",
+    "delivery_channel": "matrix",
+    "delivery_target": "@mistlight_oriroris:matrix.org"
+  }
+}

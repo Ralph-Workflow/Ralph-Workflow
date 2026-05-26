@@ -217,6 +217,35 @@ class RunRepairModeTests(unittest.TestCase):
         self.assertEqual(updated.lane, 'distribution_reset')
         self.assertEqual(updated.reason, 'base reason')
 
+    def test_apply_repair_mode_overrides_skips_blocked_comparison_redirect(self):
+        decision = LaneDecision(
+            lane='owned_content',
+            reason='base reason',
+            reasons=['base reason'],
+            owned_content_posts_last_36h=2,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/distribution_action_brief.md',
+        )
+        pending_repairs = [
+            {
+                'failure_type': 'primary_repo_flat',
+                'repair_kind': 'tactic',
+                'repair_state': 'needs_execution',
+                'action': 'replace stale distribution with conversion-oriented work',
+            },
+        ]
+
+        with patch.object(run.distribution_lane_selector, '_comparison_backlink_lane_manual_only_blocked', return_value=True):
+            updated = run._apply_repair_mode_overrides(
+                decision,
+                pending_repairs,
+                now=datetime(2026, 5, 26, 1, 50, 0),
+            )
+
+        self.assertEqual(updated.lane, 'measurement_hold')
+        self.assertIn('GitHub auth is blocked', updated.reason)
+
     def test_latest_measurement_hold_window_detects_active_cooldown(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR

@@ -467,7 +467,19 @@
       "error": null,
       "draft_hash": "aba96cf9934585bd30abce8f8597fe26f1d48df468df29504b775ade05a8d2a6",
       "experiment_id": null
+    },
+    {
+      "date": "2026-05-26",
+      "draft": "2026-05-26_review_ai_coding_output_before_merge_telegraph.md",
+      "title": "Review AI Coding Output Before Merge",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Review-AI-Coding-Output-Before-Merge-05-26",
+      "error": null,
+      "draft_hash": "a1ff439e004fe9a39687c2b2f2513e6c90c7241b2887337a1e5bf09101ff36a6",
+      "source_path": "/home/mistlight/.openclaw/workspace/content/guides/review_ai_coding_output_before_merge.md"
     }
   ],
-  "last_run": "2026-05-25T08:19:11.074731"
+  "last_run": "2026-05-26T02:57:00"
 }

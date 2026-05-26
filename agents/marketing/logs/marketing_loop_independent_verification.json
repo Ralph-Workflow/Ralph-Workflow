@@ -1,15 +1,15 @@
 {
-  "checked_at": "2026-05-25T17:48:25.268175+02:00",
+  "checked_at": "2026-05-26T05:10:52.977535+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-25T17:48:25.245126"
+      "summary": "runner ok=True generated_at=2026-05-26T05:10:52.953839"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_channel_blocked', 'primary_repo_adoption_flat']"
+      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_channel_blocked', 'apollo_channel_blocked', 'primary_repo_adoption_flat']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
@@ -18,7 +18,8 @@
   ],
   "watchpoints": [
     "primary repo adoption remains measurement-pending after shipped repairs",
-    "reddit is blocked from this environment, but a replacement distribution execution has already shipped"
+    "reddit is blocked from this environment, but a replacement distribution execution has already shipped",
+    "Apollo outbound is externally blocked (cloudflare_auth_blocked) with fresh telemetry"
   ],
   "blockers": [
     "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
