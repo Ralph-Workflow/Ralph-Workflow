@@ -6,7 +6,7 @@ import json
 import re
 import subprocess
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -86,6 +86,10 @@ MEASUREMENT_HOLD_REENTRY_REPAIR_ACTION_TYPES = {
 MEASUREMENT_HOLD_GLOBAL_REPAIR_BRIDGE_ACTION_TYPES = {
     'measurement_hold_third_strike_guard_repair',
 }
+
+DISTRIBUTION_ARCHITECTURE_GUARD_PAUSE_ESCALATION_THRESHOLD = 2
+PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD = 2
+PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW_HOURS = 48
 
 DISTRIBUTION_ARCHITECTURE_REPAIR_ACTION_TYPES = {
     'distribution_architecture_repair',
@@ -259,6 +263,12 @@ def _reddit_monitor_latest_path() -> Path:
     if REDDIT_MONITOR_LATEST != default_path:
         return REDDIT_MONITOR_LATEST
     return _root_dir() / 'seo-reports' / 'reddit_monitor_latest.md'
+
+
+def _reddit_execution_status_path() -> Path:
+    if REDDIT_EXECUTION_STATUS_PATH.parent == LOG_DIR:
+        return REDDIT_EXECUTION_STATUS_PATH
+    return LOG_DIR / 'reddit_execution_status_latest.json'
 
 
 def _execution_board_latest_path() -> Path:
@@ -615,13 +625,26 @@ def _execution_board_requests_primary_repo_flat_refresh() -> bool:
     )
 
 
+def _normalized_execution_board_text(text: str) -> str:
+    if not text:
+        return ''
+    normalized_lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('Generated:'):
+            continue
+        normalized_lines.append(line.rstrip())
+    return '\n'.join(normalized_lines).strip()
+
+
 def _execution_board_fingerprint() -> str:
     path = _execution_board_latest_path()
     try:
         text = path.read_text(encoding='utf-8')
     except OSError:
         return ''
-    return hashlib.sha1(text.encode('utf-8')).hexdigest() if text else ''
+    normalized = _normalized_execution_board_text(text)
+    return hashlib.sha1(normalized.encode('utf-8')).hexdigest() if normalized else ''
 
 
 def _execution_board_short_review_release_at() -> datetime | None:
@@ -652,7 +675,7 @@ def _distribution_architecture_repair_state(
         if release_at is not None
         else now - timedelta(hours=SHORT_REVIEW_WINDOW_HOURS)
     )
-    fallback_started_at = now - timedelta(hours=24)
+    fallback_started_at = now - timedelta(days=7)
 
     def _collect(cutoff: datetime) -> dict[str, Any]:
         matching_logs: list[str] = []
@@ -727,6 +750,10 @@ def _distribution_architecture_repair_state(
     guard_logs = state['guard_logs']
     guard_follow_through_logs = state['guard_follow_through_logs']
     guard_pause_logs = state['guard_pause_logs']
+    cumulative_guard_pause_logs = list(dict.fromkeys([
+        *guard_pause_logs,
+        *fallback_state['guard_pause_logs'],
+    ])) if fingerprint else guard_pause_logs
 
     return {
         'execution_board_fingerprint': fingerprint,
@@ -741,6 +768,8 @@ def _distribution_architecture_repair_state(
         'latest_guard_follow_through_at': state['latest_guard_follow_through_at'],
         'guard_pause_count': len(guard_pause_logs),
         'guard_pause_logs': guard_pause_logs,
+        'cumulative_guard_pause_count': len(cumulative_guard_pause_logs),
+        'cumulative_guard_pause_logs': cumulative_guard_pause_logs,
         'latest_guard_pause_at': state['latest_guard_pause_at'],
         'earliest_guard_pause_at': state['earliest_guard_pause_at'],
     }
@@ -1407,6 +1436,21 @@ def _apollo_status_blocked(payload: dict[str, Any]) -> bool:
     if payload.get('cloudflare_blocked') and status != 'login_succeeded':
         return True
     browserless_status = str(payload.get('browserless_probe_status') or '').strip().lower()
+    notes = str(payload.get('notes') or payload.get('status_notes') or '').strip().lower()
+    authenticated_surface_still_usable = (
+        status == 'login_succeeded'
+        and not payload.get('cloudflare_blocked')
+        and (
+            'authenticated ui remained usable' in notes
+            or 'background cloudflare challenges were seen on ancillary apollo requests' in notes
+        )
+    )
+    if any(marker in notes for marker in ('verify you are human', 'captcha', 'cf challenge', 'cloudflare challenge')):
+        if authenticated_surface_still_usable and not any(
+            marker in notes for marker in ('verify you are human', 'captcha')
+        ):
+            return False
+        return True
     return browserless_status in {'cloudflare_auth_blocked', 'login_403_blocked'} and status != 'login_succeeded'
 
 
@@ -1652,8 +1696,7 @@ def _primary_repo_flat_contact_targets_waiting_for_execution() -> list[str]:
     targets: list[str] = []
     for row in payload.get('targets', []) or []:
         target_name = _display_target_name(str(row.get('target') or '').strip())
-        channels = row.get('channels') or []
-        if target_name and _publisher_target_has_packet_executable_channel(channels):
+        if target_name and _publisher_target_is_packet_executable(row):
             targets.append(target_name)
     return targets
 
@@ -1664,9 +1707,20 @@ def _primary_repo_flat_non_executable_targets_waiting_for_execution() -> list[st
     for row in payload.get('targets', []) or []:
         target_name = _display_target_name(str(row.get('target') or '').strip())
         channels = row.get('channels') or []
-        if target_name and channels and not _publisher_target_has_packet_executable_channel(channels):
+        if target_name and channels and not _publisher_target_is_packet_executable(row):
             targets.append(target_name)
     return targets
+
+
+def _publisher_target_is_packet_executable(row: dict[str, Any]) -> bool:
+    channels = row.get('channels') or []
+    if _publisher_target_has_packet_executable_channel(channels):
+        return True
+    recommended = str(row.get('recommended_next_step') or '').strip().lower()
+    return (
+        'github issue/pr path is now identified' in recommended
+        and any(str((channel or {}).get('type') or '').strip().lower() == 'github_issue' for channel in channels)
+    )
 
 
 def _publisher_target_has_packet_executable_channel(channels: list[dict[str, Any]]) -> bool:
@@ -1870,11 +1924,12 @@ def _curator_contact_packet_already_delivered(now: datetime, expected_targets: l
     return False
 
 
-def _primary_repo_flat_recent_prep_matches_targets(now: datetime, expected_targets: list[str]) -> bool:
+def _primary_repo_flat_recent_prep_count(now: datetime, expected_targets: list[str], *, hours: int | None = None) -> int:
     expected = [target.strip() for target in expected_targets if target.strip()]
     if not expected:
-        return False
-    cutoff = now - timedelta(days=7)
+        return 0
+    cutoff = now - (timedelta(hours=hours) if hours is not None else timedelta(days=7))
+    total = 0
     for path in LOG_DIR.glob('marketing_*.json'):
         if any(token in path.name for token in ('latest', 'workflow_audit', 'loop_runner', 'loop_verifier', 'independent_verification', 'momentum_watchdog', 'positioning_audit')):
             continue
@@ -1892,8 +1947,12 @@ def _primary_repo_flat_recent_prep_matches_targets(now: datetime, expected_targe
             if str(item).strip()
         ]
         if prepared and prepared == expected[:len(prepared)]:
-            return True
-    return False
+            total += 1
+    return total
+
+
+def _primary_repo_flat_recent_prep_matches_targets(now: datetime, expected_targets: list[str]) -> bool:
+    return _primary_repo_flat_recent_prep_count(now, expected_targets) > 0
 
 
 def _primary_repo_flat_contact_handoff_packet_current(now: datetime, expected_targets: list[str]) -> bool:
@@ -2355,7 +2414,7 @@ def _load_recent_monitor_summary() -> dict[str, Any]:
     )
     reddit_blocked = any(marker in text_l for marker in ['reddit is ip-blocked', 'reddit ip-blocked', 'reddit_ip_blocked']) or diagnostics.get('reddit_ip_blocked', 0) > 0
 
-    execution_status = _load_json(REDDIT_EXECUTION_STATUS_PATH)
+    execution_status = _load_json(_reddit_execution_status_path())
     execution_status_value = str(execution_status.get('status') or '').strip().lower()
     execution_age = _parse_dt(execution_status.get('generated_at') or execution_status.get('timestamp'))
     execution_blocked = False
@@ -2517,6 +2576,11 @@ def choose_distribution_lane(
     ]
     primary_repo_flat_contact_handoff_current = _primary_repo_flat_contact_handoff_packet_current(now, primary_repo_flat_contact_targets)
     primary_repo_flat_packet_delivery_active = _primary_repo_flat_packet_delivery_still_active(now, primary_repo_flat_contact_targets)
+    primary_repo_flat_recent_prep_repeat_count = _primary_repo_flat_recent_prep_count(
+        now,
+        primary_repo_flat_contact_targets,
+        hours=PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW_HOURS,
+    )
     live_comparison_queue, comparison_capacity = _comparison_queue_capacity(now)
     reset_targets_ready = _distribution_reset_targets_ready()
     recent_directory_submissions = _recent_live_action_family_count(
@@ -2663,6 +2727,11 @@ def choose_distribution_lane(
         reasons.append('The primary-repo-flat publisher contact packet is already current for the remaining untouched target set, so the loop should enforce follow-through instead of pretending a fresh packet is needed.')
     if primary_repo_flat_packet_delivery_active:
         reasons.append('A refreshed primary-repo-flat packet already has a live review window, so the loop should not re-select that same packet until the window expires or the target set materially changes.')
+    if primary_repo_flat_recent_prep_repeat_count >= PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD and not primary_repo_flat_packet_delivery_active:
+        reasons.append(
+            f'The same primary-repo-flat publisher packet has already been prepared {primary_repo_flat_recent_prep_repeat_count} time(s) in the last '
+            f'{PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW_HOURS} hours without a live delivery window, so selecting it again would be fake progress.'
+        )
     primary_repo_flat_post_hold_only = (
         primary_repo_flat_contact_handoff_current
         and execution_board_short_review_release_at is not None
@@ -2967,6 +3036,16 @@ def choose_distribution_lane(
             'GitHub auth is blocked and the comparison/backlink queue is already fully prepared, so another comparison-backlink run would only create manual-only follow-through during the current review window; '
             'hold for a truthful execution slot instead of logging fake progress.'
         )
+    if (
+        lane == 'primary_repo_flat_contact_handoff_packet'
+        and primary_repo_flat_recent_prep_repeat_count >= PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD
+        and not primary_repo_flat_packet_delivery_active
+    ):
+        lane = 'distribution_architecture_repair'
+        reason = (
+            'The same primary-repo-flat publisher packet keeps getting regenerated as prepared-only follow-through without entering a live delivery window; '
+            'repair the distribution architecture now instead of refreshing that handoff again.'
+        )
     short_window_reentry_repairs = _short_review_window_reentry_repairs_state(
         now,
         release_at=recent_live_external_release_at,
@@ -3008,12 +3087,18 @@ def choose_distribution_lane(
         and distribution_architecture_repair_state.get('guard_installed')
         and bool(distribution_architecture_repair_state.get('guard_follow_through_count'))
     )
+    owned_content_empty_board_inside_active_short_window = (
+        lane == 'owned_content'
+        and recent_live_external_release_at is not None
+        and now < recent_live_external_release_at
+        and _execution_board_has_no_truthful_do_now_packet(now)
+    )
 
     if (
         lane in empty_board_fallback_lanes
         and recent_live_external_actions < SHORT_REVIEW_WINDOW_EXTERNAL_ACTION_THRESHOLD
         and (skip_directory_submissions or skip_curator_outreach)
-    ) or short_window_active_with_exhausted_reentry_repairs or short_window_cleared_with_empty_board or execution_board_short_window_cleared_with_empty_board or no_short_window_idle_empty_board or guarded_empty_board_inside_active_short_window:
+    ) or short_window_active_with_exhausted_reentry_repairs or short_window_cleared_with_empty_board or execution_board_short_window_cleared_with_empty_board or no_short_window_idle_empty_board or guarded_empty_board_inside_active_short_window or owned_content_empty_board_inside_active_short_window:
         if distribution_architecture_repair_state['repeat_count']:
             reasons.append(
                 f"{distribution_architecture_repair_state['repeat_count']} prior distribution-architecture repair run(s) already hit this same empty-board window."
@@ -3038,11 +3123,21 @@ def choose_distribution_lane(
                         and earliest_guard_pause_at is not None
                         and latest_matching_at >= earliest_guard_pause_at
                     )
-                    if distribution_architecture_repair_state.get('guard_pause_count'):
+                    cumulative_guard_pause_count = distribution_architecture_repair_state.get(
+                        'cumulative_guard_pause_count',
+                        distribution_architecture_repair_state.get('guard_pause_count', 0),
+                    )
+                    if cumulative_guard_pause_count:
                         reasons.append(
-                            f"{distribution_architecture_repair_state.get('guard_pause_count', 0)} prior guard pause run(s) already reused this same fingerprint in the current review window."
+                            f"{cumulative_guard_pause_count} prior guard pause run(s) already reused this same fingerprint in the current review window."
                         )
-                        if repair_already_ran_since_guard_pause_started:
+                        if cumulative_guard_pause_count >= DISTRIBUTION_ARCHITECTURE_GUARD_PAUSE_ESCALATION_THRESHOLD:
+                            lane = 'distribution_architecture_repair'
+                            reason = (
+                                'The same empty-board distribution-architecture failure already hit the guard-pause path repeatedly again in this review window; '
+                                'escalate into a concrete distribution-architecture repair now instead of logging another guard pause.'
+                            )
+                        elif repair_already_ran_since_guard_pause_started:
                             lane = 'distribution_architecture_guard_pause'
                             reason = (
                                 'The same empty-board distribution-architecture failure is still under an active third-strike churn guard, '
@@ -3092,20 +3187,41 @@ def choose_distribution_lane(
                     'repairs were already used in this window; repair the lane architecture instead of logging another hold.'
                 )
             elif execution_board_short_window_cleared_with_empty_board:
+                fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
                 reason = (
                     'The execution board\'s own short review-window blocker already cleared, but the board is still empty and the selector still '
-                    'fell back to measurement_hold; repair the lane architecture instead of logging another stale guard pause.'
+                    f'fell back to {fallback_lane}; repair the lane architecture instead of logging another stale guard pause.'
                 )
             elif no_short_window_idle_empty_board:
+                fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
                 reason = (
                     'There is no active short review window anymore, but the execution board is still empty and the selector still '
-                    'fell back to measurement_hold; repair the lane architecture instead of logging another fake-idle hold.'
+                    f'fell back to {fallback_lane}; repair the lane architecture instead of logging another fake-idle hold.'
                 )
             else:
+                fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
                 reason = (
                     'The short review window already cleared, but every truthful external/manual lane is still blocked, exhausted, '
-                    'or already delivered; repair the lane architecture instead of logging another idle measurement hold.'
+                    f'or already delivered; repair the lane architecture instead of letting the selector drift into {fallback_lane}.'
                 )
+
+    if (
+        lane == 'distribution_architecture_guard_pause'
+        and recent_live_external_release_at is not None
+        and now < recent_live_external_release_at
+        and _execution_board_has_no_truthful_do_now_packet(now)
+        and distribution_architecture_repair_state.get('guard_installed')
+        and distribution_architecture_repair_state.get('guard_follow_through_count')
+        and distribution_architecture_repair_state.get(
+            'cumulative_guard_pause_count',
+            distribution_architecture_repair_state.get('guard_pause_count', 0),
+        ) >= DISTRIBUTION_ARCHITECTURE_GUARD_PAUSE_ESCALATION_THRESHOLD
+    ):
+        lane = 'distribution_architecture_repair'
+        reason = (
+            'The same empty-board distribution-architecture failure already hit the guard-pause path repeatedly again in this review window; '
+            'escalate into a concrete distribution-architecture repair now instead of logging another guard pause.'
+        )
 
     artifact_path = str(write_action_brief(
         lane=lane,
@@ -3130,21 +3246,53 @@ def choose_distribution_lane(
             recent_live_external_release_at.isoformat(timespec='seconds')
             if recent_live_external_release_at is not None
             and now < recent_live_external_release_at
-            and lane in {
-                'measurement_hold',
-                'distribution_architecture_guard_follow_through',
-                'distribution_architecture_guard_pause',
-            }
             else None
         ),
         skip_directory_submissions=skip_directory_submissions,
         skip_curator_outreach=skip_curator_outreach,
     )
     if persist_latest_artifacts:
-        LATEST_JSON.write_text(json.dumps(decision.__dict__, indent=2) + '\n', encoding='utf-8')
+        return persist_latest_lane_decision(decision, now, write_action_log=write_action_log)
     if write_action_log:
         write_marketing_action_log(decision, now)
     return decision
+
+
+def persist_latest_lane_decision(
+    decision: LaneDecision,
+    now: datetime,
+    *,
+    write_action_log: bool = False,
+) -> LaneDecision:
+    artifact_path = str(write_action_brief(
+        lane=decision.lane,
+        now=now,
+        recent_posts=_recent_owned_content_posts(now),
+        unsubmitted_channels=list(getattr(decision, 'unsubmitted_directory_channels', []) or []),
+        shared_findings=list(getattr(decision, 'shared_findings_used', []) or []),
+        reason=decision.reason,
+        reasons=list(getattr(decision, 'reasons', []) or []),
+        write_latest_md=True,
+    ))
+    if is_dataclass(decision):
+        persisted = replace(decision, artifact_path=artifact_path)
+    else:
+        persisted = LaneDecision(
+            lane=decision.lane,
+            reason=decision.reason,
+            reasons=list(getattr(decision, 'reasons', []) or []),
+            owned_content_posts_last_36h=int(getattr(decision, 'owned_content_posts_last_36h', 0) or 0),
+            unsubmitted_directory_channels=list(getattr(decision, 'unsubmitted_directory_channels', []) or []),
+            shared_findings_used=list(getattr(decision, 'shared_findings_used', []) or []),
+            artifact_path=artifact_path,
+            short_review_window_release_at=getattr(decision, 'short_review_window_release_at', None),
+            skip_directory_submissions=bool(getattr(decision, 'skip_directory_submissions', False)),
+            skip_curator_outreach=bool(getattr(decision, 'skip_curator_outreach', False)),
+        )
+    LATEST_JSON.write_text(json.dumps(persisted.__dict__, indent=2) + '\n', encoding='utf-8')
+    if write_action_log:
+        write_marketing_action_log(persisted, now)
+    return persisted
 
 
 def write_action_brief(

@@ -88,6 +88,8 @@ FAMILY_BURST_WINDOW_HOURS = 24
 DIRECTORY_SUBMISSION_BURST_THRESHOLD = 4
 CURATOR_OUTREACH_BURST_THRESHOLD = 6
 PUBLISHER_OUTREACH_BURST_THRESHOLD = 4
+PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW_HOURS = 48
+PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD = 2
 
 
 def load_json(path: Path) -> dict:
@@ -97,6 +99,12 @@ def load_json(path: Path) -> dict:
         return json.loads(path.read_text(encoding='utf-8'))
     except Exception:
         return {}
+
+
+def reddit_execution_status_path() -> Path:
+    if REDDIT_EXECUTION_STATUS.parent == OUT_DIR:
+        return REDDIT_EXECUTION_STATUS
+    return OUT_DIR / 'reddit_execution_status_latest.json'
 
 
 def recent_live_action_family_count(now: datetime, *, family: str, hours: int = FAMILY_BURST_WINDOW_HOURS) -> int:
@@ -303,6 +311,30 @@ def previous_repair_map(payload: dict[str, Any]) -> dict[tuple[str, str], dict[s
     return mapped
 
 
+def recent_prepared_primary_repo_flat_packet_count(now: datetime, *, hours: int = PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW_HOURS) -> int:
+    cutoff = now.timestamp() - (hours * 3600)
+    total = 0
+    for path in OUT_DIR.glob('marketing_*.json'):
+        if any(token in path.name for token in ('latest', 'workflow_audit', 'loop_runner', 'loop_verifier', 'independent_verification', 'momentum_watchdog', 'positioning_audit')):
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime < cutoff:
+            continue
+        payload = load_json(path)
+        if ((payload.get('chosen_action') or {}).get('type') or '') != 'primary_repo_flat_contact_handoff_packet_execution':
+            continue
+        result = payload.get('result') or {}
+        if str(result.get('status') or payload.get('status') or '').strip().lower() != 'prepared':
+            continue
+        if bool(result.get('live_external_action') or payload.get('live_external_action')):
+            continue
+        total += 1
+    return total
+
+
 def load_reddit_channel_state() -> dict[str, bool]:
     if not REDDIT_MONITOR_LATEST.exists():
         return {'reddit_blocked': False, 'provider_degraded': False}
@@ -345,8 +377,9 @@ def load_reddit_channel_state() -> dict[str, bool]:
         or 'partial visibility' in text_l
     )
 
-    if REDDIT_EXECUTION_STATUS.exists():
-        runtime = load_json(REDDIT_EXECUTION_STATUS)
+    runtime_status_path = reddit_execution_status_path()
+    if runtime_status_path.exists():
+        runtime = load_json(runtime_status_path)
         runtime_status = str(runtime.get('status') or '').strip().lower()
         runtime_timestamp = runtime.get('generated_at') or runtime.get('timestamp')
         runtime_recent = False
@@ -742,6 +775,7 @@ def main() -> int:
     repetitive: list[str] = []
     low_signal: list[str] = []
     should_change_now: list[str] = []
+    prepared_primary_repo_flat_packet_repeats = recent_prepared_primary_repo_flat_packet_count(now)
 
     if recent_action_ok and recent_action_type and recent_action_live_external:
         if codeberg_flat or measurement_pending_reasons:
@@ -768,6 +802,18 @@ def main() -> int:
         repetitive.append(f'{recent_curator_outreach} curator contact attempts shipped inside the last {FAMILY_BURST_WINDOW_HOURS} hours, which is overlapping the same family.')
     if directory_submission_burst:
         repetitive.append(f'{recent_directory_submissions} directory submissions shipped inside the last {FAMILY_BURST_WINDOW_HOURS} hours, which is overlapping the same family.')
+    if prepared_primary_repo_flat_packet_repeats >= PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD:
+        repetitive.append(
+            f'The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through '
+            f'{prepared_primary_repo_flat_packet_repeats} times inside the last {PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW_HOURS} hours.'
+        )
+        low_signal.append(
+            'Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, '
+            'so that lane is currently counting packet churn rather than adoption-moving distribution.'
+        )
+        should_change_now.append(
+            'Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.'
+        )
 
     if recent_action_warning:
         low_signal.append(f'{recent_action_type or "latest live action"}: {recent_action_warning}')
