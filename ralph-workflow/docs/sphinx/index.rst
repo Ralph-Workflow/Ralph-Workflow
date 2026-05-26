@@ -3,8 +3,8 @@
 Ralph Workflow
 ==============
 
-Ralph Workflow is the maintained manual for the operating system for autonomous coding.
-Start with the shipped default workflow, learn the simple core, and then branch into deeper operator docs only when you need them.
+Ralph Workflow is the maintained manual for the AI agent orchestrator and operating system for autonomous coding.
+It starts from a simple Ralph loop core, composes into more complex workflows, and ships a strong default workflow you can use before you customize anything.
 
 This page is the maintained operator manual home.
 If you are brand new, start with :doc:`getting-started`.

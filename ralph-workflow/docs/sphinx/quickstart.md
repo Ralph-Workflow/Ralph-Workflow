@@ -1,7 +1,8 @@
 # Quickstart
 
-Use this page when you already understand what Ralph Workflow is and want the shortest path to one honest first run in a real repository.
-This is the compact checklist version: minimal explanation, minimal detours, default workflow first.
+Ralph Workflow is an AI agent orchestrator built around a simple Ralph loop core.
+That simple core composes into more complex workflows for substantial repo work, but this page is the shortest default-workflow path.
+Use it when you already understand the product story and want one honest first run with minimal explanation or detours.
 If you need fuller context, task-selection help, or the reasons behind each step, go back to [Getting Started](getting-started.md).
 
 If you need config answers, open [Configuration Reference](configuration.md). If you want docs routed by use case, open [End-User Stories](user-stories.md).
