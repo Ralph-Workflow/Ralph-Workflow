@@ -1,11 +1,9 @@
 {
-  "generated_at": "2026-05-26T09:08:42.865544",
+  "generated_at": "2026-05-26T12:23:28.015478",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
-  "reddit_posts_analyzed": 6,
-  "repeated_openings": [
-    "Honestly the part I'd optimize first is the handoff, not the model stack."
-  ],
+  "reddit_posts_analyzed": 0,
+  "repeated_openings": [],
   "adoption_metrics": [
     {
       "platform": "GitHub",
@@ -52,27 +50,20 @@
     ]
   },
   "failing_tactics": [
-    "reddit_style_repetition",
     "primary_repo_flat_window",
-    "mirror_repo_flat_window",
-    "same_family_publisher_overlap"
+    "mirror_repo_flat_window"
   ],
   "worked": [],
   "not_worked": [
     "Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.",
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
-  "repetitive": [
-    "Repeated outreach opening: Honestly the part I'd optimize first is the handoff, not the model stack.",
-    "5 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family."
-  ],
+  "repetitive": [],
   "low_signal": [
     "Recent live external action exists (apollo_outbound_verification), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked."
   ],
   "should_change_now": [
     "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
-    "REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.",
-    "HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.",
     "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
   "dormant_risks": [],
@@ -88,17 +79,6 @@
       "repair_state": "pending_measurement"
     },
     {
-      "target_tactic": "publisher_outreach_burst",
-      "failure_type": "same_family_publisher_overlap",
-      "repair_kind": "tactic",
-      "action": "HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.",
-      "kill_condition": "Another audit adds more same-family publisher outreach before the current reply/review windows have materially aged or produced evidence",
-      "success_metric": "Next execution lane is not another same-day publisher-contact burst and produces a cleaner measurement path toward Codeberg movement",
-      "priority": 2,
-      "repair_state": "pending_measurement",
-      "repair_acknowledged_at": "2026-05-25T12:38:31.894824"
-    },
-    {
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
@@ -107,24 +87,12 @@
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
       "repair_state": "pending_measurement"
-    },
-    {
-      "target_tactic": "reddit_post_style",
-      "failure_type": "repetitive_outreach",
-      "repair_kind": "tactic",
-      "action": "REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.",
-      "kill_condition": "Same opening detected again in next audit",
-      "success_metric": "No repeated openings in next audit window",
-      "priority": 2,
-      "repair_state": "pending_measurement"
     }
   ],
   "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
     "primary_repo_flat",
-    "mirror_repo_flat",
-    "repetitive_outreach",
-    "same_family_publisher_overlap"
+    "mirror_repo_flat"
   ],
   "has_failing_tactics": true,
   "reasons": [
@@ -132,9 +100,7 @@
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
-    "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
-    "5 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
-    "The most recent runtime activity was distribution_architecture_churn_guard_repair, but the latest meaningful external/replacement execution remains apollo_outbound_verification; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The most recent runtime activity was distribution_architecture_guard_pause, but the latest meaningful external/replacement execution remains apollo_outbound_verification; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (apollo_outbound_verification), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-06-02T07:23:34.700335+02:00, so the loop should not repackage the same lane before that checkpoint."
@@ -171,14 +137,14 @@
   },
   "latest_marketing_activity": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26.json",
-    "type": "distribution_architecture_churn_guard_repair",
-    "title": "Distribution lane execution: distribution_architecture_repair",
-    "status": "executed",
+    "type": "distribution_architecture_guard_pause",
+    "title": "Distribution lane execution: distribution_architecture_guard_pause",
+    "status": "skipped_repair",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_090806_distribution_architecture_repair.md"
+    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_060554_distribution_architecture_guard_pause.md"
   },
   "latest_executed_action": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072359_apollo_outbound_verification.json",
@@ -192,7 +158,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-26T09:08:18.118790+02:00",
+    "generated_at": "2026-05-26T12:07:46.511554+02:00",
     "status": "verified_live_sequence",
     "measurement_pending": true,
     "summary": "Apollo outbound verification confirms a live Ralph Workflow sequence with Codeberg-primary CTA is active.",

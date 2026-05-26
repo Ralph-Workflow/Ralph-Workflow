@@ -28,7 +28,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from agents.marketing import distribution_lane_selector, outcome_execution_board_runner
-from agents.marketing.distribution_lane_executor import execute_distribution_lane, _write_marketing_execution_board
+from agents.marketing.distribution_lane_executor import (
+    execute_distribution_lane,
+    _schedule_measurement_hold_release_run,
+    _write_marketing_execution_board,
+    _write_post_hold_reentry_contract,
+)
 from agents.marketing.distribution_lane_selector import choose_distribution_lane
 from agents.marketing.market_intelligence_runtime import load_market_intelligence
 from agents.marketing.measurement_hold_runtime import latest_measurement_hold_window as shared_latest_measurement_hold_window
@@ -41,6 +46,9 @@ SEO_REPORTS_DIR = ROOT / "seo-reports"
 DRAFTS_DIR = ROOT / "drafts"
 ADOPTION_FILE = LOG_DIR / "adoption_metrics_latest.json"
 MARKET_INTELLIGENCE_FILE = LOG_DIR / "market_intelligence_latest.json"
+PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH = LOG_DIR / "primary_repo_flat_contact_discovery_latest.json"
+PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_SCRIPT_PATH = AGENTS_DIR / "primary_repo_flat_contact_discovery.py"
+PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_STALE_AFTER = timedelta(hours=6)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 BLOCKED_CHANNELS = {
@@ -132,6 +140,13 @@ DISTRIBUTION_ARCHITECTURE_REUSE_ACTION_TYPE_MAP = {
     },
     "distribution_architecture_guard_follow_through": {"distribution_architecture_guard_follow_through"},
     "distribution_architecture_guard_pause": {"distribution_architecture_guard_pause"},
+}
+
+POST_HOLD_RELEASE_SYNC_LANES = {
+    'measurement_hold',
+    'distribution_architecture_repair',
+    'distribution_architecture_guard_follow_through',
+    'distribution_architecture_guard_pause',
 }
 
 
@@ -368,6 +383,32 @@ def _latest_lane_to_persist_after_execution(selected_lane: Any, refreshed_lane: 
     return refreshed_lane
 
 
+def _sync_post_hold_release_run_if_needed(
+    *,
+    now: datetime,
+    distribution_lane: Any,
+    execution_board_path: Path,
+    shared_findings_used: list[str],
+) -> dict[str, Any]:
+    lane_name = str(getattr(distribution_lane, 'lane', '') or '').strip()
+    release_at = str(getattr(distribution_lane, 'short_review_window_release_at', '') or '').strip()
+    if lane_name not in POST_HOLD_RELEASE_SYNC_LANES or not release_at:
+        return {}
+
+    reentry_contract_path = _write_post_hold_reentry_contract(
+        now,
+        release_at=release_at,
+        execution_board_path=execution_board_path,
+        shared_findings_used=shared_findings_used,
+    )
+    return _schedule_measurement_hold_release_run(
+        now=now,
+        release_at=release_at,
+        shared_findings_used=shared_findings_used,
+        reentry_contract_path=str(reentry_contract_path),
+    )
+
+
 # ── Run seo_daily.py ──────────────────────────────────────────────────────────
 
 def run_seo_daily() -> dict:
@@ -601,6 +642,123 @@ def parse_iso_date(value: str | None) -> datetime | None:
     if dt.tzinfo is not None:
         return dt.astimezone().replace(tzinfo=None)
     return dt
+
+
+def _load_json_file(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _write_primary_repo_flat_contact_discovery_refresh_log(
+    *,
+    now: datetime,
+    discovery_generated_at: str | None,
+    board_targets_before: list[str],
+    board_targets_after: list[str],
+    refresh_result: subprocess.CompletedProcess[str],
+) -> Path:
+    action_type = "primary_repo_flat_contact_discovery_staleness_repair"
+    json_path = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d_%H%M%S')}_{action_type}.json"
+    md_path = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d_%H%M%S')}_{action_type}.md"
+    ok = refresh_result.returncode == 0
+    summary = (
+        "Refreshed stale primary-repo-flat contact discovery before lane selection so the current execution board reused a fresh publisher-contact artifact."
+        if ok else
+        "Tried to refresh stale primary-repo-flat contact discovery before lane selection, but the refresh failed."
+    )
+    payload = {
+        "timestamp": now.isoformat(),
+        "type": action_type,
+        "status": "executed" if ok else "failed",
+        "summary": summary,
+        "why_this_action": {
+            "findings": [
+                "the execution board had no truthful do-now packet in the active review window",
+                "the primary-repo-flat contact discovery artifact was stale enough to reduce the odds of the scheduled post-hold rerun finding a fresh publisher-contact lane",
+            ],
+            "shared_findings_used": [
+                "marketing_execution_board_latest.md: no truthful do-now packet existed in the current review window",
+                "primary_repo_flat_contact_discovery_latest.json: publisher-contact discovery is the canonical primary-repo-flat lane artifact",
+                "market_intelligence_latest.json: contact discovery reuses competitor/comparison hooks",
+                "adoption_metrics_latest.json: Codeberg movement remains the primary success gate",
+            ],
+            "stale_generated_at": discovery_generated_at,
+            "board_targets_before": board_targets_before,
+            "board_targets_after": board_targets_after,
+        },
+        "result": {
+            "ok": ok,
+            "status": "executed" if ok else "failed",
+            "summary": summary,
+            "stdout": (refresh_result.stdout or "").strip()[:1000],
+            "stderr": (refresh_result.stderr or "").strip()[:1000],
+            "board_target_count_before": len(board_targets_before),
+            "board_target_count_after": len(board_targets_after),
+            "live_external_action": False,
+        },
+    }
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    md_lines = [
+        "# Primary-repo-flat contact discovery staleness repair",
+        f"Generated: {now.isoformat(timespec='seconds')}",
+        "",
+        "## Summary",
+        summary,
+        "",
+        "## Why this ran",
+        "- The execution board had no truthful do-now packet in the active review window.",
+        f"- The latest publisher-contact discovery artifact timestamp was: {discovery_generated_at or 'missing'}.",
+        "- Refreshing the shared publisher-contact artifact is a valid hold-window action because it improves the next rerun's odds without faking a fresh delivery lane.",
+        "",
+        "## Result",
+        f"- Status: {'executed' if ok else 'failed'}",
+        f"- Board targets before refresh: {len(board_targets_before)}",
+        f"- Board targets after refresh: {len(board_targets_after)}",
+    ]
+    if refresh_result.stderr:
+        md_lines.append(f"- stderr: {(refresh_result.stderr or '').strip()[:300]}")
+    md_path.write_text("\n".join(md_lines) + "\n", encoding="utf-8")
+    return json_path
+
+
+def _refresh_primary_repo_flat_contact_discovery_for_empty_board(
+    *,
+    now: datetime,
+    execution_board_path: Path,
+    execution_board_targets: list[str],
+) -> tuple[Path, list[str], Path | None]:
+    if execution_board_targets:
+        return execution_board_path, execution_board_targets, None
+
+    discovery_payload = _load_json_file(PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH)
+    generated_at = parse_iso_date(str(discovery_payload.get("generated_at") or "").strip())
+    if generated_at is not None and now - generated_at < PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_STALE_AFTER:
+        return execution_board_path, execution_board_targets, None
+
+    refresh_result = subprocess.run(
+        [sys.executable, str(PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_SCRIPT_PATH)],
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+
+    refreshed_board_path = execution_board_path
+    refreshed_board_targets = execution_board_targets
+    if refresh_result.returncode == 0:
+        refreshed_board_path, refreshed_board_targets = _write_marketing_execution_board(now)
+
+    log_path = _write_primary_repo_flat_contact_discovery_refresh_log(
+        now=now,
+        discovery_generated_at=str(discovery_payload.get("generated_at") or "").strip() or None,
+        board_targets_before=list(execution_board_targets),
+        board_targets_after=list(refreshed_board_targets),
+        refresh_result=refresh_result,
+    )
+    return refreshed_board_path, refreshed_board_targets, log_path
 
 
 def recent_successful_posts(posts: Iterable[dict], now: datetime, days: int = 30) -> list[dict]:
@@ -1052,9 +1210,23 @@ def main() -> int:
             except (json.JSONDecodeError, OSError):
                 audit = {}
 
+        execution_board_path, execution_board_targets = _write_marketing_execution_board(now)
+        execution_board_path, execution_board_targets, discovery_refresh_log = _refresh_primary_repo_flat_contact_discovery_for_empty_board(
+            now=now,
+            execution_board_path=execution_board_path,
+            execution_board_targets=execution_board_targets,
+        )
+        if discovery_refresh_log is not None:
+            print(f"[run.py] Refreshed stale primary-repo-flat contact discovery: {discovery_refresh_log}", flush=True)
         distribution_lane = choose_distribution_lane(now, persist_latest_artifacts=False)
         if pending_repairs:
             distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs, now=now)
+        _sync_post_hold_release_run_if_needed(
+            now=now,
+            distribution_lane=distribution_lane,
+            execution_board_path=execution_board_path,
+            shared_findings_used=list(getattr(distribution_lane, 'shared_findings_used', []) or []),
+        )
 
         recent_follow_through = _latest_measurement_hold_follow_through(hold_window)
         reused_existing_follow_through = (
@@ -1075,6 +1247,7 @@ def main() -> int:
             execution_live_external_action = bool(recent_follow_through.get("live_external_action", False))
             execution_blocking_factors = list(recent_follow_through.get("blocking_factors") or [])
             distribution_execution = SimpleNamespace(
+                lane=distribution_lane.lane,
                 action_type=execution_action_type,
                 status=execution_status,
                 artifact_path=execution_artifact_path,
@@ -1084,12 +1257,7 @@ def main() -> int:
                 live_external_action=execution_live_external_action,
                 blocking_factors=execution_blocking_factors,
             )
-            distribution_execution_log = _write_distribution_execution_log(
-                distribution_lane=distribution_lane,
-                execution=distribution_execution,
-                now=now,
-                reused_from_log=str(recent_follow_through["log_path"]),
-            )
+            distribution_execution_log = Path(str(recent_follow_through["log_path"]))
         else:
             reused_existing_distribution_execution = False
             recent_guard_execution = None
@@ -1105,6 +1273,7 @@ def main() -> int:
 
             if reused_existing_distribution_execution and recent_guard_execution is not None:
                 distribution_execution = SimpleNamespace(
+                    lane=distribution_lane.lane,
                     action_type=recent_guard_execution.get("action_type", distribution_lane.lane),
                     status=recent_guard_execution.get("status", "executed"),
                     artifact_path=recent_guard_execution.get("artifact_path", ""),
@@ -1114,12 +1283,7 @@ def main() -> int:
                     live_external_action=bool(recent_guard_execution.get("live_external_action", False)),
                     blocking_factors=list(recent_guard_execution.get("blocking_factors") or []),
                 )
-                distribution_execution_log = _write_distribution_execution_log(
-                    distribution_lane=distribution_lane,
-                    execution=distribution_execution,
-                    now=now,
-                    reused_from_log=str(recent_guard_execution["log_path"]),
-                )
+                distribution_execution_log = Path(str(recent_guard_execution["log_path"]))
             else:
                 distribution_execution = execute_distribution_lane(distribution_lane, now)
                 distribution_execution_log = _write_distribution_execution_log(
@@ -1148,6 +1312,16 @@ def main() -> int:
             latest_distribution_lane,
             now,
             write_action_log=False,
+        )
+        if not getattr(distribution_execution, 'lane', ''):
+            distribution_execution.lane = distribution_lane.lane
+        outcome_execution_board_runner.sync_from_execution(
+            now=now,
+            audit=audit,
+            decision=distribution_lane,
+            board_path=execution_board_path,
+            board_targets=execution_board_targets,
+            execution=distribution_execution,
         )
 
         payload = {
@@ -1326,6 +1500,13 @@ def main() -> int:
         )
 
     execution_board_path, execution_board_targets = _write_marketing_execution_board(now)
+    execution_board_path, execution_board_targets, discovery_refresh_log = _refresh_primary_repo_flat_contact_discovery_for_empty_board(
+        now=now,
+        execution_board_path=execution_board_path,
+        execution_board_targets=execution_board_targets,
+    )
+    if discovery_refresh_log is not None:
+        print(f"[run.py] Refreshed stale primary-repo-flat contact discovery: {discovery_refresh_log}", flush=True)
     distribution_lane = choose_distribution_lane(now, persist_latest_artifacts=False)
     if is_repair_mode:
         original_lane = distribution_lane.lane
@@ -1335,6 +1516,17 @@ def main() -> int:
                 f"[run.py] repair override active — redirecting from {original_lane} to {distribution_lane.lane}",
                 flush=True,
             )
+    post_hold_release_schedule = _sync_post_hold_release_run_if_needed(
+        now=now,
+        distribution_lane=distribution_lane,
+        execution_board_path=execution_board_path,
+        shared_findings_used=list(getattr(distribution_lane, 'shared_findings_used', []) or []),
+    )
+    if post_hold_release_schedule.get('status') in {'scheduled', 'already_scheduled'}:
+        print(
+            f"[run.py] post-hold release wake synced for {post_hold_release_schedule.get('scheduled_run_at')}",
+            flush=True,
+        )
 
     reused_existing_distribution_execution = False
     recent_guard_execution = None
@@ -1360,12 +1552,7 @@ def main() -> int:
             live_external_action=bool(recent_guard_execution.get("live_external_action", False)),
             blocking_factors=list(recent_guard_execution.get("blocking_factors") or []),
         )
-        distribution_execution_log = _write_distribution_execution_log(
-            distribution_lane=distribution_lane,
-            execution=distribution_execution,
-            now=now,
-            reused_from_log=str(recent_guard_execution["log_path"]),
-        )
+        distribution_execution_log = Path(str(recent_guard_execution["log_path"]))
         refreshed_distribution_lane = distribution_lane
     else:
         distribution_execution = execute_distribution_lane(distribution_lane, now)
@@ -1466,6 +1653,7 @@ def main() -> int:
         "distribution_lane": distribution_lane.__dict__,
         "distribution_execution": distribution_execution.__dict__,
         "distribution_execution_log": str(distribution_execution_log),
+        "post_hold_release_schedule": post_hold_release_schedule,
         "post_execution_distribution_lane": refreshed_distribution_lane.__dict__,
         "reused_existing_distribution_execution": reused_existing_distribution_execution,
         "failure_signals": [d["action"] for d in decisions if d.get("is_failing_signal")],

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-21T18:35:55.063658+02:00",
+  "timestamp": "2026-05-26T11:16:59.703929+02:00",
   "summary": {
     "blocked": 7,
     "partial": 0,
@@ -10,6 +10,8 @@
       "channel_id": "devto",
       "name": "dev.to",
       "recommendation": "mixed_progress",
+      "status": "blocked",
+      "exact_blocker": "No dev.to API key configured.",
       "attempts": [
         {
           "action": "verify_browser_readiness",
@@ -23,7 +25,7 @@
               "Ad/tracker blocking is optional for usability/privacy, not for bypassing protections"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.063902+02:00"
+          "timestamp": "2026-05-26T11:16:59.704186+02:00"
         },
         {
           "action": "prepare_manual_api_key_request",
@@ -35,14 +37,52 @@
               "User provides API key or OAuth approval"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.063912+02:00"
+          "timestamp": "2026-05-26T11:16:59.704197+02:00"
         },
         {
           "action": "check_auth_status",
           "status": "blocked",
           "summary": "No dev.to API key configured.",
           "details": {},
-          "timestamp": "2026-05-21T18:35:55.063918+02:00"
+          "timestamp": "2026-05-26T11:16:59.704203+02:00"
+        }
+      ],
+      "proof_artifacts": [
+        {
+          "channel_id": "devto",
+          "action": "verify_browser_readiness",
+          "status": "useful",
+          "summary": "Desktop browser available: chromium.",
+          "details": {
+            "available_browsers": [
+              "chromium"
+            ],
+            "notes": [
+              "Ad/tracker blocking is optional for usability/privacy, not for bypassing protections"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.704186+02:00"
+        },
+        {
+          "channel_id": "devto",
+          "action": "prepare_manual_api_key_request",
+          "status": "useful",
+          "summary": "Prepared API key request checklist for user completion.",
+          "details": {
+            "steps": [
+              "User creates or confirms dev.to account",
+              "User provides API key or OAuth approval"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.704197+02:00"
+        },
+        {
+          "channel_id": "devto",
+          "action": "check_auth_status",
+          "status": "blocked",
+          "summary": "No dev.to API key configured.",
+          "details": {},
+          "timestamp": "2026-05-26T11:16:59.704203+02:00"
         }
       ],
       "next_actions": [
@@ -55,6 +95,8 @@
       "channel_id": "twitter",
       "name": "Twitter/X",
       "recommendation": "mixed_progress",
+      "status": "blocked",
+      "exact_blocker": "No approved Twitter auth path configured yet. Keep pursuing the best legitimate local route toward a usable session/API path.",
       "attempts": [
         {
           "action": "verify_browser_readiness",
@@ -68,7 +110,7 @@
               "Ad/tracker blocking is optional for privacy only"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.064104+02:00"
+          "timestamp": "2026-05-26T11:16:59.704404+02:00"
         },
         {
           "action": "document_policy_requirements",
@@ -91,14 +133,63 @@
               "User provides approved API/session route if allowed"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.064111+02:00"
+          "timestamp": "2026-05-26T11:16:59.704412+02:00"
         },
         {
           "action": "check_auth_status",
           "status": "blocked",
           "summary": "No approved Twitter auth path configured yet. Keep pursuing the best legitimate local route toward a usable session/API path.",
           "details": {},
-          "timestamp": "2026-05-21T18:35:55.064115+02:00"
+          "timestamp": "2026-05-26T11:16:59.704416+02:00"
+        }
+      ],
+      "proof_artifacts": [
+        {
+          "channel_id": "twitter",
+          "action": "verify_browser_readiness",
+          "status": "useful",
+          "summary": "Desktop browser available: chromium.",
+          "details": {
+            "available_browsers": [
+              "chromium"
+            ],
+            "notes": [
+              "Ad/tracker blocking is optional for privacy only"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.704404+02:00"
+        },
+        {
+          "channel_id": "twitter",
+          "action": "document_policy_requirements",
+          "status": "useful",
+          "summary": "Documented policy-sensitive prerequisites and manual steps.",
+          "details": {
+            "blockers": [
+              "Login/session flow unreliable",
+              "No approved posting session or API access"
+            ],
+            "forbidden_actions": [
+              "bot_evasion",
+              "stealth_automation",
+              "synthetic_identity_creation",
+              "captcha_evasion"
+            ],
+            "manual_prerequisites": [
+              "User creates or confirms account",
+              "User completes any phone/email verification",
+              "User provides approved API/session route if allowed"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.704412+02:00"
+        },
+        {
+          "channel_id": "twitter",
+          "action": "check_auth_status",
+          "status": "blocked",
+          "summary": "No approved Twitter auth path configured yet. Keep pursuing the best legitimate local route toward a usable session/API path.",
+          "details": {},
+          "timestamp": "2026-05-26T11:16:59.704416+02:00"
         }
       ],
       "next_actions": [
@@ -111,6 +202,8 @@
       "channel_id": "reddit",
       "name": "Reddit",
       "recommendation": "continue_legitimate_unblock",
+      "status": "blocked",
+      "exact_blocker": "Needs account and subreddit reputation",
       "attempts": [
         {
           "action": "document_community_requirements",
@@ -126,7 +219,7 @@
               "User builds genuine participation history manually"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.064162+02:00"
+          "timestamp": "2026-05-26T11:16:59.704472+02:00"
         },
         {
           "action": "verify_browser_readiness",
@@ -140,7 +233,41 @@
               "Ad/tracker blocking is optional for privacy only"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.064294+02:00"
+          "timestamp": "2026-05-26T11:16:59.704607+02:00"
+        }
+      ],
+      "proof_artifacts": [
+        {
+          "channel_id": "reddit",
+          "action": "document_community_requirements",
+          "status": "useful",
+          "summary": "Documented that this channel requires genuine manual participation before promotion.",
+          "details": {
+            "blockers": [
+              "Needs account and subreddit reputation",
+              "Automated posting likely inappropriate without established presence"
+            ],
+            "manual_prerequisites": [
+              "User creates account",
+              "User builds genuine participation history manually"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.704472+02:00"
+        },
+        {
+          "channel_id": "reddit",
+          "action": "verify_browser_readiness",
+          "status": "useful",
+          "summary": "Desktop browser available: chromium.",
+          "details": {
+            "available_browsers": [
+              "chromium"
+            ],
+            "notes": [
+              "Ad/tracker blocking is optional for privacy only"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.704607+02:00"
         }
       ],
       "next_actions": [
@@ -152,6 +279,8 @@
       "channel_id": "hackernews",
       "name": "Hacker News",
       "recommendation": "continue_legitimate_unblock",
+      "status": "blocked",
+      "exact_blocker": "Needs account",
       "attempts": [
         {
           "action": "document_community_requirements",
@@ -167,7 +296,7 @@
               "User manually submits launch/post when ready"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.064332+02:00"
+          "timestamp": "2026-05-26T11:16:59.704658+02:00"
         },
         {
           "action": "verify_browser_readiness",
@@ -179,7 +308,39 @@
             ],
             "notes": []
           },
-          "timestamp": "2026-05-21T18:35:55.064466+02:00"
+          "timestamp": "2026-05-26T11:16:59.704792+02:00"
+        }
+      ],
+      "proof_artifacts": [
+        {
+          "channel_id": "hackernews",
+          "action": "document_community_requirements",
+          "status": "useful",
+          "summary": "Documented that this channel requires genuine manual participation before promotion.",
+          "details": {
+            "blockers": [
+              "Needs account",
+              "Posting should be manual and policy-aware"
+            ],
+            "manual_prerequisites": [
+              "User creates account",
+              "User manually submits launch/post when ready"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.704658+02:00"
+        },
+        {
+          "channel_id": "hackernews",
+          "action": "verify_browser_readiness",
+          "status": "useful",
+          "summary": "Desktop browser available: chromium.",
+          "details": {
+            "available_browsers": [
+              "chromium"
+            ],
+            "notes": []
+          },
+          "timestamp": "2026-05-26T11:16:59.704792+02:00"
         }
       ],
       "next_actions": [
@@ -191,6 +352,8 @@
       "channel_id": "lobsters",
       "name": "Lobsters",
       "recommendation": "continue_legitimate_unblock",
+      "status": "blocked",
+      "exact_blocker": "Needs account/invite",
       "attempts": [
         {
           "action": "document_community_requirements",
@@ -205,7 +368,25 @@
               "User obtains legitimate account/invite"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.064499+02:00"
+          "timestamp": "2026-05-26T11:16:59.704830+02:00"
+        }
+      ],
+      "proof_artifacts": [
+        {
+          "channel_id": "lobsters",
+          "action": "document_community_requirements",
+          "status": "useful",
+          "summary": "Documented that this channel requires genuine manual participation before promotion.",
+          "details": {
+            "blockers": [
+              "Needs account/invite",
+              "Community fit should be validated manually"
+            ],
+            "manual_prerequisites": [
+              "User obtains legitimate account/invite"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.704830+02:00"
         }
       ],
       "next_actions": [
@@ -216,6 +397,8 @@
       "channel_id": "producthunt",
       "name": "Product Hunt",
       "recommendation": "continue_legitimate_unblock",
+      "status": "blocked",
+      "exact_blocker": "Manual launch flow required",
       "attempts": [
         {
           "action": "verify_browser_readiness",
@@ -229,7 +412,7 @@
               "Browser should be stable for manual launch prep"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.064655+02:00"
+          "timestamp": "2026-05-26T11:16:59.704997+02:00"
         },
         {
           "action": "document_policy_requirements",
@@ -250,7 +433,46 @@
               "User completes launch assets and manual submission"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.064661+02:00"
+          "timestamp": "2026-05-26T11:16:59.705004+02:00"
+        }
+      ],
+      "proof_artifacts": [
+        {
+          "channel_id": "producthunt",
+          "action": "verify_browser_readiness",
+          "status": "useful",
+          "summary": "Desktop browser available: chromium.",
+          "details": {
+            "available_browsers": [
+              "chromium"
+            ],
+            "notes": [
+              "Browser should be stable for manual launch prep"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.704997+02:00"
+        },
+        {
+          "channel_id": "producthunt",
+          "action": "document_policy_requirements",
+          "status": "useful",
+          "summary": "Documented policy-sensitive prerequisites and manual steps.",
+          "details": {
+            "blockers": [
+              "Manual launch flow required",
+              "Anti-bot protections on submit flow"
+            ],
+            "forbidden_actions": [
+              "anti_bot_evasion",
+              "fake_accounts",
+              "launch_spam"
+            ],
+            "manual_prerequisites": [
+              "User creates or confirms Product Hunt account",
+              "User completes launch assets and manual submission"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.705004+02:00"
         }
       ],
       "next_actions": [
@@ -261,7 +483,9 @@
     {
       "channel_id": "github-write",
       "name": "GitHub write access",
-      "recommendation": "continue_legitimate_unblock",
+      "recommendation": "mixed_progress",
+      "status": "blocked",
+      "exact_blocker": "GitHub auth not ready: gh is not logged into any host.",
       "attempts": [
         {
           "action": "prepare_manual_token_upgrade",
@@ -273,16 +497,41 @@
               "User confirms which repos/actions are authorized"
             ]
           },
-          "timestamp": "2026-05-21T18:35:55.064694+02:00"
+          "timestamp": "2026-05-26T11:16:59.705048+02:00"
         },
         {
           "action": "check_auth_status",
-          "status": "partial",
-          "summary": "GitHub auth status checked.",
+          "status": "blocked",
+          "summary": "GitHub auth not ready: gh is not logged into any host.",
           "details": {
             "output": "You are not logged into any GitHub hosts. To log in, run: gh auth login"
           },
-          "timestamp": "2026-05-21T18:35:55.093888+02:00"
+          "timestamp": "2026-05-26T11:16:59.733264+02:00"
+        }
+      ],
+      "proof_artifacts": [
+        {
+          "channel_id": "github-write",
+          "action": "prepare_manual_token_upgrade",
+          "status": "useful",
+          "summary": "Prepared token upgrade checklist for user completion.",
+          "details": {
+            "steps": [
+              "User creates new PAT or GitHub App with required scopes",
+              "User confirms which repos/actions are authorized"
+            ]
+          },
+          "timestamp": "2026-05-26T11:16:59.705048+02:00"
+        },
+        {
+          "channel_id": "github-write",
+          "action": "check_auth_status",
+          "status": "blocked",
+          "summary": "GitHub auth not ready: gh is not logged into any host.",
+          "details": {
+            "output": "You are not logged into any GitHub hosts. To log in, run: gh auth login"
+          },
+          "timestamp": "2026-05-26T11:16:59.733264+02:00"
         }
       ],
       "next_actions": [

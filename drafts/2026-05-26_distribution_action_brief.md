@@ -1,15 +1,14 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-26T11:01:51
+Generated: 2026-05-26T13:19:30
 Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
-- The execution board is still empty inside the active short review window, but the selector drifted into owned_content anyway; perform a concrete distribution-architecture repair now instead of masking the empty-board failure behind a fake fallback lane.
+- The same empty-board distribution-architecture failure already hit the guard-pause path repeatedly again in this review window; escalate into a concrete distribution-architecture repair now instead of logging another guard pause.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 1 directory submissions already shipped in the last 24 hours.
-- 4 live external marketing action(s) already shipped in the last 6 hours.
-- If no new outcome lands first, this short-window congestion clears at 2026-05-26T12:30:22. Before then, another live outbound action would mostly blur measurement.
-- Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.
+- 2 live external marketing action(s) already shipped in the last 6 hours.
+- If no new outcome lands first, this short-window congestion clears at 2026-05-26T13:22:23. Before then, another live outbound action would mostly blur measurement.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
 - Apollo already has an active measurement window until 2026-06-02T07:23:34.700335+02:00, so do not spend this run repackaging the same outbound lane.
@@ -32,6 +31,8 @@ Chosen lane: **distribution_architecture_repair**
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
 - 6 prior distribution-architecture repair run(s) already hit this same empty-board window.
 - A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
+- 7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.
+- 19 prior guard pause run(s) already reused this same fingerprint in the current review window.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate

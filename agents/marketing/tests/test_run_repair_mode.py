@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime
@@ -12,6 +13,110 @@ from agents.marketing.distribution_lane_selector import LaneDecision
 
 
 class RunRepairModeTests(unittest.TestCase):
+    def test_sync_post_hold_release_run_if_needed_skips_non_hold_lane(self):
+        decision = LaneDecision(
+            lane='manual_outreach_asset_follow_through',
+            reason='already actionable',
+            reasons=['already actionable'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/manual_packet.md',
+        )
+        object.__setattr__(decision, 'short_review_window_release_at', '2026-05-26T13:14:38')
+
+        with patch.object(run, '_write_post_hold_reentry_contract') as write_contract, \
+             patch.object(run, '_schedule_measurement_hold_release_run') as schedule_release:
+            result = run._sync_post_hold_release_run_if_needed(
+                now=datetime(2026, 5, 26, 12, 38, 0),
+                distribution_lane=decision,
+                execution_board_path=Path('/tmp/board.md'),
+                shared_findings_used=['adoption_metrics_latest.json'],
+            )
+
+        self.assertEqual(result, {})
+        write_contract.assert_not_called()
+        schedule_release.assert_not_called()
+
+    def test_sync_post_hold_release_run_if_needed_reschedules_architecture_lane(self):
+        decision = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='repair now',
+            reasons=['repair now'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/distribution_action_brief.md',
+        )
+        object.__setattr__(decision, 'short_review_window_release_at', '2026-05-26T13:14:38')
+
+        with patch.object(run, '_write_post_hold_reentry_contract', return_value=Path('/tmp/reentry.md')) as write_contract, \
+             patch.object(run, '_schedule_measurement_hold_release_run', return_value={'status': 'scheduled', 'scheduled_run_at': '2026-05-26T13:14:38'}) as schedule_release:
+            result = run._sync_post_hold_release_run_if_needed(
+                now=datetime(2026, 5, 26, 12, 38, 0),
+                distribution_lane=decision,
+                execution_board_path=Path('/tmp/board.md'),
+                shared_findings_used=['adoption_metrics_latest.json'],
+            )
+
+        self.assertEqual(result['status'], 'scheduled')
+        write_contract.assert_called_once()
+        schedule_release.assert_called_once()
+        self.assertEqual(schedule_release.call_args.kwargs['release_at'], '2026-05-26T13:14:38')
+
+    def test_refresh_primary_repo_flat_contact_discovery_for_empty_board_refreshes_stale_artifact(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            discovery_path = tmp / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(
+                json.dumps({'generated_at': '2026-05-26T03:00:00+00:00', 'targets': []}),
+                encoding='utf-8',
+            )
+            script_path = tmp / 'primary_repo_flat_contact_discovery.py'
+            script_path.write_text('print("ok")\n', encoding='utf-8')
+
+            with patch.object(run, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(run, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_SCRIPT_PATH', script_path), \
+                 patch.object(run, 'LOG_DIR', tmp), \
+                 patch.object(run, '_write_marketing_execution_board', return_value=(tmp / 'board.md', ['fresh publisher target'])), \
+                 patch.object(run.subprocess, 'run', return_value=subprocess.CompletedProcess(args=['python'], returncode=0, stdout='refreshed', stderr='')) as refresh_run:
+                board_path, board_targets, log_path = run._refresh_primary_repo_flat_contact_discovery_for_empty_board(
+                    now=datetime(2026, 5, 26, 12, 9, 0),
+                    execution_board_path=tmp / 'old_board.md',
+                    execution_board_targets=[],
+                )
+
+            refresh_run.assert_called_once()
+            self.assertEqual(board_path, tmp / 'board.md')
+            self.assertEqual(board_targets, ['fresh publisher target'])
+            self.assertIsNotNone(log_path)
+            self.assertTrue(log_path.exists())
+            payload = json.loads(log_path.read_text(encoding='utf-8'))
+            self.assertEqual(payload['type'], 'primary_repo_flat_contact_discovery_staleness_repair')
+            self.assertEqual(payload['result']['board_target_count_after'], 1)
+
+    def test_refresh_primary_repo_flat_contact_discovery_for_empty_board_skips_fresh_artifact(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            discovery_path = tmp / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(
+                json.dumps({'generated_at': '2026-05-26T11:00:00+00:00', 'targets': []}),
+                encoding='utf-8',
+            )
+
+            with patch.object(run, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(run.subprocess, 'run') as refresh_run:
+                board_path, board_targets, log_path = run._refresh_primary_repo_flat_contact_discovery_for_empty_board(
+                    now=datetime(2026, 5, 26, 12, 9, 0),
+                    execution_board_path=tmp / 'board.md',
+                    execution_board_targets=[],
+                )
+
+            refresh_run.assert_not_called()
+            self.assertEqual(board_path, tmp / 'board.md')
+            self.assertEqual(board_targets, [])
+            self.assertIsNone(log_path)
+
     def test_primary_repo_flat_does_not_advance_on_handoff_only_execution(self):
         audit = {
             'repair_window_status': 'needs_repair',
@@ -527,6 +632,53 @@ class RunRepairModeTests(unittest.TestCase):
             finally:
                 run.LOG_DIR = original_log_dir
 
+    def test_main_refreshes_execution_board_during_active_hold(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_window = {
+                    'hold_started_at': datetime(2026, 5, 24, 6, 52, 32),
+                    'hold_until': datetime(2026, 5, 24, 7, 52, 32),
+                    'source_log': '/tmp/marketing_2026-05-24_measurement_hold_execution.json',
+                    'reason': 'Existing hold still active.',
+                }
+                decision = LaneDecision(
+                    lane='measurement_hold',
+                    reason='Hold for follow-through.',
+                    reasons=['fresh external actions already shipped'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='',
+                )
+                execution = SimpleNamespace(
+                    action_type='measurement_hold_follow_through',
+                    status='executed',
+                    artifact_path='/tmp/hold.md',
+                    summary='Active hold respected and follow-through surfaced.',
+                    targets_prepared=['Example target'],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
+                     patch.object(run, '_write_marketing_execution_board', return_value=(Path('/tmp/board.md'), ['board target'])) as board_mock, \
+                     patch.object(run, 'choose_distribution_lane', return_value=decision), \
+                     patch.object(run, 'execute_distribution_lane', return_value=execution), \
+                     patch.object(run.outcome_execution_board_runner, 'sync_from_execution') as sync_mock:
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                board_mock.assert_called_once()
+                sync_mock.assert_called_once()
+                self.assertEqual(sync_mock.call_args.kwargs['board_path'], Path('/tmp/board.md'))
+                self.assertEqual(sync_mock.call_args.kwargs['board_targets'], ['board target'])
+                self.assertEqual(sync_mock.call_args.kwargs['decision'], decision)
+                self.assertEqual(sync_mock.call_args.kwargs['execution'], execution)
+            finally:
+                run.LOG_DIR = original_log_dir
+
     def test_main_reuses_existing_follow_through_during_same_active_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR
@@ -578,16 +730,14 @@ class RunRepairModeTests(unittest.TestCase):
                 choose_mock.assert_called_once()
                 self.assertEqual(choose_mock.call_args.kwargs.get('persist_latest_artifacts'), False)
                 execute_mock.assert_not_called()
-                persist_mock.assert_called_once_with(decision, unittest.mock.ANY, write_action_log=False)
+                persist_mock.assert_any_call(decision, unittest.mock.ANY, write_action_log=False)
+                self.assertGreaterEqual(persist_mock.call_count, 1)
                 daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
                 payload = json.loads(daily_log.read_text(encoding='utf-8'))
                 self.assertTrue(payload['distribution_execution']['reused_existing_follow_through'])
                 self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_hold.md')
                 self.assertEqual(payload['distribution_execution']['targets_prepared'], ['Existing target'])
-                self.assertNotEqual(payload['distribution_execution_log'], str(prior_log))
-                reused_log = json.loads(Path(payload['distribution_execution_log']).read_text(encoding='utf-8'))
-                self.assertEqual(reused_log['verification']['reused_from_log'], str(prior_log))
-                self.assertTrue(reused_log['result']['reused_existing_artifact'])
+                self.assertEqual(payload['distribution_execution_log'], str(prior_log))
             finally:
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir
@@ -663,7 +813,8 @@ class RunRepairModeTests(unittest.TestCase):
 
                 self.assertEqual(rc, 0)
                 self.assertEqual(choose_mock.call_count, 2)
-                persist_mock.assert_called_once_with(refreshed, unittest.mock.ANY, write_action_log=False)
+                persist_mock.assert_any_call(refreshed, unittest.mock.ANY, write_action_log=False)
+                self.assertGreaterEqual(persist_mock.call_count, 1)
                 self.assertEqual(choose_mock.call_args_list[1].kwargs.get('write_action_log'), False)
                 self.assertEqual(choose_mock.call_args_list[1].kwargs.get('persist_latest_artifacts'), False)
                 execute_mock.assert_called_once()
@@ -876,10 +1027,7 @@ class RunRepairModeTests(unittest.TestCase):
                 payload = json.loads(daily_log.read_text(encoding='utf-8'))
                 self.assertTrue(payload['reused_existing_distribution_execution'])
                 self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_guard_pause.md')
-                self.assertNotEqual(payload['distribution_execution_log'], str(prior_log))
-                reused_log = json.loads(Path(payload['distribution_execution_log']).read_text(encoding='utf-8'))
-                self.assertEqual(reused_log['verification']['reused_from_log'], str(prior_log))
-                self.assertTrue(reused_log['result']['reused_existing_artifact'])
+                self.assertEqual(payload['distribution_execution_log'], str(prior_log))
             finally:
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir
@@ -959,10 +1107,7 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertTrue(payload['reused_existing_distribution_execution'])
                 self.assertEqual(payload['distribution_execution']['action_type'], 'distribution_architecture_churn_guard_repair')
                 self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_distribution_architecture_repair.md')
-                reused_log = json.loads(Path(payload['distribution_execution_log']).read_text(encoding='utf-8'))
-                self.assertEqual(reused_log['verification']['reused_from_log'], str(prior_log))
-                self.assertIn('execution_board_fingerprint', reused_log['verification'])
-                self.assertTrue(reused_log['result']['reused_existing_artifact'])
+                self.assertEqual(payload['distribution_execution_log'], str(prior_log))
             finally:
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir

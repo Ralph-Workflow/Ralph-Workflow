@@ -274,6 +274,28 @@ class RedditAutopostTests(unittest.TestCase):
             5,
         )
 
+    def test_choose_opportunity_treats_medium_low_only_threads_as_weak_fit_only(self):
+        medium_low = reddit_autopost.Opportunity(
+            rank=1,
+            title="Interesting thread",
+            url="https://www.reddit.com/r/AI_Agents/comments/example/",
+            community="`r/AI_Agents`",
+            angle="production failure",
+            freshness="during this pass",
+            mention_fit="**medium-low**",
+        )
+        original_load_recent = reddit_autopost.load_recent_post_records
+        original_already_used = reddit_autopost.already_used
+        try:
+            reddit_autopost.load_recent_post_records = lambda hours=24: []
+            reddit_autopost.already_used = lambda url: False
+            chosen, state = reddit_autopost.choose_opportunity([medium_low])
+        finally:
+            reddit_autopost.load_recent_post_records = original_load_recent
+            reddit_autopost.already_used = original_already_used
+        self.assertIsNone(chosen)
+        self.assertEqual(state, "weak_fit_only")
+
     def test_choose_opportunity_prefers_fresh_rate_limited_over_stale_fallback(self):
         fresh = reddit_autopost.Opportunity(
             rank=1,

@@ -108,9 +108,17 @@ def check_auth_status(channel: dict[str, Any]) -> AttemptResult:
             return AttemptResult("check_auth_status", "blocked", "GitHub CLI not installed.", {"tool": "gh"})
         result = command_output([gh, "auth", "status"], timeout=15)
         text = (result.stdout + "\n" + result.stderr).strip()
-        if "Logged in" in text or "logged into" in text:
+        lowered = text.lower()
+        if "not logged into any github hosts" in lowered or "to log in, run: gh auth login" in lowered:
+            return AttemptResult(
+                "check_auth_status",
+                "blocked",
+                "GitHub auth not ready: gh is not logged into any host.",
+                {"output": text[:500]},
+            )
+        if "logged in" in lowered or "logged into" in lowered:
             status = "partial"
-            if "Token scopes" in text or "scopes" in text:
+            if "token scopes" in lowered or "scopes" in lowered:
                 status = "useful"
             return AttemptResult("check_auth_status", status, "GitHub auth status checked.", {"output": text[:500]})
         return AttemptResult("check_auth_status", "blocked", "GitHub auth not ready.", {"output": text[:500]})
@@ -241,6 +249,33 @@ def choose_next_actions(channel: dict[str, Any]) -> list[str]:
     return selected or allowed[:3]
 
 
+def derive_exact_blocker(channel: dict[str, Any], attempts: list[dict[str, Any]]) -> str:
+    blocked_attempts = [attempt for attempt in attempts if attempt["status"] == "blocked"]
+    if blocked_attempts:
+        return blocked_attempts[-1]["summary"]
+    blockers = channel.get("blockers", [])
+    if blockers:
+        return blockers[0]
+    prerequisites = channel.get("manual_prerequisites", [])
+    if prerequisites:
+        return f"Manual prerequisite pending: {prerequisites[0]}"
+    return "No exact blocker recorded."
+
+
+def build_proof_artifacts(channel: dict[str, Any], attempts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "channel_id": channel["id"],
+            "action": attempt["action"],
+            "status": attempt["status"],
+            "summary": attempt["summary"],
+            "details": attempt["details"],
+            "timestamp": attempt["timestamp"],
+        }
+        for attempt in attempts
+    ]
+
+
 def run_channel(channel: dict[str, Any]) -> dict[str, Any]:
     actions = choose_next_actions(channel)
     attempts: list[dict[str, Any]] = []
@@ -261,12 +296,26 @@ def run_channel(channel: dict[str, Any]) -> dict[str, Any]:
     else:
         recommendation = "mixed_progress"
 
+    exact_blocker = derive_exact_blocker(channel, attempts)
+    review = {
+        "reviewed_at": now_iso(),
+        "status": "blocked",
+        "recommendation": recommendation,
+        "exact_blocker": exact_blocker,
+        "proof_artifacts": build_proof_artifacts(channel, attempts),
+        "next_actions": choose_next_actions(channel),
+    }
+    channel["last_review"] = review
+
     return {
         "channel_id": channel["id"],
         "name": channel["name"],
         "recommendation": recommendation,
+        "status": review["status"],
+        "exact_blocker": exact_blocker,
         "attempts": attempts,
-        "next_actions": choose_next_actions(channel),
+        "proof_artifacts": review["proof_artifacts"],
+        "next_actions": review["next_actions"],
     }
 
 

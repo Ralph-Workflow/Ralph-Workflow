@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T04:02:25.438941+00:00",
+  "generated_at": "2026-05-26T10:16:44.592067+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -141,6 +141,11 @@
           "type": "website",
           "value": "https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix",
           "label": "feedback form"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/ggml-org/llama.cpp/issues/new",
+          "label": "GitHub issue"
         }
       ],
       "recommended_next_step": "public feedback-form contact path is now identified"

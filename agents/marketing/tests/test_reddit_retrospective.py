@@ -1,10 +1,18 @@
 import json
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
 from agents.marketing import reddit_retrospective
+
+
+class FixedDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        current = cls(2026, 5, 26, 12, 18, 0, tzinfo=UTC)
+        return current if tz else current.replace(tzinfo=None)
 
 
 class RedditRetrospectiveTests(unittest.TestCase):
@@ -44,6 +52,49 @@ class RedditRetrospectiveTests(unittest.TestCase):
             latest_md = (log_dir / 'reddit_post_analysis_latest.md').read_text(encoding='utf-8')
             self.assertEqual(canonical_md, latest_md)
             self.assertIn('Filtered 1 cadence/structural records', canonical_md)
+
+    def test_main_ignores_stale_posts_for_recent_window_repetition_guards(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            log_dir = root / 'agents/marketing/logs'
+            log_dir.mkdir(parents=True)
+            repeated = "Honestly the part I'd optimize first is the handoff, not the model stack."
+            (log_dir / 'reddit_posts.jsonl').write_text(
+                '\n'.join([
+                    json.dumps({
+                        'platform': 'reddit',
+                        'account': 'Informal-Salt827',
+                        'body': repeated + '\n\nOld body one',
+                        'comment_url': 'https://reddit.test/comment/1',
+                        'timestamp': '2026-05-19T09:37:03+00:00',
+                        'metadata': {'community': 'r/ClaudeCode', 'title': 'Old title one'},
+                    }),
+                    json.dumps({
+                        'platform': 'reddit',
+                        'account': 'Informal-Salt827',
+                        'body': repeated + '\n\nOld body two',
+                        'comment_url': 'https://reddit.test/comment/2',
+                        'timestamp': '2026-05-19T16:01:56+00:00',
+                        'metadata': {'community': 'r/ClaudeCode', 'title': 'Old title two'},
+                    }),
+                ]),
+                encoding='utf-8',
+            )
+
+            with patch.object(reddit_retrospective, 'datetime', FixedDateTime), \
+                 patch.object(reddit_retrospective, 'ROOT', root), \
+                 patch.object(reddit_retrospective, 'LOG_JSONL', log_dir / 'reddit_posts.jsonl'), \
+                 patch.object(reddit_retrospective, 'OUT_MD', log_dir / 'reddit_post_analysis.md'), \
+                 patch.object(reddit_retrospective, 'OUT_JSON', log_dir / 'reddit_post_analysis.json'), \
+                 patch.object(reddit_retrospective, 'OUT_MD_LATEST', log_dir / 'reddit_post_analysis_latest.md'), \
+                 patch.object(reddit_retrospective, 'OUT_JSON_LATEST', log_dir / 'reddit_post_analysis_latest.json'):
+                rc = reddit_retrospective.main()
+
+            self.assertEqual(rc, 0)
+            payload = json.loads((log_dir / 'reddit_post_analysis_latest.json').read_text(encoding='utf-8'))
+            self.assertEqual(payload['recent_window_count'], 0)
+            self.assertEqual(payload['repeated_openings'], [])
+            self.assertEqual(payload['by_community'], {})
 
 
 if __name__ == '__main__':

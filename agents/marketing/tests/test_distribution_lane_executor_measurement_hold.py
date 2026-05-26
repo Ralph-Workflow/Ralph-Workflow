@@ -385,6 +385,39 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertIn('- Hold release at: 2026-05-26T08:57:00', contract_text)
 
+    def test_post_hold_reentry_contract_uses_later_live_short_window_release_than_stale_requested_release(self):
+        now = datetime(2026, 5, 26, 13, 19, 30)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'lane': 'distribution_architecture_repair', 'short_review_window_release_at': '2026-05-26T13:22:23'}),
+                encoding='utf-8',
+            )
+            board_path = drafts_dir / 'marketing_execution_board_latest.md'
+            board_path.write_text('# board\n', encoding='utf-8')
+            discovery_path = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False):
+                contract_path = distribution_lane_executor._write_post_hold_reentry_contract(
+                    now,
+                    release_at='2026-05-26T13:14:38',
+                    execution_board_path=board_path,
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                )
+
+            contract_text = contract_path.read_text(encoding='utf-8')
+
+        self.assertIn('- Hold release at: 2026-05-26T13:22:23', contract_text)
+
     def test_distribution_architecture_repair_does_not_regenerate_delivered_reddit_packet(self):
         now = datetime(2026, 5, 25, 15, 28, 0)
 
@@ -1369,6 +1402,148 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         message = add_call[add_call.index('--message') + 1]
         self.assertIn('verify from the latest distribution-lane and execution-board artifacts that the short review window has actually cleared', message)
         self.assertIn('treat the wake as an early-release scheduling failure', message)
+
+    def test_measurement_hold_scheduler_removes_overdue_idle_release_job_before_reschedule(self):
+        now = datetime(2026, 5, 26, 12, 41, 36)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.side_effect = [
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': [
+                        {
+                            'id': 'overdue-idle-cron',
+                            'name': 'marketing-measurement-hold-release',
+                            'enabled': True,
+                            'status': 'idle',
+                            'schedule': {'kind': 'at', 'at': '2026-05-26T12:30:22'},
+                        }
+                    ]}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'ok': True}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'fresh-cron', 'name': 'marketing-measurement-hold-release'}}), stderr=''),
+                ]
+
+                schedule = distribution_lane_executor._schedule_measurement_hold_release_run(
+                    now=now,
+                    release_at='2026-05-26T13:14:38',
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    reentry_contract_path=str(drafts_dir / 'post_hold_distribution_reentry_latest.md'),
+                )
+
+                rm_call = mock_run.call_args_list[1].args[0]
+
+            cron_log = json.loads((log_dir / 'marketing_2026-05-26_124136_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(schedule['status'], 'scheduled')
+        self.assertEqual(schedule['job_id'], 'fresh-cron')
+        self.assertEqual(schedule['removed_stale_jobs'][0]['job_id'], 'overdue-idle-cron')
+        self.assertEqual(cron_log['cleanup']['removed_stale_jobs'][0]['job_id'], 'overdue-idle-cron')
+        self.assertEqual(rm_call[:4], ['openclaw', 'cron', 'rm', 'overdue-idle-cron'])
+
+    def test_measurement_hold_scheduler_uses_later_live_short_window_release_than_stale_requested_release(self):
+        now = datetime(2026, 5, 26, 13, 19, 30)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'lane': 'distribution_architecture_repair', 'short_review_window_release_at': '2026-05-26T13:22:23'}),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.side_effect = [
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': [
+                        {
+                            'id': 'stale-future-cron',
+                            'name': 'marketing-measurement-hold-release',
+                            'enabled': True,
+                            'status': 'idle',
+                            'schedule': {'kind': 'at', 'at': '2026-05-26T13:14:38'},
+                        }
+                    ]}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'ok': True}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'fresh-cron', 'name': 'marketing-measurement-hold-release'}}), stderr=''),
+                ]
+
+                schedule = distribution_lane_executor._schedule_measurement_hold_release_run(
+                    now=now,
+                    release_at='2026-05-26T13:14:38',
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    reentry_contract_path=str(drafts_dir / 'post_hold_distribution_reentry_latest.md'),
+                )
+
+                add_call = mock_run.call_args_list[2].args[0]
+
+            cron_log = json.loads((log_dir / 'marketing_2026-05-26_131930_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(schedule['status'], 'scheduled')
+        self.assertEqual(schedule['scheduled_run_at'], '2026-05-26T13:22:23')
+        self.assertEqual(schedule['removed_stale_jobs'][0]['job_id'], 'stale-future-cron')
+        self.assertEqual(add_call[add_call.index('--at') + 1], '2026-05-26T13:22:23+02:00')
+        self.assertEqual(cron_log['review_window']['scheduled_run_at'], '2026-05-26T13:22:23')
+
+    def test_current_measurement_hold_release_run_prefers_future_job_over_overdue_idle_one(self):
+        now = datetime(2026, 5, 26, 12, 56, 0)
+
+        with patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({'jobs': [
+                {
+                    'id': 'overdue-idle-cron',
+                    'name': 'marketing-measurement-hold-release',
+                    'enabled': True,
+                    'status': 'idle',
+                    'schedule': {'kind': 'at', 'at': '2026-05-26T12:30:22'},
+                },
+                {
+                    'id': 'future-cron',
+                    'name': 'marketing-measurement-hold-release',
+                    'enabled': True,
+                    'status': 'idle',
+                    'schedule': {'kind': 'at', 'at': '2026-05-26T13:14:38'},
+                },
+            ]}),
+            stderr='',
+        )):
+            scheduled = distribution_lane_executor._current_measurement_hold_release_run(now)
+
+        self.assertEqual(scheduled, '2026-05-26T13:14:38')
+
+    def test_current_measurement_hold_release_run_hides_stale_job_before_current_short_window_release(self):
+        now = datetime(2026, 5, 26, 13, 19, 30)
+
+        with patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({'jobs': [
+                {
+                    'id': 'stale-future-cron',
+                    'name': 'marketing-measurement-hold-release',
+                    'enabled': True,
+                    'status': 'idle',
+                    'schedule': {'kind': 'at', 'at': '2026-05-26T13:14:38'},
+                }
+            ]}),
+            stderr='',
+        )):
+            scheduled = distribution_lane_executor._current_measurement_hold_release_run(
+                now,
+                not_before='2026-05-26T13:22:23',
+            )
+
+        self.assertEqual(scheduled, '')
 
     def test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_when_post_cooldown_run_is_already_scheduled(self):
         now = datetime(2026, 5, 24, 5, 20, 0)
@@ -3047,7 +3222,11 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 '- No do-now handoff packet is currently truthful in this review window.\n',
                 encoding='utf-8',
             )
-            fingerprint = distribution_lane_selector.hashlib.sha1(board_path.read_text(encoding='utf-8').encode('utf-8')).hexdigest()
+            fingerprint = distribution_lane_selector.hashlib.sha1(
+                distribution_lane_selector._normalized_execution_board_text(
+                    board_path.read_text(encoding='utf-8')
+                ).encode('utf-8')
+            ).hexdigest()
             for filename, timestamp, action_type in [
                 ('marketing_2026-05-25_013107_distribution_architecture_repair.json', '2026-05-25T01:31:07', 'distribution_architecture_repair'),
                 ('marketing_2026-05-25_020752_distribution_architecture_repair.json', '2026-05-25T02:07:52', 'distribution_architecture_repair'),
@@ -3104,7 +3283,11 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 '- No do-now handoff packet is currently truthful in this review window.\n',
                 encoding='utf-8',
             )
-            fingerprint = distribution_lane_selector.hashlib.sha1(board_path.read_text(encoding='utf-8').encode('utf-8')).hexdigest()
+            fingerprint = distribution_lane_selector.hashlib.sha1(
+                distribution_lane_selector._normalized_execution_board_text(
+                    board_path.read_text(encoding='utf-8')
+                ).encode('utf-8')
+            ).hexdigest()
             for filename, timestamp, action_type in [
                 ('marketing_2026-05-25_013107_distribution_architecture_repair.json', '2026-05-25T01:31:07', 'distribution_architecture_repair'),
                 ('marketing_2026-05-25_020752_distribution_architecture_repair.json', '2026-05-25T02:07:52', 'distribution_architecture_repair'),

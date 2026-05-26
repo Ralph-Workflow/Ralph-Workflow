@@ -1,8 +1,5 @@
-import json
-import tempfile
 import unittest
-from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from agents.unblocker import run
 
@@ -45,7 +42,19 @@ class UnblockerTests(unittest.TestCase):
         }
         result = run.run_channel(channel)
         self.assertEqual(result["recommendation"], "continue_legitimate_unblock")
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["exact_blocker"], "Manual prerequisite pending: Create account")
         self.assertEqual(len(channel["attempt_history"]), 1)
+        self.assertIn("last_review", channel)
+
+    def test_github_auth_status_not_logged_in_is_blocked(self):
+        channel = {"id": "github-write"}
+        completed = Mock(stdout="", stderr="You are not logged into any GitHub hosts. To log in, run: gh auth login")
+        with patch("agents.unblocker.run.shutil.which", return_value="/usr/bin/gh"):
+            with patch("agents.unblocker.run.command_output", return_value=completed):
+                result = run.check_auth_status(channel)
+        self.assertEqual(result.status, "blocked")
+        self.assertIn("not logged into any host", result.summary)
 
 
 if __name__ == "__main__":

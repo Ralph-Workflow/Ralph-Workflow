@@ -1,8 +1,8 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-26 09:08 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-26 11:49 CEST
 
 Live posting is **not** the move right now.
 
-Latest watchdog state references report `reddit_monitor_2026-05-26_0647.md`.
+Latest watchdog state references report `reddit_monitor_2026-05-26_1119.md`.
 - `status: repair_blocked`
 - `detail: audit:failing_tactic:reddit_style_repetition; retro:repeated_openings:1; retro:channel_concentration:r/ClaudeCode:5/6`
 
@@ -37,41 +37,41 @@ https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai
 
 ---
 
-## 2) `r/AI_Agents` - Reddit reddit.com › r/ai_agents › genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents
-- URL: <https://www.reddit.com/r/AI_Agents/comments/1sysynd/genuine_question_for_people_who_have_built>
+## 2) `r/ClaudeAI` - Reddit reddit.com › r/claudeai › fully switched my entire coding workflow to ai driven development r/ClaudeAI
+- URL: <https://www.reddit.com/r/ClaudeAI/comments/1o90n6b/fully_switched_my_entire_coding_workflow_to_ai>
 - Mention fit: medium-low
 - Best landing page to seed:
-  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
 - Why this stays in the packet:
-  - still usable as a workflow reply without forcing a product pitch
-  - landing page keeps the CTA on a concrete first-use or proof path
-  - best RalphWorkflow angle from the monitor: thread angle: production_failure
+  - pain is already about approval drag, review surface, or what is actually safe to merge
+  - landing page keeps the reply anchored to proof and finish-state clarity
+  - best RalphWorkflow angle from the monitor: thread angle: visible_finish_state
 
 ### Draft body B
 What usually breaks first is not coding speed, it is merge confidence. The run has to leave behind enough proof that someone can decide ship, rerun, or rollback without archaeology.
 
-That is why this thread is worth a careful reply: thread angle: production_failure.
+That is why this thread is worth a careful reply: thread angle: visible_finish_state.
 
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
 
 ---
 
-## 3) `r/AI_Agents` - Reddit reddit.com › r/ai_agents › how are you managing multiple coding agents in parallel without things getting messy? r/AI_Agents
-- URL: <https://www.reddit.com/r/AI_Agents/comments/1st2gkt/how_are_you_managing_multiple_coding_agents_in>
+## 3) `r/cursor` - Reddit reddit.com › r/cursor › after months with ai coding agents, these 5 small workflow changes made the biggest difference r/cursor
+- URL: <https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small>
 - Mention fit: medium-low
 - Best landing page to seed:
-  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
 - Why this stays in the packet:
-  - still usable as a workflow reply without forcing a product pitch
-  - landing page keeps the CTA on a concrete first-use or proof path
-  - best RalphWorkflow angle from the monitor: multiple coding agents, parallel
+  - pain is already about approval drag, review surface, or what is actually safe to merge
+  - landing page keeps the reply anchored to proof and finish-state clarity
+  - best RalphWorkflow angle from the monitor: thread angle: visible_finish_state
 
 ### Draft body C
-Parallel agents only stay useful when one pass owns the shared state at the end. Otherwise you get several plausible local wins and one messy repo-wide review problem.
+The useful threshold is a visible finish state. If the run cannot hand back finished code, tested code, and a clean answer to what changed, the human still inherits the hard part.
 
-That is why this thread is worth a careful reply: multiple coding agents, parallel.
+That is why this thread is worth a careful reply: thread angle: visible_finish_state.
 
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
 
 ---
 

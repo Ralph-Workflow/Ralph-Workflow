@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-26T04:02:25+00:00
+Generated: 2026-05-26T10:16:44+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -61,6 +61,7 @@ Generated: 2026-05-26T04:02:25+00:00
 - Discovered channels:
   - website: https://aisaying.net
   - feedback form: https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix
+  - GitHub issue: https://github.com/ggml-org/llama.cpp/issues/new
 
 ### 5. TLDL
 - Hook: AI Coding Tools Compared (2026): Cursor vs Claude Code vs Copilot — Benchmarks & Pricing

@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-26 (Tuesday) — Reddit monitoring (09:19 UTC / 11:19 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-26_1119.md`
+- **Scan summary:** forced-refresh local monitor returned **25 scanned / 4 shortlisted** with **ok=4 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
+- **Coverage note:** still a **partial-visibility** pass. I ran the local content-first monitor fresh, then cross-checked the result against indexed-web rescue so blocked query families would not be misread as a quiet market.
+- **Current verdict:** still **not** a posting pass. Discussion-fit is real, but honest RalphWorkflow mention fit remains **medium-low** across the surviving threads.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
+  - `r/AI_Agents` — "Seedance 2.0 is impressive. it’s still not a production workflow."
+  - `r/ClaudeAI` — "Fully switched my entire coding workflow to AI driven development"
+  - `r/cursor` — "After months with AI coding agents, these 5 small workflow changes made the biggest difference"
+- **Repeated pains worth tracking:** context continuity, visible finish state, review tax, and the gap between an impressive workflow and code you would actually merge in the morning.
+- **Self-improving lesson:** keep treating `production_failure` and `visible_finish_state` as the strongest content families, but keep the hard **partial-coverage fail-closed gate** because today’s best surfaces were still better as discussion/research than as honest RalphWorkflow mention targets.
+- **Posting note:** No posting attempted. Research-first only while coverage remains partial.
+
 ## 2026-05-26 (Tuesday) — Apollo live-sequence truth repair (05:15 UTC / 07:15 CEST)
 - **What I executed:** patched the Apollo verification/status chain so it reads the authenticated sequence detail directly instead of stopping at the newer launch-ready packet, then re-ran the verifier and status logs.
 - **Primary proof logged:** `agents/marketing/logs/marketing_2026-05-26_071504_apollo_outbound_verification.json`
@@ -6890,3 +6904,35 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-26 09:46:39
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; measurement hold is active until 2026-05-26T09:50:16.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 11:23:56
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 11:38:26
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; measurement hold is active until 2026-05-26T12:30:22.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 11:39:14
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; measurement hold is active until 2026-05-26T12:30:22.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 11:49:36
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; measurement hold is active until 2026-05-26T12:30:22.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 12:18:24
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; measurement hold is active until 2026-05-26T12:30:22.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 13:02:29
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; measurement hold is active until 2026-05-26T13:14:38.
