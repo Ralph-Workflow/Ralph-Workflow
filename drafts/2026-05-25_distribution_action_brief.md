@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
 Generated: 2026-05-25T18:53:00
-Chosen lane: **owned_content**
+Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
-- No stronger autonomous lane detected.
+- The same empty-board distribution-architecture failure already hit the guard-pause path repeatedly again in this review window; escalate into a concrete distribution-architecture repair now instead of logging another guard pause.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 2 directory submissions already shipped in the last 24 hours.
@@ -33,6 +33,10 @@ Chosen lane: **owned_content**
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
+- 1 prior distribution-architecture repair run(s) already hit this same empty-board window.
+- A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
+- 7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.
+- 6 prior guard pause run(s) already reused this same fingerprint in the current review window.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -44,6 +48,8 @@ Chosen lane: **owned_content**
 ## Recent owned-content already shipped
 - Distribution lane execution: owned_content (owned_content)
 
-## Owned-content lane remains allowed
-- No distribution-lane override triggered yet
-- If the next measurement window is still flat, escalate away from Telegraph-first output
+## Immediate lane-architecture repair work
+- Do not emit another measurement hold once the short review window has already cleared
+- Treat this as a process-repair slot: replace stale lane-selection logic, prompts, or scheduling rules that still point back to idle holds
+- Preserve Codeberg as the primary CTA while forcing the next post-hold slot to choose either a truthful untouched lane or a concrete runtime repair
+- Use the execution board and shared findings as the truth source for what is actually blocked, exhausted, or already delivered

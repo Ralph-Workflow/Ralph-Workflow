@@ -3912,6 +3912,40 @@ class DistributionLaneExecutorTests(unittest.TestCase):
         self.assertNotIn('### 1. Directory secondary-surface repair packet', text)
         self.assertIn('Directory secondary-surface repair already shipped in the current review window', text)
 
+    def test_reddit_discussion_asset_ignores_distribution_lane_switch_logs(self):
+        now = datetime(2026, 5, 26, 18, 23, 15)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            decision_brief = drafts_dir / '2026-05-26_distribution_action_brief.md'
+            decision_brief.write_text(
+                '# Ralph Workflow Distribution Action Brief\n'
+                'Generated: 2026-05-26T18:15:52\n'
+                'Chosen lane: **reddit_execution_check**\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-26_reddit_execution_check.json').write_text(json.dumps({
+                'timestamp': '2026-05-26T18:15:52.656483',
+                'run_type': 'marketing-distribution-lane',
+                'chosen_action': {
+                    'type': 'distribution_lane_switch',
+                    'channel': 'reddit_execution_check',
+                    'title': 'Distribution lane decision: reddit_execution_check',
+                    'draft': str(decision_brief),
+                },
+                'result': {'status': 'prepared', 'ok': True},
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir):
+                asset = distribution_lane_executor._reddit_discussion_asset_waiting_for_execution(now)
+
+        self.assertIsNone(asset)
+
     def test_marketing_execution_board_hides_reddit_execution_check_after_aligned_rerun_exists(self):
         now = datetime(2026, 5, 26, 17, 33, 9)
 

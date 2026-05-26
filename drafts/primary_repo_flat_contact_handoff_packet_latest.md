@@ -1,5 +1,5 @@
 # Ralph Workflow Primary-Repo-Flat Publisher Contact Packet
-Generated: 2026-05-26T14:10:21
+Generated: 2026-05-26T18:46:49
 
 ## Why this exists now
 - Codeberg adoption is still flat in the active window.
@@ -15,6 +15,7 @@ Generated: 2026-05-26T14:10:21
 
 ## Live third-party proof to reuse
 - Confirmed public listings already exist; cite these instead of sounding like every submission is still pending.
+- ClaudeCodeAlternatives — https://claude-code-alternatives.com/cli-agents/ralph-workflow/ (includes both Codeberg and GitHub links) (Submitted 2026-05-24; initial POST returned HTTP 302 and an immediate second attempt said the Codeberg URL was already taken, so treat as recorded/pending until a public listing resolves.)
 - SaaSHub — https://saashub.com/ralph-workflow (includes both Codeberg and GitHub links)
 - ToolWise — https://toolwise.ai/tools/ralph-workflow (routes to Codeberg first) (Existing ToolWise listing already live and pointing to the primary Codeberg repo.)
 

@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-26T16:49:12.570069",
+  "timestamp": "2026-05-26T18:15:52.656483",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "reddit_execution_check",
     "channel": "reddit_execution_check",
     "title": "Distribution lane execution: reddit_execution_check",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/reddit_execution_check_2026-05-26_164912.md"
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/reddit_execution_check_2026-05-26_181552.md"
   },
   "why_this_action": {
     "summary": " Reddit execution check ran: autopost_attempted. No live post this run. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",

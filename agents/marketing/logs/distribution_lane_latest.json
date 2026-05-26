@@ -1,6 +1,6 @@
 {
-  "lane": "owned_content",
-  "reason": "No stronger autonomous lane detected.",
+  "lane": "distribution_architecture_repair",
+  "reason": "The same empty-board distribution-architecture failure already hit the guard-pause path repeatedly again in this review window; escalate into a concrete distribution-architecture repair now instead of logging another guard pause.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "1 owned-content posts already shipped in the last 36 hours.",
@@ -30,7 +30,11 @@
     "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
     "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
     "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
-    "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
+    "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
+    "1 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+    "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
+    "7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.",
+    "6 prior guard pause run(s) already reused this same fingerprint in the current review window."
   ],
   "owned_content_posts_last_36h": 1,
   "unsubmitted_directory_channels": [],

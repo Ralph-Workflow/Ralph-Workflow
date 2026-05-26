@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-26T17:57:35
-Chosen lane: **reddit_execution_check**
+Generated: 2026-05-26T18:46:49
+Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
-- The board is empty and Reddit browser session is confirmed ready — Reddit is the only genuinely executable lane right now. All other lanes produce only prepared artifacts that leave the board empty and perpetuate the repair grinding loop. Route to reddit_execution_check to trigger the reddit-watchdog pipeline and ship a real external action.
+- The same empty-board distribution-architecture failure already hit the guard-pause path repeatedly again in this review window; escalate into a concrete distribution-architecture repair now instead of logging another guard pause.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 1 directory submissions already shipped in the last 24 hours.
@@ -20,6 +20,7 @@ Chosen lane: **reddit_execution_check**
 - An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.
 - The primary-repo-flat publisher contact packet is already current for the remaining untouched target set, so the loop should enforce follow-through instead of pretending a fresh packet is needed.
 - The same primary-repo-flat publisher packet has already been prepared 2 time(s) in the last 48 hours without a live delivery window, so selecting it again would be fake progress.
+- The execution board still marks the current primary-repo-flat packet as post-hold only until 2026-05-26T20:55:18, so surfacing it as a do-now lane would be fake progress.
 - The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
@@ -30,6 +31,10 @@ Chosen lane: **reddit_execution_check**
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
+- 2 prior distribution-architecture repair run(s) already hit this same empty-board window.
+- A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
+- 7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.
+- 19 prior guard pause run(s) already reused this same fingerprint in the current review window.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -41,6 +46,8 @@ Chosen lane: **reddit_execution_check**
 ## Recent owned-content already shipped
 - Distribution lane execution: owned_content (owned_content)
 
-## Owned-content lane remains allowed
-- No distribution-lane override triggered yet
-- If the next measurement window is still flat, escalate away from Telegraph-first output
+## Immediate lane-architecture repair work
+- Do not emit another measurement hold once the short review window has already cleared
+- Treat this as a process-repair slot: replace stale lane-selection logic, prompts, or scheduling rules that still point back to idle holds
+- Preserve Codeberg as the primary CTA while forcing the next post-hold slot to choose either a truthful untouched lane or a concrete runtime repair
+- Use the execution board and shared findings as the truth source for what is actually blocked, exhausted, or already delivered

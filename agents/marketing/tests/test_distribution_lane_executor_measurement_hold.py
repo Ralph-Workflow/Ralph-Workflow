@@ -223,6 +223,59 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             board_text = (drafts_dir / 'marketing_execution_board_latest.md').read_text(encoding='utf-8')
             self.assertIn('Manual community discussion asset', board_text)
 
+    def test_distribution_architecture_repair_refreshes_stale_manual_packets(self):
+        now = datetime(2026, 5, 26, 18, 42, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            board_path = drafts_dir / 'marketing_execution_board_latest.md'
+
+            def fake_write_board(_now):
+                board_path.write_text('# board\n', encoding='utf-8')
+                return board_path, ['TLDL']
+
+            decision = LaneDecision(
+                lane='distribution_architecture_repair',
+                reason='repair the empty board',
+                reasons=['empty board'],
+                owned_content_posts_last_36h=0,
+                unsubmitted_directory_channels=[],
+                shared_findings_used=['adoption_metrics_latest.json: Codeberg movement is the primary success gate'],
+                artifact_path=str(drafts_dir / 'distribution_action_brief.md'),
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={}), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', side_effect=fake_write_board), \
+                 patch.object(distribution_lane_executor, '_write_reddit_discussion_handoff_asset', return_value=None), \
+                 patch.object(distribution_lane_executor, '_refresh_manual_execution_assets', return_value=(
+                     ['primary-repo-flat publisher contact packet → /tmp/primary_repo_flat_contact_handoff_packet_latest.md'],
+                     ['TLDL'],
+                 )), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
+                 patch.object(distribution_lane_selector, '_distribution_architecture_repair_state', return_value={
+                     'third_strike': False,
+                     'execution_board_fingerprint': 'abc123',
+                     'repeat_count': 2,
+                     'guard_follow_through_count': 0,
+                     'guard_pause_count': 0,
+                 }), \
+                 patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stdout='', stderr='')):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now=now)
+
+            self.assertEqual(execution.action_type, 'distribution_architecture_repair')
+            self.assertIn('Refreshed stale manual execution packets', execution.summary)
+            self.assertIn('TLDL', execution.targets_prepared)
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('## Same-run packet repairs applied', artifact_text)
+            self.assertIn('primary-repo-flat publisher contact packet', artifact_text)
+
     def test_execution_board_hides_already_delivered_manual_reddit_asset(self):
         now = datetime(2026, 5, 25, 15, 11, 0)
 

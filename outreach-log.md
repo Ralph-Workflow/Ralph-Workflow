@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-26 (Tuesday) — Reddit monitoring (16:28 UTC / 18:28 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-26_1828.md`
+- **Scan summary:** forced-refresh local monitor returned **24 scanned / 4 shortlisted** with **ok=4 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
+- **Coverage note:** still a **partial-visibility** pass. I ran the local content-first monitor fresh again and treated blocked query families as degraded telemetry, not as evidence that Reddit was quiet.
+- **Current verdict:** still **not** a posting pass. Discussion-fit is real, but honest RalphWorkflow mention fit remains **medium-low** across the surviving threads.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
+  - `r/AI_Agents` — "Agents vs workflows"
+  - `r/ClaudeAI` — "Fully switched my entire coding workflow to AI driven development"
+  - `r/CursorAI` — "After months with AI coding agents, these 5 small workflow changes made the biggest difference"
+- **Repeated pains worth tracking:** context continuity, agents-vs-workflows confusion, visible finish state, and the gap between AI-driven throughput and code you would actually merge in the morning.
+- **Self-improving lesson:** keep ranking **production_failure** and **visible_finish_state** above approval-loop and remote-control families, but add **agents vs workflows** as a durable research lens. Keep the hard **partial-coverage fail-closed gate** because the strongest surfaces are still better as research than as honest RalphWorkflow mention targets.
+- **Posting note:** No posting attempted. Research-first only while coverage remains partial.
+
 ## 2026-05-26 (Tuesday) — Reddit monitoring (09:19 UTC / 11:19 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-26_1119.md`
 - **Scan summary:** forced-refresh local monitor returned **25 scanned / 4 shortlisted** with **ok=4 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
@@ -7031,4 +7045,8 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-26 18:04:36
+- **Note:** Momentum check found: reddit_monitor_degraded. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure. Active measurement hold remains in force until 2026-05-26T20:55:18, so this run is intentionally suppressing new reset churn.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 18:47:57
 - **Note:** Momentum check found: reddit_monitor_degraded. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure. Active measurement hold remains in force until 2026-05-26T20:55:18, so this run is intentionally suppressing new reset churn.

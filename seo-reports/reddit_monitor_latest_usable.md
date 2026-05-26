@@ -1,9 +1,9 @@
-# Reddit monitor — RalphWorkflow — 2026-05-26 11:19 Europe/Berlin
+# Reddit monitor — RalphWorkflow — 2026-05-26 18:28 Europe/Berlin
 
 ## Snapshot
-- **Threads/posts scanned:** 25
+- **Threads/posts scanned:** 24
 - **Shortlisted:** 4
-- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 21
+- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 20
 - **Query attempts:** 9
 - **Search diagnostics:** ok=4, reddit_ip_blocked=4, time_budget_exceeded=1
 - **Prior context reviewed first:** `agents/marketing/REDDIT_LEARNINGS.md`, `outreach-log.md`, `agents/marketing/logs/reddit_posts.jsonl`, `agents/marketing/logs/reddit_post_analysis.md`
@@ -44,11 +44,11 @@ Broad content-first search across Reddit around:
 - Best RalphWorkflow angle: **content-family match: production_failure**
 - Why it fits: content-first match from `production_failure` query family; query=`workflow continuity ai agents reddit`
 
-### 2) Reddit reddit.com › r/ai_agents › seedance 2.0 is impressive. it’s still not a production workflow. r/AI_Agents
-- URL: <https://www.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a>
+### 2) Reddit reddit.com › r/ai_agents › agents vs workflows r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1syk8dy/agents_vs_workflows>
 - Community: `r/AI_Agents`
 - Freshness: during this pass
-- Direct reply fit: **high**
+- Direct reply fit: **medium-high**
 - Mention fit: **medium-low**
 - Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
 - Best RalphWorkflow angle: **content-family match: production_failure**
@@ -64,9 +64,9 @@ Broad content-first search across Reddit around:
 - Best RalphWorkflow angle: **content-family match: visible_finish_state**
 - Why it fits: content-first match from `visible_finish_state` query family; query=`what changed AI coding workflow reddit`
 
-### 4) Reddit reddit.com › r/cursor › after months with ai coding agents, these 5 small workflow changes made the biggest difference r/cursor
-- URL: <https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small>
-- Community: `r/cursor`
+### 4) Reddit reddit.com › r/cursorai › after months with ai coding agents, these 5 small workflow changes made the biggest difference r/CursorAI
+- URL: <https://www.reddit.com/r/CursorAI/comments/1rynst9/after_months_with_ai_coding_agents_these_5_small>
+- Community: `r/CursorAI`
 - Freshness: during this pass
 - Direct reply fit: **medium-high**
 - Mention fit: **medium-low**
