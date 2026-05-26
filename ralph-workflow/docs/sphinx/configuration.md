@@ -14,8 +14,6 @@ Ralph Workflow keeps the core simple, but the docs should still point you straig
 Bring your existing coding agents and keep your keys to yourself.
 Most operators mainly need to wire Ralph Workflow into agent CLIs they already trust, not re-home their model secrets.
 
-> **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) before diving into config details.
-
 If your immediate question is **"Where do I edit `ralph-workflow.toml`?"**, the short answer is:
 
 - **Global defaults for all projects** → `~/.config/ralph-workflow.toml`
