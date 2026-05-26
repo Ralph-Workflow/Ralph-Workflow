@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-05-26T07:43:55.659509+02:00",
+  "type": "reddit_next_window_runtime_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "goal": "Improve the post-hold Reddit lane so the next safe window has a stronger Codeberg-first packet instead of malformed placeholder copy.",
+  "shared_findings_used": [
+    "marketing_execution_board_latest.md: no truthful do-now handoff packet in current review window",
+    "distribution_lane_latest.json: hold window active until 2026-05-26T08:57:00 with Reddit next-window work allowed only as follow-through repair",
+    "reddit_monitor_latest_usable.md: three fresh r/AI_Agents discussion opportunities",
+    "reddit_post_analysis_latest.json: repeated openings and ClaudeCode concentration must not repeat",
+    "adoption_metrics_latest.json: Codeberg remains the primary success gate"
+  ],
+  "changes": [
+    "Fixed reddit_next_window_packet.py fallback source to use agents/marketing/logs/next_reddit_bodies.md instead of a missing drafts path.",
+    "Sanitized monitor-angle text and removed GitHub mirror leakage from next-window packet bodies.",
+    "Added packet-ready normalization so malformed one-line placeholder replies are rewritten into cleaner thread-specific drafts.",
+    "Regenerated drafts/reddit_next_window_packets_latest.md for the next safe window."
+  ],
+  "artifacts": [
+    "/home/mistlight/.openclaw/workspace/drafts/reddit_next_window_packets_latest.md",
+    "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_reddit_next_window_packets.md"
+  ],
+  "tests": [
+    "python3 -m unittest agents.marketing.tests.test_reddit_next_window_packet"
+  ],
+  "files_changed": [
+    "agents/marketing/reddit_next_window_packet.py",
+    "agents/marketing/tests/test_reddit_next_window_packet.py",
+    "drafts/reddit_next_window_packets_latest.md",
+    "drafts/2026-05-26_reddit_next_window_packets.md"
+  ],
+  "measurement_window": {
+    "next_safe_window_recheck_at": "2026-05-26T08:57:00+02:00",
+    "success_signal": "Next post-hold Reddit pass has usable non-duplicative draft copy anchored to Codeberg-first proof links."
+  }
+}

@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-26T06:05:54.391473",
+  "timestamp": "2026-05-26T07:40:04.740400",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "distribution_architecture_guard_pause",
     "channel": "distribution_architecture_guard_pause",
     "title": "Distribution lane execution: distribution_architecture_guard_pause",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_060554_distribution_architecture_guard_pause.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_074004_distribution_architecture_guard_pause.md"
   },
   "why_this_action": {
     "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
@@ -13,11 +13,10 @@
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
       "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "targets_prepared": [
-      "Ralph Workflow curator follow-up \u2014 Codeberg CTA"
-    ]
+    "targets_prepared": []
   },
   "result": {
     "status": "skipped_repair",
@@ -26,6 +25,6 @@
     "blocking_factors": []
   },
   "verification": {
-    "execution_board_fingerprint": "e5d3a7781998d45ff87b21d5d038a40147bea076"
+    "execution_board_fingerprint": "eff56ebdceec69dc09761998e238b88d540b2439"
   }
 }

@@ -1,8 +1,8 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-26 06:06 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-26 07:49 CEST
 
 Live posting is **not** the move right now.
 
-Latest watchdog state references report `reddit_monitor_2026-05-25_2122.md`.
+Latest watchdog state references report `reddit_monitor_2026-05-26_0647.md`.
 - `status: repair_blocked`
 - `detail: retro:repeated_openings:1; retro:channel_concentration:r/ClaudeCode:5/6`
 
@@ -26,10 +26,12 @@ Messaging guardrails preserved in every draft:
 - Why this stays in the packet:
   - pain is already about approval drag, review surface, or what is actually safe to merge
   - landing page keeps the reply anchored to proof and finish-state clarity
-  - best RalphWorkflow angle from the monitor: *content-family match: production_failure
+  - best RalphWorkflow angle from the monitor: thread angle: production_failure
 
 ### Draft body A
-What stands out to me here is *content-family match: production_failure**; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed.
+The thing I would optimize first is not more autonomy, it is the finish state. If the run cannot hand back finished code, tested code, and a clean answer to what changed, the human still inherits the hard part.
+
+That is why this thread is worth a careful reply: thread angle: production_failure.
 
 https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
 
@@ -43,12 +45,33 @@ https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai
 - Why this stays in the packet:
   - still usable as a workflow reply without forcing a product pitch
   - landing page keeps the CTA on a concrete first-use or proof path
-  - best RalphWorkflow angle from the monitor: *content-family match: production_failure
+  - best RalphWorkflow angle from the monitor: thread angle: production_failure
 
 ### Draft body B
-The useful bar here is finished code, tested code, and a clean answer to what changed before the run counts as done. Ralph Workflow is a free/open-source example of that approach on your own machine, with the primary repo on Codeberg: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+Most production pain here is a re-entry problem, not an intelligence problem. If the next person cannot see what changed, what passed, and what still looks risky, the workflow still fails at handoff time.
 
-If the run cannot do that without babysitting, it is still pushing the hard part back onto the human.
+That is why this thread is worth a careful reply: thread angle: production_failure.
+
+https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+
+---
+
+## 3) `r/AI_Agents` - Reddit reddit.com › r/ai_agents › how are you managing multiple coding agents in parallel without things getting messy? r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1st2gkt/how_are_you_managing_multiple_coding_agents_in>
+- Mention fit: medium-low
+- Best landing page to seed:
+  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+- Why this stays in the packet:
+  - still usable as a workflow reply without forcing a product pitch
+  - landing page keeps the CTA on a concrete first-use or proof path
+  - best RalphWorkflow angle from the monitor: multiple coding agents, parallel
+
+### Draft body C
+Parallel agents only stay useful when one pass owns the shared state at the end. Otherwise you get several plausible local wins and one messy repo-wide review problem.
+
+That is why this thread is worth a careful reply: multiple coding agents, parallel.
+
+https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
 
 ---
 

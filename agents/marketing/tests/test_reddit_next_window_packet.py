@@ -203,6 +203,84 @@ class RedditNextWindowPacketTests(unittest.TestCase):
         self.assertIn("operating system for autonomous coding", entries[0].body)
         self.assertIn("Claude Code stuck in approval loop", packet)
 
+    def test_load_fresh_bodies_ab_reads_runtime_log_source(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source = tmp / "next_reddit_bodies.md"
+            source.write_text(
+                """## Body A — r/ClaudeCode
+Suggested body:
+> Fresh body here
+""",
+                encoding="utf-8",
+            )
+            with patch.object(reddit_next_window_packet, "_NEXT_BODIES_PATH", source):
+                bodies = reddit_next_window_packet.load_fresh_bodies_ab()
+        self.assertEqual(bodies["r/claudecode"], "Fresh body here")
+
+    def test_packet_ready_body_sanitizes_generic_angle_stub_and_removes_mirror_link(self):
+        opp = reddit_autopost.Opportunity(
+            rank=1,
+            title="How are you managing multiple coding agents in parallel without things getting messy?",
+            url="https://www.reddit.com/r/AI_Agents/comments/example/",
+            community="r/AI_Agents",
+            angle="**content-family match: production_failure**",
+            freshness="today",
+            mention_fit="medium-low",
+        )
+        raw = (
+            "What stands out to me here is **content-family match: production_failure**; the useful bar is still simple: no babysitting.\n\n"
+            "https://codeberg.org/RalphWorkflow/Ralph-Workflow / https://github.com/Ralph-Workflow/Ralph-Workflow"
+        )
+        cleaned = reddit_next_window_packet._packet_ready_body(raw, opp, "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md")
+        self.assertIn("thread angle: production_failure", cleaned.lower())
+        self.assertIn("finish state", cleaned.lower())
+        self.assertNotIn("github.com/Ralph-Workflow/Ralph-Workflow", cleaned)
+        self.assertIn("codeberg.org/RalphWorkflow/Ralph-Workflow", cleaned)
+
+    def test_build_packet_rewrites_duplicate_generic_openings_inside_same_packet(self):
+        report = Path("/tmp/reddit_monitor_2026-05-26_duplicate_openings.md")
+        report.write_text(
+            """### 1) genuine question for people who have built multi-agent systems in production
+- URL: https://www.reddit.com/r/AI_Agents/comments/one/
+- Community: `r/AI_Agents`
+- Freshness: today
+- Best RalphWorkflow angle:
+  - **content-family match: production_failure**
+- Mention fit: **medium-low**
+
+### 2) seedance 2.0 is impressive. it’s still not a production workflow.
+- URL: https://www.reddit.com/r/AI_Agents/comments/two/
+- Community: `r/AI_Agents`
+- Freshness: today
+- Best RalphWorkflow angle:
+  - **content-family match: production_failure**
+- Mention fit: **medium-low**
+""",
+            encoding="utf-8",
+        )
+        raw_body = (
+            "What stands out to me here is **content-family match: production_failure**; the useful bar is still simple: no babysitting.\n\n"
+            "https://codeberg.org/RalphWorkflow/Ralph-Workflow / https://github.com/Ralph-Workflow/Ralph-Workflow"
+        )
+        original_already_used = reddit_autopost.already_used
+        try:
+            reddit_autopost.already_used = lambda url: False
+            with patch.object(reddit_next_window_packet, "load_recent_bodies", return_value=[]), \
+                 patch.object(reddit_next_window_packet, "load_structural_bodies", return_value={}), \
+                 patch.object(reddit_next_window_packet, "load_fresh_bodies_ab", return_value={}), \
+                 patch.object(reddit_next_window_packet.reddit_autopost, "build_comment", return_value=raw_body):
+                _, entries = reddit_next_window_packet.build_packet(report, max_entries=2)
+        finally:
+            reddit_autopost.already_used = original_already_used
+
+        self.assertEqual(len(entries), 2)
+        self.assertNotEqual(
+            entries[0].body.split("\n\n", 1)[0],
+            entries[1].body.split("\n\n", 1)[0],
+        )
+        self.assertTrue(all("github.com/Ralph-Workflow/Ralph-Workflow" not in entry.body for entry in entries))
+
 
 if __name__ == "__main__":
     unittest.main()

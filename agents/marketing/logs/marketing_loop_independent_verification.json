@@ -1,27 +1,26 @@
 {
-  "checked_at": "2026-05-26T06:06:33.753773+02:00",
+  "checked_at": "2026-05-26T06:58:59.241769+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-26T06:06:33.728323"
+      "summary": "runner ok=True generated_at=2026-05-26T06:58:59.221536"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_channel_blocked', 'apollo_channel_blocked', 'primary_repo_adoption_flat']"
+      "summary": "momentum status=watch; actions=[]; watch_actions=['primary_repo_adoption_flat', 'measurement_hold_active']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "repair_window_status=measurement_pending; failing_tactics=['primary_repo_flat_window', 'mirror_repo_flat_window', 'same_family_publisher_overlap']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat', 'same_family_publisher_overlap']"
+      "summary": "repair_window_status=measurement_pending; failing_tactics=['reddit_style_repetition', 'primary_repo_flat_window', 'mirror_repo_flat_window', 'same_family_publisher_overlap']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat', 'repetitive_outreach', 'same_family_publisher_overlap']"
     }
   ],
   "watchpoints": [
-    "primary repo adoption remains measurement-pending after shipped repairs",
-    "reddit is blocked from this environment, but a replacement distribution execution has already shipped",
-    "Apollo outbound is externally blocked (cloudflare_auth_blocked) with fresh telemetry"
+    "primary repo adoption remains measurement-pending after shipped repairs"
   ],
   "blockers": [
-    "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
+    "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
+    "Measurement hold is active, but the consolidated execution board is missing or stale."
   ]
 }

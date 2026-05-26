@@ -979,6 +979,42 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
             self.assertEqual(decision.lane, 'distribution_reset')
 
+    def test_execute_repo_conversion_proof_asset_refreshes_execution_board(self):
+        now = datetime(2026, 5, 26, 6, 36, 18)
+        decision = SimpleNamespace(
+            lane='repo_conversion_proof_asset',
+            shared_findings_used=[],
+            short_review_window_release_at=None,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            artifact = tmp / 'repo_conversion.md'
+            board = tmp / 'board.md'
+            call_order: list[str] = []
+
+            def fake_write_repo_conversion_proof_asset(_now):
+                call_order.append('proof_asset')
+                artifact.write_text('# repo conversion proof asset\n', encoding='utf-8')
+                return artifact, ['START_HERE.md']
+
+            def fake_write_action_log(_execution, _now):
+                call_order.append('action_log')
+
+            def fake_write_marketing_execution_board(_now):
+                call_order.append('execution_board')
+                board.write_text('# board refreshed\n', encoding='utf-8')
+                return board, []
+
+            with patch.object(distribution_lane_executor, '_write_repo_conversion_proof_asset', side_effect=fake_write_repo_conversion_proof_asset), \
+                 patch.object(distribution_lane_executor, '_write_action_log', side_effect=fake_write_action_log), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', side_effect=fake_write_marketing_execution_board):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+                self.assertTrue(board.exists())
+
+        self.assertEqual(execution.action_type, 'repo_conversion_proof_asset')
+        self.assertEqual(call_order, ['proof_asset', 'action_log', 'execution_board'])
+
     def test_prefers_apollo_launch_handoff_when_launch_ready_but_not_live(self):
         now = datetime(2026, 5, 26, 4, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}

@@ -85,7 +85,8 @@ class ApolloSequenceStatusTests(unittest.TestCase):
             }), encoding='utf-8')
             with patch.object(apollo_outbound_verifier, 'LOG_DIR', log_dir), \
                  patch.object(apollo_outbound_verifier, 'STATUS_PATH', status_path), \
-                 patch.object(apollo_outbound_verifier, 'OUTPUT_MD', log_dir / 'apollo_outbound_verification_latest.md'):
+                 patch.object(apollo_outbound_verifier, 'OUTPUT_MD', log_dir / 'apollo_outbound_verification_latest.md'), \
+                 patch.object(apollo_outbound_verifier, '_verify_live_sequence_from_apollo', return_value=None):
                 payload = apollo_outbound_verifier.build_verification(datetime.fromisoformat('2026-05-25T12:00:00+02:00'))
         self.assertEqual(payload['result']['status'], 'launch_ready_needs_send_confirmation')
         self.assertFalse(payload['result']['outcome_ready'])
@@ -129,11 +130,37 @@ class ApolloSequenceStatusTests(unittest.TestCase):
             }), encoding='utf-8')
             with patch.object(apollo_outbound_verifier, 'LOG_DIR', log_dir), \
                  patch.object(apollo_outbound_verifier, 'STATUS_PATH', status_path), \
-                 patch.object(apollo_outbound_verifier, 'OUTPUT_MD', log_dir / 'apollo_outbound_verification_latest.md'):
+                 patch.object(apollo_outbound_verifier, 'OUTPUT_MD', log_dir / 'apollo_outbound_verification_latest.md'), \
+                 patch.object(apollo_outbound_verifier, '_verify_live_sequence_from_apollo', return_value=None):
                 payload = apollo_outbound_verifier.build_verification(datetime.fromisoformat('2026-05-25T12:00:00+02:00'))
         self.assertEqual(payload['result']['status'], 'runtime_auth_blocked')
         self.assertEqual(payload['result']['runtime_blocker_status'], 'cloudflare_auth_blocked')
         self.assertFalse(payload['result']['outcome_ready'])
+
+    def test_apollo_outbound_verifier_main_refreshes_audit_and_execution_board(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            status_path = log_dir / 'apollo_sequence_status_latest.json'
+            status_path.write_text(json.dumps({
+                'status': 'verified_live_sequence',
+                'record_count': 5,
+                'sequence_name': 'Seq',
+                'final_url': 'https://app.apollo.io/#/sequences/seq',
+                'needs_live_verification': False,
+                'evidence': ['live proof'],
+            }), encoding='utf-8')
+            with patch.object(apollo_outbound_verifier, 'LOG_DIR', log_dir), \
+                 patch.object(apollo_outbound_verifier, 'STATUS_PATH', status_path), \
+                 patch.object(apollo_outbound_verifier, 'OUTPUT_MD', log_dir / 'apollo_outbound_verification_latest.md'), \
+                 patch.object(apollo_outbound_verifier, '_refresh_dependent_truths', return_value={'ok': True, 'refreshed': ['marketing_workflow_audit_latest', 'marketing_execution_board_latest'], 'errors': []}) as refresh_mock:
+                rc = apollo_outbound_verifier.main()
+            self.assertEqual(rc, 0)
+            refresh_mock.assert_called_once()
+            logs = sorted(log_dir.glob('marketing_*_apollo_outbound_verification.json'))
+            self.assertTrue(logs)
+            payload = json.loads(logs[-1].read_text(encoding='utf-8'))
+            self.assertEqual(payload['post_verification_refresh']['refreshed'], ['marketing_workflow_audit_latest', 'marketing_execution_board_latest'])
+            self.assertIn('Refreshed dependent audit/board artifacts', ' '.join(payload['result']['notes']))
 
 
 class ApolloSequenceLauncherTests(unittest.TestCase):
@@ -335,6 +362,103 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
         self.assertEqual(payload['structural_capability']['name'], 'execution_board_follow_through_runner')
         self.assertEqual(payload['execution_board_targets'], ['Target A'])
         self.assertTrue(payload['repair_needed_at_start'])
+
+    def test_executes_repo_conversion_proof_asset_when_selector_picks_it(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            log_dir = root / 'logs'
+            drafts_dir = root / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            audit_path = log_dir / 'marketing_workflow_audit_latest.json'
+            audit_path.write_text(json.dumps({
+                'repair_actions': [
+                    {'failure_type': 'outcome_system_underpowered', 'repair_state': 'needs_execution'}
+                ]
+            }), encoding='utf-8')
+            fake_decision = LaneDecision(
+                lane='repo_conversion_proof_asset',
+                reason='Need a Codeberg-first proof asset.',
+                reasons=['StackOverflow slot is exhausted; proof asset is the truthful lane.'],
+                owned_content_posts_last_36h=0,
+                unsubmitted_directory_channels=[],
+                shared_findings_used=['adoption_metrics_latest.json'],
+                artifact_path='/tmp/brief.md',
+            )
+            fake_execution = type('Execution', (), {
+                'lane': 'repo_conversion_proof_asset',
+                'action_type': 'repo_conversion_proof_asset',
+                'status': 'executed',
+                'artifact_path': '/tmp/proof.md',
+                'summary': 'Prepared repo conversion proof asset.',
+                'targets_prepared': ['Codeberg-first proof asset'],
+                'shared_findings_used': ['adoption_metrics_latest.json'],
+                'live_external_action': False,
+                'blocking_factors': [],
+            })()
+            with patch.object(outcome_execution_board_runner, 'LOG_DIR', log_dir), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_JSON', log_dir / 'outcome_execution_board_latest.json'), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_MD', log_dir / 'outcome_execution_board_latest.md'), \
+                 patch.object(outcome_execution_board_runner, 'AUDIT_JSON', audit_path), \
+                 patch('agents.marketing.outcome_execution_board_runner._write_marketing_execution_board', return_value=(drafts_dir / 'marketing_execution_board_latest.md', [])), \
+                 patch('agents.marketing.outcome_execution_board_runner.choose_distribution_lane', return_value=fake_decision), \
+                 patch('agents.marketing.outcome_execution_board_runner.execute_distribution_lane', return_value=fake_execution) as exec_mock:
+                payload = outcome_execution_board_runner.run(datetime.fromisoformat('2026-05-26T06:17:00+02:00'))
+        exec_mock.assert_called_once()
+        self.assertEqual(payload['selected_lane'], 'repo_conversion_proof_asset')
+        self.assertEqual(payload['selected_action_type'], 'repo_conversion_proof_asset')
+        self.assertEqual(payload['artifact_path'], '/tmp/proof.md')
+        self.assertEqual(payload['measurement_window'], 'Review repo-visit and conversion movement within 7 days.')
+
+    def test_executes_distribution_architecture_repair_when_selector_picks_it(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            log_dir = root / 'logs'
+            drafts_dir = root / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            audit_path = log_dir / 'marketing_workflow_audit_latest.json'
+            audit_path.write_text(json.dumps({
+                'repair_actions': [
+                    {'failure_type': 'outcome_system_underpowered', 'repair_state': 'needs_execution'}
+                ]
+            }), encoding='utf-8')
+            fake_decision = LaneDecision(
+                lane='distribution_architecture_repair',
+                reason='Board is still empty after the blocker cleared.',
+                reasons=['Run a concrete architecture repair instead of a fake board refresh.'],
+                owned_content_posts_last_36h=0,
+                unsubmitted_directory_channels=[],
+                shared_findings_used=['marketing_execution_board_latest.md'],
+                artifact_path='/tmp/brief.md',
+            )
+            fake_execution = type('Execution', (), {
+                'lane': 'distribution_architecture_repair',
+                'action_type': 'distribution_architecture_repair',
+                'status': 'executed',
+                'artifact_path': '/tmp/repair.md',
+                'summary': 'Ran a concrete distribution architecture repair.',
+                'targets_prepared': [],
+                'shared_findings_used': ['marketing_execution_board_latest.md'],
+                'live_external_action': False,
+                'blocking_factors': [],
+            })()
+            with patch.object(outcome_execution_board_runner, 'LOG_DIR', log_dir), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_JSON', log_dir / 'outcome_execution_board_latest.json'), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_MD', log_dir / 'outcome_execution_board_latest.md'), \
+                 patch.object(outcome_execution_board_runner, 'AUDIT_JSON', audit_path), \
+                 patch('agents.marketing.outcome_execution_board_runner._write_marketing_execution_board', return_value=(drafts_dir / 'marketing_execution_board_latest.md', [])), \
+                 patch('agents.marketing.outcome_execution_board_runner.choose_distribution_lane', return_value=fake_decision), \
+                 patch('agents.marketing.outcome_execution_board_runner.execute_distribution_lane', return_value=fake_execution) as exec_mock:
+                payload = outcome_execution_board_runner.run(datetime.fromisoformat('2026-05-26T08:58:00+02:00'))
+        exec_mock.assert_called_once()
+        self.assertEqual(payload['selected_lane'], 'distribution_architecture_repair')
+        self.assertEqual(payload['selected_action_type'], 'distribution_architecture_repair')
+        self.assertEqual(payload['artifact_path'], '/tmp/repair.md')
+        self.assertEqual(
+            payload['measurement_window'],
+            'Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.',
+        )
 
 
 class SystemDesignRepairAcknowledgementTests(unittest.TestCase):

@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-26T06:34:08
+Generated: 2026-05-26T07:40:04
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -7,22 +7,24 @@ Generated: 2026-05-26T06:34:08
 - Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
 ## Active review windows
-- Apollo next review: 2026-05-25T23:11:13.732870+02:00
-- Apollo launch review: 2026-06-01T23:11:13.732870+02:00
+- Apollo next review: 2026-06-02T07:14:38.942274+02:00
+- Apollo launch review: 2026-06-02T07:14:38.942274+02:00
 - Short review-window congestion clears at: 2026-05-26T08:57:00
 - Post-hold marketer rerun scheduled: 2026-05-26T08:57:00.000Z
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
-- Apollo runtime-blocker review packet was already delivered in the current review window; do not resurface it until the blocker packet changes or the runtime blocker clears.
 
 ## Best executable assets still waiting
-### 1. Repo conversion proof asset
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/2026-05-26_repo_conversion_proof_asset.md
-- Targets: workflow composition example + START_HERE routing
-- Why this matters: External distribution lanes are already in-flight or exhausted, so the next truthful move is a repo-first proof asset that improves Codeberg conversion instead of another empty hold or guard-pause loop.
-
+- No do-now handoff packet is currently truthful in this review window.
+- Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum, AI Saying, TLDL.
+- Fresh publisher outreach already shipped in the current review window for: AI Saying, ToolChase.
+- Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
+- Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.
+- Comparison backlink packet exists, but it was already manually delivered in the current review window.
+- Directory secondary-surface repair already shipped in the current review window; wait for the follow-up date or a target-set change before resurfacing it.
+- StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.
+- If this board is still empty after one of these blockers clears, the lane architecture needs another repair.
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
 - adoption_metrics_latest.json → Codeberg movement remains the primary success gate
