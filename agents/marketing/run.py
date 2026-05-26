@@ -28,7 +28,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from agents.marketing import distribution_lane_selector
-from agents.marketing.distribution_lane_executor import execute_distribution_lane
+from agents.marketing.distribution_lane_executor import execute_distribution_lane, _write_marketing_execution_board
 from agents.marketing.distribution_lane_selector import choose_distribution_lane
 from agents.marketing.market_intelligence_runtime import load_market_intelligence
 from agents.marketing.measurement_hold_runtime import latest_measurement_hold_window as shared_latest_measurement_hold_window
@@ -245,6 +245,15 @@ def _load_active_pending_repairs(audit: dict[str, Any] | None) -> list[dict[str,
     ]
 
 
+def _execution_board_surfaces_repo_proof_asset() -> bool:
+    board_path = DRAFTS_DIR / 'marketing_execution_board_latest.md'
+    try:
+        text = board_path.read_text(encoding='utf-8').lower()
+    except OSError:
+        return False
+    return 'repo conversion proof asset' in text and 'when: do now' in text
+
+
 def _apply_repair_mode_overrides(
     distribution_lane: Any,
     pending_repairs: list[dict[str, Any]],
@@ -281,11 +290,18 @@ def _apply_repair_mode_overrides(
         if redirect == 'comparison_backlink_outreach' and distribution_lane_selector._comparison_backlink_lane_manual_only_blocked(
             now or datetime.now()
         ):
-            redirect = 'measurement_hold'
-            reason_suffix = (
-                'the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, '
-                'so hold for truthful follow-through instead of fabricating another comparison execution run.'
-            )
+            if _execution_board_surfaces_repo_proof_asset():
+                redirect = 'repo_conversion_proof_asset'
+                reason_suffix = (
+                    'the execution board already surfaces a repo-first proof asset, so ship that conversion asset '
+                    'instead of collapsing back into a measurement hold.'
+                )
+            else:
+                redirect = 'measurement_hold'
+                reason_suffix = (
+                    'the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, '
+                    'so hold for truthful follow-through instead of fabricating another comparison execution run.'
+                )
         else:
             reason_suffix = (
                 'refreshing live directory approval/backlink evidence instead of stacking more low-intent submissions.'
@@ -1265,6 +1281,7 @@ def main() -> int:
             flush=True,
         )
 
+    _write_marketing_execution_board(now)
     distribution_lane = choose_distribution_lane(now)
     if is_repair_mode:
         original_lane = distribution_lane.lane

@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-26T02:19:28+00:00
+Generated: 2026-05-26T04:02:25+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -24,6 +24,9 @@ Generated: 2026-05-26T02:19:28+00:00
   - about page: https://ctxt.dev/about
   - advertise page: https://ctxt.dev/advertise
   - Telegram: https://t.me/ctxtdev
+  - GitHub issue: https://github.com/heurema/goalrail/issues/new
+  - GitHub issue: https://github.com/heurema/punk/issues/new
+  - GitHub issue: https://github.com/heurema/signum/issues/new
 
 ### 2. ToolChase
 - Hook: AI coding tools comparison page already covering Claude Code, Codex, Cursor, and Aider
@@ -32,8 +35,8 @@ Generated: 2026-05-26T02:19:28+00:00
 - Suggested subject: Ralph Workflow for your next AI coding tools comparison refresh
 - Discovered channels:
   - email: hello@toolchase.com
-  - contact page: https://toolchase.com/about
-  - contact page: https://toolchase.com/advertise
+  - about page: https://toolchase.com/about
+  - advertise page: https://toolchase.com/advertise
   - contact page: https://toolchase.com/contact
   - X/Twitter: https://x.com/ToolChase
 
@@ -44,9 +47,9 @@ Generated: 2026-05-26T02:19:28+00:00
 - Suggested subject: Ralph Workflow for your next AI coding tools benchmark update
 - Discovered channels:
   - email: timewell@timewell.jp
-  - about page: https://timewell.jp/about
-  - contact page: https://timewell.jp/company
-  - contact page: https://timewell.jp/company/members
+  - work with me page: https://timewell.jp/consultation
+  - work with me page: https://timewell.jp/consulting
+  - work with me page: https://timewell.jp/en/consultation
   - X/Twitter: https://x.com/TIMEWELL_PR
   - LinkedIn: https://www.linkedin.com/company/timewell-corp
 
@@ -62,9 +65,11 @@ Generated: 2026-05-26T02:19:28+00:00
 ### 5. TLDL
 - Hook: AI Coding Tools Compared (2026): Cursor vs Claude Code vs Copilot — Benchmarks & Pricing
 - Article/root: https://www.tldl.io/resources/ai-coding-tools-2026 / https://www.tldl.io/
-- Recommended next step: public website contact path is now identified
+- Recommended next step: GitHub issue/PR path is now identified
 - Suggested subject: Ralph Workflow for your next AI coding tools comparison refresh
 - Discovered channels:
-  - contact page: https://www.tldl.io/about
+  - about page: https://www.tldl.io/about
   - website: https://www.tldl.io
+  - faq page: https://www.tldl.io/resources/tldl-faq
+  - GitHub issue: https://github.com/shenli/tldl/issues/new
   - X/Twitter: https://x.com/shenli3514

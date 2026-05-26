@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-26T05:25:00+02:00",
+  "run_type": "marketing-process-repair",
+  "chosen_action": {
+    "type": "apollo_runtime_blocker_board_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Surface Apollo runtime-blocker follow-through on the execution board",
+    "artifacts": [
+      "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_marketing_execution_board.md",
+      "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_apollo_runtime_blocker_review_packet.md"
+    ]
+  },
+  "why_this_action": {
+    "summary": "The board was still collapsing a due Apollo follow-up into the same empty-board guard state even though the highest-leverage next step was a blocker-specific follow-through. This repair turns that auth-blocked due review into a truthful reusable packet instead of another duplicate guard pause.",
+    "shared_findings_used": [
+      "apollo_sequence_status_latest.json",
+      "apollo_status.json",
+      "marketing_execution_board_latest.md",
+      "marketing_workflow_audit_latest.json",
+      "adoption_metrics_latest.json"
+    ],
+    "targets_prepared": [
+      "Ralph Workflow curator follow-up \u2014 Codeberg CTA"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "outcome_ready": false,
+    "board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_marketing_execution_board.md",
+    "packet_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_apollo_runtime_blocker_review_packet.md",
+    "apollo_sequence_status": "runtime_auth_blocked",
+    "apollo_runtime_status": "cloudflare_auth_blocked",
+    "summary": "The execution board now carries a do-now Apollo runtime-blocker review packet when follow-up is due, keeping the Codeberg-primary outbound lane warm without pretending the auth-blocked runtime is already live."
+  },
+  "verification": {
+    "tests": [
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_surfaces_due_apollo_followup_review agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_surfaces_apollo_runtime_blocker_review_when_followup_is_due -q"
+    ]
+  }
+}

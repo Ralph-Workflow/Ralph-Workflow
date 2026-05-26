@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-05-26T05:49:00+02:00",
+  "run_type": "marketing-active-loop",
+  "chosen_action": {
+    "type": "apollo_blocker_delivery_guard_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Suppress duplicate Apollo blocker-packet resurfacing after same-window delivery",
+    "artifacts": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_marketing_system.py",
+      "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md"
+    ]
+  },
+  "why_this_action": {
+    "summary": "The Apollo runtime-blocker review packet had already been delivered in the current review window, so letting the board keep surfacing it as a fresh do-now asset would have been fake progress.",
+    "shared_findings_used": [
+      "marketing_execution_board_latest.md",
+      "outreach-log.md",
+      "apollo_status.json",
+      "apollo_sequence_status_latest.json",
+      "marketing_2026-05-26_054812_apollo_runtime_blocker_review_delivery.json",
+      "adoption_metrics_latest.json",
+      "reddit_post_analysis_latest.json",
+      "market_intelligence_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "outcome_ready": true,
+    "summary": "Patched execution-board truthfulness so the already-delivered Apollo blocker packet is suppressed during the same review window, added regression coverage, and regenerated the shared board.",
+    "board_path": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
+    "test_command": "python3 -m unittest agents.marketing.tests.test_marketing_system.DistributionLaneExecutorTests.test_marketing_execution_board_hides_apollo_runtime_blocker_packet_after_same_window_delivery agents.marketing.tests.test_marketing_system.DistributionLaneExecutorTests.test_marketing_execution_board_hides_directory_secondary_surface_packet_during_active_followthrough_window -q"
+  }
+}

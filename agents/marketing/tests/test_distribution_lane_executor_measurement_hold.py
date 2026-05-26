@@ -2614,6 +2614,32 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('Comparison backlink packet exists, but it was already manually delivered in the current review window.', board_text)
         self.assertIn('StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.', board_text)
 
+    def test_execution_board_surfaces_repo_proof_asset_after_exhausted_stackoverflow_slot(self):
+        now = datetime(2026, 5, 26, 6, 30, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True):
+                board_path, targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('### 1. Repo conversion proof asset', board_text)
+        self.assertIn('workflow composition example + START_HERE routing', board_text)
+        self.assertNotIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+        self.assertIn(str(distribution_lane_executor.WORKFLOW_COMPOSITION_EXAMPLE_PATH), targets)
+        self.assertIn(str(distribution_lane_executor.START_HERE_PATH), targets)
+
     def test_execution_board_surfaces_existing_manual_outreach_asset(self):
         now = datetime(2026, 5, 25, 5, 20, 0)
 
@@ -2697,7 +2723,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('Ralph Workflow curator follow-up — Codeberg CTA', board_text)
         self.assertNotIn('No do-now handoff packet is currently truthful in this review window.', board_text)
 
-    def test_execution_board_suppresses_apollo_packet_when_runtime_auth_is_blocked(self):
+    def test_execution_board_surfaces_apollo_runtime_blocker_review_when_followup_is_due(self):
         now = datetime(2026, 5, 26, 2, 36, 0)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2739,9 +2765,10 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             board_text = board_path.read_text(encoding='utf-8')
 
-        self.assertNotIn('Apollo outcome-readiness review packet', board_text)
-        self.assertIn('Apollo has a verified non-zero list, but the current runtime is auth-blocked', board_text)
-        self.assertIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+        self.assertIn('Apollo runtime-blocker review packet', board_text)
+        self.assertIn('Ralph Workflow curator follow-up — Codeberg CTA', board_text)
+        self.assertIn('apollo_runtime_blocker_review_packet', board_text)
+        self.assertNotIn('No do-now handoff packet is currently truthful in this review window.', board_text)
 
     def test_stackoverflow_execution_counts_reused_existing_draft_as_prepared(self):
         now = datetime(2026, 5, 24, 11, 25, 0)

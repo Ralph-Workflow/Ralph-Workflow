@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-26T05:10:14
+Generated: 2026-05-26T06:34:08
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -12,16 +12,16 @@ Generated: 2026-05-26T05:10:14
 - Short review-window congestion clears at: 2026-05-26T08:57:00
 - Post-hold marketer rerun scheduled: 2026-05-26T08:57:00.000Z
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
-- A refreshed primary-repo-flat publisher packet now exists for the current waiting target set, but the short review window is still active; hold manual delivery until that congestion clears.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
+- Apollo runtime-blocker review packet was already delivered in the current review window; do not resurface it until the blocker packet changes or the runtime blocker clears.
 
 ## Best executable assets still waiting
-### 1. Primary-repo-flat publisher contact packet
-- When: After short-window congestion clears (2026-05-26T08:57:00)
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
-- Targets: AI Saying
-- Why this matters: Fresh developer-native publisher contacts are already discovered for the flat-Codeberg repair lane. This packet is still human-executable via verified public contact paths even though no direct runtime-sendable email route remains.
+### 1. Repo conversion proof asset
+- When: Do now
+- Packet: /home/mistlight/.openclaw/workspace/drafts/2026-05-26_repo_conversion_proof_asset.md
+- Targets: workflow composition example + START_HERE routing
+- Why this matters: External distribution lanes are already in-flight or exhausted, so the next truthful move is a repo-first proof asset that improves Codeberg conversion instead of another empty hold or guard-pause loop.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing

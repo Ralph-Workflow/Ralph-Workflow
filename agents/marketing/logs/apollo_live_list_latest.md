@@ -1,6 +1,6 @@
 # Apollo Live List Verification
 
-- Timestamp: `2026-05-23T00:07:16.620964+02:00`
+- Timestamp: `2026-05-26T06:30:22.646640+02:00`
 - List: `Ralph Workflow — curator follow-up 2026-05-22`
 - Status: `verified_nonzero_records`
 - Final URL: `https://app.apollo.io/#/lists?sortByField=updated_at&sortAscending=false&groupBy[]=labelModality`

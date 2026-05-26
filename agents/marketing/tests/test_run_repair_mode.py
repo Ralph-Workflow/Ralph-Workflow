@@ -236,7 +236,8 @@ class RunRepairModeTests(unittest.TestCase):
             },
         ]
 
-        with patch.object(run.distribution_lane_selector, '_comparison_backlink_lane_manual_only_blocked', return_value=True):
+        with patch.object(run.distribution_lane_selector, '_comparison_backlink_lane_manual_only_blocked', return_value=True), \
+             patch.object(run, '_execution_board_surfaces_repo_proof_asset', return_value=False):
             updated = run._apply_repair_mode_overrides(
                 decision,
                 pending_repairs,
@@ -245,6 +246,36 @@ class RunRepairModeTests(unittest.TestCase):
 
         self.assertEqual(updated.lane, 'measurement_hold')
         self.assertIn('GitHub auth is blocked', updated.reason)
+
+    def test_apply_repair_mode_overrides_prefers_repo_proof_asset_when_board_surfaces_it(self):
+        decision = LaneDecision(
+            lane='owned_content',
+            reason='base reason',
+            reasons=['base reason'],
+            owned_content_posts_last_36h=2,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/distribution_action_brief.md',
+        )
+        pending_repairs = [
+            {
+                'failure_type': 'primary_repo_flat',
+                'repair_kind': 'tactic',
+                'repair_state': 'pending_measurement',
+                'action': 'replace stale distribution with conversion-oriented work',
+            },
+        ]
+
+        with patch.object(run.distribution_lane_selector, '_comparison_backlink_lane_manual_only_blocked', return_value=True), \
+             patch.object(run, '_execution_board_surfaces_repo_proof_asset', return_value=True):
+            updated = run._apply_repair_mode_overrides(
+                decision,
+                pending_repairs,
+                now=datetime(2026, 5, 26, 6, 34, 0),
+            )
+
+        self.assertEqual(updated.lane, 'repo_conversion_proof_asset')
+        self.assertIn('repo-first proof asset', updated.reason)
 
     def test_latest_measurement_hold_window_detects_active_cooldown(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-26T05:15:05.357549+02:00",
+    "checked_at": "2026-05-26T06:08:36.387455+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 23,
     "live_jobs_enabled": 23,
@@ -36,14 +36,11 @@
       "stackoverflow-post-cooldown-run-check"
     ],
     "live_running_job_names": [
-      "Push research findings to git repo",
-      "agent-architecture-watchdog",
-      "apollo-channel-monitor",
-      "codeberg-github-mirror-sync",
-      "marketing-momentum-watchdog",
-      "ralph-workflow-docs-verifier-supervisor",
+      "repo-adoption-tracker",
+      "marketing-workflow-audit",
+      "system-health-monitor",
       "reddit-pipeline-watchdog",
-      "system-health-monitor"
+      "agent-architecture-watchdog"
     ],
     "live_last_error_job_names": [],
     "live_last_error_details": {},
@@ -75,7 +72,7 @@
       "title": "Live Gateway topology is aligned with the architecture audit",
       "mechanism": "Direct live cron inspection shows 23 total jobs, 23 enabled, 0 disabled, and no live last-error jobs.",
       "source_layer": "runtime cron topology",
-      "root_cause": "The audit is now synced to direct live scheduler state instead of persisted-history drift.",
+      "root_cause": "The audit is synced to direct live scheduler state instead of persisted-history drift.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ],
@@ -156,7 +153,7 @@
     {
       "status": "refreshed_runtime_topology_checks",
       "target": "live architecture evidence",
-      "change": "Reran loop_integrity_audit.py and health_monitor.py so live topology, issue ownership, and verifier side-effects reflect the current 23-job runtime.",
+      "change": "Reran loop_integrity_audit.py and health_monitor.py so live topology, issue ownership, and verifier side-effects reflect the current runtime.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
@@ -179,7 +176,7 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-26T05:15:12.660476+02:00",
+    "checked_at": "2026-05-26T06:08:43.872492+02:00",
     "verdict": "qualified_pass"
   },
   "what_still_needs_independent_verification": [
@@ -198,7 +195,7 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-05-26T05:15:12.660476+02:00",
+    "architecture_verifier_checked_at": "2026-05-26T06:08:43.872492+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "autonomous-marketing-stack": "error",
@@ -224,14 +221,11 @@
       "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation:escalation_required"
     ],
     "live_running_job_names": [
-      "Push research findings to git repo",
-      "agent-architecture-watchdog",
-      "apollo-channel-monitor",
-      "codeberg-github-mirror-sync",
-      "marketing-momentum-watchdog",
-      "ralph-workflow-docs-verifier-supervisor",
+      "repo-adoption-tracker",
+      "marketing-workflow-audit",
+      "system-health-monitor",
       "reddit-pipeline-watchdog",
-      "system-health-monitor"
+      "agent-architecture-watchdog"
     ],
     "live_last_error_job_names": [],
     "marketing_bottleneck": "distribution_and_message_to_primary_repo_conversion",
@@ -257,9 +251,9 @@
       "debug"
     ],
     "runtime_consumer_statuses": {
-      "agents/marketing/distribution_lane_executor.py": "loaded",
-      "agents/marketing/reddit_monitor.py": "skipped",
       "agents/marketing/run.py": "loaded",
+      "agents/marketing/reddit_monitor.py": "skipped",
+      "agents/marketing/distribution_lane_executor.py": "loaded",
       "debug": "loaded"
     }
   },

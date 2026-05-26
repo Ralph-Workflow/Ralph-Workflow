@@ -427,6 +427,34 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
             self.assertTrue(seen)
 
+    def test_recent_contact_targets_counts_publisher_feedback_form_submission(self):
+        now = datetime(2026, 5, 26, 4, 0, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            (log_dir / 'marketing_2026-05-26_035016_aisaying_feedback_submission.json').write_text(json.dumps({
+                'timestamp': '2026-05-26T03:50:16+02:00',
+                'chosen_action': {
+                    'type': 'publisher_feedback_form_submission',
+                },
+                'target': 'AI Saying',
+                'result': {
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir):
+                targets = distribution_lane_selector._recent_contact_targets(
+                    now,
+                    action_types=distribution_lane_selector.PUBLISHER_CONTACT_ACTION_TYPES,
+                    days=7,
+                )
+
+        self.assertEqual(targets, {'AI Saying'})
+
     def test_recent_execution_block_marks_reddit_blocked_even_when_monitor_found_threads(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -3848,6 +3876,71 @@ class DistributionLaneExecutorTests(unittest.TestCase):
         self.assertNotIn('### 1. Directory secondary-surface repair packet', text)
         self.assertIn('Directory secondary-surface repair already shipped in the current review window', text)
 
+    def test_marketing_execution_board_hides_apollo_runtime_blocker_packet_after_same_window_delivery(self):
+        now = datetime(2026, 5, 26, 5, 49, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text('{}', encoding='utf-8')
+            (log_dir / 'apollo_sequence_status_latest.json').write_text(json.dumps({
+                'status': 'runtime_auth_blocked',
+                'record_count': 5,
+                'measurement_pending': False,
+                'sequence_name': 'Ralph Workflow curator follow-up — Codeberg CTA',
+                'runtime_blocker_status': 'cloudflare_auth_blocked',
+                'runtime_blocker_summary': 'Cloudflare auth blocked',
+                'runtime_blocker_notes': 'Browserless also blocked.',
+                'next_review_at': '2026-05-26T03:11:13+00:00',
+                'outbound_verification_log': '/tmp/apollo_outbound_verification.json',
+            }), encoding='utf-8')
+            (log_dir / 'apollo_status.json').write_text(json.dumps({
+                'status': 'cloudflare_auth_blocked',
+                'cloudflare_blocked': True,
+            }), encoding='utf-8')
+            blocker_packet = drafts_dir / '2026-05-26_apollo_runtime_blocker_review_packet.md'
+            blocker_packet.write_text('# Apollo runtime-blocker review packet\n', encoding='utf-8')
+            packet_ts = datetime(2026, 5, 26, 5, 47, 0).timestamp()
+            os.utime(blocker_packet, (packet_ts, packet_ts))
+            (log_dir / 'marketing_2026-05-26_054812_apollo_runtime_blocker_review_delivery.json').write_text(json.dumps({
+                'timestamp': '2026-05-26T05:48:12+02:00',
+                'chosen_action': {
+                    'type': 'apollo_runtime_blocker_review_delivery',
+                    'artifacts': [str(blocker_packet)],
+                },
+                'result': {
+                    'status': 'delivered',
+                    'packet_path': str(blocker_packet),
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}), \
+                 patch.object(distribution_lane_executor, '_current_stackoverflow_scheduled_run', return_value=''), \
+                 patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_manual_outreach_assets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_reddit_discussion_asset_waiting_for_execution', return_value=None), \
+                 patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_measurement_hold_release_run', return_value=''), \
+                 patch.object(distribution_lane_executor, '_adoption_summary', return_value='Codeberg is flat.'), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0):
+                artifact, _prepared = distribution_lane_executor._write_marketing_execution_board(now)
+
+            text = artifact.read_text(encoding='utf-8')
+
+        self.assertNotIn('### 1. Apollo runtime-blocker review packet', text)
+        self.assertIn('Apollo runtime-blocker review packet was already delivered in the current review window', text)
+
     def test_extract_contact_links_filters_github_asset_noise(self):
         html = '''
         <a href="https://www.linkedin.com/in/example-founder/">LinkedIn</a>
@@ -6409,6 +6502,30 @@ class CompetitorAnalysisTests(unittest.TestCase):
 class ApolloBlockerDetectionTests(unittest.TestCase):
     def test_monitor_detects_verify_you_are_human_interstitial(self):
         self.assertTrue(apollo_monitor._has_cloudflare_interstitial('Verify you are human to continue'))
+
+    def test_browserless_probe_status_marks_login_403_as_blocked(self):
+        self.assertEqual(
+            apollo_monitor._browserless_probe_status(
+                final_url=apollo_monitor.LOGIN_URL,
+                body_text='Log In',
+                auth_status_codes=[403],
+                cloudflare_blocked=False,
+                login_attempted=True,
+            ),
+            'login_403_blocked',
+        )
+
+    def test_browserless_probe_status_detects_email_verification(self):
+        self.assertEqual(
+            apollo_monitor._browserless_probe_status(
+                final_url='https://app.apollo.io/#/ato/verify-email',
+                body_text='Enter the 6-digit verification code sent to your email',
+                auth_status_codes=[],
+                cloudflare_blocked=False,
+                login_attempted=True,
+            ),
+            'ato_email_verification_required',
+        )
 
     def test_apollo_ready_rejects_captcha_blocked_status_notes(self):
         now = datetime(2026, 5, 25, 23, 46, 0)

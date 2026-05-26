@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-26T05:10:52.705833
+- Generated: 2026-05-26T06:36:41.785394
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -12,8 +12,8 @@
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 6 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
-- The most recent runtime activity was distribution_architecture_guard_pause, but the latest meaningful external/replacement execution remains publisher_feedback_form_submission; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (publisher_feedback_form_submission), so the system is still shipping output even though outcome movement is not visible yet.
+- The most recent runtime activity was repo_conversion_proof_asset, but the latest meaningful external/replacement execution remains apollo_list_verification; do not confuse follow-through with fresh outcome-bearing distribution.
+- The active loop did execute a live marketing action recently (apollo_list_verification), so the system is still shipping output even though outcome movement is not visible yet.
 - A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 
 ## What actually worked
@@ -28,7 +28,7 @@
 - 6 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.
 
 ## What is low-signal
-- Recent live external action exists (publisher_feedback_form_submission), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Recent live external action exists (apollo_list_verification), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 
 ## What should change now
@@ -67,11 +67,11 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, same_family_publisher_overlap
 
 ## Latest executed marketing action
-- Type: publisher_feedback_form_submission
-- Title: publisher feedback form submission
-- Status: executed (ok=True)
+- Type: apollo_list_verification
+- Title: Apollo list verification
+- Status: verified_nonzero_records (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_035016_aisaying_feedback_submission.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_apollo_list_verification.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

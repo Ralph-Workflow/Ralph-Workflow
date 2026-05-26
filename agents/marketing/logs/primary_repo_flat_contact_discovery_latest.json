@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T02:19:28.854829+00:00",
+  "generated_at": "2026-05-26T04:02:25.438941+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -28,6 +28,21 @@
           "type": "telegram",
           "value": "https://t.me/ctxtdev",
           "label": "Telegram"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/heurema/goalrail/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/heurema/punk/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/heurema/signum/issues/new",
+          "label": "GitHub issue"
         }
       ],
       "recommended_next_step": "Telegram consulting contact path is explicitly confirmed"
@@ -48,12 +63,12 @@
         {
           "type": "website",
           "value": "https://toolchase.com/about",
-          "label": "contact page"
+          "label": "about page"
         },
         {
           "type": "website",
           "value": "https://toolchase.com/advertise",
-          "label": "contact page"
+          "label": "advertise page"
         },
         {
           "type": "website",
@@ -83,18 +98,18 @@
         },
         {
           "type": "website",
-          "value": "https://timewell.jp/about",
-          "label": "about page"
+          "value": "https://timewell.jp/consultation",
+          "label": "work with me page"
         },
         {
           "type": "website",
-          "value": "https://timewell.jp/company",
-          "label": "contact page"
+          "value": "https://timewell.jp/consulting",
+          "label": "work with me page"
         },
         {
           "type": "website",
-          "value": "https://timewell.jp/company/members",
-          "label": "contact page"
+          "value": "https://timewell.jp/en/consultation",
+          "label": "work with me page"
         },
         {
           "type": "x",
@@ -141,7 +156,7 @@
         {
           "type": "website",
           "value": "https://www.tldl.io/about",
-          "label": "contact page"
+          "label": "about page"
         },
         {
           "type": "website",
@@ -149,12 +164,22 @@
           "label": "website"
         },
         {
+          "type": "website",
+          "value": "https://www.tldl.io/resources/tldl-faq",
+          "label": "faq page"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/shenli/tldl/issues/new",
+          "label": "GitHub issue"
+        },
+        {
           "type": "x",
           "value": "https://x.com/shenli3514",
           "label": "X/Twitter"
         }
       ],
-      "recommended_next_step": "public website contact path is now identified"
+      "recommended_next_step": "GitHub issue/PR path is now identified"
     }
   ],
   "omitted_recent_targets": [

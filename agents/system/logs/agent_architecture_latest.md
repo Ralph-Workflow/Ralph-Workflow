@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-26T05:15:05.357549+02:00
+- Checked: 2026-05-26T06:08:36.387455+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification is still blocked by the marketing owner loop; architecture-owned topology and verifier state are coherent.
 - Most urgent fix: Do not certify green until marketing produces a fresh independent pass backed by measurable primary-repo movement on Codeberg.
@@ -10,7 +10,7 @@
 ## Live topology
 
 - Live Gateway jobs: 23 total / 23 enabled / 0 disabled
-- Live running jobs now: Push research findings to git repo, agent-architecture-watchdog, apollo-channel-monitor, codeberg-github-mirror-sync, marketing-momentum-watchdog, ralph-workflow-docs-verifier-supervisor, reddit-pipeline-watchdog, system-health-monitor
+- Live running jobs now: repo-adoption-tracker, marketing-workflow-audit, system-health-monitor, reddit-pipeline-watchdog, agent-architecture-watchdog
 - Live last-error residue: none
 - Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-reflection, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
 - User crontab ownership: ok
@@ -54,7 +54,7 @@
 - Performed: yes
 - Verdict: qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Checked at: 2026-05-26T05:15:12.660476+02:00
+- Checked at: 2026-05-26T06:08:43.872492+02:00
 
 ## Small gate passed
 

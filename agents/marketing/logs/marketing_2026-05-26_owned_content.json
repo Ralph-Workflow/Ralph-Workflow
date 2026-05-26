@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-26T04:31:00",
+  "timestamp": "2026-05-26T06:36:18.493578",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "owned_content_allowed",
@@ -19,9 +19,8 @@
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
       "1 directory submissions already shipped in the last 24 hours.",
-      "2 live external marketing action(s) already shipped in the last 6 hours.",
+      "3 live external marketing action(s) already shipped in the last 6 hours.",
       "If no new outcome lands first, this short-window congestion clears at 2026-05-26T08:57:00. Before then, another live outbound action would mostly blur measurement.",
-      "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
       "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
@@ -31,8 +30,7 @@
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
       "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
       "Some remaining publisher targets only expose non-runtime-executable channels (TLDL), so they should not keep this lane looking actionable until a sendable path exists.",
-      "The primary-repo-flat publisher contact packet is already current for the remaining untouched target set, so the loop should enforce follow-through instead of pretending a fresh packet is needed.",
-      "The execution board still marks the current primary-repo-flat packet as post-hold only until 2026-05-26T08:57:00, so surfacing it as a do-now lane would be fake progress.",
+      "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",

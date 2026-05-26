@@ -6745,3 +6745,41 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-26 05:10:52
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 05:40:55
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum action — 2026-05-26 05:50 UTC
+- **Action:** Published "Claude Code + Codex Workflow: Plan, Build, Review" to Telegraph
+- **URL:** https://telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-26
+- **Source draft:** drafts/2026-05-16_claude-code-codex-workflow_writeas.md
+- **Channel:** Telegraph (confirmed working — no auth needed)
+- **CTA:** Codeberg primary, GitHub mirror
+- **Why:** Reddit and Apollo are structurally blocked; Telegraph publishing was immediately executable with no channel auth required
+
+### Marketing momentum watchdog diagnosis — 2026-05-26 05:55 UTC
+- **Status:** needs_attention (structural channel block, not tactical failure)
+- **Architecture diagnosis:** Reddit PRAW OAuth credentials are placeholders; Apollo blocked by Cloudflare Turnstile; write.as dead per post_to_web.py
+- **What worked recently:** 
+  - Publisher feedback form submission (May 26 ~02:00 UTC) ✅
+  - AISaying feedback form submission (May 26 ~03:50 UTC) ✅  
+  - review_ai_coding_output_before_merge published to Telegraph (May 26 ~03:00 UTC) ✅
+  - Claude Code + Codex workflow published to Telegraph (May 26 ~05:50 UTC) ✅
+- **Guard pause is correct:** measurement window active until 08:57 UTC — 2+ live actions already shipped today
+- **Stale structural items:**
+  - Reddit PRAW credentials: placeholders in TOOLS.md → human handoff at agents/marketing/REDDIT_OAUTH_HUMAN_HANDOFF.md
+  - Apollo: Cloudflare Turnstile challenge on Apollo login; Browserless also blocked; session reuse needed or API approach
+- **Action taken this run:** Published Claude Code + Codex workflow to Telegraph (telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-26)
+- **Next unblock priorities:**
+  1. Reddit OAuth: needs human (5 min) → unblocks primary social channel
+  2. Apollo Cloudflare: needs investigation (session reuse or API approach)
+  3. Telegraph content: 3+ more article drafts ready to publish from drafts/
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 06:05:43
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 06:06:33
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
