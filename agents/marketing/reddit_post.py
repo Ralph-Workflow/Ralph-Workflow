@@ -43,6 +43,9 @@ BANNED_BODY_PREFIXES = (
     "switching between claude code and codex sounds like a workflow upgrade",
     "the problem with multi-hop claude workflows is not the model intelligence",
     "what i wanted from a claude plus codex setup was not two opinions",
+    # 2026-05-21: repair -- additional opening repeats from audit
+    "forcing the handoff to be boring and explicit",
+    "the fix is an explicit baton pass between sessions",
 )
 
 BANNED_BODY_PHRASES = (
@@ -74,6 +77,19 @@ BANNED_BODY_PHRASES = (
     "one tool writes, the other challenges",
     "small scoped task, explicit done criteria before it starts",
     "trust the finish line, not the agent's claim",
+    # 2026-05-21: repair -- additional cadence repeats from cross-post audit
+    "ralph workflow is free and open-source: it enforces that baton pass",
+    "forcing the handoff to be boring and explicit",
+    "explicit baton pass between sessions",
+    "gives you something you can actually judge instead of just admire",
+    "one scoped task, one readable diff, real checks, and a short receipt",
+    "scoped task, bounded diff, check evidence, named open decisions",
+    "baton pass so sessions hand off cleanly",
+    "comes back to something reviewable instead of a confident summary",
+    "wake up to something reviewable instead of",
+    "reconstructing the whole night from scattered sessions",
+    "too big to babysit but too risky to trust blindly",
+    "runs the agent clis you already use on your own machine",
 )
 
 
@@ -99,6 +115,15 @@ def _recent_logged_bodies(*, opening_limit: int = 10, cadence_limit: int = 3) ->
         recent_cadence.append(body)
 
     return list(recent_openings), list(recent_cadence)
+
+
+VERBATIM_DUPLICATE_BODY = (
+    "honestly the part i'd optimize first is the handoff, not the model stack.\n\n"
+    "if the run ends with one readable diff, real checks, and a short note about what still looks sketchy, "
+    "you can move fast without lying to yourself about the result.\n\n"
+    "most of the pain is not raw generation. it's stale assumptions, fuzzy ownership, "
+    "and nobody making the finish easy to review."
+)
 
 
 def _opening_line(text: str) -> str:
@@ -159,8 +184,10 @@ def _concept_cadence_repeats(body: str, recent: list[str]) -> bool:
 
 def validate_body(body: str) -> tuple[bool, str]:
     """Check body against banned list and recent-post freshness rules. Returns (ok, reason)."""
-    opening = _opening_line(body)
     text = body.lower()
+    if VERBATIM_DUPLICATE_BODY in text:
+        return False, "verbatim duplicate body: same body posted twice on May 19"
+    opening = _opening_line(body)
     for prefix in BANNED_BODY_PREFIXES:
         if opening.startswith(prefix):
             return False, f"banned opening prefix: {prefix!r}"
@@ -347,7 +374,7 @@ def append_structured_log(*, thread_url: str, comment_url: str, body: str, note:
     (REDDIT_LOG_MD_DIR / f"{stem}.md").write_text("\n".join(md), encoding="utf-8")
 
 
-def _post_via_old_reddit(page, thread_url: str, body: str, current_username: str | None, expected: str | None) -> PostResult | None:
+def _post_via_old_reddit(page, thread_url: str, body: str, current_username: str | None, expected: str | None, dry_run: bool = False) -> PostResult | None:
     """Attempt to post via old Reddit. Returns None if old Reddit cannot serve the thread."""
     # Old Reddit textarea selectors
     textarea_selectors = [
@@ -369,6 +396,9 @@ def _post_via_old_reddit(page, thread_url: str, body: str, current_username: str
     if textarea is None:
         return None  # Old Reddit doesn't have a comment box — fall through to new Reddit
     textarea.fill(body)
+
+    if dry_run:
+        return PostResult(True, "dry_run_ready", thread_url, detail="Textarea filled successfully (old Reddit)")
 
     # Old Reddit submit button
     button_selectors = [
@@ -694,7 +724,7 @@ def post_comment(thread_url: str, body: str, note: str, dry_run: bool = False, m
 
                 if not is_404_old:
                     # Try old Reddit posting
-                    old_result = _post_via_old_reddit(page, old_url, body, current_username, expected)
+                    old_result = _post_via_old_reddit(page, old_url, body, current_username, expected, dry_run=dry_run)
                     if old_result is not None:
                         if not old_result.ok:
                             return old_result

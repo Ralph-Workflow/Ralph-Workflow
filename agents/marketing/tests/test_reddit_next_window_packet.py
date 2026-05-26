@@ -65,6 +65,34 @@ class RedditNextWindowPacketTests(unittest.TestCase):
         self.assertEqual(payload["entries"], 0)
         self.assertTrue(latest_exists)
 
+    def test_browser_session_ready_does_not_force_channel_block_skip(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / "drafts"
+            log_dir = tmp / "logs"
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            status_path = log_dir / "reddit_execution_status_latest.json"
+            status_path.write_text(json.dumps({
+                "status": "browser_session_ready",
+            }), encoding="utf-8")
+            report = tmp / "reddit_monitor_latest.md"
+            report.write_text("usable report\n", encoding="utf-8")
+
+            with patch.object(reddit_next_window_packet, "DRAFTS_DIR", drafts_dir), \
+                 patch.object(reddit_next_window_packet, "LATEST_PATH", drafts_dir / "reddit_next_window_packets_latest.md"), \
+                 patch.object(reddit_next_window_packet, "REDDIT_EXECUTION_STATUS_PATH", status_path), \
+                 patch.object(reddit_next_window_packet.reddit_autopost, "latest_report", return_value=report), \
+                 patch.object(reddit_next_window_packet, "build_packet", return_value=("# packet\n", [object()])):
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    rc = reddit_next_window_packet.main()
+
+            payload = json.loads(stdout.getvalue())
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["status"], "packet_generated")
+
     def test_build_packet_prefers_unused_medium_plus_fit_threads(self):
         report = Path("/tmp/reddit_monitor_2026-05-18_2115.md")
         report.write_text(

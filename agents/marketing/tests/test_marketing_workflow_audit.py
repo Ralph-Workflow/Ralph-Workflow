@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from contextlib import ExitStack
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -177,6 +178,33 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             payload = json.loads(prior_audit.read_text(encoding='utf-8'))
             self.assertNotIn('outcome_system_underpowered', [item['failure_type'] for item in payload['repair_actions']])
+
+    def test_browser_session_ready_prevents_reddit_blocked_low_signal_on_partial_coverage_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            logs = tmp / 'logs'
+            logs.mkdir()
+            reddit_monitor = tmp / 'reddit_monitor_latest.md'
+            reddit_monitor.write_text(
+                '**Shortlisted:** 4\n'
+                '**Search diagnostics:** ok=6, reddit_ip_blocked=3\n'
+                'Important telemetry note: some Reddit queries were blocked, but other queries still returned usable results. Treat this as partial coverage, not a total Reddit outage.\n',
+                encoding='utf-8',
+            )
+            reddit_execution = logs / 'reddit_execution_status_latest.json'
+            reddit_execution.write_text(json.dumps({
+                'generated_at': datetime.now().astimezone().isoformat(),
+                'status': 'browser_session_ready',
+            }), encoding='utf-8')
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(marketing_workflow_audit, 'OUT_DIR', logs))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'REDDIT_MONITOR_LATEST', reddit_monitor))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'REDDIT_EXECUTION_STATUS', reddit_execution))
+                state = marketing_workflow_audit.load_reddit_channel_state()
+
+        self.assertFalse(state['reddit_blocked'])
+        self.assertTrue(state['provider_degraded'])
 
 
 if __name__ == '__main__':

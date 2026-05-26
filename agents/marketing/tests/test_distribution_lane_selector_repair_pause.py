@@ -11,6 +11,39 @@ from agents.marketing import distribution_lane_selector
 
 
 class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
+    def test_apollo_status_blocked_ignores_ancillary_cloudflare_notes_when_login_succeeded(self):
+        payload = {
+            'status': 'login_succeeded',
+            'cloudflare_blocked': False,
+            'notes': 'Background Cloudflare challenges were seen on ancillary Apollo requests, but the authenticated UI remained usable.',
+            'browserless_probe_status': None,
+        }
+        self.assertFalse(distribution_lane_selector._apollo_status_blocked(payload))
+
+    def test_load_recent_monitor_summary_clears_reddit_blocked_when_browser_session_is_ready(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            latest_md = tmp / 'reddit_monitor_latest.md'
+            latest_md.write_text(
+                'reddit is ip-blocked\n'
+                '**Search diagnostics:** reddit_ip_blocked=1, ok=0\n'
+                '**Shortlisted:** 2\n',
+                encoding='utf-8',
+            )
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            (log_dir / 'reddit_execution_status_latest.json').write_text(json.dumps({
+                'generated_at': datetime.now().astimezone().isoformat(),
+                'status': 'browser_session_ready',
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'REDDIT_EXECUTION_STATUS_PATH', log_dir / 'reddit_execution_status_latest.json'):
+                summary = distribution_lane_selector._load_recent_monitor_summary()
+
+        self.assertFalse(summary['reddit_blocked'])
+        self.assertEqual(summary['execution_status'], 'browser_session_ready')
+
     def test_primary_repo_flat_accepts_only_truthful_manual_contact_routes(self):
         self.assertTrue(distribution_lane_selector._publisher_target_has_manual_executable_channel([
             {'type': 'website', 'value': 'https://example.com/contact?via=tally.so', 'label': 'contact form'},

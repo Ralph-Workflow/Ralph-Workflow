@@ -190,6 +190,74 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
             self.assertIn('reddit_channel_blocked', summary['actions'])
             self.assertEqual(summary['reddit_execution_status']['status'], 'network_security_blocked')
 
+    def test_browser_session_ready_clears_reddit_channel_blocked_watchpoint(self):
+        now = datetime.now().astimezone()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            status_dir = root / 'logs'
+            status_dir.mkdir(parents=True, exist_ok=True)
+            report = root / 'reddit_monitor_latest.md'
+            report.write_text('reddit is ip-blocked\n**Shortlisted:** 2\n', encoding='utf-8')
+
+            (status_dir / 'adoption_metrics_latest.json').write_text(json.dumps({
+                'evaluation': {'failing_signals': []}
+            }), encoding='utf-8')
+            (status_dir / 'marketing_workflow_audit_latest.json').write_text(json.dumps({
+                'repair_window_status': 'clear',
+                'measurement_pending_reasons': [],
+                'has_failing_tactics': False,
+                'failing_tactics': [],
+                'repair_actions': [],
+                'latest_executed_action': {},
+            }), encoding='utf-8')
+            (status_dir / 'apollo_status.json').write_text(json.dumps({
+                'status': 'login_succeeded',
+                'cloudflare_blocked': False,
+            }), encoding='utf-8')
+            (status_dir / 'reddit_execution_status_latest.json').write_text(json.dumps({
+                'generated_at': now.isoformat(),
+                'status': 'browser_session_ready',
+            }), encoding='utf-8')
+
+            hold_dir = root / 'marketing-logs'
+            hold_dir.mkdir(parents=True, exist_ok=True)
+
+            with patch.object(watchdog, 'STATUS_DIR', status_dir), \
+                 patch.object(watchdog, 'STATUS_PATH', status_dir / 'marketing_momentum_watchdog.json'), \
+                 patch.object(watchdog, 'ADOPTION_PATH', status_dir / 'adoption_metrics_latest.json'), \
+                 patch.object(watchdog, 'AUDIT_PATH', status_dir / 'marketing_workflow_audit_latest.json'), \
+                 patch.object(watchdog, 'APOLLO_STATUS_PATH', status_dir / 'apollo_status.json'), \
+                 patch.object(watchdog, 'REDDIT_EXECUTION_STATUS_PATH', status_dir / 'reddit_execution_status_latest.json'), \
+                 patch.object(watchdog, 'RUNNER_PATH', status_dir / 'missing_runner.json'), \
+                 patch.object(watchdog, 'SEO', root), \
+                 patch.object(watchdog, 'LOG_JSONL', root / 'missing_posts.jsonl'), \
+                 patch.object(watchdog, 'RETRO', root / 'reddit_retrospective.py'), \
+                 patch.object(watchdog.marketing_run, 'LOG_DIR', hold_dir), \
+                 patch.object(watchdog, 'append_note', lambda text: None), \
+                 patch.object(watchdog, 'newest_report', lambda: report), \
+                 patch.object(watchdog, 'newest_post_time', lambda: now - timedelta(hours=1)), \
+                 patch.object(watchdog, 'newest_healthy_report_time', lambda _now: (report, 1.0)), \
+                 patch.object(watchdog, 'latest_reddit_monitor_runtime', lambda _now: {'status': None, 'age_hours': None}), \
+                 patch('agents.marketing.marketing_momentum_watchdog.subprocess.run'):
+                rc = watchdog.main()
+
+            self.assertEqual(rc, 0)
+            summary = json.loads((status_dir / 'marketing_momentum_watchdog.json').read_text(encoding='utf-8'))
+            self.assertNotIn('reddit_channel_blocked', summary['actions'])
+            self.assertNotIn('reddit_channel_blocked', summary['watch_actions'])
+            self.assertEqual(summary['reddit_execution_status']['status'], 'browser_session_ready')
+
+    def test_report_signal_treats_partial_reddit_ip_blocking_as_non_blocking_when_results_exist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report = Path(tmpdir) / 'reddit_monitor_latest.md'
+            report.write_text(
+                '**Shortlisted:** 4\n'
+                '**Search diagnostics:** ok=6, reddit_ip_blocked=3, time_budget_exceeded=1\n'
+                'Important telemetry note: reddit_ip_blocked=3 but ok=6.\n',
+                encoding='utf-8',
+            )
+            self.assertEqual(watchdog.report_signal(report), 'opportunities_found')
+
 
 if __name__ == '__main__':
     unittest.main()
