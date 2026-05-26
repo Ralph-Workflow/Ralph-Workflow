@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-05-26T21:58:52.995474",
+  "timestamp": "2026-05-26T22:52:32.759697",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "distribution_architecture_repair",
+    "type": "distribution_architecture_churn_guard_repair",
     "channel": "distribution_architecture_repair",
     "title": "Distribution lane execution: distribution_architecture_repair",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_215852_distribution_architecture_repair.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_225232_distribution_architecture_repair.md"
   },
   "why_this_action": {
-    "summary": "Converted a cleared post-hold slot into a structural lane-repair action instead of logging another idle measurement hold. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
+    "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -25,6 +25,6 @@
     "blocking_factors": []
   },
   "verification": {
-    "execution_board_fingerprint": "b6e90d7c4ca2af55f8bf9d0da292a8e1e48f8de0"
+    "execution_board_fingerprint": "bcd8f80bf59c725c1c078873410337a29f56f9f0"
   }
 }

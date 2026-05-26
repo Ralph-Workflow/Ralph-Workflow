@@ -1276,7 +1276,13 @@ def _latest_distribution_architecture_guard_execution(lane: str, expected_reason
     return _latest_distribution_architecture_execution(lane, expected_reason)
 
 
-def _distribution_architecture_guard_execution_is_stale(recent_execution: dict[str, Any] | None) -> bool:
+def _distribution_architecture_guard_execution_is_stale(
+    recent_execution: dict[str, Any] | None,
+    *,
+    lane: str = '',
+    now: datetime | None = None,
+    short_review_window_release_at: str | None = None,
+) -> bool:
     if not recent_execution:
         return False
     artifact_path = str(recent_execution.get("artifact_path") or "").strip()
@@ -1285,6 +1291,16 @@ def _distribution_architecture_guard_execution_is_stale(recent_execution: dict[s
     log_path = str(recent_execution.get("log_path") or "").strip()
     if log_path and not Path(log_path).exists():
         return True
+    if lane in {"distribution_architecture_guard_follow_through", "distribution_architecture_guard_pause"} and now is not None:
+        release_at = parse_iso_date(str(short_review_window_release_at or ""))
+        short_window_started_at = (
+            release_at - timedelta(hours=distribution_lane_selector.SHORT_REVIEW_WINDOW_HOURS)
+            if release_at is not None
+            else now - timedelta(hours=distribution_lane_selector.SHORT_REVIEW_WINDOW_HOURS)
+        )
+        execution_timestamp = recent_execution.get("timestamp")
+        if not isinstance(execution_timestamp, datetime) or execution_timestamp < short_window_started_at:
+            return True
     return False
 
 
@@ -1371,7 +1387,12 @@ def main() -> int:
                 )
                 reused_existing_distribution_execution = (
                     recent_guard_execution is not None
-                    and not _distribution_architecture_guard_execution_is_stale(recent_guard_execution)
+                    and not _distribution_architecture_guard_execution_is_stale(
+                        recent_guard_execution,
+                        lane=distribution_lane.lane,
+                        now=now,
+                        short_review_window_release_at=getattr(distribution_lane, "short_review_window_release_at", None),
+                    )
                 )
 
             if reused_existing_distribution_execution and recent_guard_execution is not None:
@@ -1640,7 +1661,12 @@ def main() -> int:
         )
         reused_existing_distribution_execution = (
             recent_guard_execution is not None
-            and not _distribution_architecture_guard_execution_is_stale(recent_guard_execution)
+            and not _distribution_architecture_guard_execution_is_stale(
+                recent_guard_execution,
+                lane=distribution_lane.lane,
+                now=now,
+                short_review_window_release_at=getattr(distribution_lane, "short_review_window_release_at", None),
+            )
         )
 
     if reused_existing_distribution_execution and recent_guard_execution is not None:

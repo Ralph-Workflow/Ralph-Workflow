@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-26T01:11:56.570564",
+  "timestamp": "2026-05-26T23:08:23.979481",
   "type": "outcome_capability_runner",
   "status": "executed",
   "selected_lane": "comparison_backlink_outreach",
@@ -31,6 +31,7 @@
     "channel_discovery.json: validated easy-submit directory lanes",
     "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
     "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+    "apollo_status.json: managed outbound is authenticated and available for execution packaging",
     "outcome_capability_runner: force non-Reddit executable lane with direct Codeberg adoption linkage"
   ]
 }

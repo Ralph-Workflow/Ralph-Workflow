@@ -1,0 +1,96 @@
+# Marketing Momentum Escalation — 2026-05-26 23:15 UTC
+
+## Status: 🚨 STALLED — Human Decision Required
+
+The marketing momentum watchdog has been cycling on `distribution_architecture_repair` for the **4th consecutive run** with zero live external actions shipped this week. All distribution channels are blocked. This is not a process failure — it is a capability failure.
+
+---
+
+## What the System Looks Like vs. What's Actually Happening
+
+| What the system says | What's actually true |
+|---|---|
+| `reddit_monitor_degraded` (watch) | Reddit posting is **dead** — last post May 20, IP-blocked on 50% of queries, no "healthy" report since May 22 |
+| `primary_repo_adoption_flat` (watch) | Codeberg: 10 stars / 2W / 2F — zero delta across 9 samples. Nothing has moved in 5+ days |
+| `board_target_count: 0` | All 13 distribution lanes are genuinely blocked — not a monitoring artifact |
+| 3x `distribution_architecture_repair` | The system is repairing its own repair mechanism — fake progress, not real distribution |
+| Repairs exist in `pending_measurement` | Repairs are waiting for measurement windows to close — but no measurement window will close the gap between "nothing shipped" and "adoption moved" |
+
+---
+
+## Why Every Channel Is Blocked
+
+### GitHub — Missing Auth (Fixable Now)
+```
+gh auth status → "You are not logged into any GitHub hosts"
+```
+- `gh` CLI is installed but not authenticated — no GitHub token available
+- Comparison backlink queue has **8 prepared targets** (prepared May 22) blocked by this
+- These 8 PR submissions could move the needle on backlinks and citations
+- **Fix**: Run `gh auth login` with a GitHub PAT, or set `GITHUB_TOKEN` env var
+  - Generate token at: https://github.com/settings/tokens
+  - Scopes needed: `repo`, `read:user`, `workflow`
+
+### Reddit — IP Block + No OAuth Credentials (Needs Human)
+- Server IP gets 403/blocks from Reddit — affects both browser automation and PRAW
+- PRAW `client_id`/`client_secret` in TOOLS.md are still **placeholders**
+- Without real OAuth credentials, no Reddit posting is possible from any IP
+- **Fix**: Register Reddit app at reddit.com/prefs/apps → fill in TOOLS.md PRAW fields
+- **Alternative**: Set up remote runner on unblocked IP
+
+### Apollo — Walled Until June 2 (Waiting)
+- Apollo is authenticated and ready, but measurement window doesn't open until June 2
+- No lever available to accelerate this
+- **No action possible until June 2**
+
+### All Other Lanes — "Already Delivered" or Exhausted
+- Directory submissions: already burst
+- Curator outreach: already delivered, reply windows saturated
+- StackOverflow: lane exhausted, zero candidates
+- Publisher contact: already prepared 2x in 48h, marked "fake progress"
+- Comparison backlinks: prepared but GitHub auth missing
+
+---
+
+## The Core Problem
+
+**The architecture repair loop is a false fix.** The system keeps running `distribution_architecture_repair` because every lane is blocked, but the repair itself doesn't unblock any lanes. It just documents that lanes are blocked.
+
+This is a **capability gap**, not an architecture problem:
+1. No GitHub auth → can't submit PR comparisons
+2. No Reddit OAuth → can't post anywhere
+3. Apollo walled → can't launch outbound
+4. All other lanes exhausted or "already delivered"
+
+**Zero distribution output has shipped this week.** The marketing momentum is at a complete stall.
+
+---
+
+## What Needs to Happen
+
+### Now (Can Do Without Waiting)
+1. **GitHub auth** — `gh auth login` with a PAT
+   - This is the only lane that could produce a live external action this week
+   - Without this, the marketing system will remain in architecture repair loop until Apollo opens
+
+### This Week (Needs Credential Provision)
+2. **Reddit OAuth** — Fill in PRAW credentials in TOOLS.md
+   - Register app at reddit.com/prefs/apps (script type)
+   - Add `client_id` and `client_secret` to TOOLS.md
+
+### Process Fix (For Next Time)
+3. **Review-window gates are too conservative** — "already prepared" should not count as "already executed" when the goal (Codeberg adoption) hasn't moved. The system keeps skipping lanes that have real work left to do because they were "already delivered" in a prior window.
+4. **Architecture repair loop has no max repeat limit** — 3+ consecutive runs of the same repair with zero live output should trigger a forced different lane selection, not another repair iteration.
+
+---
+
+## Immediate Questions for You
+
+1. **GitHub PAT** — Can you run `gh auth login` and provide a token? This is the only path to shipping a live action this week.
+2. **Reddit OAuth** — Are you willing to register a Reddit app and provide credentials? This would unblock the primary distribution channel.
+3. **Accept the stall?** — If neither GitHub auth nor Reddit OAuth is possible this week, the honest answer is that the marketing momentum will remain stalled until Apollo opens (June 2).
+
+---
+
+*Auto-generated by marketing momentum watchdog — 2026-05-26T23:15 UTC*
+*Full diagnosis: `/home/mistlight/.openclaw/workspace/seo-reports/momentum_stall_diagnosis_2026-05-26.md`*

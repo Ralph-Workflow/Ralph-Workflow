@@ -1,5 +1,5 @@
 # Ralph Workflow Comparison Backlink Follow-Through
-Generated: 2026-05-26T01:52:35
+Generated: 2026-05-26T23:08:23
 
 ## Why this exists now
 - The current comparison queue already covers every ranked competitor with a prepared packet.

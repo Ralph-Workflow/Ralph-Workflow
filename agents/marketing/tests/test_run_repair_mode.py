@@ -1158,6 +1158,27 @@ class RunRepairModeTests(unittest.TestCase):
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir
 
+    def test_guard_follow_through_reuse_is_stale_when_it_predates_current_short_window(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_path = tmp / 'guard-follow-through.json'
+            log_path.write_text('{}', encoding='utf-8')
+            artifact_path = tmp / 'guard-follow-through.md'
+            artifact_path.write_text('guard', encoding='utf-8')
+
+            stale = run._distribution_architecture_guard_execution_is_stale(
+                {
+                    'timestamp': datetime(2026, 5, 25, 7, 55, 41),
+                    'log_path': str(log_path),
+                    'artifact_path': str(artifact_path),
+                },
+                lane='distribution_architecture_guard_follow_through',
+                now=datetime(2026, 5, 26, 22, 37, 0),
+                short_review_window_release_at='2026-05-26T22:47:35',
+            )
+
+        self.assertTrue(stale)
+
     def test_main_reuses_existing_distribution_architecture_repair_when_truth_is_unchanged(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR

@@ -253,6 +253,122 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
         self.assertEqual(payload['artifact_path'], '/tmp/existing.md')
         self.assertEqual(payload['summary'], 'already repaired this fingerprint in the current review window')
 
+    def test_sync_from_execution_promotes_post_release_same_fingerprint_repair_to_guard_pause(self):
+        now = datetime(2026, 5, 26, 23, 16, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='short window already cleared and no truthful do-now lane exists',
+            reasons=['execution board still has no truthful do-now lane'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/selected.md',
+            short_review_window_release_at='2026-05-26T22:47:35',
+        )
+        refreshed = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='same empty-board fingerprint still active',
+            reasons=['execution board still has no truthful do-now lane'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/refreshed.md',
+            short_review_window_release_at='2026-05-26T22:47:35',
+        )
+        execution = SimpleNamespace(
+            lane='distribution_architecture_repair',
+            action_type='distribution_architecture_churn_guard_repair',
+            status='executed',
+            artifact_path='/tmp/execution.md',
+            summary='already repaired this fingerprint in the cleared post-hold slot',
+            targets_prepared=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            live_external_action=False,
+            blocking_factors=[],
+        )
+
+        with patch.object(outcome_execution_board_runner, 'choose_distribution_lane', return_value=refreshed), \
+             patch.object(outcome_execution_board_runner.distribution_lane_selector, 'persist_latest_lane_decision') as persist_mock, \
+             patch.object(outcome_execution_board_runner, '_write_status'):
+            outcome_execution_board_runner.sync_from_execution(
+                now=now,
+                audit={},
+                decision=decision,
+                board_path=Path('/tmp/board.md'),
+                board_targets=[],
+                execution=execution,
+            )
+
+        persisted_lane = persist_mock.call_args.args[0]
+        self.assertEqual(persisted_lane.lane, 'distribution_architecture_guard_pause')
+        self.assertEqual(persisted_lane.short_review_window_release_at, '2026-05-26T22:47:35')
+        self.assertIn('pause duplicate same-fingerprint', persisted_lane.reason.lower())
+
+    def test_sync_from_execution_uses_contract_release_when_decision_release_missing(self):
+        now = datetime(2026, 5, 26, 23, 16, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='short window already cleared and no truthful do-now lane exists',
+            reasons=['execution board still has no truthful do-now lane'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/selected.md',
+            short_review_window_release_at=None,
+        )
+        refreshed = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='same empty-board fingerprint still active',
+            reasons=['execution board still has no truthful do-now lane'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/refreshed.md',
+            short_review_window_release_at=None,
+        )
+        execution = SimpleNamespace(
+            lane='distribution_architecture_repair',
+            action_type='distribution_architecture_churn_guard_repair',
+            status='executed',
+            artifact_path='/tmp/execution.md',
+            summary='already repaired this fingerprint in the cleared post-hold slot',
+            targets_prepared=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            live_external_action=False,
+            blocking_factors=[],
+        )
+
+        with patch.object(outcome_execution_board_runner, 'choose_distribution_lane', return_value=refreshed), \
+             patch.object(outcome_execution_board_runner, '_contract_short_window_release_at', return_value='2026-05-26T22:47:35'), \
+             patch.object(outcome_execution_board_runner.distribution_lane_selector, 'persist_latest_lane_decision') as persist_mock, \
+             patch.object(outcome_execution_board_runner, '_write_status'):
+            outcome_execution_board_runner.sync_from_execution(
+                now=now,
+                audit={},
+                decision=decision,
+                board_path=Path('/tmp/board.md'),
+                board_targets=[],
+                execution=execution,
+            )
+
+        persisted_lane = persist_mock.call_args.args[0]
+        self.assertEqual(persisted_lane.lane, 'distribution_architecture_guard_pause')
+        self.assertEqual(persisted_lane.short_review_window_release_at, '2026-05-26T22:47:35')
+
+    def test_guard_follow_through_reuse_is_stale_when_it_predates_current_short_window(self):
+        with patch.object(outcome_execution_board_runner, 'LOG_DIR', Path('/tmp')):
+            stale = outcome_execution_board_runner._distribution_architecture_execution_is_stale(
+                {
+                    'timestamp': datetime(2026, 5, 25, 7, 55, 41),
+                    'artifact_path': '',
+                    'log_path': '',
+                },
+                lane='distribution_architecture_guard_follow_through',
+                now=datetime(2026, 5, 26, 22, 37, 0),
+                short_review_window_release_at='2026-05-26T22:47:35',
+            )
+
+        self.assertTrue(stale)
 
     def test_sync_from_execution_records_execution_board_fingerprint_for_reuse(self):
         now = datetime(2026, 5, 26, 11, 10, 6)
