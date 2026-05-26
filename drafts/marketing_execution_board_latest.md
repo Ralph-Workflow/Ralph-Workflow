@@ -18,7 +18,7 @@ Generated: 2026-05-25T18:53:00
 
 ## Best executable assets still waiting
 - No do-now handoff packet is currently truthful in this review window.
-- Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum, AI Saying, TLDL.
+- Remaining publisher-contact discovery is not runtime-sendable here: TLDL.
 - Fresh publisher outreach already shipped in the current review window for: AI Saying, ToolChase.
 - The current primary-repo-flat publisher contact packet was already prepared 2 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
 - Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.

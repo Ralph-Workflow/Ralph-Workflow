@@ -8,7 +8,7 @@
   "artifact_path": "/tmp/guard-pause.md",
   "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md",
   "execution_board_targets": [],
-  "execution_board_fingerprint": "9b97c74a95f126df6939b7fc9364d0d3cb6b069c",
+  "execution_board_fingerprint": "b6e90d7c4ca2af55f8bf9d0da292a8e1e48f8de0",
   "short_review_window_release_at": "",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.",

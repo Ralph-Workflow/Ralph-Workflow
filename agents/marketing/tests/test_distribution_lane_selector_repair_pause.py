@@ -70,6 +70,47 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
         self.assertEqual(state['guard_pause_count'], 1)
         self.assertEqual(state['cumulative_guard_pause_count'], 1)
 
+    def test_distribution_architecture_repair_state_requires_matching_fingerprint_for_legacy_guard_logs(self):
+        now = datetime(2026, 5, 26, 21, 37, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            current_fingerprint = 'current-board'
+            (log_dir / 'marketing_2026-05-25_072249_distribution_architecture_guard_follow_through.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T07:22:49',
+                    'chosen_action': {'type': 'distribution_architecture_guard_follow_through'},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_103900_distribution_architecture_guard_pause.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T10:39:00',
+                    'chosen_action': {'type': 'distribution_architecture_guard_pause'},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-26_distribution_architecture_repair_execution.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-26T21:26:55',
+                    'chosen_action': {'type': 'distribution_architecture_churn_guard_repair'},
+                    'verification': {'execution_board_fingerprint': current_fingerprint},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, '_execution_board_fingerprint', return_value=current_fingerprint):
+                state = distribution_lane_selector._distribution_architecture_repair_state(
+                    now,
+                    release_at=datetime(2026, 5, 26, 22, 47, 35),
+                )
+
+        self.assertTrue(state['guard_installed'])
+        self.assertEqual(state['repeat_count'], 1)
+        self.assertEqual(state['guard_follow_through_count'], 0)
+        self.assertEqual(state['guard_pause_count'], 0)
+        self.assertEqual(state['cumulative_guard_pause_count'], 0)
+
     def test_apollo_status_blocked_ignores_ancillary_cloudflare_notes_when_login_succeeded(self):
         payload = {
             'status': 'login_succeeded',

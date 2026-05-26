@@ -1,80 +1,534 @@
 {
-  "timestamp": "2026-05-26T20:18:31.587329",
+  "timestamp": "2026-05-26T21:26:55.918986",
   "weekly_mode": false,
-  "marketing_status": "measurement_hold",
-  "measurement_hold": {
-    "active": true,
-    "hold_started_at": "2026-05-26T17:33:09.048314",
-    "hold_until": "2026-05-26T20:55:18",
-    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_173309_measurement_hold_execution.json",
-    "reason": "Repair override: primary_repo_flat repair active; the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, so hold for truthful follow-through instead of fabricating another comparison execution run."
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "robots": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "sitemap": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    }
   },
-  "distribution_lane": {
-    "lane": "distribution_architecture_guard_pause",
-    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md"
+  "totals": {
+    "posts_last_30d": 41,
+    "views_last_30d": 3810
   },
-  "distribution_execution": {
-    "action_type": "distribution_architecture_guard_pause",
-    "status": "skipped_repair",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_060554_distribution_architecture_guard_pause.md",
-    "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
-    "targets_prepared": [
-      "Ralph Workflow curator follow-up \u2014 Codeberg CTA"
-    ],
-    "live_external_action": false,
-    "blocking_factors": [],
-    "reused_existing_follow_through": false
+  "content_summary": {
+    "conversion-asset": {
+      "posts": 1,
+      "views": 128,
+      "avg_views": 128.0
+    },
+    "philosophy": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "seo-guide": {
+      "posts": 1,
+      "views": 133,
+      "avg_views": 133.0
+    },
+    "technical": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "unknown": {
+      "posts": 36,
+      "views": 3549,
+      "avg_views": 98.58
+    },
+    "usecase": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    }
+  },
+  "decisions": [
+    {
+      "priority": "high",
+      "action": "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
+      "reason": "Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)",
+      "repair": "Replace stale owned-content-first repair. Hold homepage/owned-content volume at maintenance, push Codeberg-first conversion assets and third-party proof, and use only posting channels with current runtime proof instead of assuming a single default publication surface.",
+      "is_failing_signal": true
+    },
+    {
+      "priority": "medium",
+      "action": "Keep publishing seo-guide content.",
+      "reason": "Best avg views: 133.0 \u2014 lean into what's working."
+    },
+    {
+      "priority": "medium",
+      "action": "Shift one future slot away from usecase toward seo-guide.",
+      "reason": "seo-guide outperforms usecase on avg views."
+    },
+    {
+      "priority": "medium",
+      "action": "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
+      "reason": "Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes."
+    },
+    {
+      "priority": "medium",
+      "action": "Ship comparison-led backlink outreach packets whenever the curator queue is already full.",
+      "reason": "A follow-through note is not enough when the queue is saturated; the loop needs a fresh executable distribution asset tied to existing comparison pages."
+    },
+    {
+      "priority": "medium",
+      "action": "Leverage competitor comparison pages in content and outreach.",
+      "reason": "Monitoring 8 competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked."
+    },
+    {
+      "priority": "info",
+      "action": "Note: hermes-agent has 168463 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
+      "reason": "Competitor intelligence for positioning decisions."
+    }
+  ],
+  "blocked_channels": {
+    "dev.to": "Needs API key or OAuth",
+    "twitter": "Login/session blocked",
+    "reddit": "Account u/Informal-Salt827 verified and active (21 posts published May 16-18). Manual follow-up replies needed to avoid thread necromancy flags.",
+    "hackernews": "Needs account",
+    "lobsters": "Needs invite/account",
+    "producthunt": "Protected flow / manual launch required"
   },
   "seo": {
-    "timestamp": "2026-05-26T20:18:31.667967",
-    "onpage_score": "100/100 (A)",
-    "homepage_ok": true,
-    "sitemap_urls": 80,
+    "score": "100/100 (A)",
     "ranked_keywords": 0,
     "backlinks_approx": 3,
     "domain_rating": null,
-    "content_gap_pct": 100.0,
-    "content_gap": {
-      "gaps": [],
-      "covered": [
-        "unattended coding agent",
-        "AI agent orchestration CLI",
-        "spec-driven AI agent",
-        "AI coding workflow automation",
-        "Claude Code automation",
-        "Claude Code unattended",
-        "AI agent workflow composer",
-        "Ralph Workflow"
-      ],
-      "coverage_pct": 100.0
+    "trends": {
+      "rank_delta": 0.0,
+      "backlinks_delta": 2.5,
+      "domain_rating": null,
+      "prev_avg_ranks": 0.0,
+      "prev_avg_bl": 0.5
     },
     "priority_actions": [],
-    "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-05-26.md"
+    "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-05-26.md",
+    "seo_daily_error": "",
+    "sitemap_urls": 0,
+    "competitor_analysis": {
+      "report_path": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-26.md",
+      "competitor_count": 8,
+      "competitors": {
+        "hermes-agent": {
+          "status": 200,
+          "stars": 168463,
+          "features_found": [
+            "Persistent memory"
+          ]
+        },
+        "conductor-oss": {
+          "status": 200,
+          "stars": 31835,
+          "features_found": [
+            "Durable execution"
+          ]
+        },
+        "conductor-teams": {
+          "status": 200,
+          "stars": null,
+          "features_found": [
+            "Local-first"
+          ]
+        },
+        "aider": {
+          "status": 200,
+          "stars": 45361,
+          "features_found": []
+        },
+        "continue": {
+          "status": 200,
+          "stars": 33405,
+          "features_found": []
+        },
+        "cursor": {
+          "status": 200,
+          "stars": null,
+          "features_found": [
+            "Composer",
+            "Context-aware"
+          ]
+        },
+        "claude-code": {
+          "status": 0,
+          "stars": null,
+          "features_found": []
+        },
+        "copilot": {
+          "status": 200,
+          "stars": null,
+          "features_found": [
+            "Inline suggestions"
+          ]
+        }
+      },
+      "comparison_pages": 8,
+      "comparison_pages_list": [
+        "hermes-agent",
+        "conductor-oss",
+        "conductor-teams",
+        "aider",
+        "continue",
+        "cursor",
+        "claude-code",
+        "copilot"
+      ],
+      "shared_artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json"
+    }
   },
-  "seo_trends": {
-    "rank_delta": 0.0,
-    "backlinks_delta": 2.5,
-    "domain_rating": null,
-    "prev_avg_ranks": 0.0,
-    "prev_avg_bl": 0.5
+  "adoption": {
+    "timestamp": "2026-05-26T21:15:53.857260",
+    "metrics": [
+      {
+        "platform": "GitHub",
+        "stars": 0,
+        "watchers": 2,
+        "forks": 0,
+        "open_issues": 0,
+        "html_url": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+      },
+      {
+        "platform": "Codeberg",
+        "stars": 10,
+        "watchers": 2,
+        "forks": 2,
+        "open_issues": 5,
+        "html_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+      }
+    ],
+    "deltas": {
+      "GitHub": {
+        "stars_delta": 0,
+        "watchers_delta": 0,
+        "forks_delta": 0
+      },
+      "Codeberg": {
+        "stars_delta": 0,
+        "watchers_delta": 0,
+        "forks_delta": 0
+      }
+    },
+    "recent_window": {
+      "GitHub": {
+        "samples": 9,
+        "stars_delta_window": 0,
+        "watchers_delta_window": 0,
+        "forks_delta_window": 0
+      },
+      "Codeberg": {
+        "samples": 9,
+        "stars_delta_window": 0,
+        "watchers_delta_window": 0,
+        "forks_delta_window": 0
+      }
+    },
+    "evaluation": {
+      "findings": [
+        "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
+        "GitHub mirror adoption is also flat across the recent measurement window.",
+        "Codeberg remains the stronger adoption surface and should stay the primary evaluation target."
+      ],
+      "failing_signals": [
+        "primary_repo_flat"
+      ],
+      "next_focus": [
+        "Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta."
+      ]
+    }
   },
-  "seo_insights_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/seo-insights.json",
+  "market_intelligence": {
+    "generated_at": "2026-05-26T20:35:30.833975",
+    "source": "competitor_analysis.py",
+    "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
+    "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-26.md",
+    "monitoring_snapshot": "/home/mistlight/.openclaw/workspace/seo-reports/competitors/monitoring_2026-05-26.json",
+    "comparison_pages": [
+      {
+        "slug": "hermes-agent",
+        "name": "Hermes Agent",
+        "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md"
+      },
+      {
+        "slug": "conductor-oss",
+        "name": "Conductor OSS",
+        "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-oss.md"
+      },
+      {
+        "slug": "conductor-teams",
+        "name": "Conductor (Teams)",
+        "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md"
+      },
+      {
+        "slug": "aider",
+        "name": "Aider",
+        "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/aider.md"
+      },
+      {
+        "slug": "continue",
+        "name": "Continue",
+        "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md"
+      },
+      {
+        "slug": "cursor",
+        "name": "Cursor",
+        "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/cursor.md"
+      },
+      {
+        "slug": "claude-code",
+        "name": "Claude Code",
+        "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md"
+      },
+      {
+        "slug": "copilot",
+        "name": "GitHub Copilot",
+        "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md"
+      }
+    ],
+    "competitors": {
+      "hermes-agent": {
+        "name": "Hermes Agent",
+        "positioning": "Self-improving agent that learns from experience",
+        "site_status": 200,
+        "github_stars": 168463,
+        "key_features_found": [
+          "Persistent memory"
+        ]
+      },
+      "conductor-oss": {
+        "name": "Conductor OSS",
+        "positioning": "Enterprise-grade workflow orchestration for AI agents",
+        "site_status": 200,
+        "github_stars": 31835,
+        "key_features_found": [
+          "Durable execution"
+        ]
+      },
+      "conductor-teams": {
+        "name": "Conductor (Teams)",
+        "positioning": "Markdown-native local-first orchestration for coding teams",
+        "site_status": 200,
+        "github_stars": null,
+        "key_features_found": [
+          "Local-first"
+        ]
+      },
+      "aider": {
+        "name": "Aider",
+        "positioning": "Terminal-based AI pair programming in your git repo",
+        "site_status": 200,
+        "github_stars": 45361,
+        "key_features_found": []
+      },
+      "continue": {
+        "name": "Continue",
+        "positioning": "The leading AI code assistant inside your IDE",
+        "site_status": 200,
+        "github_stars": 33405,
+        "key_features_found": []
+      },
+      "cursor": {
+        "name": "Cursor",
+        "positioning": "The AI code editor built for pair programming with AI",
+        "site_status": 200,
+        "github_stars": null,
+        "key_features_found": [
+          "Composer",
+          "Context-aware"
+        ]
+      },
+      "claude-code": {
+        "name": "Claude Code",
+        "positioning": "Anthropic's official CLI for agentic coding",
+        "site_status": 0,
+        "github_stars": null,
+        "key_features_found": []
+      },
+      "copilot": {
+        "name": "GitHub Copilot",
+        "positioning": "Your AI pair programmer embedded in GitHub and your IDE",
+        "site_status": 200,
+        "github_stars": null,
+        "key_features_found": [
+          "Inline suggestions"
+        ]
+      }
+    },
+    "ralph_core_truths": {
+      "what_is_it": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.",
+      "who_is_it_for": "Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session.",
+      "why_different": "It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.",
+      "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
+    },
+    "ralph_advantage_keywords": [
+      "unattended coding pipeline",
+      "multi-agent orchestration",
+      "Claude Code workflow",
+      "AI agent review loop",
+      "vendor-neutral AI coding",
+      "cost arbitrage AI coding",
+      "policy-defined agent workflow",
+      "TOML agent configuration",
+      "parallel AI coding agents",
+      "AI agent checkpoint resume"
+    ],
+    "discovered_candidates": [],
+    "reuse_contract": {
+      "runtime_proven_consumers": [
+        "agents/marketing/run.py",
+        "agents/marketing/reddit_monitor.py"
+      ],
+      "prompt_guided_consumers": [
+        "ralph-site-owner-loop",
+        "agent-architecture-watchdog"
+      ],
+      "purpose": "Shared market and competitor findings artifact for site updates, positioning checks, and marketing tactics."
+    }
+  },
+  "distribution_lane": {
+    "lane": "distribution_architecture_repair",
+    "reason": "The current review window already logged a guard pause for this empty-board fingerprint without a same-window guard follow-through; repair the churn-guard bookkeeping now instead of compounding stale pause reuse.",
+    "reasons": [
+      "Primary Codeberg adoption is flat in the current measurement window.",
+      "1 owned-content posts already shipped in the last 36 hours.",
+      "1 directory submissions already shipped in the last 24 hours.",
+      "2 live external marketing action(s) already shipped in the last 6 hours.",
+      "If no new outcome lands first, this short-window congestion clears at 2026-05-26T22:47:35. Before then, another live outbound action would mostly blur measurement.",
+      "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
+      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
+      "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
+      "Apollo already has an active measurement window until 2026-06-02T07:23:34.700335+02:00, so do not spend this run repackaging the same outbound lane.",
+      "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
+      "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
+      "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
+      "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
+      "The primary-repo-flat publisher contact packet is already current for the remaining untouched target set, so the loop should enforce follow-through instead of pretending a fresh packet is needed.",
+      "The same primary-repo-flat publisher packet has already been prepared 2 time(s) in the last 48 hours without a live delivery window, so selecting it again would be fake progress.",
+      "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
+      "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
+      "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
+      "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
+      "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
+      "The live secondary-surface repair already has an active review window until 2026-05-31T00:00:00, so selecting directory confirmation again before then would be fake progress.",
+      "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
+      "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
+      "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
+      "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
+      "33 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
+      "A guard-pause artifact already landed in this review window, but there is still no same-window guard follow-through for the current fingerprint."
+    ],
+    "owned_content_posts_last_36h": 1,
+    "unsubmitted_directory_channels": [],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md",
+    "short_review_window_release_at": "2026-05-26T22:47:35",
+    "skip_directory_submissions": false,
+    "skip_curator_outreach": false
+  },
+  "distribution_execution": {
+    "lane": "distribution_architecture_repair",
+    "action_type": "distribution_architecture_churn_guard_repair",
+    "status": "executed",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_212655_distribution_architecture_repair.md",
+    "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
+    "targets_prepared": [],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "live_external_action": false,
+    "blocking_factors": []
+  },
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_212655_distribution_architecture_churn_guard_repair.json",
+  "post_hold_release_schedule": {
+    "status": "already_scheduled",
+    "scheduled_run_at": "2026-05-26T22:47:35",
+    "job_id": "2f70dc46-443e-4614-b41a-89903b57253e",
+    "job_name": "marketing-measurement-hold-release",
+    "removed_stale_jobs": []
+  },
+  "post_execution_distribution_lane": {
+    "lane": "distribution_architecture_repair",
+    "reason": "The current review window already logged a guard pause for this empty-board fingerprint without a same-window guard follow-through; repair the churn-guard bookkeeping now instead of compounding stale pause reuse.",
+    "reasons": [
+      "Primary Codeberg adoption is flat in the current measurement window.",
+      "1 owned-content posts already shipped in the last 36 hours.",
+      "1 directory submissions already shipped in the last 24 hours.",
+      "2 live external marketing action(s) already shipped in the last 6 hours.",
+      "If no new outcome lands first, this short-window congestion clears at 2026-05-26T22:47:35. Before then, another live outbound action would mostly blur measurement.",
+      "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
+      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
+      "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
+      "Apollo already has an active measurement window until 2026-06-02T07:23:34.700335+02:00, so do not spend this run repackaging the same outbound lane.",
+      "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
+      "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
+      "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
+      "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
+      "The primary-repo-flat publisher contact packet is already current for the remaining untouched target set, so the loop should enforce follow-through instead of pretending a fresh packet is needed.",
+      "The same primary-repo-flat publisher packet has already been prepared 2 time(s) in the last 48 hours without a live delivery window, so selecting it again would be fake progress.",
+      "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
+      "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
+      "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
+      "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
+      "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
+      "The live secondary-surface repair already has an active review window until 2026-05-31T00:00:00, so selecting directory confirmation again before then would be fake progress.",
+      "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
+      "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
+      "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
+      "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
+      "1 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
+      "A guard-pause artifact already landed in this review window, but there is still no same-window guard follow-through for the current fingerprint."
+    ],
+    "owned_content_posts_last_36h": 1,
+    "unsubmitted_directory_channels": [],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md",
+    "short_review_window_release_at": "2026-05-26T22:47:35",
+    "skip_directory_submissions": false,
+    "skip_curator_outreach": false
+  },
+  "reused_existing_distribution_execution": false,
+  "failure_signals": [
+    "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption."
+  ],
+  "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "skipped: active measurement-hold cooldown",
+    "stdout": "skipped: lane=distribution_architecture_repair",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "skipped: active measurement-hold cooldown",
+    "stdout": "skipped: lane=distribution_architecture_repair",
     "stderr": ""
-  },
-  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_201831_measurement_hold_skip.json",
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_060554_distribution_architecture_guard_pause.json",
-  "post_execution_distribution_lane": {
-    "lane": "distribution_architecture_guard_pause",
-    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md"
   }
 }

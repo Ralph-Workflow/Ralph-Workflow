@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-26T21:21:10
+Generated: 2026-05-26T21:58:52
 Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
-- The current review window already logged a guard pause for this empty-board fingerprint without a same-window guard follow-through; repair the churn-guard bookkeeping now instead of compounding stale pause reuse.
+- The short review window is still active, but every truthful external/manual lane is still blocked, exhausted, or already delivered; repair the lane architecture instead of letting the selector drift into measurement_hold.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 1 directory submissions already shipped in the last 24 hours.
@@ -32,8 +32,6 @@ Chosen lane: **distribution_architecture_repair**
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
 - 1 prior distribution-architecture repair run(s) already hit this same empty-board window.
-- A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
-- A guard-pause artifact already landed in this review window, but there is still no same-window guard follow-through for the current fingerprint.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate

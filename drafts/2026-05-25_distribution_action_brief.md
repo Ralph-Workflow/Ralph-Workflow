@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
 Generated: 2026-05-25T18:53:00
-Chosen lane: **distribution_architecture_guard_pause**
+Chosen lane: **distribution_architecture_guard_follow_through**
 
 ## Why this lane
-- The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.
+- The same empty-board distribution-architecture failure is already under an active third-strike churn guard for this review window; suppress another identical repair and reuse the guard until the board fingerprint or blocker set materially changes.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 2 directory submissions already shipped in the last 24 hours.
@@ -35,8 +35,6 @@ Chosen lane: **distribution_architecture_guard_pause**
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
 - 1 prior distribution-architecture repair run(s) already hit this same empty-board window.
 - A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
-- 7 prior guard follow-through run(s) already acknowledged this same fingerprint in the current review window.
-- 4 prior guard pause run(s) already reused this same fingerprint in the current review window.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -48,7 +46,7 @@ Chosen lane: **distribution_architecture_guard_pause**
 ## Recent owned-content already shipped
 - Distribution lane execution: owned_content (owned_content)
 
-## Immediate lane-architecture guard pause work
-- Do not emit another duplicate guard follow-through note for the same execution-board fingerprint in this review window
-- Preserve the current empty-board truth until a blocker clears or a genuinely new executable asset appears
-- When the fingerprint changes, force the next run to choose either a real untouched lane or a fresh architecture repair
+## Immediate lane-architecture guard follow-through work
+- Reuse the current execution board as the single source of truth for blocked or already-delivered assets
+- Acknowledge the guarded empty-board state once, without regenerating any already-current packet
+- Spend the next eligible slot on a materially different executable lane only after the board fingerprint or blocker set changes

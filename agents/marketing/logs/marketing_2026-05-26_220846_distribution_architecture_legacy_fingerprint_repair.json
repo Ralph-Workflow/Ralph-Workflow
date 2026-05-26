@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-05-26T22:08:46+02:00",
+  "chosen_action": {
+    "type": "distribution_architecture_repair",
+    "title": "Legacy distribution-architecture repair logs still count toward third-strike churn suppression",
+    "lane": "distribution_architecture_repair"
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "summary": "Patched distribution_lane_selector.py so fingerprintless legacy distribution_architecture_repair logs still count toward same-window repeat detection while guard/follow-through artifacts remain fingerprint-strict. This restores truthful third-strike escalation instead of letting the selector fall through to exhausted post-hold repair messaging.",
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py"
+    ],
+    "tests": [
+      {
+        "command": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause",
+        "status": "passed"
+      },
+      {
+        "command": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_repeated_distribution_architecture_repairs_trigger_third_strike_reason",
+        "status": "passed"
+      },
+      {
+        "command": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold",
+        "status": "failed",
+        "note": "Two failures were present in execution-board packet surfacing/reschedule coverage unrelated to the selector repeat-count patch."
+      }
+    ]
+  },
+  "verification": {
+    "execution_board_truth": "No do-now handoff packet is currently truthful in this review window.",
+    "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json",
+      "market_intelligence_latest.json",
+      "marketing_workflow_audit_latest.json",
+      "distribution_lane_latest.json",
+      "marketing_execution_board_latest.md",
+      "reddit_post_analysis_latest.json",
+      "apollo_sequence_status_latest.json",
+      "comparison_backlink_queue_latest.json",
+      "curator_outreach_queue_latest.json",
+      "primary_repo_flat_contact_discovery_latest.json"
+    ],
+    "targeted_fix_reason": "Current truthful work was runtime/process repair because Codeberg adoption is flat, the board is empty, Apollo is already inside a live measurement window until 2026-06-02T07:23:34.700335+02:00, and duplicate/redundant packet regeneration would be fake progress."
+  }
+}

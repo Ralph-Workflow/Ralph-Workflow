@@ -3147,6 +3147,70 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('Comparison backlink packet exists, but it was already manually delivered in the current review window.', board_text)
         self.assertIn('StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.', board_text)
 
+    def test_execution_board_filters_non_runtime_primary_targets_already_covered_by_recent_delivery_or_outreach(self):
+        now = datetime(2026, 5, 26, 21, 37, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'ctxt.dev / Signum',
+                            'channels': [{'type': 'telegram', 'value': 'https://t.me/ctxtdev'}],
+                        },
+                        {
+                            'target': 'AI Saying',
+                            'channels': [{'type': 'website', 'value': 'https://aisaying.ai/contact'}],
+                        },
+                        {
+                            'target': 'TLDL',
+                            'channels': [{'type': 'website', 'value': 'https://tldl.ai/about'}],
+                        },
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-26_aisaying_publisher_outreach.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-26T03:47:33+02:00',
+                    'action_type': 'publisher_feedback_form_submission',
+                    'target': 'AI Saying',
+                    'status': 'executed',
+                    'ok': True,
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-26_signum_manual_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-26T18:00:00+02:00',
+                    'chosen_action': {'type': 'manual_outreach_asset_follow_through', 'channel': 'current_chat_manual_handoff'},
+                    'why_this_action': {'targets_prepared': ['ctxt.dev / Signum']},
+                    'result': {
+                        'status': 'delivered_to_current_chat',
+                        'ok': True,
+                        'next_review_at': '2026-05-31T18:00:00+02:00',
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('Remaining publisher-contact discovery is not runtime-sendable here: TLDL.', board_text)
+        self.assertNotIn('Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum', board_text)
+        self.assertIn('Fresh publisher outreach already shipped in the current review window for: AI Saying.', board_text)
+
     def test_execution_board_surfaces_repo_proof_asset_after_exhausted_stackoverflow_slot(self):
         now = datetime(2026, 5, 26, 6, 30, 0)
 
