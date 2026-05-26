@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-26T14:10:21.428272",
+  "timestamp": "2026-05-26T17:33:09.048314",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -19,7 +19,7 @@
     }
   },
   "totals": {
-    "posts_last_30d": 40,
+    "posts_last_30d": 41,
     "views_last_30d": 3810
   },
   "content_summary": {
@@ -44,9 +44,9 @@
       "avg_views": 0.0
     },
     "unknown": {
-      "posts": 35,
+      "posts": 36,
       "views": 3549,
-      "avg_views": 101.4
+      "avg_views": 98.58
     },
     "usecase": {
       "posts": 1,
@@ -89,7 +89,7 @@
     },
     {
       "priority": "info",
-      "action": "Note: hermes-agent has 167701 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
+      "action": "Note: hermes-agent has 168256 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
       "reason": "Competitor intelligence for positioning decisions."
     }
   ],
@@ -123,14 +123,14 @@
       "competitors": {
         "hermes-agent": {
           "status": 200,
-          "stars": 167701,
+          "stars": 168256,
           "features_found": [
             "Persistent memory"
           ]
         },
         "conductor-oss": {
           "status": 200,
-          "stars": 31836,
+          "stars": 31837,
           "features_found": [
             "Durable execution"
           ]
@@ -144,12 +144,12 @@
         },
         "aider": {
           "status": 200,
-          "stars": 45329,
+          "stars": 45355,
           "features_found": []
         },
         "continue": {
           "status": 200,
-          "stars": 33383,
+          "stars": 33397,
           "features_found": []
         },
         "cursor": {
@@ -188,7 +188,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-26T13:58:10.851847",
+    "timestamp": "2026-05-26T16:58:02.111377",
     "metrics": [
       {
         "platform": "GitHub",
@@ -248,7 +248,7 @@
     }
   },
   "market_intelligence": {
-    "generated_at": "2026-05-26T09:03:01.426775",
+    "generated_at": "2026-05-26T17:14:46.109232",
     "source": "competitor_analysis.py",
     "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
     "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-26.md",
@@ -300,7 +300,7 @@
         "name": "Hermes Agent",
         "positioning": "Self-improving agent that learns from experience",
         "site_status": 200,
-        "github_stars": 167701,
+        "github_stars": 168256,
         "key_features_found": [
           "Persistent memory"
         ]
@@ -309,7 +309,7 @@
         "name": "Conductor OSS",
         "positioning": "Enterprise-grade workflow orchestration for AI agents",
         "site_status": 200,
-        "github_stars": 31836,
+        "github_stars": 31837,
         "key_features_found": [
           "Durable execution"
         ]
@@ -327,14 +327,14 @@
         "name": "Aider",
         "positioning": "Terminal-based AI pair programming in your git repo",
         "site_status": 200,
-        "github_stars": 45329,
+        "github_stars": 45355,
         "key_features_found": []
       },
       "continue": {
         "name": "Continue",
         "positioning": "The leading AI code assistant inside your IDE",
         "site_status": 200,
-        "github_stars": 33383,
+        "github_stars": 33397,
         "key_features_found": []
       },
       "cursor": {
@@ -396,12 +396,16 @@
     }
   },
   "distribution_lane": {
-    "lane": "primary_repo_flat_contact_handoff_packet",
-    "reason": "Fresh primary-repo-flat publisher targets now have verified public contact paths; turn them into one Codeberg-first execution packet instead of stalling inside measurement hold, even when the remaining path is human-executable rather than runtime-sendable.",
+    "lane": "measurement_hold",
+    "reason": "Repair override: primary_repo_flat repair active; the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, so hold for truthful follow-through instead of fabricating another comparison execution run.",
     "reasons": [
+      "REPAIR: REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push C",
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
       "1 directory submissions already shipped in the last 24 hours.",
+      "2 live external marketing action(s) already shipped in the last 6 hours.",
+      "If no new outcome lands first, this short-window congestion clears at 2026-05-26T20:55:18. Before then, another live outbound action would mostly blur measurement.",
+      "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
       "Apollo already has an active measurement window until 2026-06-02T07:23:34.700335+02:00, so do not spend this run repackaging the same outbound lane.",
@@ -410,7 +414,9 @@
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
       "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
-      "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (TLDL), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
+      "The primary-repo-flat publisher contact packet is already current for the remaining untouched target set, so the loop should enforce follow-through instead of pretending a fresh packet is needed.",
+      "The same primary-repo-flat publisher packet has already been prepared 2 time(s) in the last 48 hours without a live delivery window, so selecting it again would be fake progress.",
+      "The execution board still marks the current primary-repo-flat packet as post-hold only until 2026-05-26T20:55:18, so surfacing it as a do-now lane would be fake progress.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
@@ -432,19 +438,17 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md",
-    "short_review_window_release_at": null,
+    "short_review_window_release_at": "2026-05-26T20:55:18",
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
   },
   "distribution_execution": {
-    "lane": "primary_repo_flat_contact_handoff_packet",
-    "action_type": "primary_repo_flat_contact_handoff_packet_execution",
+    "lane": "measurement_hold",
+    "action_type": "measurement_hold_execution",
     "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_primary_repo_flat_contact_handoff_packet.md",
-    "summary": "Converted the fresh primary-repo-flat publisher discovery into one canonical Codeberg-first execution packet so the loop can use a genuinely different contact lane during the current measurement window.",
-    "targets_prepared": [
-      "TLDL"
-    ],
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_173309_measurement_hold.md",
+    "summary": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions.",
+    "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -455,15 +459,25 @@
     "live_external_action": false,
     "blocking_factors": []
   },
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_141021_primary_repo_flat_contact_handoff_packet_execution.json",
-  "post_hold_release_schedule": {},
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_173309_measurement_hold_execution.json",
+  "post_hold_release_schedule": {
+    "status": "already_scheduled",
+    "scheduled_run_at": "2026-05-26T20:55:18",
+    "job_id": "70c81a39-7c3f-4637-96ed-9ba9132bafe2",
+    "job_name": "marketing-measurement-hold-release",
+    "removed_stale_jobs": []
+  },
   "post_execution_distribution_lane": {
-    "lane": "primary_repo_flat_contact_handoff_packet",
-    "reason": "A current Codeberg-first publisher contact packet already exists for fresh primary-repo-flat targets; reuse that packet as the truthful follow-through surface instead of stalling behind another measurement hold or churn guard.",
+    "lane": "measurement_hold",
+    "reason": "Repair override: primary_repo_flat repair active; the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, so hold for truthful follow-through instead of fabricating another comparison execution run.",
     "reasons": [
+      "REPAIR: REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push C",
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
       "1 directory submissions already shipped in the last 24 hours.",
+      "2 live external marketing action(s) already shipped in the last 6 hours.",
+      "If no new outcome lands first, this short-window congestion clears at 2026-05-26T20:55:18. Before then, another live outbound action would mostly blur measurement.",
+      "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
       "Apollo already has an active measurement window until 2026-06-02T07:23:34.700335+02:00, so do not spend this run repackaging the same outbound lane.",
@@ -473,6 +487,8 @@
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
       "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
       "The primary-repo-flat publisher contact packet is already current for the remaining untouched target set, so the loop should enforce follow-through instead of pretending a fresh packet is needed.",
+      "The same primary-repo-flat publisher packet has already been prepared 2 time(s) in the last 48 hours without a live delivery window, so selecting it again would be fake progress.",
+      "The execution board still marks the current primary-repo-flat packet as post-hold only until 2026-05-26T20:55:18, so surfacing it as a do-now lane would be fake progress.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
@@ -494,7 +510,7 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md",
-    "short_review_window_release_at": null,
+    "short_review_window_release_at": "2026-05-26T20:55:18",
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
   },
@@ -505,12 +521,12 @@
   "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "skipped: lane=primary_repo_flat_contact_handoff_packet",
+    "stdout": "skipped: lane=measurement_hold",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "skipped: lane=primary_repo_flat_contact_handoff_packet",
+    "stdout": "skipped: lane=measurement_hold",
     "stderr": ""
   }
 }

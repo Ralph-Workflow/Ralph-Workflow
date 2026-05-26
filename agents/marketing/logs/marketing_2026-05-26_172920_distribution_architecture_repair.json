@@ -1,21 +1,14 @@
 {
   "timestamp": "2026-05-26T17:29:20.450276",
-  "run_type": "marketing-distribution-lane",
+  "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "distribution_lane_switch",
+    "type": "distribution_architecture_repair",
     "channel": "distribution_architecture_repair",
-    "title": "Distribution lane decision: distribution_architecture_repair",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md"
+    "title": "Distribution lane execution: distribution_architecture_repair",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_172920_distribution_architecture_repair.md"
   },
   "why_this_action": {
-    "shared_findings_used": [
-      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
-      "channel_discovery.json: validated easy-submit directory lanes",
-      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
-      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
-    ],
-    "reasoning": "The same primary-repo-flat publisher packet keeps getting regenerated as prepared-only follow-through without entering a live delivery window; repair the distribution architecture now instead of refreshing that handoff again.",
+    "summary": "The same primary-repo-flat publisher packet keeps getting regenerated as prepared-only follow-through without entering a live delivery window; repair the distribution architecture now instead of refreshing that handoff again.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
@@ -43,13 +36,26 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
-    ]
+    ],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "targets_prepared": []
   },
   "result": {
-    "status": "prepared",
-    "ok": true
+    "status": "executed",
+    "ok": true,
+    "summary": "Converted a cleared post-hold slot into a structural lane-repair action instead of logging another idle measurement hold. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
+    "targets_prepared": [],
+    "live_external_action": false,
+    "blocking_factors": []
   },
   "verification": {
-    "execution_board_fingerprint": "1a3a84e4b5ec1226c2259208116eb579ffe47300"
+    "execution_board_fingerprint": "1a3a84e4b5ec1226c2259208116eb579ffe47300",
+    "guard_reason": "The same primary-repo-flat publisher packet keeps getting regenerated as prepared-only follow-through without entering a live delivery window; repair the distribution architecture now instead of refreshing that handoff again."
   }
 }

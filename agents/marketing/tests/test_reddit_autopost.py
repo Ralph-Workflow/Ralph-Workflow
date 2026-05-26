@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from datetime import datetime
@@ -570,6 +571,124 @@ class RedditAutopostTests(unittest.TestCase):
                 self.assertEqual(payload['result']['status'], 'published')
                 self.assertTrue(payload['result']['live_external_action'])
                 self.assertEqual(payload['result']['comment_url'], 'https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a/onyqq6t/')
+            finally:
+                reddit_autopost.POST_LOG_JSONL = original_post_log
+                reddit_autopost.MARKETING_LOG_DIR = original_log_dir
+                reddit_autopost._refresh_shared_marketing_state = original_refresh
+
+    def test_sync_latest_reddit_post_into_marketing_logs_skips_logged_latest_and_backfills_older_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            original_post_log = reddit_autopost.POST_LOG_JSONL
+            original_log_dir = reddit_autopost.MARKETING_LOG_DIR
+            original_refresh = reddit_autopost._refresh_shared_marketing_state
+            try:
+                reddit_autopost.POST_LOG_JSONL = tmp_path / "reddit_posts.jsonl"
+                reddit_autopost.MARKETING_LOG_DIR = tmp_path / "logs"
+                reddit_autopost._refresh_shared_marketing_state = lambda: None
+                reddit_autopost.MARKETING_LOG_DIR.mkdir(parents=True, exist_ok=True)
+                reddit_autopost.POST_LOG_JSONL.write_text(
+                    "\n".join([
+                        json.dumps({
+                            "timestamp": "2026-05-26T14:55:18.485562",
+                            "platform": "reddit",
+                            "account": "Informal-Salt827",
+                            "thread_url": "https://old.reddit.com/r/AI_Agents/comments/older-thread",
+                            "comment_url": "https://old.reddit.com/r/AI_Agents/comments/older-thread/older-comment/",
+                            "body": "Older body",
+                            "metadata": {
+                                "report": "/tmp/report.md",
+                                "title": "Older thread",
+                                "community": "`r/AI_Agents`",
+                                "angle": "production_failure",
+                                "mention_fit": "**medium-low**",
+                            },
+                        }),
+                        json.dumps({
+                            "timestamp": "2026-05-26T16:47:35.135478",
+                            "platform": "reddit",
+                            "account": "Informal-Salt827",
+                            "thread_url": "https://www.reddit.com/r/cursor/comments/newer-thread",
+                            "comment_url": "https://www.reddit.com/r/cursor/comments/newer-thread",
+                            "body": "Newer body",
+                            "metadata": {
+                                "report": "/tmp/report.md",
+                                "title": "Newer thread",
+                                "community": "`r/cursor`",
+                                "angle": "visible_finish_state",
+                                "mention_fit": "**medium-low**",
+                            },
+                        }),
+                    ]) + "\n",
+                    encoding='utf-8',
+                )
+                existing_log = reddit_autopost.MARKETING_LOG_DIR / "marketing_2026-05-26_164735_reddit_comment_published.json"
+                existing_log.write_text(json.dumps({
+                    "chosen_action": {
+                        "url": "https://old.reddit.com/r/cursor/comments/newer-thread/",
+                        "thread_url": "https://old.reddit.com/r/cursor/comments/newer-thread/",
+                    },
+                    "result": {
+                        "comment_url": "https://old.reddit.com/r/cursor/comments/newer-thread/",
+                        "thread_url": "https://old.reddit.com/r/cursor/comments/newer-thread/",
+                    },
+                }), encoding='utf-8')
+
+                backfilled = reddit_autopost.sync_latest_reddit_post_into_marketing_logs()
+
+                self.assertIsNotNone(backfilled)
+                payload = reddit_autopost.load_json_file(backfilled)
+                self.assertEqual(payload['chosen_action']['title'], 'Reddit comment published: Older thread')
+                self.assertEqual(payload['result']['comment_url'], 'https://old.reddit.com/r/AI_Agents/comments/older-thread/older-comment/')
+            finally:
+                reddit_autopost.POST_LOG_JSONL = original_post_log
+                reddit_autopost.MARKETING_LOG_DIR = original_log_dir
+                reddit_autopost._refresh_shared_marketing_state = original_refresh
+
+    def test_sync_latest_reddit_post_into_marketing_logs_enriches_missing_metadata_from_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            original_post_log = reddit_autopost.POST_LOG_JSONL
+            original_log_dir = reddit_autopost.MARKETING_LOG_DIR
+            original_refresh = reddit_autopost._refresh_shared_marketing_state
+            try:
+                reddit_autopost.POST_LOG_JSONL = tmp_path / "reddit_posts.jsonl"
+                reddit_autopost.MARKETING_LOG_DIR = tmp_path / "logs"
+                reddit_autopost._refresh_shared_marketing_state = lambda: None
+                report_path = tmp_path / "reddit_monitor_2026-05-26_1119.md"
+                report_path.write_text(
+                    "\n".join([
+                        "### 1) after months with ai coding agents, these 5 small workflow changes made the biggest difference r/cursor",
+                        "- URL: <https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small>",
+                        "- Community: `r/cursor`",
+                        "- Freshness: during this pass",
+                        "- Direct reply fit: **medium-high**",
+                        "- Mention fit: **medium-low**",
+                        "- Best RalphWorkflow angle: **content-family match: visible_finish_state**",
+                    ]) + "\n",
+                    encoding='utf-8',
+                )
+                reddit_autopost.POST_LOG_JSONL.write_text(
+                    json.dumps({
+                        "timestamp": "2026-05-26T16:47:35.135478",
+                        "platform": "reddit",
+                        "account": "Informal-Salt827",
+                        "thread_url": "https://old.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small",
+                        "comment_url": "https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small",
+                        "note": "cursor thread",
+                        "body": "Newer body",
+                        "metadata": {"report": str(report_path)},
+                    }) + "\n",
+                    encoding='utf-8',
+                )
+
+                backfilled = reddit_autopost.sync_latest_reddit_post_into_marketing_logs()
+
+                self.assertIsNotNone(backfilled)
+                payload = reddit_autopost.load_json_file(backfilled)
+                self.assertIn('r/cursor', payload['why_this_action']['supporting_reasons'][0])
+                self.assertIn('visible_finish_state', payload['why_this_action']['supporting_reasons'][2])
+                self.assertEqual(payload['chosen_action']['title'], 'Reddit comment published: after months with ai coding agents, these 5 small workflow changes made the biggest difference r/cursor')
             finally:
                 reddit_autopost.POST_LOG_JSONL = original_post_log
                 reddit_autopost.MARKETING_LOG_DIR = original_log_dir

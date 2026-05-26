@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T16:53:54.597940",
+  "generated_at": "2026-05-26T17:57:35.753622",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 2,
@@ -51,25 +51,22 @@
   },
   "failing_tactics": [
     "primary_repo_flat_window",
-    "mirror_repo_flat_window",
-    "execution_ceiling_repetition"
+    "mirror_repo_flat_window"
   ],
   "worked": [],
   "not_worked": [
     "Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.",
-    "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface.",
-    "The loop kept naming the HN/Lobsters handoff bottleneck without shipping a stronger replacement lane."
+    "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
     "The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 8 times inside the last 48 hours."
   ],
   "low_signal": [
-    "Recent live external action exists (owned_content_publication), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
+    "Recent live external action exists (reddit_comment_published), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution."
   ],
   "should_change_now": [
     "Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.",
-    "STOP repeating the same HN/Lobsters-only handoff. Ship a fresh autonomous replacement asset in this run: either a new conversion-focused Telegraph post tied to a current pain angle, or a curator/directory/backlink outreach packet the loop can hand off cleanly without another generic ceiling note.",
     "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
     "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
@@ -94,23 +91,12 @@
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
       "repair_state": "pending_measurement"
-    },
-    {
-      "target_tactic": "distribution_ceiling",
-      "failure_type": "execution_ceiling_repetition",
-      "repair_kind": "system_design",
-      "action": "STOP repeating the same HN/Lobsters-only handoff. Ship a fresh autonomous replacement asset in this run: either a new conversion-focused Telegraph post tied to a current pain angle, or a curator/directory/backlink outreach packet the loop can hand off cleanly without another generic ceiling note.",
-      "kill_condition": "Another audit repeats the same HN/Lobsters bottleneck without a new shipped asset",
-      "success_metric": "A fresh non-monitor marketing asset is shipped and logged before the next audit",
-      "priority": 1,
-      "repair_state": "pending_measurement"
     }
   ],
   "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
     "primary_repo_flat",
-    "mirror_repo_flat",
-    "execution_ceiling_repetition"
+    "mirror_repo_flat"
   ],
   "has_failing_tactics": true,
   "reasons": [
@@ -118,10 +104,9 @@
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
-    "The active loop did execute a live marketing action recently (owned_content_publication), so the system is still shipping output even though outcome movement is not visible yet.",
+    "The active loop did execute a live marketing action recently (reddit_comment_published), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
-    "Apollo managed outbound is already inside an active measurement window until 2026-06-02T07:23:34.700335+02:00, so the loop should not repackage the same lane before that checkpoint.",
-    "The loop has repeated the same HN/Lobsters bottleneck multiple times without a fresh autonomous replacement action, so the ceiling itself is now a failing tactic."
+    "Apollo managed outbound is already inside an active measurement window until 2026-06-02T07:23:34.700335+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -154,29 +139,29 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_owned_content_execution.json",
-    "type": "owned_content_publication",
-    "title": "Distribution lane execution: owned_content",
-    "status": "executed",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_164735_reddit_comment_published.json",
+    "type": "reddit_comment_published",
+    "title": "Reddit comment published: Reddit reddit.com › r/cursor › after months with ai coding agents, these 5 small workflow changes made the biggest difference r/cursor",
+    "status": "published",
     "ok": true,
     "live_external_action": true,
     "outcome_ready": true,
     "warning": null,
-    "url": null
+    "url": "https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small"
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_owned_content_execution.json",
-    "type": "owned_content_publication",
-    "title": "Distribution lane execution: owned_content",
-    "status": "executed",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_164735_reddit_comment_published.json",
+    "type": "reddit_comment_published",
+    "title": "Reddit comment published: Reddit reddit.com › r/cursor › after months with ai coding agents, these 5 small workflow changes made the biggest difference r/cursor",
+    "status": "published",
     "ok": true,
     "live_external_action": true,
     "outcome_ready": true,
     "warning": null,
-    "url": null
+    "url": "https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small"
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-26T15:34:58.413482+02:00",
+    "generated_at": "2026-05-26T17:33:20.454783+02:00",
     "status": "verified_live_sequence",
     "measurement_pending": true,
     "summary": "Apollo outbound verification confirms a live Ralph Workflow sequence with Codeberg-primary CTA is active.",

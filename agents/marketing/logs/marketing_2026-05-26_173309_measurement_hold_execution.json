@@ -1,22 +1,16 @@
 {
-  "timestamp": "2026-05-26T17:29:20.450276",
-  "run_type": "marketing-distribution-lane",
+  "timestamp": "2026-05-26T17:33:09.048314",
+  "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "distribution_lane_switch",
-    "channel": "distribution_architecture_repair",
-    "title": "Distribution lane decision: distribution_architecture_repair",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md"
+    "type": "measurement_hold_execution",
+    "channel": "measurement_hold",
+    "title": "Distribution lane execution: measurement_hold",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_173309_measurement_hold.md"
   },
   "why_this_action": {
-    "shared_findings_used": [
-      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
-      "channel_discovery.json: validated easy-submit directory lanes",
-      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
-      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
-    ],
-    "reasoning": "The same primary-repo-flat publisher packet keeps getting regenerated as prepared-only follow-through without entering a live delivery window; repair the distribution architecture now instead of refreshing that handoff again.",
+    "summary": "Repair override: primary_repo_flat repair active; the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, so hold for truthful follow-through instead of fabricating another comparison execution run.",
     "supporting_reasons": [
+      "REPAIR: REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push C",
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
       "1 directory submissions already shipped in the last 24 hours.",
@@ -33,6 +27,7 @@
       "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
       "The primary-repo-flat publisher contact packet is already current for the remaining untouched target set, so the loop should enforce follow-through instead of pretending a fresh packet is needed.",
       "The same primary-repo-flat publisher packet has already been prepared 2 time(s) in the last 48 hours without a live delivery window, so selecting it again would be fake progress.",
+      "The execution board still marks the current primary-repo-flat packet as post-hold only until 2026-05-26T20:55:18, so surfacing it as a do-now lane would be fake progress.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
@@ -43,13 +38,26 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
-    ]
+    ],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "targets_prepared": [],
+    "hold_until": "2026-05-26T20:55:18"
   },
   "result": {
     "status": "prepared",
-    "ok": true
+    "ok": true,
+    "summary": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions.",
+    "targets_prepared": [],
+    "live_external_action": false,
+    "blocking_factors": []
   },
-  "verification": {
-    "execution_board_fingerprint": "1a3a84e4b5ec1226c2259208116eb579ffe47300"
+  "review_window": {
+    "scheduled_run_at": "2026-05-26T20:55:18"
   }
 }

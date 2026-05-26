@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-26T16:51:11.141048",
+  "timestamp": "2026-05-26T17:33:09.048314",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "owned_content_allowed",
@@ -20,7 +20,9 @@
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
       "1 directory submissions already shipped in the last 24 hours.",
-      "1 live external marketing action(s) already shipped in the last 6 hours.",
+      "2 live external marketing action(s) already shipped in the last 6 hours.",
+      "If no new outcome lands first, this short-window congestion clears at 2026-05-26T20:55:18. Before then, another live outbound action would mostly blur measurement.",
+      "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
       "Apollo already has an active measurement window until 2026-06-02T07:23:34.700335+02:00, so do not spend this run repackaging the same outbound lane.",

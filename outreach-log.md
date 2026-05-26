@@ -7020,3 +7020,15 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-26 16:55:13
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 17:30:23
+- **Note:** Momentum check found: reddit_monitor_degraded. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, execution_ceiling_repetition. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 17:34:05
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-26T20:55:18.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 18:04:36
+- **Note:** Momentum check found: reddit_monitor_degraded. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure. Active measurement hold remains in force until 2026-05-26T20:55:18, so this run is intentionally suppressing new reset churn.

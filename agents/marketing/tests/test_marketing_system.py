@@ -3912,6 +3912,125 @@ class DistributionLaneExecutorTests(unittest.TestCase):
         self.assertNotIn('### 1. Directory secondary-surface repair packet', text)
         self.assertIn('Directory secondary-surface repair already shipped in the current review window', text)
 
+    def test_marketing_execution_board_hides_reddit_execution_check_after_aligned_rerun_exists(self):
+        now = datetime(2026, 5, 26, 17, 33, 9)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text(json.dumps({
+                'short_review_window_release_at': '2026-05-26T20:55:18',
+            }), encoding='utf-8')
+            (log_dir / 'apollo_sequence_status_latest.json').write_text('{}', encoding='utf-8')
+            reddit_asset = drafts_dir / 'reddit_execution_check_2026-05-26_164912.md'
+            reddit_asset.write_text(
+                '# Reddit Execution Check — 2026-05-26T16:49:12\n'
+                'Status: autopost_attempted\n'
+                'OK: True\n\n'
+                '## Post-hold marketer rerun already scheduled\n'
+                '- Scheduled run: 2026-05-26T20:55:18\n'
+                '- Cron job: marketing-measurement-hold-release (70c81a39-7c3f-4637-96ed-9ba9132bafe2)\n'
+                '- The current one-shot already matches the live short-window release time; do not create another duplicate wake.\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-26_164912_reddit_execution_check.json').write_text(json.dumps({
+                'timestamp': '2026-05-26T16:49:12+02:00',
+                'chosen_action': {
+                    'type': 'reddit_execution_check',
+                    'artifact': str(reddit_asset),
+                    'title': 'Distribution lane execution: reddit_execution_check',
+                },
+                'result': {
+                    'status': 'prepared',
+                    'artifact': str(reddit_asset),
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}), \
+                 patch.object(distribution_lane_executor, '_current_stackoverflow_scheduled_run', return_value=''), \
+                 patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_manual_outreach_assets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_measurement_hold_release_run', return_value='2026-05-26T20:55:18'), \
+                 patch.object(distribution_lane_executor, '_adoption_summary', return_value='Codeberg is flat.'), \
+                 patch.object(distribution_lane_executor, '_recent_local_executed_action_type', return_value=True), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0):
+                artifact, _prepared = distribution_lane_executor._write_marketing_execution_board(now)
+
+            text = artifact.read_text(encoding='utf-8')
+
+        self.assertNotIn('### 1. Manual community discussion asset', text)
+        self.assertIn('Post-hold marketer rerun scheduled: 2026-05-26T20:55:18', text)
+        self.assertIn('No do-now handoff packet is currently truthful in this review window.', text)
+
+    def test_marketing_execution_board_ignores_overwritten_distribution_brief_from_old_reddit_log(self):
+        now = datetime(2026, 5, 26, 17, 44, 30)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text(json.dumps({
+                'short_review_window_release_at': '2026-05-26T20:55:18',
+            }), encoding='utf-8')
+            (log_dir / 'apollo_sequence_status_latest.json').write_text('{}', encoding='utf-8')
+            reused_brief = drafts_dir / '2026-05-26_distribution_action_brief.md'
+            reused_brief.write_text(
+                '# Ralph Workflow Distribution Action Brief\n'
+                'Generated: 2026-05-26T17:44:30\n'
+                'Chosen lane: **distribution_architecture_repair**\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-26_164912_reddit_execution_check.json').write_text(json.dumps({
+                'timestamp': '2026-05-26T16:49:12+02:00',
+                'chosen_action': {
+                    'type': 'reddit_execution_check',
+                    'artifact': str(reused_brief),
+                    'title': 'Distribution lane decision: reddit_execution_check',
+                },
+                'result': {
+                    'status': 'prepared',
+                    'artifact': str(reused_brief),
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}), \
+                 patch.object(distribution_lane_executor, '_current_stackoverflow_scheduled_run', return_value=''), \
+                 patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_manual_outreach_assets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_measurement_hold_release_run', return_value='2026-05-26T20:55:18'), \
+                 patch.object(distribution_lane_executor, '_adoption_summary', return_value='Codeberg is flat.'), \
+                 patch.object(distribution_lane_executor, '_recent_local_executed_action_type', return_value=True), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0):
+                artifact, _prepared = distribution_lane_executor._write_marketing_execution_board(now)
+
+            text = artifact.read_text(encoding='utf-8')
+
+        self.assertNotIn('Distribution lane decision: reddit_execution_check', text)
+        self.assertIn('No do-now handoff packet is currently truthful in this review window.', text)
+
     def test_marketing_execution_board_hides_apollo_runtime_blocker_packet_after_same_window_delivery(self):
         now = datetime(2026, 5, 26, 5, 49, 0)
 
