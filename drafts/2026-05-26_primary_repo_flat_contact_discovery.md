@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-26T17:21:52+00:00
+Generated: 2026-05-26T22:52:35+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.

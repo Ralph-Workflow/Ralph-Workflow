@@ -6648,6 +6648,74 @@ class MarketingLoopCertificationTests(unittest.TestCase):
         self.assertTrue(any('do not issue a healthy certification artifact yet' in blocker for blocker in blockers))
         self.assertIn('primary repo adoption remains measurement-pending after shipped repairs', watchpoints)
 
+    def test_independent_verifier_flags_stale_outcome_execution_board_status_during_hold(self):
+        now = datetime(2026, 5, 26, 23, 30, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            runner = tmp / 'runner.json'
+            momentum = tmp / 'momentum.json'
+            audit = tmp / 'audit.json'
+            board = tmp / 'marketing_execution_board_latest.md'
+            outcome_status = tmp / 'outcome_execution_board_latest.json'
+            lane_status = tmp / 'distribution_lane_latest.json'
+            for path in (runner, momentum, audit, board, lane_status):
+                path.write_text('{}\n', encoding='utf-8')
+            board.write_text('# board\n', encoding='utf-8')
+            outcome_status.write_text(json.dumps({'timestamp': '2026-05-25T18:53:00'}) + '\n', encoding='utf-8')
+            fresh_ts = now.timestamp()
+            for path in (runner, momentum, audit, board, lane_status):
+                os.utime(path, (fresh_ts, fresh_ts))
+            stale_ts = fresh_ts - 7200
+            os.utime(outcome_status, (stale_ts, stale_ts))
+
+            with patch.object(marketing_loop_independent_verify, 'RUNNER', runner), \
+                 patch.object(marketing_loop_independent_verify, 'MOMENTUM', momentum), \
+                 patch.object(marketing_loop_independent_verify, 'AUDIT', audit), \
+                 patch.object(marketing_loop_independent_verify, 'EXECUTION_BOARD', board), \
+                 patch.object(marketing_loop_independent_verify, 'OUTCOME_EXECUTION_BOARD_STATUS', outcome_status), \
+                 patch.object(marketing_loop_independent_verify, 'DISTRIBUTION_LANE_STATUS', lane_status):
+                ok, blockers, watchpoints = marketing_loop_independent_verify.watch_state_is_certifiable(
+                    {'watch_actions': ['measurement_hold_active'], 'actions': []},
+                    {'repair_window_status': 'measurement_pending', 'measurement_pending_reasons': ['primary_repo_flat']},
+                )
+
+        self.assertFalse(ok)
+        self.assertTrue(any('outcome_execution_board_latest.json is stale' in blocker for blocker in blockers))
+        self.assertEqual(watchpoints, [])
+
+    def test_independent_verifier_accepts_fresh_outcome_execution_board_status_during_hold(self):
+        now = datetime(2026, 5, 26, 23, 30, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            runner = tmp / 'runner.json'
+            momentum = tmp / 'momentum.json'
+            audit = tmp / 'audit.json'
+            board = tmp / 'marketing_execution_board_latest.md'
+            outcome_status = tmp / 'outcome_execution_board_latest.json'
+            lane_status = tmp / 'distribution_lane_latest.json'
+            for path in (runner, momentum, audit, board, lane_status):
+                path.write_text('{}\n', encoding='utf-8')
+            board.write_text('# board\n', encoding='utf-8')
+            outcome_status.write_text(json.dumps({'timestamp': '2026-05-26T23:30:00'}) + '\n', encoding='utf-8')
+            fresh_ts = now.timestamp()
+            for path in (runner, momentum, audit, board, outcome_status, lane_status):
+                os.utime(path, (fresh_ts, fresh_ts))
+
+            with patch.object(marketing_loop_independent_verify, 'RUNNER', runner), \
+                 patch.object(marketing_loop_independent_verify, 'MOMENTUM', momentum), \
+                 patch.object(marketing_loop_independent_verify, 'AUDIT', audit), \
+                 patch.object(marketing_loop_independent_verify, 'EXECUTION_BOARD', board), \
+                 patch.object(marketing_loop_independent_verify, 'OUTCOME_EXECUTION_BOARD_STATUS', outcome_status), \
+                 patch.object(marketing_loop_independent_verify, 'DISTRIBUTION_LANE_STATUS', lane_status):
+                ok, blockers, watchpoints = marketing_loop_independent_verify.watch_state_is_certifiable(
+                    {'watch_actions': ['measurement_hold_active'], 'actions': []},
+                    {'repair_window_status': 'measurement_pending', 'measurement_pending_reasons': ['primary_repo_flat']},
+                )
+
+        self.assertTrue(ok)
+        self.assertEqual(blockers, [])
+        self.assertIn('fresh execution-board artifacts', watchpoints[0])
+
 
 class CompetitorAnalysisTests(unittest.TestCase):
     def test_competitor_registry_has_hermes_and_conductor(self):

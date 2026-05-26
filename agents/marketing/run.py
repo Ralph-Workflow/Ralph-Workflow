@@ -1185,14 +1185,13 @@ def _distribution_architecture_execution_from_payload(
         or payload.get("execution_board_fingerprint")
         or ""
     ).strip()
+    logged_reason = str((payload.get("why_this_action") or {}).get("summary") or payload.get("summary") or "").strip()
     if current_fingerprint:
         if logged_fingerprint:
             if logged_fingerprint != current_fingerprint:
                 return None
-        else:
-            logged_reason = str((payload.get("why_this_action") or {}).get("summary") or payload.get("summary") or "").strip()
-            if expected_reason and logged_reason != expected_reason:
-                return None
+        elif expected_reason and logged_reason != expected_reason:
+            return None
 
     artifact_path = str(
         chosen_action.get("draft")
@@ -1228,52 +1227,91 @@ def _distribution_architecture_execution_from_payload(
     }
 
 
-def _latest_distribution_architecture_execution(lane: str, expected_reason: str = '') -> dict[str, Any] | None:
+def _latest_distribution_architecture_execution(
+    lane: str,
+    expected_reason: str = '',
+    *,
+    now: datetime | None = None,
+    short_review_window_release_at: str | None = None,
+) -> dict[str, Any] | None:
     action_types = DISTRIBUTION_ARCHITECTURE_REUSE_ACTION_TYPE_MAP.get(lane)
     if not action_types:
         return None
 
     current_fingerprint = distribution_lane_selector._execution_board_fingerprint()
-    latest_match: dict[str, Any] | None = None
-    for path, payload, timestamp in _recent_marketing_log_payloads():
-        candidate = _distribution_architecture_execution_from_payload(
-            path=path,
-            payload=payload,
-            timestamp=timestamp,
-            lane=lane,
-            action_types=action_types,
-            current_fingerprint=current_fingerprint,
-            expected_reason=expected_reason,
-        )
-        if candidate is None:
-            continue
-        latest_match = candidate
-        break
+    recent_payloads = _recent_marketing_log_payloads()
 
-    outcome_path = outcome_execution_board_runner.STATUS_JSON
-    if outcome_path.exists():
-        outcome_payload = _load_json_file(outcome_path)
-        outcome_timestamp = parse_iso_date(str(outcome_payload.get("timestamp") or ""))
-        if outcome_timestamp is not None:
-            outcome_candidate = _distribution_architecture_execution_from_payload(
-                path=outcome_path,
-                payload=outcome_payload,
-                timestamp=outcome_timestamp,
+    def _find_match(*, fingerprint: str) -> dict[str, Any] | None:
+        latest_match: dict[str, Any] | None = None
+        for path, payload, timestamp in recent_payloads:
+            candidate = _distribution_architecture_execution_from_payload(
+                path=path,
+                payload=payload,
+                timestamp=timestamp,
                 lane=lane,
                 action_types=action_types,
-                current_fingerprint=current_fingerprint,
+                current_fingerprint=fingerprint,
                 expected_reason=expected_reason,
             )
-            if outcome_candidate is not None and (
-                latest_match is None or outcome_candidate["timestamp"] >= latest_match["timestamp"]
-            ):
-                latest_match = outcome_candidate
+            if candidate is None:
+                continue
+            latest_match = candidate
+            break
 
+        outcome_path = outcome_execution_board_runner.STATUS_JSON
+        if outcome_path.exists():
+            outcome_payload = _load_json_file(outcome_path)
+            outcome_timestamp = parse_iso_date(str(outcome_payload.get("timestamp") or ""))
+            if outcome_timestamp is not None:
+                outcome_candidate = _distribution_architecture_execution_from_payload(
+                    path=outcome_path,
+                    payload=outcome_payload,
+                    timestamp=outcome_timestamp,
+                    lane=lane,
+                    action_types=action_types,
+                    current_fingerprint=fingerprint,
+                    expected_reason=expected_reason,
+                )
+                if outcome_candidate is not None and (
+                    latest_match is None or outcome_candidate["timestamp"] >= latest_match["timestamp"]
+                ):
+                    latest_match = outcome_candidate
+        return latest_match
+
+    latest_match = _find_match(fingerprint=current_fingerprint)
+    if latest_match is not None:
+        return latest_match
+
+    if lane not in DISTRIBUTION_ARCHITECTURE_GUARD_REUSE_ACTION_TYPES or now is None:
+        return None
+
+    release_at = parse_iso_date(str(short_review_window_release_at or ""))
+    short_window_started_at = (
+        release_at - timedelta(hours=distribution_lane_selector.SHORT_REVIEW_WINDOW_HOURS)
+        if release_at is not None
+        else now - timedelta(hours=distribution_lane_selector.SHORT_REVIEW_WINDOW_HOURS)
+    )
+    latest_match = _find_match(fingerprint='')
+    if latest_match is None:
+        return None
+    if latest_match.get("timestamp") < short_window_started_at:
+        return None
     return latest_match
 
 
-def _latest_distribution_architecture_guard_execution(lane: str, expected_reason: str = '') -> dict[str, Any] | None:
-    return _latest_distribution_architecture_execution(lane, expected_reason)
+def _latest_distribution_architecture_guard_execution(
+    lane: str,
+    expected_reason: str = '',
+    *,
+    now: datetime | None = None,
+    short_review_window_release_at: str | None = None,
+) -> dict[str, Any] | None:
+    return _latest_distribution_architecture_execution(
+        lane,
+        expected_reason,
+        now=now,
+        short_review_window_release_at=short_review_window_release_at,
+    )
 
 
 def _distribution_architecture_guard_execution_is_stale(
@@ -1384,6 +1422,8 @@ def main() -> int:
                 recent_guard_execution = _latest_distribution_architecture_guard_execution(
                     distribution_lane.lane,
                     expected_reason=distribution_lane.reason,
+                    now=now,
+                    short_review_window_release_at=getattr(distribution_lane, "short_review_window_release_at", None),
                 )
                 reused_existing_distribution_execution = (
                     recent_guard_execution is not None
@@ -1658,6 +1698,8 @@ def main() -> int:
         recent_guard_execution = _latest_distribution_architecture_execution(
             distribution_lane.lane,
             expected_reason=distribution_lane.reason,
+            now=now,
+            short_review_window_release_at=getattr(distribution_lane, "short_review_window_release_at", None),
         )
         reused_existing_distribution_execution = (
             recent_guard_execution is not None

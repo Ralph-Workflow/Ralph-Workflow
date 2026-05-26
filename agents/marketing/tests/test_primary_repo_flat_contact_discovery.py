@@ -138,7 +138,26 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         self.assertTrue(discovery._looks_placeholder_email('you@example.com'))
         self.assertTrue(discovery._looks_placeholder_email('jane@acme.com'))
         self.assertTrue(discovery._looks_placeholder_email('you@work.com'))
+        self.assertTrue(discovery._looks_placeholder_email('you@company.com'))
         self.assertFalse(discovery._looks_placeholder_email('info@digitalapplied.com'))
+
+    def test_extract_follow_on_contact_urls_finds_same_site_faq_like_pages(self):
+        html = ' '.join([
+            '<a href="/resources/tldl-faq">FAQ</a>',
+            '<a href="/docs/troubleshooting">Troubleshooting</a>',
+            '<a href="https://other.example/help">Offsite help</a>',
+            '<a href="/blog/product-update">Blog</a>',
+        ])
+
+        urls = discovery.extract_follow_on_contact_urls('https://www.tldl.io/resources/ai-coding-tools-2026', html)
+
+        self.assertEqual(
+            urls,
+            [
+                'https://www.tldl.io/docs/troubleshooting',
+                'https://www.tldl.io/resources/tldl-faq',
+            ],
+        )
 
     def test_enrich_target_prefers_explicit_work_with_me_telegram_path(self):
         target = discovery.Target(
@@ -322,7 +341,7 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
             enriched['channels'],
         )
 
-    def test_enrich_target_uses_github_issue_path_when_faq_explicitly_points_to_github(self):
+    def test_enrich_target_uses_github_issue_path_when_hub_page_reveals_faq(self):
         target = discovery.Target(
             name='TLDL',
             article_url='https://www.tldl.io/resources/ai-coding-tools-2026',
@@ -330,7 +349,6 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
             hook='Hook',
             reason='Fit',
             outreach_subject='Subject',
-            contact_urls=('https://www.tldl.io/resources/tldl-faq',),
         )
 
         def fake_get(url: str, timeout: int = 20) -> str:
@@ -338,7 +356,9 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
             if normalized == 'https://www.tldl.io/resources/ai-coding-tools-2026':
                 return '<a href="/about">About</a>'
             if normalized == 'https://www.tldl.io':
-                return '<a href="https://x.com/shenli3514">X</a>'
+                return '<a href="https://x.com/shenli3514">X</a><a href="mailto:you@company.com">Placeholder</a>'
+            if normalized == 'https://www.tldl.io/resources':
+                return '<a href="/resources/tldl-faq">FAQ</a>'
             if normalized == 'https://www.tldl.io/resources/tldl-faq':
                 return '<p>For questions or feedback, reach out through our GitHub.</p><a href="https://github.com/shenli/tldl">GitHub</a>'
             if normalized == 'https://www.tldl.io/about':
@@ -355,6 +375,14 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         self.assertEqual(enriched['recommended_next_step'], 'GitHub issue/PR path is now identified')
         self.assertIn(
             {'type': 'github_issue', 'value': 'https://github.com/shenli/tldl/issues/new', 'label': 'GitHub issue'},
+            enriched['channels'],
+        )
+        self.assertIn(
+            {'type': 'website', 'value': 'https://www.tldl.io/resources/tldl-faq', 'label': 'faq page'},
+            enriched['channels'],
+        )
+        self.assertNotIn(
+            {'type': 'email', 'value': 'you@company.com', 'label': 'email'},
             enriched['channels'],
         )
 

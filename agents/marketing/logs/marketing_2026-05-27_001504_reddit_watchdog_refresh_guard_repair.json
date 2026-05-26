@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-05-27T00:15:04+02:00",
+  "type": "reddit_watchdog_refresh_guard_repair",
+  "status": "executed",
+  "ok": true,
+  "summary": "Patched the Reddit watchdog so guarded low-quality reports trigger a fresh monitor pass, and fail closed when that refresh is blocked instead of autoposting against stale Reddit truth.",
+  "inputs": {
+    "execution_board": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
+    "reddit_analysis": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis_latest.json",
+    "adoption_metrics": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/adoption_metrics_latest.json",
+    "market_intelligence": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json"
+  },
+  "changes": [
+    "Added should_refresh_report() logic for guarded low-coverage / low-fit reports.",
+    "Prevented stale-report autopost when the forced refresh returns cooldown_skip and no fresh report.",
+    "Normalized semicolon-delimited last_detail parsing.",
+    "Added watchdog regression tests for refresh and blocked-refresh paths."
+  ],
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_reddit_watchdog -v",
+    "tests_ok": true,
+    "watchdog_command": "python3 agents/marketing/reddit_watchdog.py",
+    "watchdog_result": {
+      "status": "refresh_blocked_stale_report_preserved",
+      "report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-26_2129.md",
+      "monitor_status": "cooldown_skip",
+      "next_window_packet_status": "report_guard_skip"
+    }
+  },
+  "outcome": {
+    "live_external_action": false,
+    "improved_odds_of_real_action": true,
+    "why": "Future cron slots will no longer burn on stale weak Reddit reports; the lane now either refreshes with new truth or exits honestly."
+  },
+  "artifacts": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/reddit_watchdog.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_reddit_watchdog.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_001504_reddit_watchdog_refresh_guard_repair.md"
+  ]
+}

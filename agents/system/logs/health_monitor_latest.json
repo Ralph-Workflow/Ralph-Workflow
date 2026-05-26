@@ -1,6 +1,6 @@
 {
-  "ts": "2026-05-26T22:54:12.061844",
-  "jobs_checked": 23,
+  "ts": "2026-05-27T00:08:48.982609",
+  "jobs_checked": 22,
   "issues_found": 6,
   "issues": [
     {
@@ -15,27 +15,27 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
+      "name": "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt",
       "category": "review_followup_required",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "Marketing runner bundle is not healthy.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is not healthy."
+      "last_error": "Reddit monitor is degraded without a fresh healthy fallback report inside the grace window.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Reddit monitor is degraded without a fresh healthy fallback report inside the grace window."
     },
     {
       "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with",
+      "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "category": "review_followup_required",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "Momentum watchdog status is needs_attention with actions: reddit_monitor_degraded.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Momentum watchdog status is needs_attention with actions: reddit_monitor_degraded."
+      "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
     },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=383",
-      "repeats_in_recent_history": 383,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=389",
+      "repeats_in_recent_history": 389,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification::loop_verification_fail",
       "escalation_level": "critical",
@@ -45,13 +45,13 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
+      "name": "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt_escalation",
       "category": "escalation_required",
-      "last_error": "Marketing runner bundle is not healthy.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=129",
-      "repeats_in_recent_history": 129,
+      "last_error": "Reddit monitor is degraded without a fresh healthy fallback report inside the grace window.",
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt:review_followup_required repeat_count=14",
+      "repeats_in_recent_history": 14,
       "owner_domain": "marketing",
-      "incident_key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
+      "incident_key": "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt::review_followup_required",
       "escalation_level": "critical",
       "blocked_by": [
         "marketing_independent_verification"
@@ -59,13 +59,13 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation",
+      "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
       "category": "escalation_required",
-      "last_error": "Momentum watchdog status is needs_attention with actions: reddit_monitor_degraded.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=88",
-      "repeats_in_recent_history": 88,
+      "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=267",
+      "repeats_in_recent_history": 267,
       "owner_domain": "marketing",
-      "incident_key": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with::review_followup_required",
+      "incident_key": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin::review_followup_required",
       "escalation_level": "critical",
       "blocked_by": [
         "marketing_independent_verification"
@@ -75,13 +75,13 @@
   "repairs_attempted": [
     {
       "type": "immediate_review_followup_owner_action",
-      "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
+      "job": "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779828837083:53\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "immediate_review_followup_owner_action",
-      "job": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with",
+      "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "ok": true,
       "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
@@ -95,7 +95,7 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-26T22:54:00.981880+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T00:08:38.177945+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
@@ -105,13 +105,13 @@
     },
     {
       "type": "owner_loop_escalation",
-      "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
+      "job": "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt_escalation",
       "ok": true,
       "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
-      "job": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation",
+      "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
       "ok": true,
       "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
@@ -119,7 +119,7 @@
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779828848174:54\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779833325143:63\"\n}"
     }
   ]
 }

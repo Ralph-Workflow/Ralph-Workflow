@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-26T23:08:23.979481",
+  "timestamp": "2026-05-26T23:55:48.965304",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -15,7 +15,7 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "reasoning": "The current short review window already cleared, but the same empty-board distribution-architecture failure is still guarded and has never logged a same-window guard follow-through for the current fingerprint; perform one concrete distribution-architecture repair now instead of letting the guard suppress the next truthful post-window slot.",
+    "reasoning": "The current review window already logged a guard pause for this empty-board fingerprint without a same-window guard follow-through; repair the churn-guard bookkeeping now instead of compounding stale pause reuse.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
@@ -41,7 +41,8 @@
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
       "2 prior distribution-architecture repair run(s) already hit this same empty-board window.",
-      "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint."
+      "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
+      "A guard-pause artifact already landed in this review window, but there is still no same-window guard follow-through for the current fingerprint."
     ]
   },
   "result": {
@@ -49,6 +50,6 @@
     "ok": true
   },
   "verification": {
-    "execution_board_fingerprint": "bcd8f80bf59c725c1c078873410337a29f56f9f0"
+    "execution_board_fingerprint": "b5ec831743f619f2cb031c351eda476f94ebd644"
   }
 }

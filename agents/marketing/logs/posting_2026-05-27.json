@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-05-27T00:02:33.034940",
+  "results": [
+    {
+      "date": "2026-05-27",
+      "draft": "2026-05-27_unattended_agent_draft.md",
+      "title": "What 'Unattended Coding Agent' Actually Means \u2014 and Why Most Setups Aren't",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/What-Unattended-Coding-Agent-Actually-Means--and-Why-Most-Setups-Arent-05-26",
+      "error": null,
+      "draft_hash": "463324ac7fcf584cdefbda1eaeeb921e84b8516a9a0e831b63ca66493f9c0450",
+      "experiment_id": "2026-05-27-unattended_agent"
+    }
+  ]
+}

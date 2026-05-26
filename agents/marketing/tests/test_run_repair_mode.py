@@ -1179,6 +1179,50 @@ class RunRepairModeTests(unittest.TestCase):
 
         self.assertTrue(stale)
 
+    def test_latest_distribution_architecture_guard_execution_reuses_same_window_reason_match_when_fingerprint_drifted(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                artifact_path = run.LOG_DIR / 'existing_guard_follow_through.md'
+                artifact_path.write_text('guard\n', encoding='utf-8')
+                prior_log = run.LOG_DIR / 'marketing_2026-05-26_213700_distribution_architecture_guard_follow_through.json'
+                prior_log.write_text(json.dumps({
+                    'timestamp': '2026-05-26T21:37:00',
+                    'chosen_action': {
+                        'type': 'distribution_architecture_guard_follow_through',
+                        'draft': str(artifact_path),
+                    },
+                    'why_this_action': {
+                        'summary': 'The same empty-board distribution-architecture failure is already under an active third-strike churn guard for this review window; suppress another identical repair and reuse the guard until the board fingerprint or blocker set materially changes.',
+                        'shared_findings_used': ['adoption_metrics_latest.json'],
+                    },
+                    'result': {
+                        'status': 'executed',
+                        'summary': 'Reused the active churn guard for the current short review window.',
+                        'targets_prepared': [],
+                        'live_external_action': False,
+                        'blocking_factors': [],
+                    },
+                    'verification': {
+                        'execution_board_fingerprint': 'older-fingerprint',
+                    },
+                }), encoding='utf-8')
+
+                with patch.object(run.distribution_lane_selector, '_execution_board_fingerprint', return_value='newer-fingerprint'), \
+                     patch.object(run.outcome_execution_board_runner, 'STATUS_JSON', run.LOG_DIR / 'missing_outcome_status.json'):
+                    found = run._latest_distribution_architecture_guard_execution(
+                        'distribution_architecture_guard_follow_through',
+                        expected_reason='The same empty-board distribution-architecture failure is already under an active third-strike churn guard for this review window; suppress another identical repair and reuse the guard until the board fingerprint or blocker set materially changes.',
+                        now=datetime(2026, 5, 26, 22, 37, 0),
+                        short_review_window_release_at='2026-05-26T22:47:35',
+                    )
+
+                self.assertIsNotNone(found)
+                self.assertEqual(found['log_path'], str(prior_log))
+            finally:
+                run.LOG_DIR = original_log_dir
+
     def test_main_reuses_existing_distribution_architecture_repair_when_truth_is_unchanged(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR

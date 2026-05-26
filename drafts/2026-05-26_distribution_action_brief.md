@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-26T23:21:32
-Chosen lane: **distribution_architecture_guard_pause**
+Generated: 2026-05-26T23:55:48
+Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
-- The short review window already cleared and the current empty-board fingerprint has already been repaired once; pause duplicate same-fingerprint architecture churn until the board changes.
+- The current review window already logged a guard pause for this empty-board fingerprint without a same-window guard follow-through; repair the churn-guard bookkeeping now instead of compounding stale pause reuse.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 1 directory submissions already shipped in the last 24 hours.
@@ -29,7 +29,7 @@ Chosen lane: **distribution_architecture_guard_pause**
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
 - 2 prior distribution-architecture repair run(s) already hit this same empty-board window.
 - A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
-- The short review window already cleared and this execution-board fingerprint already received a distribution-architecture repair, so the next slot should pause duplicate same-fingerprint churn until the board truth changes.
+- A guard-pause artifact already landed in this review window, but there is still no same-window guard follow-through for the current fingerprint.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -41,7 +41,8 @@ Chosen lane: **distribution_architecture_guard_pause**
 ## Recent owned-content already shipped
 - Distribution lane execution: owned_content (owned_content)
 
-## Immediate lane-architecture guard pause work
-- Do not emit another duplicate guard follow-through note for the same execution-board fingerprint in this review window
-- Preserve the current empty-board truth until a blocker clears or a genuinely new executable asset appears
-- When the fingerprint changes, force the next run to choose either a real untouched lane or a fresh architecture repair
+## Immediate lane-architecture repair work
+- Do not emit another measurement hold once the short review window has already cleared
+- Treat this as a process-repair slot: replace stale lane-selection logic, prompts, or scheduling rules that still point back to idle holds
+- Preserve Codeberg as the primary CTA while forcing the next post-hold slot to choose either a truthful untouched lane or a concrete runtime repair
+- Use the execution board and shared findings as the truth source for what is actually blocked, exhausted, or already delivered
