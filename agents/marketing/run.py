@@ -120,6 +120,20 @@ DISTRIBUTION_ARCHITECTURE_GUARD_REUSE_ACTION_TYPES = {
     "distribution_architecture_guard_pause",
 }
 
+DISTRIBUTION_ARCHITECTURE_REUSE_LANES = {
+    "distribution_architecture_repair",
+    *DISTRIBUTION_ARCHITECTURE_GUARD_REUSE_ACTION_TYPES,
+}
+
+DISTRIBUTION_ARCHITECTURE_REUSE_ACTION_TYPE_MAP = {
+    "distribution_architecture_repair": {
+        "distribution_architecture_repair",
+        "distribution_architecture_churn_guard_repair",
+    },
+    "distribution_architecture_guard_follow_through": {"distribution_architecture_guard_follow_through"},
+    "distribution_architecture_guard_pause": {"distribution_architecture_guard_pause"},
+}
+
 
 def _write_distribution_execution_log(
     *,
@@ -131,7 +145,8 @@ def _write_distribution_execution_log(
     """Write a first-class per-lane execution log so audits don't have to infer runtime state
     from the daily bundle only.
     """
-    safe_action = re.sub(r'[^a-z0-9_]+', '_', (getattr(execution, 'action_type', '') or 'distribution_execution').lower()).strip('_') or 'distribution_execution'
+    action_type_value = str(getattr(execution, 'action_type', '') or 'distribution_execution')
+    safe_action = re.sub(r'[^a-z0-9_]+', '_', action_type_value.lower()).strip('_') or 'distribution_execution'
     path = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d_%H%M%S')}_{safe_action}.json"
     payload = {
         'timestamp': now.isoformat(),
@@ -161,7 +176,7 @@ def _write_distribution_execution_log(
     if reused_from_log:
         verification['reused_from_log'] = reused_from_log
         payload['result']['reused_existing_artifact'] = True
-    if getattr(execution, 'action_type', '') in DISTRIBUTION_ARCHITECTURE_GUARD_REUSE_ACTION_TYPES:
+    if getattr(distribution_lane, 'lane', '') in DISTRIBUTION_ARCHITECTURE_REUSE_LANES:
         verification['execution_board_fingerprint'] = distribution_lane_selector._execution_board_fingerprint()
         verification['guard_reason'] = getattr(distribution_lane, 'reason', '')
     if verification:
@@ -939,19 +954,16 @@ def _distribution_architecture_truth_artifact_paths() -> list[Path]:
     ]
 
 
-def _latest_distribution_architecture_guard_execution(lane: str, expected_reason: str = '') -> dict[str, Any] | None:
-    action_type = {
-        "distribution_architecture_guard_follow_through": "distribution_architecture_guard_follow_through",
-        "distribution_architecture_guard_pause": "distribution_architecture_guard_pause",
-    }.get(lane)
-    if not action_type:
+def _latest_distribution_architecture_execution(lane: str, expected_reason: str = '') -> dict[str, Any] | None:
+    action_types = DISTRIBUTION_ARCHITECTURE_REUSE_ACTION_TYPE_MAP.get(lane)
+    if not action_types:
         return None
 
     current_fingerprint = distribution_lane_selector._execution_board_fingerprint()
     for path, payload, timestamp in _recent_marketing_log_payloads():
         chosen_action = payload.get("chosen_action") if isinstance(payload.get("chosen_action"), dict) else {}
         logged_action_type = str(chosen_action.get("type") or payload.get("action_type") or "").strip()
-        if logged_action_type != action_type:
+        if logged_action_type not in action_types:
             continue
         verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
         logged_fingerprint = str(verification.get("execution_board_fingerprint") or "").strip()
@@ -967,6 +979,7 @@ def _latest_distribution_architecture_guard_execution(lane: str, expected_reason
         return {
             "timestamp": timestamp,
             "log_path": str(path),
+            "action_type": logged_action_type,
             "artifact_path": chosen_action.get("draft") or payload.get("artifact_path") or "",
             "status": str(result.get("status") or "executed"),
             "summary": str(result.get("summary") or "Reused existing distribution-architecture guard artifact."),
@@ -976,6 +989,10 @@ def _latest_distribution_architecture_guard_execution(lane: str, expected_reason
             "blocking_factors": list(result.get("blocking_factors") or []),
         }
     return None
+
+
+def _latest_distribution_architecture_guard_execution(lane: str, expected_reason: str = '') -> dict[str, Any] | None:
+    return _latest_distribution_architecture_execution(lane, expected_reason)
 
 
 def _distribution_architecture_guard_execution_is_stale(recent_execution: dict[str, Any] | None) -> bool:
@@ -1056,7 +1073,7 @@ def main() -> int:
         else:
             reused_existing_distribution_execution = False
             recent_guard_execution = None
-            if distribution_lane.lane in DISTRIBUTION_ARCHITECTURE_GUARD_REUSE_ACTION_TYPES:
+            if distribution_lane.lane in DISTRIBUTION_ARCHITECTURE_REUSE_LANES:
                 recent_guard_execution = _latest_distribution_architecture_guard_execution(
                     distribution_lane.lane,
                     expected_reason=distribution_lane.reason,
@@ -1068,11 +1085,7 @@ def main() -> int:
 
             if reused_existing_distribution_execution and recent_guard_execution is not None:
                 distribution_execution = SimpleNamespace(
-                    action_type=(
-                        "distribution_architecture_guard_follow_through"
-                        if distribution_lane.lane == "distribution_architecture_guard_follow_through"
-                        else "distribution_architecture_guard_pause"
-                    ),
+                    action_type=recent_guard_execution.get("action_type", distribution_lane.lane),
                     status=recent_guard_execution.get("status", "executed"),
                     artifact_path=recent_guard_execution.get("artifact_path", ""),
                     summary=recent_guard_execution.get("summary", "Reused existing distribution-architecture guard artifact."),
@@ -1301,8 +1314,8 @@ def main() -> int:
 
     reused_existing_distribution_execution = False
     recent_guard_execution = None
-    if distribution_lane.lane in DISTRIBUTION_ARCHITECTURE_GUARD_REUSE_ACTION_TYPES:
-        recent_guard_execution = _latest_distribution_architecture_guard_execution(
+    if distribution_lane.lane in DISTRIBUTION_ARCHITECTURE_REUSE_LANES:
+        recent_guard_execution = _latest_distribution_architecture_execution(
             distribution_lane.lane,
             expected_reason=distribution_lane.reason,
         )
@@ -1314,11 +1327,7 @@ def main() -> int:
     if reused_existing_distribution_execution and recent_guard_execution is not None:
         distribution_execution = SimpleNamespace(
             lane=distribution_lane.lane,
-            action_type=(
-                "distribution_architecture_guard_follow_through"
-                if distribution_lane.lane == "distribution_architecture_guard_follow_through"
-                else "distribution_architecture_guard_pause"
-            ),
+            action_type=recent_guard_execution.get("action_type", distribution_lane.lane),
             status=recent_guard_execution.get("status", "executed"),
             artifact_path=recent_guard_execution.get("artifact_path", ""),
             summary=recent_guard_execution.get("summary", "Reused existing distribution-architecture guard artifact."),

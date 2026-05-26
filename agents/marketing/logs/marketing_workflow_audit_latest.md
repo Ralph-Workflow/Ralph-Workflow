@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-26T08:41:18.383821
+- Generated: 2026-05-26T09:08:42.865544
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,7 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
-- 6 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
+- 5 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
 - The most recent runtime activity was distribution_architecture_churn_guard_repair, but the latest meaningful external/replacement execution remains apollo_outbound_verification; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (apollo_outbound_verification), so the system is still shipping output even though outcome movement is not visible yet.
 - A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
@@ -26,7 +26,7 @@
 
 ## What is repetitive
 - Repeated outreach opening: Honestly the part I'd optimize first is the handoff, not the model stack.
-- 6 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.
+- 5 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.
 
 ## What is low-signal
 - Recent live external action exists (apollo_outbound_verification), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.

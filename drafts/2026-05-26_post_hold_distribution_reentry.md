@@ -1,6 +1,6 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-05-26T08:44:59
-- Hold release at: 2026-05-26T08:57:00
+Generated: 2026-05-26T09:52:34
+- Hold release at: 2026-05-26T12:30:22
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-26_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot
@@ -22,5 +22,7 @@ Generated: 2026-05-26T08:44:59
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
-- marketing_execution_board_latest.md: short-window truth already said congestion clears at 2026-05-26T08:57:00
-- distribution_lane_latest.json: latest repair lane had omitted short_review_window_release_at
+- channel_discovery.json: validated easy-submit directory lanes
+- outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
+- market_intelligence_latest.json: reusable competitor comparisons and positioning truths
+- apollo_status.json: managed outbound is authenticated and available for execution packaging

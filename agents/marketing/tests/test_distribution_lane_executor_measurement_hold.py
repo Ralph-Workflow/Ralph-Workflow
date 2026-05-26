@@ -308,6 +308,49 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertIn('Short review-window congestion clears at: 2026-05-25T23:07:41', board_text)
 
+    def test_non_live_lane_rewrites_execution_board_after_post_hold_rerun_schedule_updates(self):
+        now = datetime(2026, 5, 26, 9, 46, 0)
+        decision = LaneDecision(
+            lane='owned_content',
+            reason='fallback lane',
+            reasons=['test'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+            short_review_window_release_at='2026-05-26T09:50:16',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            board_path = tmp / 'marketing_execution_board_latest.md'
+            board_path.write_text('# board\n', encoding='utf-8')
+            contract_path = tmp / 'post_hold_distribution_reentry_latest.md'
+            contract_path.write_text('# contract\n', encoding='utf-8')
+            artifact_path = tmp / 'owned_content_noop.md'
+            artifact_path.write_text('# noop\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, '_execute_owned_content', return_value=distribution_lane_executor.LaneExecution(
+                lane='owned_content',
+                action_type='owned_content_lane_noop',
+                status='skipped',
+                artifact_path=str(artifact_path),
+                summary='Owned-content lane remains active; no non-content distribution execution packet needed.',
+                targets_prepared=[],
+                shared_findings_used=['adoption_metrics_latest.json'],
+                live_external_action=False,
+                blocking_factors=[],
+            )), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(board_path, [])) as mock_write_board, \
+                 patch.object(distribution_lane_executor, '_write_post_hold_reentry_contract', return_value=contract_path), \
+                 patch.object(distribution_lane_executor, '_schedule_measurement_hold_release_run', return_value={'status': 'scheduled', 'scheduled_run_at': '2026-05-26T09:50:16'}), \
+                 patch.object(distribution_lane_executor, '_append_post_hold_schedule_note'), \
+                 patch.object(distribution_lane_executor, '_write_action_log'):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now=now)
+
+        self.assertEqual(mock_write_board.call_count, 2)
+        self.assertIn('Scheduled an automatic post-hold marketer rerun at the updated short-window release time.', execution.summary)
+
     def test_post_hold_reentry_contract_falls_back_to_live_short_window_release_when_latest_lane_json_omits_it(self):
         now = datetime(2026, 5, 26, 8, 12, 8)
 
@@ -979,7 +1022,17 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
                  patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True), \
                  patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
-                mock_run.return_value.returncode = 1
+                def fake_run(command, *args, **kwargs):
+                    if command[:3] == ['openclaw', 'cron', 'list']:
+                        return SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': [{
+                            'id': 'cron-keep',
+                            'name': 'marketing-measurement-hold-release',
+                            'enabled': True,
+                            'schedule': {'kind': 'at', 'at': '2026-05-25T02:05:05'},
+                        }]}), stderr='')
+                    return SimpleNamespace(returncode=1, stdout='{}', stderr='')
+
+                mock_run.side_effect = fake_run
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
 
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
@@ -1054,7 +1107,17 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
                  patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True), \
                  patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
-                mock_run.return_value.returncode = 1
+                def fake_run(command, *args, **kwargs):
+                    if command[:3] == ['openclaw', 'cron', 'list']:
+                        return SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': [{
+                            'id': 'cron-keep',
+                            'name': 'marketing-measurement-hold-release',
+                            'enabled': True,
+                            'schedule': {'kind': 'at', 'at': '2026-05-25T07:20:16'},
+                        }]}), stderr='')
+                    return SimpleNamespace(returncode=1, stdout='{}', stderr='')
+
+                mock_run.side_effect = fake_run
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
 
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
@@ -1208,6 +1271,57 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertEqual(schedule['job_id'], 'fresh-cron')
         self.assertEqual(schedule['scheduled_run_at'], '2026-05-25T23:07:41')
         self.assertEqual(cron_log['review_window']['scheduled_run_at'], '2026-05-25T23:07:41')
+
+    def test_measurement_hold_scheduler_passes_timezone_aware_cron_at_argument(self):
+        now = datetime(2026, 5, 26, 7, 11, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.side_effect = [
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': []}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'fresh-cron', 'name': 'marketing-measurement-hold-release'}}), stderr=''),
+                ]
+
+                schedule = distribution_lane_executor._schedule_measurement_hold_release_run(
+                    now=now,
+                    release_at='2026-05-26T09:50:16',
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    reentry_contract_path=str(drafts_dir / 'post_hold_distribution_reentry_latest.md'),
+                )
+
+                add_call = mock_run.call_args_list[1].args[0]
+
+            cron_log = json.loads((log_dir / 'marketing_2026-05-26_071100_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(schedule['status'], 'scheduled')
+        self.assertEqual(schedule['scheduled_run_at'], '2026-05-26T09:50:16')
+        self.assertEqual(add_call[add_call.index('--at') + 1], '2026-05-26T09:50:16+02:00')
+        self.assertEqual(cron_log['verification']['cron_at_argument'], '2026-05-26T09:50:16+02:00')
+
+    def test_current_measurement_hold_release_run_normalizes_utc_cron_time_to_local_display(self):
+        now = datetime(2026, 5, 26, 9, 11, 0)
+
+        with patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({'jobs': [{
+                'id': 'cron-live',
+                'name': 'marketing-measurement-hold-release',
+                'enabled': True,
+                'schedule': {'kind': 'at', 'at': '2026-05-26T07:50:16.000Z'},
+            }]}),
+            stderr='',
+        )):
+            scheduled = distribution_lane_executor._current_measurement_hold_release_run(now)
+
+        self.assertEqual(scheduled, '2026-05-26T09:50:16')
 
     def test_measurement_hold_scheduler_removes_stale_running_release_job_before_reschedule(self):
         now = datetime(2026, 5, 26, 2, 13, 0)

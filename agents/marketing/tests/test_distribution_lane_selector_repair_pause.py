@@ -1318,7 +1318,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
 
         self.assertEqual(decision.lane, 'distribution_architecture_repair')
         self.assertIn('still active', decision.reason.lower())
-        self.assertIsNone(decision.short_review_window_release_at)
+        self.assertEqual(decision.short_review_window_release_at, '2026-05-25T02:05:05')
 
     def test_active_long_hold_reuses_historical_reentry_repairs_after_third_strike_guard(self):
         now = datetime(2026, 5, 25, 3, 57, 0)
@@ -1436,7 +1436,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
 
         self.assertEqual(decision.lane, 'distribution_architecture_repair')
         self.assertIn('still active', decision.reason.lower())
-        self.assertIsNone(decision.short_review_window_release_at)
+        self.assertEqual(decision.short_review_window_release_at, '2026-05-25T07:20:16')
 
     def test_idle_measurement_hold_with_empty_execution_board_escalates_to_distribution_architecture_repair(self):
         now = datetime(2026, 5, 25, 9, 24, 0)
@@ -1770,7 +1770,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
 
         self.assertEqual(decision.lane, 'distribution_architecture_repair')
         self.assertIn('both post-hold rerun repairs were already used', decision.reason.lower())
-        self.assertIsNone(decision.short_review_window_release_at)
+        self.assertEqual(decision.short_review_window_release_at, '2026-05-25T07:20:16')
 
     def test_existing_distribution_architecture_guard_suppresses_duplicate_repair_selection(self):
         now = datetime(2026, 5, 25, 4, 32, 0)
@@ -2176,7 +2176,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
 
         self.assertEqual(decision.lane, 'distribution_architecture_repair')
         self.assertIn('instead of logging another guard pause', decision.reason.lower())
-        self.assertIsNone(decision.short_review_window_release_at)
+        self.assertEqual(decision.short_review_window_release_at, '2026-05-25T15:07:03')
 
     def test_active_short_window_with_prior_guard_pause_and_newer_repair_reuses_guard_pause(self):
         now = datetime(2026, 5, 25, 15, 37, 0)
@@ -2482,7 +2482,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
 
         self.assertEqual(decision.lane, 'distribution_architecture_repair')
         self.assertIn('instead of logging another guard pause', decision.reason.lower())
-        self.assertIsNone(decision.short_review_window_release_at)
+        self.assertEqual(decision.short_review_window_release_at, '2026-05-25T17:03:35')
 
     def test_guarded_empty_board_pauses_after_guard_follow_through_already_logged(self):
         now = datetime(2026, 5, 25, 8, 0, 0)
@@ -2670,7 +2670,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
         self.assertEqual(decision.lane, 'distribution_architecture_repair')
         self.assertNotEqual(decision.lane, 'primary_repo_flat_contact_handoff_packet')
         self.assertIn('execution board is already empty', decision.reason.lower())
-        self.assertIsNone(decision.short_review_window_release_at)
+        self.assertEqual(decision.short_review_window_release_at, '2026-05-25T07:20:16')
 
     def test_cleared_short_window_prefers_primary_repo_flat_publisher_packet_when_targets_are_ready(self):
         now = datetime(2026, 5, 25, 2, 6, 0)

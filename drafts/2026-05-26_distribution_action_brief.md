@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-26T08:29:00
+Generated: 2026-05-26T10:26:51
 Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
@@ -7,8 +7,8 @@ Chosen lane: **distribution_architecture_repair**
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 1 directory submissions already shipped in the last 24 hours.
-- 6 live external marketing action(s) already shipped in the last 6 hours.
-- If no new outcome lands first, this short-window congestion clears at 2026-05-26T08:57:00. Before then, another live outbound action would mostly blur measurement.
+- 4 live external marketing action(s) already shipped in the last 6 hours.
+- If no new outcome lands first, this short-window congestion clears at 2026-05-26T12:30:22. Before then, another live outbound action would mostly blur measurement.
 - Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
@@ -31,7 +31,7 @@ Chosen lane: **distribution_architecture_repair**
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
-- 5 prior distribution-architecture repair run(s) already hit this same empty-board window.
+- 6 prior distribution-architecture repair run(s) already hit this same empty-board window.
 - A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
 
 ## Shared findings reused

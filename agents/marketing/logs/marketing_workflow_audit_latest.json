@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T08:41:18.383821",
+  "generated_at": "2026-05-26T09:08:42.865544",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -64,7 +64,7 @@
   ],
   "repetitive": [
     "Repeated outreach opening: Honestly the part I'd optimize first is the handoff, not the model stack.",
-    "6 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family."
+    "5 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family."
   ],
   "low_signal": [
     "Recent live external action exists (apollo_outbound_verification), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked."
@@ -133,7 +133,7 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
-    "6 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
+    "5 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
     "The most recent runtime activity was distribution_architecture_churn_guard_repair, but the latest meaningful external/replacement execution remains apollo_outbound_verification; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (apollo_outbound_verification), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
@@ -170,7 +170,7 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_distribution_architecture_repair_execution.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26.json",
     "type": "distribution_architecture_churn_guard_repair",
     "title": "Distribution lane execution: distribution_architecture_repair",
     "status": "executed",
@@ -178,7 +178,7 @@
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": null
+    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_090806_distribution_architecture_repair.md"
   },
   "latest_executed_action": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072359_apollo_outbound_verification.json",
@@ -192,7 +192,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-26T08:08:13.580148+02:00",
+    "generated_at": "2026-05-26T09:08:18.118790+02:00",
     "status": "verified_live_sequence",
     "measurement_pending": true,
     "summary": "Apollo outbound verification confirms a live Ralph Workflow sequence with Codeberg-primary CTA is active.",

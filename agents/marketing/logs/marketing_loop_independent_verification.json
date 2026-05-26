@@ -1,15 +1,15 @@
 {
-  "checked_at": "2026-05-26T08:12:48.352776+02:00",
+  "checked_at": "2026-05-26T09:08:43.155334+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-26T08:12:48.329046"
+      "summary": "runner ok=True generated_at=2026-05-26T09:08:43.131106"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=watch; actions=[]; watch_actions=['primary_repo_adoption_flat', 'measurement_hold_active']"
+      "summary": "momentum status=watch; actions=[]; watch_actions=['primary_repo_adoption_flat']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
@@ -17,8 +17,7 @@
     }
   ],
   "watchpoints": [
-    "primary repo adoption remains measurement-pending after shipped repairs",
-    "measurement hold is active, and the current manual/external follow-through queue is consolidated in a fresh execution board"
+    "primary repo adoption remains measurement-pending after shipped repairs"
   ],
   "blockers": [
     "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
