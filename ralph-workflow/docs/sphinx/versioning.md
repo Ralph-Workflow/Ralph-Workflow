@@ -97,7 +97,7 @@ The tag triggers any configured CI release workflows.
 
 ## 7. Skills Package
 
-The repo-owned workflow skills ship alongside the Python release and are published from the same Codeberg repository history.
+The Ralph Workflow-managed mirrored workflow skills ship alongside the Python release and are published from the same Codeberg repository history.
 
 - `skills-package/` is included in the release tarballs produced from the tagged repository state.
 - The `@ralph-workflow/skills` npm package version stays in sync with the Ralph Workflow release version.

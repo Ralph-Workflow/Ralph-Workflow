@@ -14,7 +14,7 @@ Ralph Workflow uses built-in templates to assemble prompts for planning, develop
 
 ## Skill injection
 
-Planning and development prompts receive the shipped baseline skill bundle through `SKILLS_INLINE_CONTENT` when repo-owned skills are available.
+Planning and development prompts receive the shipped baseline skill bundle through `SKILLS_INLINE_CONTENT` when Ralph Workflow's mirrored default skills are available.
 
 ### Planning prompts
 

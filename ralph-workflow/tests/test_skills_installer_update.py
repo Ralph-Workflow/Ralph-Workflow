@@ -49,3 +49,19 @@ def test_check_skills_update_available_returns_true_when_content_differs(
         lambda: installed_dir,
     )
     assert check_skills_update_available() is True
+
+
+def test_check_skills_update_available_returns_true_when_metadata_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    installed_dir = tmp_path / "skills"
+    materialize_skills_to_dir(installed_dir)
+    metadata_path = installed_dir / "metadata.json"
+    if metadata_path.exists():
+        metadata_path.unlink()
+    monkeypatch.setattr(
+        "ralph.skills._installer._installed_skills_dir",
+        lambda: installed_dir,
+    )
+    assert check_skills_update_available() is True

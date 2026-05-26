@@ -58,7 +58,10 @@ MANDATORY_DEFAULTS: tuple[BaselineCapability, ...] = (
     ),
     BaselineCapability(
         "skills_bundle",
-        "Ralph Workflow first-party skill bundle (17 skills: Superpowers + quality subset)",
+        (
+            "Ralph Workflow mirrored upstream skill bundles "
+            "(core workflow + namespaced design add-ons)"
+        ),
         "mandatory",
     ),
 )

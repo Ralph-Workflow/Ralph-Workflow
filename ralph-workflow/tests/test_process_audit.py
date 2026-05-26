@@ -36,6 +36,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_install.py",  # wheel build/install smoke coverage in a throwaway venv
     "test_interrupt_signal_realtime.py",  # live SIGINT black-box coverage needs a subprocess
     "test_claude_interactive_interrupt_realtime.py",  # PTY-backed live SIGINT black-box coverage
+    "test_skills_package_sync_script.py",  # node packaging sync coverage uses a subprocess
 }
 
 _MCP_FIXTURE_FILES = {

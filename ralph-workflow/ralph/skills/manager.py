@@ -180,7 +180,7 @@ class SkillManager:
         }
 
     def check_skills_for_updates(self) -> bool:
-        """Check if baseline skill bundle has updates available; update state if so."""
+        """Auto-repair outdated baseline skills and return whether an update still remains."""
         state = self._load_state()
         entry = state.skills
         if not needs_recheck(entry, self._policy):
@@ -188,10 +188,22 @@ class SkillManager:
 
         update_available = check_skills_update_available()
         if update_available:
+            repaired_entry, failures = install_baseline_skills()
+            if not failures:
+                updated_entry = repaired_entry.model_copy(
+                    update={
+                        "update_available": False,
+                    }
+                )
+                updated_state = state.model_copy(update={"skills": updated_entry})
+                self._save_state(updated_state)
+                return False
+
             updated_entry = entry.model_copy(
                 update={
-                    "status": CapabilityStatus.INSTALLED_OUTDATED,
+                    "status": CapabilityStatus.NEEDS_REPAIR,
                     "update_available": True,
+                    "last_check_fail_iso": _now_iso(),
                 }
             )
             updated_state = state.model_copy(update={"skills": updated_entry})

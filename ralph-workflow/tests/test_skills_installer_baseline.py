@@ -49,3 +49,14 @@ def test_install_baseline_skills_failure(
 
     assert entry.status == CapabilityStatus.NEEDS_REPAIR
     assert failures == ["skills-materialize-failed"]
+
+
+def test_install_baseline_skills_writes_metadata_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    entry, failures = install_baseline_skills(target_dir=tmp_path)
+
+    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
+    assert failures == []
+    assert (tmp_path / "metadata.json").exists()

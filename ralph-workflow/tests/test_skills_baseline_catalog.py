@@ -31,6 +31,12 @@ def test_mandatory_defaults_have_correct_tier() -> None:
         assert cap.tier == "mandatory"
 
 
+def test_skills_bundle_description_mentions_mirrored_upstream_bundle() -> None:
+    skills_bundle = next(cap for cap in MANDATORY_DEFAULTS if cap.name == "skills_bundle")
+    assert "mirrored" in skills_bundle.description
+    assert "upstream" in skills_bundle.description
+
+
 def test_conditional_defaults_has_one_entry() -> None:
     assert len(CONDITIONAL_DEFAULTS) == 1
     assert CONDITIONAL_DEFAULTS[0].name == "docs_mcp"

@@ -1,0 +1,39 @@
+{
+  "source_repo": "multiple",
+  "source_ref": "mixed",
+  "source_version": "mixed",
+  "source_repos": [
+    "https://github.com/obra/superpowers",
+    "https://github.com/affaan-m/ECC",
+    "https://github.com/nexu-io/open-design",
+    "https://github.com/zarazhangrui/frontend-slides",
+    "https://github.com/anthropics/skills",
+    "https://github.com/ibelick/ui-skills"
+  ],
+  "skills": [
+    {"name": "using-superpowers", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/using-superpowers/SKILL.md"}},
+    {"name": "brainstorming", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/brainstorming/SKILL.md"}},
+    {"name": "writing-plans", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/writing-plans/SKILL.md"}},
+    {"name": "executing-plans", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/executing-plans/SKILL.md"}},
+    {"name": "subagent-driven-development", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/subagent-driven-development/SKILL.md"}},
+    {"name": "dispatching-parallel-agents", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/dispatching-parallel-agents/SKILL.md"}},
+    {"name": "test-driven-development", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/test-driven-development/SKILL.md"}},
+    {"name": "systematic-debugging", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/systematic-debugging/SKILL.md"}},
+    {"name": "requesting-code-review", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/requesting-code-review/SKILL.md"}},
+    {"name": "receiving-code-review", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/receiving-code-review/SKILL.md"}},
+    {"name": "verification-before-completion", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/verification-before-completion/SKILL.md"}},
+    {"name": "finishing-a-development-branch", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/finishing-a-development-branch/SKILL.md"}},
+    {"name": "using-git-worktrees", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/using-git-worktrees/SKILL.md"}},
+    {"name": "writing-skills", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/obra/superpowers", "ref": "main", "path": "skills/writing-skills/SKILL.md"}},
+    {"name": "security-review", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/affaan-m/ECC", "ref": "main", "path": "skills/security-review/SKILL.md"}},
+    {"name": "verification-loop", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/affaan-m/ECC", "ref": "main", "path": "skills/verification-loop/SKILL.md"}},
+    {"name": "coding-standards", "bundle": "core-workflow", "source": {"type": "upstream", "repo": "https://github.com/affaan-m/ECC", "ref": "main", "path": "skills/coding-standards/SKILL.md"}},
+    {"name": "open-design--frontend-slides", "bundle": "open-design", "catalog": {"repo": "https://github.com/nexu-io/open-design", "ref": "main", "path": "skills/frontend-slides/SKILL.md"}, "upstream_name": "frontend-slides", "source": {"type": "upstream", "repo": "https://github.com/zarazhangrui/frontend-slides", "ref": "main", "path": "SKILL.md"}},
+    {"name": "open-design--frontend-design", "bundle": "open-design", "catalog": {"repo": "https://github.com/nexu-io/open-design", "ref": "main", "path": "skills/frontend-design/SKILL.md"}, "upstream_name": "frontend-design", "source": {"type": "upstream", "repo": "https://github.com/anthropics/skills", "ref": "main", "path": "skills/frontend-design/SKILL.md"}},
+    {"name": "open-design--theme-factory", "bundle": "open-design", "catalog": {"repo": "https://github.com/nexu-io/open-design", "ref": "main", "path": "skills/theme-factory/SKILL.md"}, "upstream_name": "theme-factory", "source": {"type": "upstream", "repo": "https://github.com/anthropics/skills", "ref": "main", "path": "skills/theme-factory/SKILL.md"}},
+    {"name": "open-design--baseline-ui", "bundle": "open-design", "catalog": {"repo": "https://github.com/nexu-io/open-design", "ref": "main", "path": "skills/ui-skills/SKILL.md"}, "upstream_name": "baseline-ui", "source": {"type": "upstream", "repo": "https://github.com/ibelick/ui-skills", "ref": "main", "path": "skills/baseline-ui/SKILL.md"}},
+    {"name": "open-design--fixing-accessibility", "bundle": "open-design", "catalog": {"repo": "https://github.com/nexu-io/open-design", "ref": "main", "path": "skills/ui-skills/SKILL.md"}, "upstream_name": "fixing-accessibility", "source": {"type": "upstream", "repo": "https://github.com/ibelick/ui-skills", "ref": "main", "path": "skills/fixing-accessibility/SKILL.md"}},
+    {"name": "open-design--fixing-motion-performance", "bundle": "open-design", "catalog": {"repo": "https://github.com/nexu-io/open-design", "ref": "main", "path": "skills/ui-skills/SKILL.md"}, "upstream_name": "fixing-motion-performance", "source": {"type": "upstream", "repo": "https://github.com/ibelick/ui-skills", "ref": "main", "path": "skills/fixing-motion-performance/SKILL.md"}},
+    {"name": "open-design--fixing-metadata", "bundle": "open-design", "catalog": {"repo": "https://github.com/nexu-io/open-design", "ref": "main", "path": "skills/ui-skills/SKILL.md"}, "upstream_name": "fixing-metadata", "source": {"type": "upstream", "repo": "https://github.com/ibelick/ui-skills", "ref": "main", "path": "skills/fixing-metadata/SKILL.md"}}
+  ]
+}

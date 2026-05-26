@@ -236,8 +236,8 @@ Required invariants:
 
 ## Skill bundle maintenance
 
-- Add a skill by creating `ralph/skills/content/<name>.md`, adding the name to `BASELINE_SKILL_NAMES` in `ralph/skills/_content.py`, and mirroring it in `skills-package/bin/skills.js` as `SKILL_NAMES`.
-- Rename a skill by updating both lists together and renaming the content file.
+- Add or adopt a mirrored default skill by updating the mirrored content under `ralph/skills/content/`, adding the name to `BASELINE_SKILL_NAMES` in `ralph/skills/_content.py`, updating the provenance metadata, and mirroring it in `skills-package/bin/skills.js` as `SKILL_NAMES`.
+- Rename a mirrored default skill by updating both lists together, renaming the mirrored content file, and updating provenance metadata accordingly.
 - Keep `skills-package/` in sync through its `prepack` script, which copies `ralph/skills/content/` into the npm package before publish.
 - Run `uv run pytest -q tests/test_skills_package_skill_names_parity.py` after every skill-list change.
 - Update `docs/sphinx/modules.rst` whenever you add a new public module under `ralph/skills/`; `tests/test_sphinx_modules_coverage.py` enforces that rule.

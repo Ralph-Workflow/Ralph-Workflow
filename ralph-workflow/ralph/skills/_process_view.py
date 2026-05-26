@@ -13,6 +13,28 @@ from ralph.skills._content import BASELINE_SKILL_NAMES, materialize_skills_to_di
 _ENV_VAR = "RALPH_SKILLS_PROCESS_DIR"
 
 
+def _personal_skills_dir() -> Path:
+    return Path.home() / ".claude" / "skills"
+
+
+def _project_skills_dir() -> Path:
+    return Path.cwd() / ".claude" / "skills"
+
+
+def _merge_external_skills(target: Path) -> None:
+    for skills_dir in (_personal_skills_dir(), _project_skills_dir()):
+        if not skills_dir.is_dir():
+            continue
+        for skill_dir in sorted(p for p in skills_dir.iterdir() if p.is_dir()):
+            source = skill_dir / "SKILL.md"
+            if not source.is_file():
+                continue
+            (target / f"{skill_dir.name}.md").write_text(
+                source.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+
 def _machine_global_skills_dir() -> Path:
     return Path.home() / ".claude" / "plugins" / "ralph-workflow-skills" / "skills"
 
@@ -39,6 +61,7 @@ class SkillsProcessView(AbstractContextManager[Path]):
         else:
             target = self._target_dir
             target.mkdir(parents=True, exist_ok=True)
+        _merge_external_skills(target)
         materialize_skills_to_dir(target)
         os.environ[_ENV_VAR] = str(target)
         return target

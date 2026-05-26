@@ -10,28 +10,13 @@ const CONTENT_DIR_PKG = path.join(__dirname, '..', 'content');
 const CONTENT_DIR_REPO = path.join(__dirname, '..', '..', 'ralph', 'skills', 'content');
 const CONTENT_DIR = fs.existsSync(CONTENT_DIR_PKG) ? CONTENT_DIR_PKG : CONTENT_DIR_REPO;
 const DEFAULT_INSTALL_DIR = path.join(os.homedir(), '.claude', 'plugins', 'ralph-workflow-skills', 'skills');
-const SKILL_NAMES = [
-  'using-superpowers',
-  'brainstorming',
-  'writing-plans',
-  'executing-plans',
-  'subagent-driven-development',
-  'dispatching-parallel-agents',
-  'test-driven-development',
-  'systematic-debugging',
-  'requesting-code-review',
-  'receiving-code-review',
-  'verification-before-completion',
-  'finishing-a-development-branch',
-  'using-git-worktrees',
-  'writing-skills',
-  'security-review',
-  'verification-loop',
-  'coding-standards',
-];
+
+function readMetadata() {
+  return JSON.parse(fs.readFileSync(path.join(CONTENT_DIR, 'metadata.json'), 'utf8'));
+}
 
 function listSkillNames() {
-  return SKILL_NAMES.slice();
+  return readMetadata().skills.slice();
 }
 
 function readSkill(name) {
@@ -84,7 +69,7 @@ function main(argv) {
       throw new Error('skills install requires a target directory');
     }
     installSkills(targetDir);
-    process.stdout.write(`Installed ${SKILL_NAMES.length} skills to ${targetDir}\n`);
+    process.stdout.write(`Installed ${listSkillNames().length} skills to ${targetDir}\n`);
     return 0;
   }
 

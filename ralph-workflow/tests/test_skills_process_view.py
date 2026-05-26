@@ -50,7 +50,7 @@ def test_skills_process_view_materializes_and_cleans_up_env(
     monkeypatch.delenv("RALPH_SKILLS_PROCESS_DIR", raising=False)
     with SkillsProcessView() as target_dir:
         assert target_dir.exists()
-        assert len(list(target_dir.glob("*.md"))) == 17
+        assert len(list(target_dir.glob("*.md"))) == len(BASELINE_SKILL_NAMES)
         assert os.environ["RALPH_SKILLS_PROCESS_DIR"] == str(target_dir)
     assert "RALPH_SKILLS_PROCESS_DIR" not in os.environ
     assert not target_dir.exists()
@@ -63,7 +63,32 @@ def test_skills_process_view_target_dir_is_not_deleted(
     monkeypatch.delenv("RALPH_SKILLS_PROCESS_DIR", raising=False)
     with SkillsProcessView(target_dir=tmp_path) as target_dir:
         assert target_dir == tmp_path
-        assert len(list(target_dir.glob("*.md"))) == 17
+        assert len(list(target_dir.glob("*.md"))) == len(BASELINE_SKILL_NAMES)
     assert tmp_path.exists()
-    assert len(list(tmp_path.glob("*.md"))) == 17
+    assert len(list(tmp_path.glob("*.md"))) == len(BASELINE_SKILL_NAMES)
     assert "RALPH_SKILLS_PROCESS_DIR" not in os.environ
+
+
+def test_skills_process_view_merges_personal_and_project_skills(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("RALPH_SKILLS_PROCESS_DIR", raising=False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    project_root = tmp_path / "workspace"
+    project_root.mkdir()
+    monkeypatch.chdir(project_root)
+
+    personal_skill = tmp_path / ".claude" / "skills" / "personal-helper"
+    personal_skill.mkdir(parents=True)
+    (personal_skill / "SKILL.md").write_text("# personal-helper\n", encoding="utf-8")
+
+    project_skill = project_root / ".claude" / "skills" / "project-helper"
+    project_skill.mkdir(parents=True)
+    (project_skill / "SKILL.md").write_text("# project-helper\n", encoding="utf-8")
+
+    with SkillsProcessView() as target_dir:
+        personal_content = (target_dir / "personal-helper.md").read_text(encoding="utf-8")
+        project_content = (target_dir / "project-helper.md").read_text(encoding="utf-8")
+        assert personal_content == "# personal-helper\n"
+        assert project_content == "# project-helper\n"
