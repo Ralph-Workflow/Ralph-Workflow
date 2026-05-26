@@ -773,6 +773,35 @@ class RunRepairModeTests(unittest.TestCase):
             finally:
                 run.LOG_DIR = original_log_dir
 
+    def test_latest_lane_to_persist_keeps_active_distribution_architecture_repair_context(self):
+        selected = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='Repair empty-board churn.',
+            reasons=['empty board still unchanged'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/current.md',
+            short_review_window_release_at='2026-05-26T12:30:22',
+        )
+        refreshed = LaneDecision(
+            lane='distribution_architecture_guard_pause',
+            reason='pause duplicate guard churn until the fingerprint changes',
+            reasons=[],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=[],
+            artifact_path='/tmp/stale.md',
+            short_review_window_release_at=None,
+        )
+        execution = SimpleNamespace(action_type='distribution_architecture_churn_guard_repair')
+
+        latest = run._latest_lane_to_persist_after_execution(selected, refreshed, execution)
+
+        self.assertEqual(latest.lane, 'distribution_architecture_repair')
+        self.assertEqual(latest.short_review_window_release_at, '2026-05-26T12:30:22')
+        self.assertEqual(latest.artifact_path, '/tmp/current.md')
+
     def test_main_reuses_existing_distribution_architecture_guard_pause_when_truth_is_unchanged(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR

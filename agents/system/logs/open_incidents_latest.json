@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-26T07:08:18.154757+00:00",
+  "updated_at": "2026-05-26T08:36:28.774418+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 94,
+      "repeat_count": 95,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -265,7 +265,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-26T07:08:07.299989+00:00",
+      "last_seen": "2026-05-26T08:36:28.774380+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
@@ -276,7 +276,7 @@
       "name": "marketing_independent_verification",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-22T23:28:25.701171+00:00",
-      "repeat_count": 323,
+      "repeat_count": 325,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1308,13 +1308,20 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779779292517:82\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-26T08:36:16.599487+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-26T07:08:18.154735+00:00",
+      "last_seen": "2026-05-26T08:36:28.774395+00:00",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -1324,7 +1331,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 189,
+      "repeat_count": 191,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2125,15 +2132,22 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779779016787:80\"\n}",
           "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-26T08:36:24.871814+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779784584844:86\"\n}",
+          "outcome": "resolved"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-26T07:03:27.408323+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-26T08:13:09.499377+02:00\"\n}",
+      "last_seen": "2026-05-26T08:36:28.774405+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-26T10:36:14.795074+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-05-26T07:03:36.814542+00:00"
+      "closed_at": "2026-05-26T08:36:24.871826+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -2873,7 +2887,7 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T00:07:36.250195+00:00",
-      "repeat_count": 229,
+      "repeat_count": 231,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4479,13 +4493,27 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779779294226:83\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-26T08:36:12.540422+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779784572504:84\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-26T08:36:18.408473+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-26T07:08:18.154746+00:00",
+      "last_seen": "2026-05-26T08:36:28.774399+00:00",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -4704,15 +4732,15 @@
       "name": "codeberg-github-mirror-sync",
       "category": "timeout_risk",
       "first_seen": "2026-05-23T05:32:37.020371+00:00",
-      "repeat_count": 1,
+      "repeat_count": 2,
       "owner_domain": null,
-      "escalation_level": "none",
+      "escalation_level": "owner",
       "owner_actions": [],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-23T05:32:37.020392+00:00",
+      "last_seen": "2026-05-26T08:36:08.844985+00:00",
       "last_error": "",
-      "likely_cause": "UNKNOWN: no error details",
+      "likely_cause": "PRE_TIMEOUT_RISK: script at 1977385ms / 1800s limit - duration exceeds 90%",
       "path": null,
       "closed_at": "2026-05-23T05:32:47.946529+00:00"
     },
@@ -7246,7 +7274,7 @@
       "name": "agent_architecture_json",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-24T06:57:01.168631+00:00",
-      "repeat_count": 14,
+      "repeat_count": 16,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -7284,15 +7312,22 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779752228455:38\"\n}",
           "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-26T08:36:22.947971+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779784582905:85\"\n}",
+          "outcome": "resolved"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-25T23:37:14.046022+00:00",
-      "last_error": "live_jobs_checked=21 expected 23; live_jobs_enabled=21 expected 23",
+      "last_seen": "2026-05-26T08:36:28.774402+00:00",
+      "last_error": "live_jobs_checked=23 expected 24; live_jobs_enabled=23 expected 24",
       "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=['docs-stack-aggressive-10min-self-heal', 'marketing-reflection', 'ralph-workflow-full-house-docs-audit', 'stackoverflow-post-cooldown-run-check']",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "closed_at": "2026-05-25T23:37:08.482890+00:00"
+      "closed_at": "2026-05-26T08:36:22.947986+00:00"
     },
     "content-poster::timeout_risk": {
       "key": "content-poster::timeout_risk",

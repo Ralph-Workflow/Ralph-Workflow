@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-26T10:26:51
+Generated: 2026-05-26T11:01:51
 Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
@@ -24,7 +24,6 @@ Chosen lane: **distribution_architecture_repair**
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Backlink status already shows 2 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
-- A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.
 - A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.
 - The live secondary-surface repair already has an active review window until 2026-05-31T00:00:00, so selecting directory confirmation again before then would be fake progress.
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.

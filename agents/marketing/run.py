@@ -348,6 +348,26 @@ def _refresh_distribution_lane_after_execution(now: datetime, pending_repairs: l
     return refreshed
 
 
+def _latest_lane_to_persist_after_execution(selected_lane: Any, refreshed_lane: Any, execution: Any) -> Any:
+    selected_release = str(getattr(selected_lane, 'short_review_window_release_at', '') or '').strip()
+    refreshed_release = str(getattr(refreshed_lane, 'short_review_window_release_at', '') or '').strip()
+    selected_name = str(getattr(selected_lane, 'lane', '') or '').strip()
+    refreshed_name = str(getattr(refreshed_lane, 'lane', '') or '').strip()
+    execution_action_type = str(getattr(execution, 'action_type', '') or '').strip()
+
+    if (
+        selected_release
+        and not refreshed_release
+        and selected_name in DISTRIBUTION_ARCHITECTURE_REUSE_LANES
+        and selected_name != 'distribution_architecture_guard_pause'
+        and refreshed_name == 'distribution_architecture_guard_pause'
+        and execution_action_type in DISTRIBUTION_ARCHITECTURE_REUSE_ACTION_TYPE_MAP.get(selected_name, set())
+    ):
+        return selected_lane
+
+    return refreshed_lane
+
+
 # ── Run seo_daily.py ──────────────────────────────────────────────────────────
 
 def run_seo_daily() -> dict:
@@ -1119,7 +1139,11 @@ def main() -> int:
             execution_live_external_action = bool(distribution_execution.live_external_action)
             execution_blocking_factors = list(distribution_execution.blocking_factors or [])
 
-        latest_distribution_lane = distribution_lane if reused_existing_follow_through else refreshed_lane
+        latest_distribution_lane = distribution_lane if reused_existing_follow_through else _latest_lane_to_persist_after_execution(
+            distribution_lane,
+            refreshed_lane,
+            distribution_execution,
+        )
         distribution_lane_selector.persist_latest_lane_decision(
             latest_distribution_lane,
             now,
@@ -1351,8 +1375,13 @@ def main() -> int:
             now=now,
         )
         refreshed_distribution_lane = _refresh_distribution_lane_after_execution(now, pending_repairs)
-    distribution_lane_selector.persist_latest_lane_decision(
+    latest_distribution_lane = _latest_lane_to_persist_after_execution(
+        distribution_lane,
         refreshed_distribution_lane,
+        distribution_execution,
+    )
+    distribution_lane_selector.persist_latest_lane_decision(
+        latest_distribution_lane,
         now,
         write_action_log=False,
     )

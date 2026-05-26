@@ -1,16 +1,16 @@
 {
-  "timestamp": "2026-05-26T10:26:51.561176",
+  "timestamp": "2026-05-26T11:01:29.168433",
   "type": "outcome_execution_board_runner",
   "status": "executed",
   "repair_needed_at_start": false,
   "selected_lane": "distribution_architecture_repair",
   "selected_action_type": "distribution_architecture_churn_guard_repair",
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_094455_distribution_architecture_repair.md",
+  "artifact_path": "/tmp/existing_distribution_architecture_repair.md",
   "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_marketing_execution_board.md",
   "execution_board_targets": [],
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.",
-  "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
+  "summary": "Existing architecture repair is still current.",
   "structural_capability": {
     "name": "execution_board_follow_through_runner",
     "why_new": "Creates a dedicated runtime that turns the execution board into the next actionable lane instead of letting system-design repairs stop at packet refreshes or queue housekeeping.",
@@ -37,11 +37,7 @@
   },
   "fake_green_guard": "This runner only counts if it refreshes the consolidated execution board and either advances one of its executable lanes or explicitly records that no truthful do-now lane exists yet.",
   "shared_findings_used": [
-    "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
-    "channel_discovery.json: validated easy-submit directory lanes",
-    "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-    "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
-    "apollo_status.json: managed outbound is authenticated and available for execution packaging",
+    "adoption_metrics_latest.json",
     "marketing_execution_board_latest.md: consolidated do-now assets across all non-Reddit lanes",
     "marketing_workflow_audit_latest.json: outcome_system_underpowered repair source"
   ],
