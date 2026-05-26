@@ -460,6 +460,60 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
             'Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.',
         )
 
+    def test_sync_from_execution_updates_latest_status_without_rerunning_selector(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            log_dir = root / 'logs'
+            drafts_dir = root / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            board_path = drafts_dir / 'marketing_execution_board_latest.md'
+            board_path.write_text('# board\n', encoding='utf-8')
+            audit = {
+                'repair_actions': [
+                    {'failure_type': 'outcome_system_underpowered', 'repair_state': 'needs_execution'}
+                ]
+            }
+            decision = LaneDecision(
+                lane='distribution_architecture_guard_pause',
+                reason='Hold window is still active.',
+                reasons=['Short-window congestion has not cleared yet.'],
+                owned_content_posts_last_36h=0,
+                unsubmitted_directory_channels=[],
+                shared_findings_used=['adoption_metrics_latest.json'],
+                artifact_path='/tmp/brief.md',
+            )
+            execution = type('Execution', (), {
+                'lane': 'distribution_architecture_guard_pause',
+                'action_type': 'distribution_architecture_guard_pause',
+                'status': 'skipped_repair',
+                'artifact_path': '/tmp/guard.md',
+                'summary': 'Reused current guard pause truth.',
+                'targets_prepared': [],
+                'shared_findings_used': ['adoption_metrics_latest.json'],
+                'live_external_action': False,
+                'blocking_factors': [],
+            })()
+            with patch.object(outcome_execution_board_runner, 'LOG_DIR', log_dir), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_JSON', log_dir / 'outcome_execution_board_latest.json'), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_MD', log_dir / 'outcome_execution_board_latest.md'):
+                payload = outcome_execution_board_runner.sync_from_execution(
+                    now=datetime.fromisoformat('2026-05-26T07:50:00+02:00'),
+                    audit=audit,
+                    decision=decision,
+                    board_path=board_path,
+                    board_targets=['Target A'],
+                    execution=execution,
+                )
+        self.assertEqual(payload['selected_lane'], 'distribution_architecture_guard_pause')
+        self.assertEqual(payload['selected_action_type'], 'distribution_architecture_guard_pause')
+        self.assertEqual(payload['artifact_path'], '/tmp/guard.md')
+        self.assertEqual(payload['execution_board_targets'], ['Target A'])
+        self.assertEqual(
+            payload['measurement_window'],
+            'Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.',
+        )
+
 
 class SystemDesignRepairAcknowledgementTests(unittest.TestCase):
     def test_distribution_architecture_repair_advances_system_design_repair(self):

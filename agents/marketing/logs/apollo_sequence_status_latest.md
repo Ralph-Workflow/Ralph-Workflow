@@ -1,20 +1,20 @@
 # Apollo Sequence Status
 
-- Generated: `2026-05-26T07:15:09.226399+02:00`
+- Generated: `2026-05-26T08:08:13.580148+02:00`
 - Status: `verified_live_sequence`
 - Measurement pending: `True`
 - Summary: Apollo outbound verification confirms a live Ralph Workflow sequence with Codeberg-primary CTA is active.
 - Launch log: `None`
-- Launch timestamp: `2026-05-26T07:14:38.942274+02:00`
+- Launch timestamp: `2026-05-26T07:23:34.700335+02:00`
 - Record count: `829`
 - Live list log: `None`
-- Outbound verification log: `/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_071504_apollo_outbound_verification.json`
+- Outbound verification log: `/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072359_apollo_outbound_verification.json`
 - Needs live verification: `False`
 - Runtime blocker status: `None`
 - Runtime blocker summary: `None`
 - Runtime blocker notes: `None`
 - Runtime status log: `None`
-- Next review at: `2026-06-02T07:14:38.942274+02:00`
-- 7-day review: `2026-06-02T07:14:38.942274+02:00`
-- 14-day review: `2026-06-09T07:14:38.942274+02:00`
-- 30-day review: `2026-06-25T07:14:38.942274+02:00`
+- Next review at: `2026-06-02T07:23:34.700335+02:00`
+- 7-day review: `2026-06-02T07:23:34.700335+02:00`
+- 14-day review: `2026-06-09T07:23:34.700335+02:00`
+- 30-day review: `2026-06-25T07:23:34.700335+02:00`

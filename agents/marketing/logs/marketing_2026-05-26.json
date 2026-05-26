@@ -1,33 +1,31 @@
 {
-  "timestamp": "2026-05-26T06:58:40.120297",
+  "timestamp": "2026-05-26T08:12:08.605616",
   "weekly_mode": false,
   "marketing_status": "measurement_hold",
   "measurement_hold": {
     "active": true,
-    "hold_started_at": "2026-05-26T06:34:08.185228",
-    "hold_until": "2026-05-26T08:57:00",
-    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_063408_measurement_hold_execution.json",
+    "hold_started_at": "2026-05-26T07:59:40.417867",
+    "hold_until": "2026-05-26T08:59:40.417867",
+    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_075940_measurement_hold_execution.json",
     "reason": "Repair override: primary_repo_flat repair active; the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, so hold for truthful follow-through instead of fabricating another comparison execution run."
   },
   "distribution_lane": {
-    "lane": "distribution_architecture_guard_pause",
-    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
+    "lane": "measurement_hold",
+    "reason": "Repair override: primary_repo_flat repair active; the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, so hold for truthful follow-through instead of fabricating another comparison execution run.",
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md"
   },
   "distribution_execution": {
-    "action_type": "distribution_architecture_guard_pause",
-    "status": "skipped_repair",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_060554_distribution_architecture_guard_pause.md",
-    "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
-    "targets_prepared": [
-      "Ralph Workflow curator follow-up \u2014 Codeberg CTA"
-    ],
+    "action_type": "measurement_hold_follow_through",
+    "status": "executed",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_081208_measurement_hold_follow_through.md",
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
+    "targets_prepared": [],
     "live_external_action": false,
     "blocking_factors": [],
     "reused_existing_follow_through": false
   },
   "seo": {
-    "timestamp": "2026-05-26T06:58:40.198394",
+    "timestamp": "2026-05-26T08:12:08.680358",
     "onpage_score": "100/100 (A)",
     "homepage_ok": true,
     "sitemap_urls": 80,
@@ -70,11 +68,11 @@
     "stdout": "skipped: active measurement-hold cooldown",
     "stderr": ""
   },
-  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_065840_measurement_hold_skip.json",
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_065840_distribution_architecture_guard_pause.json",
+  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_081208_measurement_hold_skip.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_081208_measurement_hold_follow_through.json",
   "post_execution_distribution_lane": {
-    "lane": "distribution_architecture_guard_pause",
-    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
+    "lane": "measurement_hold",
+    "reason": "Repair override: primary_repo_flat repair active; the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, so hold for truthful follow-through instead of fabricating another comparison execution run.",
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md"
   }
 }

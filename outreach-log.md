@@ -6862,3 +6862,19 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-26 03:20:00
 - **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 03:20:00
+- **Note:** Momentum check found: reddit_channel_blocked, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat. Failing tactics are still present with no live repair actions: execution_ceiling_repetition. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 08:11:05
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; measurement hold is active until 2026-05-26T08:59:40.417867.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 08:12:48
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; measurement hold is active until 2026-05-26T08:59:40.417867.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 08:13:50
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; measurement hold is active until 2026-05-26T08:59:40.417867.

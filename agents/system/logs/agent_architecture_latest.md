@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-26T06:55:15.631243+02:00
+- Checked: 2026-05-26T08:13:05.563335+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by the marketing independent fail on primary-repo outcome evidence.
 - Most urgent fix: Do not certify green until marketing produces a fresh independent pass backed by measurable Codeberg movement.
@@ -44,14 +44,13 @@
 - Marketing independent verification is not pass/fresh.
 - Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.
 - Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.
-- Measurement hold is active, but the consolidated execution board is missing or stale.
 
 ## Independent verification
 
 - Performed: yes
 - Verdict: qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Checked at: 2026-05-26T06:54:58.478194+02:00
+- Checked at: 2026-05-26T08:12:56.309184+02:00
 
 ## Small gate passed
 

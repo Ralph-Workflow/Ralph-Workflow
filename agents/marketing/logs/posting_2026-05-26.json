@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-05-26T09:00:24.234085",
+  "results": [
+    {
+      "draft": "2026-05-26_orchestration_draft.md",
+      "ok": true,
+      "status": "already_posted",
+      "draft_hash": "46b6e5eb78efe374bc5af2efcbf4e978c2fbf41c611bbdd9a99f1a790afaf9f2",
+      "experiment_id": "2026-05-26-orchestration"
+    },
+    {
+      "draft": "2026-05-26_review_ai_coding_output_before_merge_telegraph.md",
+      "ok": true,
+      "status": "already_posted",
+      "draft_hash": "a1ff439e004fe9a39687c2b2f2513e6c90c7241b2887337a1e5bf09101ff36a6",
+      "experiment_id": null
+    }
+  ]
+}

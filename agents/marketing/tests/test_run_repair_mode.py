@@ -570,12 +570,15 @@ class RunRepairModeTests(unittest.TestCase):
 
                 with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
                      patch.object(run, 'choose_distribution_lane', return_value=decision) as choose_mock, \
-                     patch.object(run, 'execute_distribution_lane') as execute_mock:
+                     patch.object(run, 'execute_distribution_lane') as execute_mock, \
+                     patch.object(run.distribution_lane_selector, 'persist_latest_lane_decision') as persist_mock:
                     rc = run.main()
 
                 self.assertEqual(rc, 0)
                 choose_mock.assert_called_once()
+                self.assertEqual(choose_mock.call_args.kwargs.get('persist_latest_artifacts'), False)
                 execute_mock.assert_not_called()
+                persist_mock.assert_called_once_with(decision, unittest.mock.ANY, write_action_log=False)
                 daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
                 payload = json.loads(daily_log.read_text(encoding='utf-8'))
                 self.assertTrue(payload['distribution_execution']['reused_existing_follow_through'])
@@ -654,11 +657,13 @@ class RunRepairModeTests(unittest.TestCase):
 
                 with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
                      patch.object(run, 'choose_distribution_lane', side_effect=[decision, refreshed]) as choose_mock, \
-                     patch.object(run, 'execute_distribution_lane', return_value=execution) as execute_mock:
+                     patch.object(run, 'execute_distribution_lane', return_value=execution) as execute_mock, \
+                     patch.object(run.distribution_lane_selector, 'persist_latest_lane_decision') as persist_mock:
                     rc = run.main()
 
                 self.assertEqual(rc, 0)
                 self.assertEqual(choose_mock.call_count, 2)
+                persist_mock.assert_called_once_with(refreshed, unittest.mock.ANY, write_action_log=False)
                 self.assertEqual(choose_mock.call_args_list[1].kwargs.get('write_action_log'), False)
                 self.assertEqual(choose_mock.call_args_list[1].kwargs.get('persist_latest_artifacts'), False)
                 execute_mock.assert_called_once()
@@ -804,6 +809,70 @@ class RunRepairModeTests(unittest.TestCase):
                 reused_log = json.loads(Path(payload['distribution_execution_log']).read_text(encoding='utf-8'))
                 self.assertEqual(reused_log['verification']['reused_from_log'], str(prior_log))
                 self.assertTrue(reused_log['result']['reused_existing_artifact'])
+            finally:
+                run.LOG_DIR = original_log_dir
+                run.DRAFTS_DIR = original_drafts_dir
+
+    def test_main_persists_post_execution_distribution_lane_truth(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            original_drafts_dir = run.DRAFTS_DIR
+            run.LOG_DIR = Path(tmpdir)
+            run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
+            run.DRAFTS_DIR.mkdir()
+            try:
+                decision = LaneDecision(
+                    lane='owned_content',
+                    reason='selector picked owned content',
+                    reasons=['initial state'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='/tmp/initial.md',
+                )
+                refreshed = LaneDecision(
+                    lane='measurement_hold',
+                    reason='short review window is still active',
+                    reasons=['refresh truth after execution'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='/tmp/refreshed.md',
+                )
+                execution = SimpleNamespace(
+                    lane='owned_content',
+                    action_type='owned_content_publication',
+                    status='published',
+                    artifact_path='/tmp/post.md',
+                    summary='Published one owned-content asset.',
+                    targets_prepared=['post'],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    live_external_action=True,
+                    blocking_factors=[],
+                )
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=None), \
+                     patch.object(run, 'run_seo_daily', return_value={'priority_actions': [], 'ranks': {}, 'backlinks': {'count_approx': 0}}), \
+                     patch.object(run, 'load_seo_trends', return_value=[]), \
+                     patch.object(run, 'compute_trends', return_value={}), \
+                     patch.object(run, 'recent_successful_posts', return_value=[]), \
+                     patch.object(run, 'load_posted_records', return_value=[]), \
+                     patch.object(run, 'enrich_posts_with_views', return_value=[]), \
+                     patch.object(run, 'summarize_content_performance', return_value={}), \
+                     patch.object(run, 'competitor_report_is_stale', return_value=False), \
+                     patch.object(run, 'load_shared_market_intelligence', return_value=None), \
+                     patch.object(run, 'load_adoption_data', return_value={}), \
+                     patch.object(run, 'write_seo_insights', return_value=run.LOG_DIR / 'seo-insights.json'), \
+                     patch.object(run, '_write_marketing_execution_board', return_value=(run.DRAFTS_DIR / 'marketing_execution_board_latest.md', [])), \
+                     patch.object(run, 'choose_distribution_lane', side_effect=[decision, refreshed]) as choose_mock, \
+                     patch.object(run, 'execute_distribution_lane', return_value=execution), \
+                     patch.object(run.distribution_lane_selector, 'persist_latest_lane_decision') as persist_mock, \
+                     patch.object(run.outcome_execution_board_runner, 'sync_from_execution'):
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                self.assertEqual(choose_mock.call_args_list[0].kwargs.get('persist_latest_artifacts'), False)
+                persist_mock.assert_called_once_with(refreshed, unittest.mock.ANY, write_action_log=False)
             finally:
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir

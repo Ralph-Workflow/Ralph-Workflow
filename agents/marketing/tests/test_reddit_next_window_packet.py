@@ -162,6 +162,7 @@ class RedditNextWindowPacketTests(unittest.TestCase):
         self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, entries[0].body)
         self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, entries[1].body)
         self.assertNotIn("Honestly the part I'd optimize first is the handoff", entries[0].body)
+        self.assertNotRegex(entries[0].body.split("\n\n", 1)[0].lower(), r"\boptimiz(?:e|ing)\b.*\bfirst\b|\bfirst\b.*\boptimiz(?:e|ing)\b")
         self.assertNotEqual(entries[0].body.split("\n\n", 1)[0], entries[1].body.split("\n\n", 1)[0])
         self.assertIn("Posting discipline before using any of these", packet)
 
@@ -237,6 +238,23 @@ Suggested body:
         self.assertIn("finish state", cleaned.lower())
         self.assertNotIn("github.com/Ralph-Workflow/Ralph-Workflow", cleaned)
         self.assertIn("codeberg.org/RalphWorkflow/Ralph-Workflow", cleaned)
+
+    def test_generic_thread_reply_variants_filter_banned_optimize_first_family(self):
+        opp = reddit_autopost.Opportunity(
+            rank=1,
+            title="Claude Code stuck in approval loop",
+            url="https://www.reddit.com/r/ClaudeCode/comments/approval/",
+            community="r/ClaudeCode",
+            angle="production_failure",
+            freshness="today",
+            mention_fit="high",
+        )
+
+        variants = reddit_next_window_packet._generic_thread_reply_variants(opp, "production_failure")
+
+        self.assertTrue(variants)
+        for variant in variants:
+            self.assertNotRegex(variant.lower(), r"\boptimiz(?:e|ing)\b.*\bfirst\b|\bfirst\b.*\boptimiz(?:e|ing)\b")
 
     def test_build_packet_rewrites_duplicate_generic_openings_inside_same_packet(self):
         report = Path("/tmp/reddit_monitor_2026-05-26_duplicate_openings.md")

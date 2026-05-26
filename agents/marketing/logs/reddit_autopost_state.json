@@ -1,6 +1,6 @@
 {
-  "last_attempt_at": "2026-05-26T06:48:00.281096",
+  "last_attempt_at": "2026-05-26T08:09:59.458186",
   "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-26_0647.md",
   "last_attempt_status": "repair_blocked",
-  "last_detail": "retro:repeated_openings:1; retro:channel_concentration:r/ClaudeCode:5/6"
+  "last_detail": "audit:failing_tactic:reddit_style_repetition; retro:repeated_openings:1; retro:channel_concentration:r/ClaudeCode:5/6"
 }

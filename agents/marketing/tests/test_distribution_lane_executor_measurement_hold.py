@@ -308,6 +308,40 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertIn('Short review-window congestion clears at: 2026-05-25T23:07:41', board_text)
 
+    def test_post_hold_reentry_contract_falls_back_to_live_short_window_release_when_latest_lane_json_omits_it(self):
+        now = datetime(2026, 5, 26, 8, 12, 8)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'lane': 'distribution_architecture_repair', 'short_review_window_release_at': None}),
+                encoding='utf-8',
+            )
+            board_path = drafts_dir / 'marketing_execution_board_latest.md'
+            board_path.write_text('# board\n', encoding='utf-8')
+            discovery_path = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=datetime(2026, 5, 26, 8, 57, 0)), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False):
+                contract_path = distribution_lane_executor._write_post_hold_reentry_contract(
+                    now,
+                    release_at=None,
+                    execution_board_path=board_path,
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                )
+
+            contract_text = contract_path.read_text(encoding='utf-8')
+
+        self.assertIn('- Hold release at: 2026-05-26T08:57:00', contract_text)
+
     def test_distribution_architecture_repair_does_not_regenerate_delivered_reddit_packet(self):
         now = datetime(2026, 5, 25, 15, 28, 0)
 

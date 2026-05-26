@@ -1,10 +1,10 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-26 07:49 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-26 08:41 CEST
 
 Live posting is **not** the move right now.
 
 Latest watchdog state references report `reddit_monitor_2026-05-26_0647.md`.
 - `status: repair_blocked`
-- `detail: retro:repeated_openings:1; retro:channel_concentration:r/ClaudeCode:5/6`
+- `detail: audit:failing_tactic:reddit_style_repetition; retro:repeated_openings:1; retro:channel_concentration:r/ClaudeCode:5/6`
 
 So this packet is optimized for the **next safe window**, not for forcing a post now.
 
@@ -29,7 +29,7 @@ Messaging guardrails preserved in every draft:
   - best RalphWorkflow angle from the monitor: thread angle: production_failure
 
 ### Draft body A
-The thing I would optimize first is not more autonomy, it is the finish state. If the run cannot hand back finished code, tested code, and a clean answer to what changed, the human still inherits the hard part.
+Most production pain here is a re-entry problem, not an intelligence problem. If the next person cannot see the finish state, what changed, what passed, and what still looks risky, the workflow still fails at handoff time.
 
 That is why this thread is worth a careful reply: thread angle: production_failure.
 
@@ -48,7 +48,7 @@ https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai
   - best RalphWorkflow angle from the monitor: thread angle: production_failure
 
 ### Draft body B
-Most production pain here is a re-entry problem, not an intelligence problem. If the next person cannot see what changed, what passed, and what still looks risky, the workflow still fails at handoff time.
+What usually breaks first is not coding speed, it is merge confidence. The run has to leave behind enough proof that someone can decide ship, rerun, or rollback without archaeology.
 
 That is why this thread is worth a careful reply: thread angle: production_failure.
 

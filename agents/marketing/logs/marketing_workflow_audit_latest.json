@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T07:24:00.041169",
+  "generated_at": "2026-05-26T08:41:18.383821",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -134,9 +134,10 @@
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
     "6 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
+    "The most recent runtime activity was distribution_architecture_churn_guard_repair, but the latest meaningful external/replacement execution remains apollo_outbound_verification; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (apollo_outbound_verification), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
-    "Apollo managed outbound is already inside an active measurement window until 2026-06-02T07:14:38.942274+02:00, so the loop should not repackage the same lane before that checkpoint."
+    "Apollo managed outbound is already inside an active measurement window until 2026-06-02T07:23:34.700335+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -169,13 +170,13 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072359_apollo_outbound_verification.json",
-    "type": "apollo_outbound_verification",
-    "title": "Apollo outbound verification",
-    "status": "verified_live_sequence",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_distribution_architecture_repair_execution.json",
+    "type": "distribution_architecture_churn_guard_repair",
+    "title": "Distribution lane execution: distribution_architecture_repair",
+    "status": "executed",
     "ok": true,
-    "live_external_action": true,
-    "outcome_ready": true,
+    "live_external_action": false,
+    "outcome_ready": false,
     "warning": null,
     "url": null
   },
@@ -191,22 +192,22 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-26T07:15:09.226399+02:00",
+    "generated_at": "2026-05-26T08:08:13.580148+02:00",
     "status": "verified_live_sequence",
     "measurement_pending": true,
     "summary": "Apollo outbound verification confirms a live Ralph Workflow sequence with Codeberg-primary CTA is active.",
     "launch_log": null,
     "live_list_log": null,
-    "outbound_verification_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_071504_apollo_outbound_verification.json",
-    "launch_timestamp": "2026-05-26T07:14:38.942274+02:00",
+    "outbound_verification_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072359_apollo_outbound_verification.json",
+    "launch_timestamp": "2026-05-26T07:23:34.700335+02:00",
     "record_count": 829,
     "sequence_name": "Ralph Workflow Seq",
     "final_url": "https://app.apollo.io/#/sequences/69b1c2bad74f30001d57b003",
-    "launch_review_at": "2026-06-02T07:14:38.942274+02:00",
-    "repo_visit_review_at": "2026-06-09T07:14:38.942274+02:00",
-    "adoption_review_at": "2026-06-25T07:14:38.942274+02:00",
-    "next_review_at": "2026-06-02T07:14:38.942274+02:00",
-    "verification_timestamp": "2026-05-26T07:14:38.942274+02:00",
+    "launch_review_at": "2026-06-02T07:23:34.700335+02:00",
+    "repo_visit_review_at": "2026-06-09T07:23:34.700335+02:00",
+    "adoption_review_at": "2026-06-25T07:23:34.700335+02:00",
+    "next_review_at": "2026-06-02T07:23:34.700335+02:00",
+    "verification_timestamp": "2026-05-26T07:23:34.700335+02:00",
     "evidence": [
       "Apollo sequence 'Ralph Workflow Seq' is active with 724 active contacts, 105 not yet sent, and 1008 delivered.",
       "Sequence detail contains the Codeberg-primary CTA: https://codeberg.org/RalphWorkflow/Ralph-Workflow",

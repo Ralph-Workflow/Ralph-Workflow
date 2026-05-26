@@ -27,7 +27,7 @@ ROOT = Path("/home/mistlight/.openclaw/workspace")
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from agents.marketing import distribution_lane_selector
+from agents.marketing import distribution_lane_selector, outcome_execution_board_runner
 from agents.marketing.distribution_lane_executor import execute_distribution_lane, _write_marketing_execution_board
 from agents.marketing.distribution_lane_selector import choose_distribution_lane
 from agents.marketing.market_intelligence_runtime import load_market_intelligence
@@ -1015,7 +1015,7 @@ def main() -> int:
             except (json.JSONDecodeError, OSError):
                 audit = {}
 
-        distribution_lane = choose_distribution_lane(now)
+        distribution_lane = choose_distribution_lane(now, persist_latest_artifacts=False)
         if pending_repairs:
             distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs, now=now)
 
@@ -1105,6 +1105,13 @@ def main() -> int:
             execution_targets_prepared = list(distribution_execution.targets_prepared or [])
             execution_live_external_action = bool(distribution_execution.live_external_action)
             execution_blocking_factors = list(distribution_execution.blocking_factors or [])
+
+        latest_distribution_lane = distribution_lane if reused_existing_follow_through else refreshed_lane
+        distribution_lane_selector.persist_latest_lane_decision(
+            latest_distribution_lane,
+            now,
+            write_action_log=False,
+        )
 
         payload = {
             "timestamp": now.isoformat(),
@@ -1281,8 +1288,8 @@ def main() -> int:
             flush=True,
         )
 
-    _write_marketing_execution_board(now)
-    distribution_lane = choose_distribution_lane(now)
+    execution_board_path, execution_board_targets = _write_marketing_execution_board(now)
+    distribution_lane = choose_distribution_lane(now, persist_latest_artifacts=False)
     if is_repair_mode:
         original_lane = distribution_lane.lane
         distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs, now=now)
@@ -1306,6 +1313,7 @@ def main() -> int:
 
     if reused_existing_distribution_execution and recent_guard_execution is not None:
         distribution_execution = SimpleNamespace(
+            lane=distribution_lane.lane,
             action_type=(
                 "distribution_architecture_guard_follow_through"
                 if distribution_lane.lane == "distribution_architecture_guard_follow_through"
@@ -1334,6 +1342,19 @@ def main() -> int:
             now=now,
         )
         refreshed_distribution_lane = _refresh_distribution_lane_after_execution(now, pending_repairs)
+    distribution_lane_selector.persist_latest_lane_decision(
+        refreshed_distribution_lane,
+        now,
+        write_action_log=False,
+    )
+    outcome_execution_board_runner.sync_from_execution(
+        now=now,
+        audit=audit,
+        decision=distribution_lane,
+        board_path=execution_board_path,
+        board_targets=execution_board_targets,
+        execution=distribution_execution,
+    )
     print(f"[run.py] Chosen distribution lane: {distribution_lane.lane}", flush=True)
     print(f"[run.py] Distribution execution log: {distribution_execution_log}", flush=True)
     if distribution_execution.artifact_path:
