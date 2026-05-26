@@ -17,6 +17,8 @@ The core stays simple. That simplicity is what makes more complex workflows easi
 Ralph Workflow also ships with a **strong default workflow for writing software**.
 You can use that default as-is, or build on top of it when you need something more advanced.
 
+Bring your existing coding agents. Keep your existing setup. Keep your keys to yourself.
+
 ## The route to use
 
 1. [START_HERE.md](START_HERE.md) — shortest honest first run

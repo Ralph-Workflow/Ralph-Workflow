@@ -60,4 +60,4 @@ A good first quickstart run should leave you with:
 - Need the fuller first-run walkthrough? Open [Getting Started](getting-started.md).
 - Need config answers? Open [Configuration Reference](configuration.md).
 - Need docs routed by use case? Open [End-User Stories](user-stories.md).
-- Need to inspect trustworthy output? Open [What Good Ralph Workflow Output Looks Like](../../../docs/reviewable-output.md).
+- Need to inspect trustworthy output? Open [What Good Ralph Workflow Output Looks Like](reviewable-output.md).
