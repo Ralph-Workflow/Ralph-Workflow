@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from rich.console import Console
@@ -21,10 +21,11 @@ from ralph.display.context import make_display_context
 from ralph.pipeline import runner
 from ralph.pipeline.checkpoint import load as ckpt_load
 from ralph.pipeline.checkpoint import save as ckpt_save
-from ralph.pipeline.effects import CommitEffect, ExitSuccessEffect, InvokeAgentEffect
+from ralph.pipeline.effects import CommitEffect, Effect, ExitSuccessEffect, InvokeAgentEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
+from ralph.policy.models import PolicyBundle
 from ralph.workspace.scope import WorkspaceScope
 from tests.integration._commit_cleanup_always_loopback_invoker import (
     CommitCleanupAlwaysLoopbackInvoker,
@@ -38,8 +39,11 @@ from tests.integration._planning_analysis_request_changes_once_invoker import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from pytest import MonkeyPatch
 
+    from ralph.policy.models import PolicyBundle
     from ralph.workspace.memory import MemoryWorkspace
     from tests.integration._mock_agent_invoker import MockAgentInvoker
 
@@ -53,6 +57,18 @@ def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
     console = Console(record=True, force_terminal=False, width=120, color_system=None)
     ctx = make_display_context(console=console, force_width=120, force_mode="wide")
     monkeypatch.setattr(runner, "make_display_context", lambda **_kwargs: ctx)
+
+
+def _stub_prompt_materialization(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "materialize_prompt_for_phase", lambda *args, **kwargs: "noop")
+    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+
+
+def _write_artifact(root: Path, relative_path: str, payload: dict[str, object]) -> None:
+    path = root / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload))
 
 
 @lru_cache(maxsize=1)
@@ -76,18 +92,21 @@ def _run_pipeline(
     policy_bundle = _default_policy_bundle()
 
     def fake_execute_effect(
-        effect: object,
-        _config: object,
-        _workspace_scope: object,
+        effect: Effect,
+        _config: UnifiedConfig,
+        _workspace_scope: WorkspaceScope,
     ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             mock_agent_invoker.invoke(effect.agent_name, effect.phase)
             return PipelineEvent.AGENT_SUCCESS
         if isinstance(effect, CommitEffect):
-            commit_event_for = getattr(mock_agent_invoker, "commit_event_for", None)
+            commit_event_for = cast(
+                "Callable[[str], PipelineEvent] | None",
+                getattr(mock_agent_invoker, "commit_event_for", None),
+            )
             last_phase = getattr(mock_agent_invoker, "last_phase", None)
             if (
-                callable(commit_event_for)
+                commit_event_for is not None
                 and isinstance(last_phase, str)
                 and (last_phase.endswith("_commit") or last_phase == "commit")
             ):
@@ -101,22 +120,31 @@ def _run_pipeline(
         effect: InvokeAgentEffect,
         **_kwargs: object,
     ) -> AnalysisDecisionEvent | PipelineEvent:
-        analysis_event_for = getattr(mock_agent_invoker, "analysis_event_for", None)
+        analysis_event_for = cast(
+            "Callable[[str], AnalysisDecisionEvent] | None",
+            getattr(mock_agent_invoker, "analysis_event_for", None),
+        )
         analysis_phases = {"planning_analysis", "development_analysis"}
-        if callable(analysis_event_for) and effect.phase in analysis_phases:
+        if analysis_event_for is not None and effect.phase in analysis_phases:
             return analysis_event_for(effect.phase)
         # Handle commit phases using commit_event_for
-        commit_event_for = getattr(mock_agent_invoker, "commit_event_for", None)
-        if callable(commit_event_for):
+        commit_event_for = cast(
+            "Callable[[str], PipelineEvent] | None",
+            getattr(mock_agent_invoker, "commit_event_for", None),
+        )
+        if commit_event_for is not None:
             return commit_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
 
-    def capture_saved_state(state: PipelineState) -> None:
+    def capture_saved_state(
+        state: PipelineState, *_args: object, **_kwargs: object
+    ) -> None:
         saved_states.append(state)
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "materialize_prompt_for_phase", lambda *args, **kwargs: "noop")
     monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(runner, "phase_event_after_agent_run", fake_phase_event_after_agent_run)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
@@ -296,18 +324,13 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
 
     def stop_at_development(
         state: PipelineState,
-        bundle: object,
-        workspace_scope: object,
+        bundle: PolicyBundle,
+        workspace_scope: WorkspaceScope,
         config: UnifiedConfig,
-    ) -> object:
+    ) -> Effect:
         if state.phase == "development":
             return ExitSuccessEffect()
         return original_determine(state, bundle, workspace_scope, config)
-
-    def write_artifact(relative_path: str, payload: dict[str, object]) -> None:
-        path = tmp_path / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload))
 
     def fake_execute_effect(
         effect: object,
@@ -318,7 +341,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
         nonlocal planning_analysis_calls
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "planning":
-                write_artifact(
+                _write_artifact(tmp_path,
                     ".agent/artifacts/plan.json",
                     {
                         "type": "plan",
@@ -361,7 +384,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
                     if planning_analysis_calls <= MAX_PLANNING_ANALYSIS_ITERATIONS
                     else "completed"
                 )
-                write_artifact(
+                _write_artifact(tmp_path,
                     ".agent/artifacts/planning_analysis_decision.json",
                     {"type": "planning_analysis_decision", "content": {"status": decision}},
                 )
@@ -371,13 +394,14 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
             raise AssertionError("Should not reach commit before stopping at development")
         raise AssertionError(f"Unexpected effect type: {type(effect)!r}")
 
-    def capture_saved_state(state: PipelineState) -> None:
+    def capture_saved_state(
+        state: PipelineState, *_args: object, **_kwargs: object
+    ) -> None:
         saved_states.append(state)
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    _stub_prompt_materialization(monkeypatch)
     monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(runner, "call_determine_effect_from_policy", stop_at_development)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
@@ -527,18 +551,13 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
 
     def stop_at_development_final_commit(
         state: PipelineState,
-        bundle: object,
-        workspace_scope: object,
+        bundle: PolicyBundle,
+        workspace_scope: WorkspaceScope,
         config: UnifiedConfig,
-    ) -> object:
+    ) -> Effect:
         if state.phase == "development_final_commit":
             return ExitSuccessEffect()
         return original_determine(state, bundle, workspace_scope, config)
-
-    def write_artifact(relative_path: str, payload: dict[str, object]) -> None:
-        path = tmp_path / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload))
 
     def fake_execute_effect(
         effect: object,
@@ -549,7 +568,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
         nonlocal development_analysis_calls
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "development":
-                write_artifact(
+                _write_artifact(tmp_path,
                     ".agent/artifacts/development_result.json",
                     {
                         "type": "development_result",
@@ -574,7 +593,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                     if development_analysis_calls <= DEVELOPMENT_CYCLES_THREE
                     else "completed"
                 )
-                write_artifact(
+                _write_artifact(tmp_path,
                     ".agent/artifacts/development_analysis_decision.json",
                     {"type": "development_analysis_decision", "content": {"status": decision}},
                 )
@@ -584,7 +603,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 "development_final_commit_cleanup",
             }:
                 return (
-                    write_artifact(
+                    _write_artifact(tmp_path,
                         ".agent/artifacts/commit_cleanup.json",
                         {"analysis_complete": True, "actions": []},
                     )
@@ -592,7 +611,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 )
             if effect.phase == "development_commit":
                 return (
-                    write_artifact(
+                    _write_artifact(tmp_path,
                         ".agent/tmp/commit_message.json",
                         {
                             "name": "commit_message",
@@ -615,13 +634,14 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
             return PipelineEvent.COMMIT_SUCCESS
         raise AssertionError(f"Unexpected effect type: {type(effect)!r}")
 
-    def capture_saved_state(state: PipelineState) -> None:
+    def capture_saved_state(
+        state: PipelineState, *_args: object, **_kwargs: object
+    ) -> None:
         saved_states.append(state)
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    _stub_prompt_materialization(monkeypatch)
     monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
         runner,

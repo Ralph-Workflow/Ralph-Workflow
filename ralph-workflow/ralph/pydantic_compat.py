@@ -75,4 +75,4 @@ if TYPE_CHECKING:
 else:
     from pydantic import BaseModel as RalphBaseModel
 
-__all__ = ["RalphBaseModel"]
+__all__ = ["ConfigDict", "RalphBaseModel"]

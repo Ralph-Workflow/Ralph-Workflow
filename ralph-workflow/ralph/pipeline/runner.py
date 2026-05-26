@@ -434,13 +434,18 @@ def _reduce_runtime_recovery(
     return recovered_state, effects
 
 
+def _checkpoint_path(workspace_scope: WorkspaceScope) -> Path:
+    return workspace_scope.root / "checkpoint.json"
+
+
 def _save_checkpoint_or_log(
     state: PipelineState,
     *,
     message: str,
+    path: Path,
 ) -> None:
     try:
-        ckpt.save(state)
+        ckpt.save(state, path)
     except Exception as exc:
         logger.exception(message, phase=state.phase, err=exc)
 
@@ -591,6 +596,7 @@ def _run_pipeline_step(
             message=(
                 "Checkpoint save failed in phase={phase}: {err} -- continuing without checkpoint"
             ),
+            path=_checkpoint_path(workspace_scope),
         )
         return next_state
     except KeyboardInterrupt:
@@ -618,6 +624,7 @@ def _run_pipeline_step(
         _save_checkpoint_or_log(
             recovered_state,
             message="Checkpoint save failed while recording recovery in phase={phase}: {err}",
+            path=_checkpoint_path(workspace_scope),
         )
         return recovered_state
 
@@ -663,9 +670,10 @@ def _handle_inline_effect(
     dashboard_subscriber: _PipelineSubscriber | None = None,
 ) -> PipelineState | int | None:
     effective_subscriber = dashboard_subscriber or pipeline_subscriber
+    checkpoint_path = _checkpoint_path(workspace_scope)
 
     if isinstance(effect, SaveCheckpointEffect):
-        ckpt.save(state)
+        ckpt.save(state, checkpoint_path)
         new_state, _ = reducer_reduce(state, PipelineEvent.CHECKPOINT_SAVED, pipeline_policy)
         _notify_pipeline_subscriber(effective_subscriber, new_state)
         return new_state
@@ -716,7 +724,7 @@ def _handle_inline_effect(
                     last_error=str(exc),
                     recovery_epoch=current_epoch + 1,
                 )
-                ckpt.save(recovered_state)
+                ckpt.save(recovered_state, checkpoint_path)
                 _notify_pipeline_subscriber(effective_subscriber, recovered_state)
                 return recovered_state
         prepared_state = state
@@ -732,7 +740,7 @@ def _handle_inline_effect(
             phase=effect.phase,
             current_drain=effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
         )
-        ckpt.save(updated_state)
+        ckpt.save(updated_state, checkpoint_path)
         _notify_pipeline_subscriber(effective_subscriber, updated_state)
         return updated_state
 
@@ -753,7 +761,7 @@ def _handle_inline_effect(
             last_error=effect.reason,
             recovery_epoch=current_epoch + 1,
         )
-        ckpt.save(recovered_state)
+        ckpt.save(recovered_state, checkpoint_path)
         _notify_pipeline_subscriber(effective_subscriber, recovered_state)
         return recovered_state
 

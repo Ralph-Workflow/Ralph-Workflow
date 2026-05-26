@@ -136,7 +136,7 @@ class TestFanoutVerificationAndHandoff:
         _patch_infra(monkeypatch)
         monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
-        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
         runner_module.execute_fan_out_sync(
             effect=effect,
@@ -195,7 +195,7 @@ class TestFanoutVerificationAndHandoff:
         _patch_infra(monkeypatch)
         monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
-        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
         runner_module.execute_fan_out_sync(
             effect=effect,
@@ -245,7 +245,7 @@ class TestFanoutVerificationAndHandoff:
         _patch_infra(monkeypatch)
         monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
-        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
 
         runner_module.execute_fan_out_sync(
             effect=effect,

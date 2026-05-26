@@ -52,8 +52,8 @@ The table below uses a few drain groupings:
 | `declare_complete` | `artifact.submit` | all | Declare that the agent has finished |
 | `coordinate` | `artifact.submit` | all | Parallel worker coordination |
 | `read_env` | `env.read` | write drains | Read an environment variable |
-| `web_search` | `web.search` | non-analysis/commit (config opt-in) | Search the web via configured backends |
-| `visit_url` | `web.visit` | non-commit drains (config opt-in) | Fetch and extract text from a single URL |
+| `web_search` | `web.search` | non-commit drains (default-enabled) | Search the web via configured backends |
+| `visit_url` | `web.visit` | non-commit drains (granted by default) | Fetch and extract text from a single URL |
 | `read_media` | `media.read` | all (default-on; opt-out via mcp.toml) | Read a media file — images, PDFs, documents, audio, video; inline or resource-reference delivery based on model capability |
 | `read_image` | `media.read` | all (default-on; opt-out via mcp.toml) | Compatibility alias for `read_media` for image inputs; follows the same capability-aware delivery contract (inline image when supported, resource reference or explicit error otherwise) |
 
@@ -216,8 +216,8 @@ callable. The capability strings are:
 | `git.diff_read` | `git_diff` |
 | `env.read` | `read_env` |
 | `upstream.tool_use` | Upstream proxy tools (granted when upstream servers are configured) |
-| `web.search` | `web_search` (config opt-in; restricted to non-analysis/commit drains) |
-| `web.visit` | `visit_url` (config opt-in; non-commit drains) |
+| `web.search` | `web_search` (default-enabled; restricted to non-commit drains) |
+| `web.visit` | `visit_url` (default-enabled; non-commit drains) |
 | `media.read` | `read_media` (primary, default-on; opt-out via `mcp.toml`), `read_image` (compatibility alias) |
 
 **Same-workspace parallel workers** — Parallel workers in same-workspace mode inherit the parent phase's `SessionMcpPlan` contract, which includes the resolved capability profile, model identity, and drain. This means workers expose the same multimodal capability surface as serial execution: delivery verdicts (inline image, typed block, resource reference replay, explicit unsupported) are provider-specific and consistent with the serial path, and worker-produced media artifacts are written under the worker's namespace with the phase-scoped handoff path.

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 PACKAGE_ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
 FAKE_STDIO_MCP = PACKAGE_ROOT / "tests" / "fixtures" / "fake_stdio_mcp.py"
 
-pytestmark = pytest.mark.timeout_seconds(20)
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 
 def _make_test_console() -> tuple[Console, StringIO]:

@@ -8,19 +8,7 @@ of how `visit_url` fits into Ralph Workflow's three web concepts (search, visit,
 
 ## Requirements
 
-The tool uses two optional Python packages for HTML extraction:
-
-```
-pip install "ralph-workflow[web-visit]"
-```
-
-This installs:
-- `readability-lxml` — main-content isolation
-- `selectolax` — fast plain-text rendering and link extraction
-
-If these packages are not installed, `visit_url` will still appear in `tools/list`
-(because the capability is granted) but every call will return `is_error=true`
-with a clear "install web-visit extras" message.
+The tool requires `readability-lxml` and `selectolax` for HTML extraction. Both are included in the default `ralph-workflow` installation.
 
 ## Configuration
 
@@ -108,9 +96,10 @@ On failure (`is_error=true`):
 ## Capability and default grant
 
 `visit_url` requires the `WebVisit` capability. `WebVisit` is granted to
-**all 10 session drains** by default, meaning `visit_url` is visible and callable
-in every phase. This default exposure is verified by the cross-phase regression test
-`tests/integration/test_web_access_phase_visibility.py`.
+**all non-commit session drains** by default, meaning `visit_url` is visible and
+callable in every phase except commit-class drains (development commit, review
+commit, and commit drains). This default exposure is verified by the cross-phase
+regression test `tests/integration/test_web_access_phase_visibility_visit_url_phase_visibility.py`.
 
 ## Private-network access (SSRF guard)
 

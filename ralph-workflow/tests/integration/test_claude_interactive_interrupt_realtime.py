@@ -107,7 +107,7 @@ def test_live_sigint_terminates_pty_backed_interactive_claude(tmp_path: Path) ->
         runner_module.execute_agent_effect = fake_execute_agent_effect
         runner_module.materialize_agent_prompt_if_needed = lambda *args, **kwargs: None
         runner_module.phase_event_after_agent_run = lambda **kwargs: 0
-        runner_module.ckpt.save = lambda state: None
+        runner_module.ckpt.save = lambda state, *_args, **_kwargs: None
 
         initial_state = MagicMock()
         initial_state.phase = "development"

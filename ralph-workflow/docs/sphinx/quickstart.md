@@ -1,11 +1,11 @@
 # Quickstart
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph loop core.
 That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything. If you need config answers, open [Configuration Reference](configuration.md). If you want docs routed by use case, open [End-User Stories](user-stories.md).
 
 
 Use this page when you already understand the product story and want the shortest path to one honest first run in a real repository.
-Ralph Workflow gives you a strong default unattended coding workflow built from a simple Ralph-loop core; the point of this page is to use that default safely before you customize anything.
+Ralph Workflow gives you a strong default unattended coding workflow built from a simple Ralph loop core; the point of this page is to use that default safely before you customize anything.
 If you need fuller explanation, task-selection help, or more context for why the default flow works, go back to [Getting Started](getting-started.md).
 
 ## Quickstart checklist
@@ -30,6 +30,22 @@ Your first task should be:
 - important enough that better unattended workflow would matter
 
 If you need help picking that task, use [First Task Guide](first-task-guide.md).
+
+## Initialization commands
+
+Use the default initializer first:
+
+```bash
+ralph --init
+```
+
+`ralph --init` scaffolds `PROMPT.md` plus the standard project-local support files used for MCP, pipeline, and artifact configuration. It also installs the first-party Ralph Workflow skill bundle from the shipped Python package assets and prints a Baseline Capabilities summary showing the health of all default helpers. If you explicitly want a project-local override copy of the main config, create `.agent/ralph-workflow.toml` with:
+
+```bash
+ralph --init-local-config
+```
+
+That explicit opt-in path is the right place for repo-local main-config overrides; the broader file layout is explained in [Configuration Reference](configuration.md).
 
 ## What success should look like
 

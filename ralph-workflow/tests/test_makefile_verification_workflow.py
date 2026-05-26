@@ -4,12 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 59
-
-
-def _assert_all_contains(haystack: list[str], needles: list[str]) -> None:
-    for needle in needles:
-        assert any(needle in line for line in haystack)
+UNIT_TEST_SHARD_COUNT = 49
 
 
 def _target_body(name: str) -> list[str]:
@@ -32,6 +27,14 @@ def _target_body(name: str) -> list[str]:
         raise AssertionError(f"target {name!r} not found")
 
     return body
+
+
+def _assert_any_line_contains(body: list[str], needle: str) -> None:
+    assert any(needle in line for line in body)
+
+
+def _assert_all_lines_contain(body: list[str], needles: list[str]) -> None:
+    assert all(all(needle in line for needle in needles) for line in body)
 
 
 def test_verify_target_delegates_to_wrapper_module() -> None:
@@ -73,90 +76,78 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     unit_body = _target_body("test-unit")
     integration_body = _target_body("test-integration")
 
+    expected_unit_markers = [
+        "$(PYTEST_CORE_PATHS)",
+        "$(PYTEST_RUNTIME_PATHS_MCP)",
+        "$(PYTEST_RUNTIME_PATHS_PIPELINE)",
+        "$(PYTEST_RUNTIME_PATHS_RECOVERY)",
+        "$(PYTEST_ROOT_PATHS_A_ACTIVITY)",
+        "$(PYTEST_ROOT_PATHS_A_AGENT)",
+        "$(PYTEST_ROOT_PATHS_A_AGENTS)",
+        "$(PYTEST_ROOT_PATHS_A_AGY)",
+        "$(PYTEST_ROOT_PATHS_A_ANALYSIS)",
+        "$(PYTEST_ROOT_PATHS_A_API)",
+        "$(PYTEST_ROOT_PATHS_A_ARTIFACT)",
+        "$(PYTEST_ROOT_PATHS_A_ASYNCIO)",
+        "$(PYTEST_ROOT_PATHS_A_AUDIT)",
+        "$(PYTEST_ROOT_PATHS_B)",
+        "$(PYTEST_ROOT_PATHS_C_CAPABILITY)",
+        "$(PYTEST_ROOT_PATHS_C_CHECKPOINT)",
+        "$(PYTEST_ROOT_PATHS_C_CHILD_CLASSIFIER)",
+        "$(PYTEST_ROOT_PATHS_C_CLAUDE)",
+        "$(PYTEST_ROOT_PATHS_C_CLI_1)",
+        "$(PYTEST_ROOT_PATHS_C_CLI_2)",
+        "$(PYTEST_ROOT_PATHS_C_CODEX_COMMIT)",
+        "$(PYTEST_ROOT_PATHS_C_COMPLETION)",
+        "$(PYTEST_ROOT_PATHS_C_CONFIG)",
+        "$(PYTEST_ROOT_PATHS_C_CUSTOM_POLICY)",
+        "$(PYTEST_ROOT_PATHS_C_CYCLE)",
+        "$(PYTEST_ROOT_PATHS_D)",
+        "$(PYTEST_ROOT_PATHS_E)",
+        "$(PYTEST_ROOT_PATHS_F)",
+        "$(PYTEST_ROOT_PATHS_G)",
+        "$(PYTEST_ROOT_PATHS_H)",
+        "$(PYTEST_ROOT_PATHS_I)",
+        "$(PYTEST_ROOT_PATHS_L)",
+        "$(PYTEST_ROOT_PATHS_M_CONFIG)",
+        "$(PYTEST_ROOT_PATHS_M_ARTIFACTS)",
+        "$(PYTEST_ROOT_PATHS_M_BRIDGE)",
+        "$(PYTEST_ROOT_PATHS_M_CAPABILITY)",
+        "$(PYTEST_ROOT_PATHS_M_CORE)",
+        "$(PYTEST_ROOT_PATHS_M_RUNTIME)",
+        "$(PYTEST_ROOT_PATHS_M_SERVER)",
+        "$(PYTEST_ROOT_PATHS_M_TOOL)",
+        "$(PYTEST_ROOT_PATHS_N)",
+        "$(PYTEST_ROOT_PATHS_O)",
+        "$(PYTEST_ROOT_PATHS_PA_PC)",
+        "$(PYTEST_ROOT_PATHS_PD_PF)",
+        "$(PYTEST_ROOT_PATHS_PG_PI)",
+        "$(PYTEST_ROOT_PATHS_PJ_PL)",
+        "$(PYTEST_ROOT_PATHS_PM_PZ)",
+        "$(PYTEST_ROOT_PATHS_Q_S)",
+        "$(PYTEST_ROOT_PATHS_T_Z)",
+    ]
+
     assert len(unit_body) == UNIT_TEST_SHARD_COUNT
     assert len(integration_body) == 1
-    assert "PYTEST_WORKERS_CONFIG ?= 4" in MAKEFILE_PATH.read_text(encoding="utf-8")
-    _assert_all_contains(
+    _assert_all_lines_contain(
         unit_body,
-        [
-            "python -m ralph.verify_timeout",
-            "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)",
-            "$(PYTEST_CORE_AGENT_PATHS)",
-            "$(PYTEST_CORE_AGENT_PATHS_2)",
-            "$(PYTEST_CORE_CONFIG_PATHS)",
-            "$(PYTEST_CORE_DISPLAY_CONTEXT_PATHS)",
-            "$(PYTEST_CORE_DISPLAY_MODE_PATHS)",
-            "$(PYTEST_CORE_DISPLAY_PHASE_PATHS)",
-            "$(PYTEST_CORE_DISPLAY_REST_PATHS)",
-            "$(PYTEST_CORE_FIXTURES_PATHS)",
-            "$(PYTEST_CORE_UNIT_AGENT_PATHS)",
-            "$(PYTEST_CORE_UNIT_DISPLAY_PATHS)",
-            "$(PYTEST_CORE_UNIT_PIPELINE_PATHS)",
-            "$(PYTEST_RUNTIME_MCP_PATHS)",
-            "$(PYTEST_RUNTIME_PIPELINE_PATHS)",
-            "$(PYTEST_RUNTIME_RECOVERY_PATHS)",
-            "$(PYTEST_ROOT_PATHS_A_AC)",
-            "$(PYTEST_ROOT_PATHS_AF_G)",
-            "$(PYTEST_ROOT_PATHS_A_HN_CONTEXT)",
-            "$(PYTEST_ROOT_PATHS_A_HN_ITERATION)",
-            "$(PYTEST_ROOT_PATHS_A_HN_ITERATION_2)",
-            "$(PYTEST_ROOT_PATHS_A_HN_ITERATION_3)",
-            "$(PYTEST_ROOT_PATHS_A_HN_MISC)",
-            "$(PYTEST_ROOT_PATHS_A_OZ)",
-            "$(PYTEST_ROOT_PATHS_B)",
-            "$(PYTEST_ROOT_PATHS_C_AH_1)",
-            "$(PYTEST_ROOT_PATHS_C_AH_2)",
-            "$(PYTEST_ROOT_PATHS_C_IL)",
-            "$(PYTEST_ROOT_PATHS_C_IL_2)",
-            "$(PYTEST_ROOT_PATHS_C_MO)",
-            "$(PYTEST_ROOT_PATHS_C_PZ)",
-            "$(PYTEST_ROOT_PATHS_D_CORE)",
-            "$(PYTEST_ROOT_PATHS_D_DISPLAY)",
-            "$(PYTEST_ROOT_PATHS_E_F)",
-            "$(PYTEST_ROOT_PATHS_G_H)",
-            "$(PYTEST_ROOT_PATHS_I_J)",
-            "$(PYTEST_ROOT_PATHS_K_L)",
-            "$(PYTEST_ROOT_PATHS_M_A)",
-            "$(PYTEST_ROOT_PATHS_MCP_ARTIFACTS)",
-            "$(PYTEST_ROOT_PATHS_MCP_BRIDGE)",
-            "$(PYTEST_ROOT_PATHS_MCP_CAPABILITY)",
-            "$(PYTEST_ROOT_PATHS_MCP_MISC)",
-            "$(PYTEST_ROOT_PATHS_MCP_SERVER)",
-            "$(PYTEST_ROOT_PATHS_MULTIMODAL)",
-            "$(PYTEST_ROOT_PATHS_N)",
-            "$(PYTEST_ROOT_PATHS_O)",
-            "$(PYTEST_ROOT_PATHS_PA_PC)",
-            "$(PYTEST_ROOT_PATHS_PA_PC_2)",
-            "$(PYTEST_ROOT_PATHS_PD_PF)",
-            "$(PYTEST_ROOT_PATHS_PG_PH)",
-            "$(PYTEST_ROOT_PATHS_PG_PI)",
-            "$(PYTEST_ROOT_PATHS_PJ_PL)",
-            "$(PYTEST_ROOT_PATHS_PM_PZ)",
-            "$(PYTEST_ROOT_PATHS_Q_S)",
-            "$(PYTEST_ROOT_PATHS_Q_S_2)",
-            "$(PYTEST_ROOT_PATHS_Q_S_3)",
-            "$(PYTEST_ROOT_PATHS_T_U)",
-            "$(PYTEST_ROOT_PATHS_T_U_2)",
-            "$(PYTEST_ROOT_PATHS_T_U_3)",
-            "$(PYTEST_ROOT_PATHS_V_W)",
-            "$(PYTEST_ROOT_PATHS_V_W_2)",
-        ],
+        ["python -m ralph.verify_timeout", "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)"],
     )
-    _assert_all_contains(
-        integration_body,
-        [
-            "python -m ralph.verify_timeout",
-            "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)",
-            "python -m pytest tests/integration/ -q",
-        ],
-    )
+    assert "uv run python -m ralph.verify_timeout" in integration_body[0]
+    assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
+
+    for marker in expected_unit_markers:
+        _assert_any_line_contains(unit_body, marker)
+
+    assert "python -m pytest tests/integration/ -q" in integration_body[0]
 
 
 def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
     e2e_body = _target_body("test-subprocess-e2e")
 
     assert e2e_body == [
-        ".venv/bin/python -m ralph.verify_timeout "
+        "uv run python -m ralph.verify_timeout "
         "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
         "python -m pytest tests/ -q -n 1 -m subprocess_e2e"
     ]

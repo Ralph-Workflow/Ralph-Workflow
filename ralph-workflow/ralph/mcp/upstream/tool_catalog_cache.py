@@ -30,6 +30,7 @@ def cache_tool_catalog(
     workspace_root: Path | None,
     catalog: dict[str, list[UpstreamTool]],
 ) -> None:
+    """Store a copy of the validated upstream tool catalog for one workspace."""
     key = _cache_key(workspace_root)
     if key is None:
         return
@@ -37,6 +38,7 @@ def cache_tool_catalog(
 
 
 def get_tool_catalog(workspace_root: Path | None) -> dict[str, list[UpstreamTool]]:
+    """Return a defensive copy of the cached tool catalog for one workspace."""
     key = _cache_key(workspace_root)
     if key is None:
         return {}
@@ -44,6 +46,7 @@ def get_tool_catalog(workspace_root: Path | None) -> dict[str, list[UpstreamTool
 
 
 def clear_tool_catalog(workspace_root: Path | None) -> None:
+    """Drop any cached upstream tool catalog associated with one workspace."""
     key = _cache_key(workspace_root)
     if key is None:
         return
@@ -53,6 +56,7 @@ def clear_tool_catalog(workspace_root: Path | None) -> None:
 def collect_tool_catalog(
     servers: Iterable[UpstreamMcpServer],
 ) -> dict[str, list[UpstreamTool]]:
+    """Probe configured upstream servers and return their advertised tool catalogs."""
     return {server.name: list(make_upstream_client(server).list_tools()) for server in servers}
 
 
@@ -60,6 +64,7 @@ def apply_tool_catalog_env(
     runtime_env: dict[str, str],
     catalog: dict[str, list[UpstreamTool]],
 ) -> None:
+    """Materialize the upstream tool catalog into runtime environment variables."""
     if catalog:
         runtime_env[UPSTREAM_MCP_TOOL_CATALOG_ENV] = serialize_upstream_tool_catalog(catalog)
         return

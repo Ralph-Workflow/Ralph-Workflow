@@ -7,6 +7,16 @@ PREVIOUS ATTEMPT ERROR:
 {{LAST_RETRY_ERROR}}
 
 {% endif %}
+
+{% if SKILLS_INLINE_CONTENT %}
+{{ SKILLS_INLINE_CONTENT }}
+{% else %}
+## BASELINE WORKFLOW SKILLS
+
+Skills available from the Ralph Workflow shipped skill bundle (read and apply as appropriate):
+- `using-superpowers` (all tasks), `test-driven-development` (feature/bugfix), `systematic-debugging` (errors/regressions), `verification-before-completion` (before completion claims), `requesting-code-review`/`receiving-code-review` (review flows), `security-review`/`verification-loop`/`coding-standards` (quality controls), `using-git-worktrees` (isolation), `finishing-a-development-branch` (integration)
+{% endif %}
+
 ORIGINAL REQUEST:
 Canonical request file: `{{PROMPT_PATH}}`
 
@@ -21,6 +31,12 @@ ANALYSIS FEEDBACK:
 Feedback payload file: `{{ANALYSIS_FEEDBACK_PATH}}`
 
 {{ANALYSIS_FEEDBACK}}
+
+{% if HAS_DOCS_MCP %}
+Docs MCP is active (localhost:6280). Prefer docs-mcp search over web_search for library/API implementation research.
+{% else %}
+Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml improves documentation lookup quality during development.
+{% endif %}
 
 {% if ARTIFACT_HISTORY_PATH %}
 ARTIFACT HISTORY:

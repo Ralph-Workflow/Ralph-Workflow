@@ -6,6 +6,25 @@
 
 {% include 'shared/_mcp_tools.j2' %}
 
+{% if SKILLS_INLINE_CONTENT|default('') %}
+## SHIPPED SKILL BUNDLE
+
+{{ SKILLS_INLINE_CONTENT|default('') }}
+{% else %}
+## BASELINE WORKFLOW SKILLS
+
+The following skills from the Ralph Workflow shipped skill bundle apply to this planning analysis task. Read and apply the relevant ones before proceeding:
+
+- **`using-superpowers`** — read at the start of every planning task
+- **`writing-plans`** — apply when creating multi-step implementation plans
+- **`brainstorming`** — apply before open-ended or creative solution shaping
+- **`executing-plans`** — apply when converting an approved written plan into execution guidance
+- **`dispatching-parallel-agents`** or **`subagent-driven-development`** — apply when work can be parallelized safely
+- **`coding-standards`** — apply when the plan sets implementation quality bars
+- **`verification-loop`** — apply when the plan defines verification requirements
+- **`security-review`** — apply as a baseline quality control
+{% endif %}
+
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
 
@@ -15,6 +34,21 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 {{ render_payload_path('PROMPT', PROMPT_PATH) }}
 
 Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the current finalized plan or staged draft before evaluating it.
+
+{% if HAS_DOCS_MCP %}
+
+## DOCUMENTATION LOOKUP
+
+The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. When researching library APIs, framework behavior, or third-party tooling during planning analysis:
+1. Search documentation first using the docs-mcp search tool from your MCP tool list.
+2. Fall back to `web_search` only if docs-mcp returns no useful results.
+3. Use `visit_url` for pages that docs-mcp surfaces as links.
+
+{% else %}
+
+> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during planning analysis.
+
+{% endif %}
 
 ---
 

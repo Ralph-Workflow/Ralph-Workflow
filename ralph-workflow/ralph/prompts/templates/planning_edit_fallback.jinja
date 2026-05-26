@@ -2,6 +2,20 @@ PLANNING EDIT MODE
 
 {% include 'shared/_unattended_mode.j2' %}
 
+{% if SKILLS_INLINE_CONTENT %}
+{{ SKILLS_INLINE_CONTENT }}
+{% else %}
+## BASELINE WORKFLOW SKILLS
+
+Skills available from the Ralph Workflow shipped skill bundle (read and apply as appropriate):
+- `using-superpowers` (all planning tasks), `writing-plans` (multi-step plans), `brainstorming` (open-ended shaping), `executing-plans` (plan-to-execution), `dispatching-parallel-agents`/`subagent-driven-development` (parallel work), `coding-standards`, `verification-loop`, and `security-review` (quality bars)
+{% endif %}
+
+{% if LAST_RETRY_ERROR %}
+Recent retry context:
+{{ LAST_RETRY_ERROR }}
+{% endif %}
+
 The prior plan was rejected by planning analysis.
 Treat the planning-analysis feedback as a starting point, not as the full list of issues.
 The goal is not merely to fix what the analyzer found; it is to eliminate every repo-grounded issue the analyzer could still surface on the next pass.
@@ -18,6 +32,12 @@ ORIGINAL REQUEST:
 
 ANALYSIS FEEDBACK:
 {{ANALYSIS_FEEDBACK}}
+
+{% if HAS_DOCS_MCP %}
+Docs MCP is active (localhost:6280). Use docs-mcp search for library/API research before revising the plan.
+{% else %}
+Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml improves documentation lookup quality during planning.
+{% endif %}
 
 Not submitting the revised plan is a FAILURE.
 

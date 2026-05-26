@@ -47,6 +47,11 @@ $EDITOR PROMPT.md
 ralph
 ```
 
+Use `ralph --init` first to set up or repair the baseline bundle, then run `ralph --diagnose` to confirm capability health before your first task.
+
+- `ralph --init` provisions the default local work surface, web helpers, and shipped baseline skills for a first run that is ready to use.
+- `ralph --diagnose` is the pre-flight check; it shows which baseline helpers are healthy, missing, unreachable, degraded, or need repair.
+
 ## What success looks like
 
 After a good first run, you should be able to point to:

@@ -41,6 +41,8 @@ class PlanningPromptInputs:
     current_prompt_path: str = ""
     payload_root: str = ""
     last_retry_error: str = ""
+    skills_inline_content: str = ""
+    has_docs_mcp: bool = False
 
 
 def prompt_developer_iteration_xml_with_context(
@@ -67,6 +69,8 @@ def prompt_developer_iteration_xml_with_context(
         ),
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "true",
         "LAST_RETRY_ERROR": inputs.last_retry_error,
+        "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
+        "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
     }
     base_vars.update(
         _current_prompt_variables(
@@ -117,10 +121,12 @@ def prompt_developer_iteration_xml_with_context(
                 "PROMPT": inputs.prompt_content or "No requirements provided",
                 "PLAN": inputs.plan_content or "(no plan available)",
                 "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
+                "LAST_RETRY_ERROR": inputs.last_retry_error,
                 "ARTIFACT_HISTORY_PATH": inputs.artifact_history_path,
                 "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
-                "LAST_RETRY_ERROR": inputs.last_retry_error,
-                "PROMPT_PATH": current_prompt_path,
+                "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
+                "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
+                "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
                 "PLAN_PATH": inputs.plan_path
                 or str(Path(payload_root) / f"{inputs.prompt_name_prefix}_plan.txt"),
                 "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
@@ -150,6 +156,8 @@ def prompt_planning_xml_with_context(
         "PLAN_XML_PATH": workspace.absolute_path(PLAN_ARTIFACT_PATH),
         "PLAN_XSD_PATH": workspace.absolute_path(".agent/artifacts/plan.schema.json"),
         "LAST_RETRY_ERROR": inputs.last_retry_error,
+        "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
+        "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
     }
     base_vars.update(
         _current_prompt_variables(
@@ -202,11 +210,17 @@ def prompt_planning_xml_with_context(
             "PROMPT": inputs.prompt_content or "No requirements provided",
             "PLAN": inputs.plan_content or "(no plan available)",
             "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
+            "LAST_RETRY_ERROR": inputs.last_retry_error,
+            "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
             "PROMPT_PATH": current_prompt_path,
             "PLAN_PATH": inputs.plan_path
             or str(Path(payload_root) / "planning_plan.txt"),
             "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
-            or str(Path(payload_root) / "planning_analysis_feedback.txt"),
+            or str(
+                Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
+                / "planning_analysis_feedback.txt"
+            ),
+            "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
         }
         fallback_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
         fallback_vars["ARTIFACT_HISTORY_DIR"] = inputs.artifact_history_dir

@@ -108,13 +108,6 @@ ralph.timeout_defaults
    :members:
    :show-inheritance:
 
-ralph.pydantic_compat
-~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pydantic_compat
-   :members:
-   :show-inheritance:
-
 ralph.verify_timeout
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -973,6 +966,25 @@ ralph.pipeline.worker_status
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.worker_status
+   :members:
+   :show-inheritance:
+
+----
+
+Skills
+------
+
+ralph.skills
+~~~~~~~~~~~~
+
+.. automodule:: ralph.skills
+   :members:
+   :show-inheritance:
+
+ralph.skills.manager
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.skills.manager
    :members:
    :show-inheritance:
 
@@ -1896,6 +1908,13 @@ ralph.mcp.upstream.registry
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.upstream.registry
+   :members:
+   :show-inheritance:
+
+ralph.mcp.upstream.tool_catalog_cache
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.upstream.tool_catalog_cache
    :members:
    :show-inheritance:
 
@@ -2888,6 +2907,13 @@ ralph.prompts.materialize
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.prompts.materialize
+   :members:
+   :show-inheritance:
+
+ralph.prompts.materialize_support
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.prompts.materialize_support
    :members:
    :show-inheritance:
 

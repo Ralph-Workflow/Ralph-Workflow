@@ -1,0 +1,48 @@
+{
+  "phase": "planning",
+  "previous_phase": null,
+  "review_outcome": null,
+  "phase_chains": {},
+  "loop_iterations": {},
+  "loop_caps": {},
+  "budget_caps": {},
+  "outer_progress": {},
+  "rebase": {
+    "pending": false,
+    "in_progress": false,
+    "completed": false
+  },
+  "commit": {
+    "message_prepared": false,
+    "diff_prepared": false,
+    "agent_invoked": false
+  },
+  "metrics": {
+    "total_agent_calls": 0,
+    "total_continuations": 0,
+    "total_fallbacks": 0,
+    "total_retries": 0
+  },
+  "checkpoint_saved_count": 0,
+  "recovery_epoch": 0,
+  "interrupted_by_user": false,
+  "git_auth_configured": false,
+  "pr_created": false,
+  "pr_url": null,
+  "push_count": 0,
+  "last_error": null,
+  "last_reviewed_sha": null,
+  "policy_entry_phase": "__unset__",
+  "policy_format_version": null,
+  "current_drain": null,
+  "work_units": [],
+  "worker_states": {},
+  "recovery_cycle_count": 0,
+  "fallover_history": [],
+  "last_failure_category": null,
+  "last_connectivity_state": "unknown",
+  "recovery_cycle_cap": 200,
+  "last_retry_delay_ms": 0,
+  "last_agent_session_id": null,
+  "session_preserve_retry_pending": false
+}

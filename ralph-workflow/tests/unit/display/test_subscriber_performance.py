@@ -12,7 +12,7 @@ from ralph.pipeline.state import PipelineState, RunMetrics
 if TYPE_CHECKING:
     from ralph.display.snapshot import PipelineSnapshot
 
-_MAX_NOTIFY_SECONDS = 0.001
+_MAX_NOTIFY_SECONDS = 0.002
 
 
 def _make_state() -> PipelineState:

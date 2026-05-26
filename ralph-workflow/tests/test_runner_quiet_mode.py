@@ -63,7 +63,7 @@ def _install_runner_stubs(
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
     monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
         runner_module, "phase_event_after_agent_run", fake_phase_event_after_agent_run

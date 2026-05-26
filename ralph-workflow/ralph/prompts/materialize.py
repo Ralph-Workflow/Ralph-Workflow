@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import typing
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,9 +45,14 @@ from ralph.prompts.developer import (
     prompt_developer_iteration_xml_with_context,
     prompt_planning_xml_with_context,
 )
-from ralph.prompts.payload_refs import (
-    build_prompt_payload_variables,
-    write_payload_to_directory,
+from ralph.prompts.materialize_support import (
+    current_prompt_variables as _current_prompt_variables,
+)
+from ralph.prompts.materialize_support import (
+    persist_current_prompt as _persist_current_prompt,
+)
+from ralph.prompts.materialize_support import (
+    phase_payload_variables,
 )
 from ralph.prompts.payload_refs import (
     sanitize_surrogates as _sanitize_surrogates,
@@ -55,6 +61,8 @@ from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
+from ralph.skills._skill_resolver import get_inline_skill_content
+from ralph.skills.manager import SkillManager
 
 __all__ = [
     "MissingPlanHandoffError",
@@ -74,6 +82,25 @@ if TYPE_CHECKING:
     from ralph.policy.models import ArtifactsPolicy, PhaseDefinition, PipelinePolicy
     from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
     from ralph.workspace.protocol import Workspace
+
+
+class _RepoGitProtocol(typing.Protocol):
+    def diff(self, *_args: object, **_kwargs: object) -> str: ...
+
+    def ls_files(self, *_args: object, **_kwargs: object) -> str: ...
+
+
+class _RepoProtocol(typing.Protocol):
+    git: _RepoGitProtocol
+
+
+class _RepoFactoryProtocol(typing.Protocol):
+    def __call__(self, *_args: object, **_kwargs: object) -> _RepoProtocol: ...
+
+
+Repo: _RepoFactoryProtocol | None = None
+
+
 @dataclass(frozen=True)
 class PromptPhaseOptions:
     """Optional inputs for prompt materialization with sensible defaults."""
@@ -84,6 +111,8 @@ class PromptPhaseOptions:
     resume_existing_phase: bool = False
     multimodal_entries: list[MultimodalSidecarEntry] | None = None
     work_unit: WorkUnit | None = None
+
+
 def __getattr__(name: str) -> object:
     if name == "MultimodalSidecarEntry":
         from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry as _Entry
@@ -91,6 +120,8 @@ def __getattr__(name: str) -> object:
         return _Entry
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
+
+
 def materialize_prompt_for_phase(
     context: PromptPhaseContext | None = None,
     options: PromptPhaseOptions | None = None,
@@ -145,6 +176,8 @@ def materialize_prompt_for_phase(
             worker_namespace=opts.worker_namespace,
         )
     return path
+
+
 def _should_wrap_worker_prompt(
     phase: str,
     pipeline_policy: PipelinePolicy,
@@ -160,19 +193,27 @@ def _should_wrap_worker_prompt(
         return phase == "development"
     drain = phase_def.drain if phase_def.drain is not None else phase
     return _drain_artifact_type(drain, artifacts_policy) == "development_result"
+
+
 def prompt_file_for_phase(phase: str) -> str:
     """Return the workspace-relative path where a phase's prompt is stored."""
     return prompt_dump_path(phase)
+
+
 def _template_name_for_phase(phase: str, pipeline_policy: PipelinePolicy) -> str:
     phase_def = pipeline_policy.phases.get(phase)
     if phase_def is None or phase_def.prompt_template is None:
         msg = f"No prompt_template configured for phase '{phase}'"
         raise ValueError(msg)
     return phase_def.prompt_template
+
+
 def _loopback_template_name_for_phase(phase_def: PhaseDefinition | None) -> str | None:
     if phase_def is None:
         return None
     return phase_def.loopback_prompt_template or phase_def.continuation_template
+
+
 def read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
     """Read the retry hint file for a phase and delete it after reading."""
     path = retry_hint_path(phase)
@@ -184,6 +225,8 @@ def read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
         return hint
     except Exception:
         return ""
+
+
 def _render_prompt_for_phase(
     context: PromptPhaseContext,
     options: PromptPhaseOptions,
@@ -293,6 +336,8 @@ def _render_prompt_for_phase(
         )
     msg = f"Unsupported phase '{phase}' (role={phase_role!r}) for prompt materialization"
     raise ValueError(msg)
+
+
 def _render_planning_prompt(
     context: PromptPhaseContext,
     options: PromptPhaseOptions,
@@ -313,6 +358,8 @@ def _render_planning_prompt(
     ) = _prepare_planning_prompt_context(context, options)
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
     artifact_history_path = resolve_planning_history_path(workspace_root)
+    has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
+    skills_inline_content = get_inline_skill_content()
     return prompt_planning_xml_with_context(
         context=tmpl_ctx,
         inputs=PlanningPromptInputs(
@@ -334,11 +381,15 @@ def _render_planning_prompt(
                 else workspace_root / ".agent" / "tmp" / "prompt_payloads"
             ),
             last_retry_error=last_retry_error,
+            skills_inline_content=skills_inline_content,
+            has_docs_mcp=has_docs_mcp,
         ),
         workspace=workspace,
         session_caps=session_caps,
         template_name=template_name,
     )
+
+
 def _render_developer_prompt(
     context: PromptPhaseContext,
     options: PromptPhaseOptions,
@@ -379,6 +430,8 @@ def _render_developer_prompt(
         workspace, phase, pipeline_policy, artifacts_policy
     )
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
+    has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
+    skills_inline_content = get_inline_skill_content()
     return prompt_developer_iteration_xml_with_context(
         context=tmpl_ctx,
         inputs=DeveloperPromptInputs(
@@ -399,13 +452,17 @@ def _render_developer_prompt(
             ),
             prompt_name_prefix=phase,
             last_retry_error=last_retry_error,
+            skills_inline_content=skills_inline_content,
             artifact_history_path=dev_artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
+            has_docs_mcp=has_docs_mcp,
         ),
         workspace=workspace,
         session_caps=session_caps,
         template_name=template_name,
     )
+
+
 def _render_template_based_prompt(
     phase: str,
     workspace: Workspace,
@@ -433,6 +490,8 @@ def _render_template_based_prompt(
         workspace, phase, pipeline_policy, artifacts_policy
     )
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
+    has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
+    skills_inline_content = get_inline_skill_content()
     variables = phase_payload_variables(
         phase=phase,
         workspace_root=workspace_root,
@@ -459,11 +518,15 @@ def _render_template_based_prompt(
         variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
     variables.update(_current_prompt_variables(prompt_content, str(current_prompt_path)))
     variables["LAST_RETRY_ERROR"] = last_retry_error
+    variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
+    variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
     return render_template(
         template,
         _merged_variables(variables, session_caps),
         tmpl_ctx.partials,
     )
+
+
 def _merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -> dict[str, str]:
     return {
         **base,
@@ -473,6 +536,8 @@ def _merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -
             tool_name_prefix=session_caps.tool_name_prefix,
         ),
     }
+
+
 def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolicy) -> str:
     """Render the isolated developer prompt for a single parallel work unit."""
     del policy
@@ -488,64 +553,29 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
         },
         context.partials,
     )
+
+
 def submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
     """Return the submit-artifact tool name for the given transport."""
     if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
     return SUBMIT_ARTIFACT_TOOL
+
+
 def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:
     """Return the tool name prefix for the given agent transport."""
     # Prompt templates should use the same MCP tool names the active transport sees.
     if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         return claude_tool_name_prefix()
     return ""
+
+
 def _read_optional(workspace: Workspace, path: str) -> str | None:
     if not workspace.exists(path):
         return None
     return workspace.read(path)
-def phase_payload_variables(
-    *,
-    phase: str,
-    workspace_root: Path,
-    values: dict[str, str],
-    worker_namespace: Path | None = None,
-) -> dict[str, str]:
-    """Build prompt payload variables, writing oversized values to disk under the phase prefix."""
-    output_dir = (
-        worker_namespace / "tmp" / "prompt_payloads"
-        if worker_namespace is not None
-        else workspace_root / ".agent" / "tmp" / "prompt_payloads"
-    )
-    return build_prompt_payload_variables(
-        values,
-        prompt_name_prefix=phase,
-        write_payload=lambda relative_path, content: write_payload_to_directory(
-            output_dir,
-            relative_path,
-            content,
-        ),
-    )
-def _persist_current_prompt(
-    workspace_root: Path,
-    prompt_content: str | None,
-    *,
-    worker_namespace: Path | None = None,
-) -> str:
-    current_prompt_path = (
-        worker_namespace / "tmp" / "CURRENT_PROMPT.md"
-        if worker_namespace is not None
-        else workspace_root / ".agent" / "CURRENT_PROMPT.md"
-    )
-    current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    if prompt_content is None and current_prompt_path.exists():
-        return str(current_prompt_path)
-    current_prompt_path.write_text(prompt_content or "No requirements provided", encoding="utf-8")
-    return str(current_prompt_path)
-def _current_prompt_variables(
-    prompt_content: str | None, current_prompt_path: str
-) -> dict[str, str]:
-    del prompt_content
-    return {"PROMPT": "", "PROMPT_PATH": current_prompt_path}
+
+
 def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
     """Return the plan handoff users and downstream agents should consume."""
     return _resolve_agent_handoff(
@@ -554,8 +584,12 @@ def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
         artifact_path=PLAN_ARTIFACT_PATH,
         fallback_formatter=format_plan_for_execution,
     )
+
+
 def _template_allows_missing_plan_handoff(template_name: str) -> bool:
     return template_name in {"planning.jinja", "planning_fallback.jinja"}
+
+
 def _resolve_required_plan_handoff(
     workspace: Workspace,
     *,
@@ -574,6 +608,8 @@ def _resolve_required_plan_handoff(
     plan_handoff_path = handoff_path_for_artifact("plan") or ".agent/PLAN.md"
     msg = f"Template '{template_name}' requires an existing plan handoff at {plan_handoff_path}"
     raise MissingPlanHandoffError(msg)
+
+
 def _should_preserve_planning_context(
     *,
     phase: str,
@@ -590,6 +626,8 @@ def _should_preserve_planning_context(
     has_retry_hint = bool(_read_optional(workspace, retry_hint_path(phase)))
     preserve_retry_context = previous_phase == phase and has_retry_hint
     return is_loopback or preserve_retry_context or resume_existing_phase
+
+
 def _prepare_planning_prompt_context(
     context: PromptPhaseContext,
     options: PromptPhaseOptions,
@@ -651,6 +689,8 @@ def _prepare_planning_prompt_context(
         analysis_feedback_path,
         template_name,
     )
+
+
 def _resolve_artifact_history_path(workspace_root: Path, artifact_type: str) -> str:
     """Return the absolute path to the artifact history index for the given type, if it exists."""
     artifact_dir = workspace_root / ".agent" / "artifacts"
@@ -658,16 +698,22 @@ def _resolve_artifact_history_path(workspace_root: Path, artifact_type: str) -> 
     if index.exists():
         return str(index)
     return ""
+
+
 def _artifact_history_dir_from_path(history_path: str) -> str:
     """Return the archive directory for a resolved artifact history index path."""
     if not history_path:
         return ""
     return str(Path(history_path).parent)
+
+
 def resolve_planning_history_path(
     workspace_root: Path,
 ) -> str:
     """Return the absolute path to the planning artifact history index, if it exists."""
     return _resolve_artifact_history_path(workspace_root, PLAN_ARTIFACT_TYPE)
+
+
 def _clear_accepted_analysis_history_if_needed(
     *,
     workspace_root: Path,
@@ -700,6 +746,8 @@ def _clear_accepted_analysis_history_if_needed(
         _handle_execution_bypass(
             workspace_root, pipeline_policy, phase, previous_phase_def, artifacts_policy
         )
+
+
 def _handle_analysis_accepted(
     workspace_root: Path,
     pipeline_policy: PipelinePolicy,
@@ -719,6 +767,8 @@ def _handle_analysis_accepted(
     if loopback_phase_def.role != "execution":
         return
     _clear_artifact_history_per_policy(workspace_root, pipeline_policy, artifacts_policy)
+
+
 def _handle_execution_bypass(
     workspace_root: Path,
     pipeline_policy: PipelinePolicy,
@@ -736,6 +786,8 @@ def _handle_execution_bypass(
     if analysis_phase_def.transitions.on_success != phase:
         return
     _clear_artifact_history_per_policy(workspace_root, pipeline_policy, artifacts_policy)
+
+
 def _clear_artifact_history_per_policy(
     workspace_root: Path,
     pipeline_policy: PipelinePolicy,
@@ -757,6 +809,8 @@ def _clear_artifact_history_per_policy(
         drain_type = _drain_artifact_type(phase_def.drain, artifacts_policy)
         if drain_type is not None:
             clear_artifact_history(artifact_dir, drain_type, backend=DEFAULT_FILE_BACKEND)
+
+
 def _resolve_and_clear_dev_artifact_history(
     *,
     workspace_root: Path,
@@ -771,6 +825,8 @@ def _resolve_and_clear_dev_artifact_history(
         artifact_dir = workspace_root / ".agent" / "artifacts"
         clear_artifact_history(artifact_dir, drain_artifact_type, backend=DEFAULT_FILE_BACKEND)
     return _resolve_artifact_history_path(workspace_root, drain_artifact_type)
+
+
 def _clear_fresh_planning_context(
     workspace: Workspace,
     pipeline_policy: PipelinePolicy,
@@ -786,6 +842,8 @@ def _clear_fresh_planning_context(
         workspace.remove(PLAN_DRAFT_PATH)
     workspace_root = Path(workspace.absolute_path("."))
     _clear_artifact_history_per_policy(workspace_root, pipeline_policy, artifacts_policy)
+
+
 def _is_analysis_loopback_into_phase(
     *,
     phase: str,
@@ -800,6 +858,8 @@ def _is_analysis_loopback_into_phase(
         and previous_phase_def.role == "analysis"
         and previous_phase_def.transitions.on_loopback == phase
     )
+
+
 def _resolve_agent_handoff(
     workspace: Workspace,
     *,
@@ -841,6 +901,8 @@ def _resolve_agent_handoff(
             if markdown:
                 return markdown, handoff_path
     return None, ""
+
+
 def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
@@ -848,6 +910,8 @@ def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
         artifact_path=".agent/artifacts/issues.json",
     )
     return content or "(no review issues available)", path
+
+
 def resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
     """Return (content, path) for the fix_result artifact, with a fallback if absent."""
     content, path = _resolve_agent_handoff(
@@ -856,6 +920,8 @@ def resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
         artifact_path=".agent/artifacts/fix_result.json",
     )
     return content or "(no fix result available)", path
+
+
 def _resolve_loopback_analysis_feedback(
     workspace: Workspace,
     phase: str,
@@ -876,6 +942,8 @@ def _resolve_loopback_analysis_feedback(
                 )
                 return content or "", path
     return "", ""
+
+
 def _latest_artifact_content(
     workspace: Workspace,
     phase: str,
@@ -898,10 +966,14 @@ def _latest_artifact_content(
         artifact_path=ra.json_path,
     )
     return content or "", path
+
+
 def _drain_artifact_type(drain: str, artifacts_policy: ArtifactsPolicy) -> str | None:
     """Return the artifact_type produced by the given drain, or None."""
     ra = resolve_required_artifact(artifacts_policy, drain=drain)
     return ra.artifact_type if ra is not None else None
+
+
 def _predecessors(phase: str, pipeline_policy: PipelinePolicy) -> list[str]:
     """Return all phases that can transition to the given phase."""
     result = []
@@ -910,6 +982,8 @@ def _predecessors(phase: str, pipeline_policy: PipelinePolicy) -> list[str]:
         if phase in (t.on_success, t.on_loopback):
             result.append(name)
     return result
+
+
 def _find_work_artifact(
     phase: str,
     pipeline_policy: PipelinePolicy,
@@ -938,6 +1012,8 @@ def _find_work_artifact(
         else:
             return resolve_required_artifact(artifacts_policy, drain=pdef.drain)
     return None
+
+
 def _git_output(workspace_root: Path, *args: str) -> str:
     """Run a git command in the workspace and return sanitized stdout."""
     result = run_process(
@@ -958,6 +1034,23 @@ def _git_diff(workspace_root: Path) -> str:
       commits once per dev cycle or once per individual dev iteration within a cycle.
     """
     baseline_sha = read_cycle_baseline(workspace_root)
+    if Repo is not None:
+        repo: _RepoProtocol | None = None
+        try:
+            repo = Repo(workspace_root)
+            if baseline_sha:
+                committed = _sanitize_surrogates(repo.git.diff(baseline_sha, "HEAD"))
+                uncommitted = _sanitize_surrogates(repo.git.diff("HEAD"))
+                parts = [p for p in (committed, uncommitted) if p]
+                return "\n".join(parts) if parts else "(no diff available)"
+            return _sanitize_surrogates(repo.git.diff("HEAD")) or "(no diff available)"
+        except Exception:
+            return "(no diff available)"
+        finally:
+            close = cast("Callable[[], None] | None", getattr(repo, "close", None))
+            if close is not None:
+                close()
+
     if baseline_sha:
         committed = _git_output(workspace_root, "diff", baseline_sha, "HEAD")
         uncommitted = _git_output(workspace_root, "diff", "HEAD")
@@ -968,19 +1061,46 @@ def _git_diff(workspace_root: Path) -> str:
 
 def _pending_diff(workspace_root: Path) -> str:
     """Return the pending (staged but not committed) diff for a workspace."""
+    if Repo is not None:
+        repo: _RepoProtocol | None = None
+        try:
+            repo = Repo(workspace_root)
+            return _sanitize_surrogates(repo.git.diff("HEAD")) or "(no diff available)"
+        except Exception:
+            return "(no diff available)"
+        finally:
+            close = cast("Callable[[], None] | None", getattr(repo, "close", None))
+            if close is not None:
+                close()
     return _git_output(workspace_root, "diff", "HEAD")
 
 
 def _commit_phase_diff(workspace_root: Path) -> str:
     diff = _pending_diff(workspace_root).strip()
-    untracked = _git_output(workspace_root, "ls-files", "--others", "--exclude-standard").strip()
-    if not untracked or untracked == "(no diff available)":
+    if Repo is not None:
+        repo: _RepoProtocol | None = None
+        try:
+            repo = Repo(workspace_root)
+            untracked = repo.git.ls_files("--others", "--exclude-standard").strip()
+        except Exception:
+            untracked = ""
+        finally:
+            close = cast("Callable[[], None] | None", getattr(repo, "close", None))
+            if close is not None:
+                close()
+    else:
+        untracked = _git_output(
+            workspace_root, "ls-files", "--others", "--exclude-standard"
+        ).strip()
+        if untracked == "(no diff available)":
+            untracked = ""
+    if not untracked:
         return diff or "(no diff available)"
     if diff == "(no diff available)":
         diff = ""
-    section = "\n\n## Untracked files (will be staged by git add -A):\n" + untracked
-    combined = (diff + section).strip()
+    combined = (diff + "\n\n## Untracked files (staged by git add -A):\n" + untracked).strip()
     return combined or "(no diff available)"
+
 
 def commit_cleanup_diff(workspace_root: Path) -> str:
     """Return only the pending commit diff for commit cleanup."""

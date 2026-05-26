@@ -116,7 +116,7 @@ class TestRunnerAnalysisHandoffIntegration:
             return success_events
 
         monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
-        monkeypatch.setattr(ckpt, "save", lambda state: None)
+        monkeypatch.setattr(ckpt, "save", lambda state, *_args, **_kwargs: None)
 
         bundle = _make_policy_bundle(max_workers=2)
         effect = FanOutEffect(
@@ -171,7 +171,7 @@ class TestRunnerAnalysisHandoffIntegration:
             return partial_events
 
         monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
-        monkeypatch.setattr(ckpt, "save", lambda state: None)
+        monkeypatch.setattr(ckpt, "save", lambda state, *_args, **_kwargs: None)
 
         bundle = _make_policy_bundle(max_workers=2)
         effect = FanOutEffect(

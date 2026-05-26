@@ -18,6 +18,7 @@ class _LegacyRunPipelineKwargs(TypedDict, total=False):
     verbosity: Verbosity
     counter_overrides: dict[str, int]
     inline_prompt: str
+    parallel_worker_manifest: Path | str
 
 
 __all__ = ["_LegacyRunPipelineKwargs"]

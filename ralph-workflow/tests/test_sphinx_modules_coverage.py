@@ -67,6 +67,7 @@ _EXCLUDED: dict[str, str] = {
     "pipeline.rebase_state": "internal pipeline type, not public API",
     "pipeline.run_metrics": "internal pipeline type, not public API",
     "pipeline.verification_result": "internal pipeline type, not public API",
+    "pydantic_compat": "internal Pydantic compat shim; re-exports cause Sphinx autodoc warnings",
     "prompts.developer.developer_prompt_inputs": "internal prompts type, not public API",
     "prompts.template_not_found_error": "internal prompts type, not public API",
     "prompts.commit_cleanup": "internal prompts type, not public API",

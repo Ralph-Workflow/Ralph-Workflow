@@ -40,6 +40,10 @@ from ralph.policy.validation import (
     validate_agent_chains_satisfiable,
     validate_recovery_config,
 )
+from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
+from ralph.skills._capability_status import CapabilityStatus
+from ralph.skills._state_store import load_capability_state
+from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -97,6 +101,7 @@ def diagnose_command(
     config_ok &= not agent_missing
     config_ok &= _check_mcp_servers(workspace_scope, display_context=ctx)
     config_ok &= _check_workspace_files(display_context=ctx)
+    _check_capability_state(display_context=ctx)
 
     # Pre-flight validation using policy system
     validation_ok = _run_preflight_validation(
@@ -129,6 +134,50 @@ def diagnose_command(
     if not config_ok:
         return 1
     return 0
+
+
+def _check_capability_state(*, display_context: DisplayContext) -> bool:
+    """Check and display baseline capability state table."""
+    c = display_context.console
+    manager = SkillManager()
+    manager.check_baseline_health()
+    manager.check_skills_for_updates()
+    state = load_capability_state()
+    table = Table(title="Baseline Capabilities")
+    table.add_column("Capability", style="theme.cat.meta")
+    table.add_column("Type")
+    table.add_column("Status")
+    table.add_column("Update Available")
+    table.add_column("Last Checked")
+    # Static built-in capabilities — always available
+    for cap in STATIC_BUILTIN_CAPABILITIES:
+        table.add_row(
+            cap.name.replace("_", " ").title(),
+            "Built-in",
+            Text("OK — always available", style="theme.status.success"),
+            Text("no"),
+            "N/A",
+        )
+    # Health-tracked dependency-backed helpers
+    managed_rows = [
+        ("Web search (DuckDuckGo)", state.web_search),
+        ("Page retrieval (visit_url)", state.visit_url),
+        ("Docs MCP (localhost:6280)", state.docs_mcp),
+        ("Skill bundles", state.skills),
+    ]
+    for label, entry in managed_rows:
+        status_text = (
+            Text(entry.status.value, style="theme.status.success")
+            if entry.status == CapabilityStatus.INSTALLED_HEALTHY
+            else Text(entry.status.value, style="theme.status.warning")
+        )
+        update_text = (
+            Text("yes", style="theme.status.warning") if entry.update_available else Text("no")
+        )
+        last_ok = entry.last_check_ok_iso or "(never)"
+        table.add_row(label, "Managed", status_text, update_text, last_ok)
+    c.print(table)
+    return True
 
 
 def build_next_steps(

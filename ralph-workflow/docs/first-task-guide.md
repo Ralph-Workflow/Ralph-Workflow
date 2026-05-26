@@ -101,6 +101,17 @@ Ask:
 
 That is the real product test.
 
+## Running `ralph --init` and diagnosing capability health
+
+`ralph --init` installs the first-party Ralph Workflow skill bundle (17 skills: Superpowers workflow subset + security-review, verification-loop, and coding-standards) by copying the bundled skill files to `~/.claude/plugins/ralph-workflow-skills/skills/`. The bundle ships inside the Python package and does not require a separate skill registry fetch or network access. After installing, it prints a Baseline Capabilities table showing:
+
+- **Always-available built-in capabilities:** workspace_ops, git_read_ops, artifact_ops, plan_read, media_read (these are built into Ralph and cannot degrade)
+- **Managed helpers:** web_search, visit_url, docs_mcp, and skills (these are tracked with health state)
+
+`ralph --diagnose` shows a Baseline Capabilities section with the same table, including update availability and last-check timestamps.
+
+If any managed capability shows a non-healthy status, re-running `ralph --init` retries skill installation and re-probes docs_mcp. The capability state is persisted in `~/.config/ralph-workflow-capabilities.json`.
+
 ## Next step
 
 - Continue with [Getting Started](sphinx/getting-started.md) for the install and first-run flow

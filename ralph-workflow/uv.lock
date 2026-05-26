@@ -1832,8 +1832,10 @@ dependencies = [
     { name = "mcp" },
     { name = "psutil" },
     { name = "pydantic" },
+    { name = "readability-lxml" },
     { name = "rich" },
     { name = "rich-click" },
+    { name = "selectolax" },
     { name = "tqdm" },
     { name = "typer" },
     { name = "watchdog" },
@@ -1870,10 +1872,6 @@ web-search = [
     { name = "brave-search-python-client" },
     { name = "exa-py" },
     { name = "tavily-python" },
-]
-web-visit = [
-    { name = "readability-lxml" },
-    { name = "selectolax" },
 ]
 
 [package.dev-dependencies]
@@ -1913,13 +1911,13 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.6" },
+    { name = "readability-lxml", specifier = ">=0.8.1" },
     { name = "readability-lxml", marker = "extra == 'dev'", specifier = ">=0.8.1" },
-    { name = "readability-lxml", marker = "extra == 'web-visit'", specifier = ">=0.8.1" },
     { name = "rich", specifier = ">=13.0" },
     { name = "rich-click", specifier = ">=1.8" },
     { name = "ruff", marker = "extra == 'dev'" },
+    { name = "selectolax", specifier = ">=0.3.21" },
     { name = "selectolax", marker = "extra == 'dev'", specifier = ">=0.3.21" },
-    { name = "selectolax", marker = "extra == 'web-visit'", specifier = ">=0.3.21" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=7" },
     { name = "sphinx-copybutton", marker = "extra == 'docs'", specifier = ">=0.5" },
     { name = "sphinx-design", marker = "extra == 'docs'", specifier = ">=0.5" },
@@ -1930,7 +1928,7 @@ requires-dist = [
     { name = "vulture", marker = "extra == 'dev'", specifier = ">=2.16" },
     { name = "watchdog", specifier = ">=4.0" },
 ]
-provides-extras = ["bundle", "dev", "docs", "web-search", "web-visit"]
+provides-extras = ["bundle", "dev", "docs", "web-search"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -12,6 +12,39 @@ This page explains how Ralph Workflow builds the prompts it sends to agents for 
 
 Ralph Workflow uses built-in templates to assemble prompts for planning, development, review, fix, commit, and related phases. Projects can override those templates locally when they need custom behavior.
 
+## Skill injection
+
+Planning and development prompts receive the shipped baseline skill bundle through `SKILLS_INLINE_CONTENT` when repo-owned skills are available.
+
+### Planning prompts
+
+Planning prompts use these baseline rules:
+
+- `using-superpowers` for all planning flows
+- `brainstorming` before creative or open-ended solution shaping
+- `writing-plans` for multi-step implementation planning
+- `dispatching-parallel-agents` or `subagent-driven-development` when the workflow is intentionally parallelized
+- `using-git-worktrees` when isolated feature work or risky parallel work is required
+- `verification-loop` and `coding-standards` as baseline quality controls
+
+### Developer prompts
+
+Developer prompts use these baseline rules:
+
+- `using-superpowers` for all developer flows
+- `executing-plans` when a written plan is being turned into execution guidance
+- `test-driven-development` for feature work and bugfix work
+- `systematic-debugging` for errors, regressions, and failing verification
+- `verification-before-completion` before any success claim
+- `requesting-code-review` before merge-ready or handoff-ready completion
+- `receiving-code-review` when acting on review findings
+- `finishing-a-development-branch` when implementation is complete and integration choices must be made
+- `security-review`, `verification-loop`, and `coding-standards` as baseline quality controls
+
+## Docs-aware adaptation
+
+When `HAS_DOCS_MCP` is true, prompt materialization includes docs-aware guidance for `docs-mcp-server` only after it is configured and reachable on `http://localhost:6280/mcp` or `http://localhost:6280/sse`. If docs-mcp is unavailable, prompt templates include a concise hint that enabling it improves documentation lookup quality. Do not enable docs-aware guidance when the service is configured but unreachable.
+
 ## Template registry
 
 `ralph.prompts.template_registry` discovers and loads Jinja2 templates from `ralph/prompts/templates/`.

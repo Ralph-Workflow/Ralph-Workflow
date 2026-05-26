@@ -280,4 +280,8 @@ __marimo__/
 tmp/
 **/tmp/
 
+ralph-workflow/skills-package/content/
+ralph-workflow/skills-package/*.tgz
 .antigravitycli/
+
+checkpoint.json

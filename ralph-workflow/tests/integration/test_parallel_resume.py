@@ -79,7 +79,7 @@ def _setup_patches(
         return fake_executor, WorkerContext(same_workspace=None)
 
     monkeypatch.setattr(_fan_out_module, "_fan_out_worker_context", _fake_worker_context)
-    monkeypatch.setattr(ckpt, "save", lambda state: None)
+    monkeypatch.setattr(ckpt, "save", lambda state, *_args, **_kwargs: None)
 
 
 def _make_mock_policy_bundle() -> MagicMock:

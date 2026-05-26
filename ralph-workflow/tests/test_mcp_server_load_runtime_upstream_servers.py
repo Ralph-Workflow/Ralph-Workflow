@@ -890,7 +890,7 @@ def test_build_standalone_http_server_uses_cached_upstream_tool_catalog_without_
         extras=server_runtime.McpServerExtras(mcp_config=config),
     )
 
-    tools_response, _state = server._mcp_server._handle_tools_list(  # pyright: ignore[reportPrivateUsage]
+    tools_response, _state = server._mcp_server._handle_tools_list(
         server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=1, params={})
     )
     assert tools_response is not None

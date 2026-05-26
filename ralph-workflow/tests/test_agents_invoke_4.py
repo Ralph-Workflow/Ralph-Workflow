@@ -104,8 +104,7 @@ def _run_agy_transport_proxy_payload_check(
     assert UPSTREAM_MCP_CONFIG_ENV in runtime.agent_env
     agy_upstream_payload = json.loads(runtime.agent_env[UPSTREAM_MCP_CONFIG_ENV])
     assert any(
-        u["name"] == "upstream-agy-http" and u["transport"] == "http"
-        for u in agy_upstream_payload
+        u["name"] == "upstream-agy-http" and u["transport"] == "http" for u in agy_upstream_payload
     ), (
         "AGY HTTP serverUrl upstream must appear in RALPH_UPSTREAM_MCP_CONFIG "
         "after normalization fix"
@@ -131,6 +130,9 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
+
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_: None)
+
     source_home = tmp_path / "source-codex-home"
     source_home.mkdir()
     (source_home / "config.toml").write_text(
@@ -740,8 +742,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
 
     agy_upstream_payload = json.loads(seen_envs["agy"][UPSTREAM_MCP_CONFIG_ENV])
     assert any(
-        u["name"] == "upstream-agy-http" and u["transport"] == "http"
-        for u in agy_upstream_payload
+        u["name"] == "upstream-agy-http" and u["transport"] == "http" for u in agy_upstream_payload
     ), (
         "AGY HTTP serverUrl upstream must appear in RALPH_UPSTREAM_MCP_CONFIG "
         "after normalization fix"

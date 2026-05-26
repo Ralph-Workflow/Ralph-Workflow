@@ -110,6 +110,11 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     """
     bundle = _make_policy_bundle()
 
+    saved_states: list[PipelineState] = []
+
+    def _capture_saved_state(state: PipelineState, path: object = None) -> None:
+        saved_states.append(state)
+
     initial_state = PipelineState(
         phase="development",
         phase_chains={
@@ -122,14 +127,12 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     )
 
     invocation_count = 0
-    saved_states: list[PipelineState] = []
-
     def _fake_execute(*args: object, **kwargs: object) -> None:
         nonlocal invocation_count
         invocation_count += 1
         raise AgentInactivityTimeoutError("agent timed out", 30.0)
 
-    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, saved_states.append)
+    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, _capture_saved_state)
 
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
@@ -259,10 +262,13 @@ def test_runner_fallover_history_reflects_agent_transitions(
 
     saved_states: list[PipelineState] = []
 
+    def _capture_saved_state(state: PipelineState, path: object = None) -> None:
+        saved_states.append(state)
+
     def _fake_execute(*args: object, **kwargs: object) -> None:
         raise AgentInactivityTimeoutError("agent timed out", 30.0)
 
-    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, saved_states.append)
+    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, _capture_saved_state)
 
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
@@ -315,10 +321,13 @@ def test_runner_recovery_cycle_count_reaches_cap(
 
     saved_states: list[PipelineState] = []
 
+    def _capture_saved_state(state: PipelineState, path: object = None) -> None:
+        saved_states.append(state)
+
     def _fake_execute(*args: object, **kwargs: object) -> None:
         raise AgentInactivityTimeoutError("agent timed out", 30.0)
 
-    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, saved_states.append)
+    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, _capture_saved_state)
 
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 

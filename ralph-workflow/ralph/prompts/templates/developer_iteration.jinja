@@ -10,6 +10,26 @@ You are in IMPLEMENTATION MODE. Execute the plan and make progress.
 
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
+{% if SKILLS_INLINE_CONTENT %}
+## SHIPPED SKILL BUNDLE
+
+{{ SKILLS_INLINE_CONTENT }}
+{% else %}
+## BASELINE WORKFLOW SKILLS
+
+The following skills from the Ralph Workflow shipped skill bundle apply to this development task. Read and apply the relevant ones before proceeding:
+
+- **`using-superpowers`** — read at the start of every developer task
+- **`test-driven-development`** — apply for feature work and bugfix work
+- **`systematic-debugging`** — apply for errors, regressions, and failing verification
+- **`verification-before-completion`** — apply before any completion or success claim
+- **`requesting-code-review`** — apply before merge-ready or handoff-ready completion
+- **`receiving-code-review`** — apply when acting on review findings
+- **`security-review`**, **`verification-loop`**, **`coding-standards`** — apply as baseline quality controls
+- **`using-git-worktrees`** — apply when isolated feature work or risky parallel work is required
+- **`finishing-a-development-branch`** — apply when implementation is complete and integration choices must be made
+{% endif %}
+
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt did not complete successfully.
 
@@ -35,6 +55,20 @@ and what development-analysis feedback they received.
 {% endif %}
 
 {% include 'shared/_developer_iteration_guidance.j2' %}
+
+{% if HAS_DOCS_MCP %}
+
+## DOCUMENTATION LOOKUP
+
+The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. Before implementing or debugging with a library or framework:
+1. Search documentation using the docs-mcp search tool from your MCP tool list.
+2. Fall back to `web_search` only when docs-mcp returns no useful results for the specific API or behavior you need.
+
+{% else %}
+
+> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during development.
+
+{% endif %}
 
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 

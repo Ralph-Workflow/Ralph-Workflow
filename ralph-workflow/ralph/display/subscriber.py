@@ -196,13 +196,21 @@ class PipelineSubscriber:
         Never blocks. On queue.Full, increments dropped_count silently.
         Safe to call from both sync (runner.py) and async (coordinator.py) contexts.
         """
+        snapshot: PipelineSnapshot | None = None
         with self._lock:
-            self._record_state_transitions_locked(state)
             self._refresh_plan_from_disk_locked(state)
-            self._refresh_analysis_for_phase_change_locked(state)
-            self._active_agent = state.current_agent() or self._active_agent
-            self._last_state = state
-            snapshot = self._build_snapshot_locked(state)
+            if (
+                self._last_state is state
+                and self._snapshot_cache_state is state
+                and self._snapshot_cache is not None
+            ):
+                snapshot = self._snapshot_cache
+            else:
+                self._record_state_transitions_locked(state)
+                self._refresh_analysis_for_phase_change_locked(state)
+                self._active_agent = state.current_agent() or self._active_agent
+                self._last_state = state
+                snapshot = self._build_snapshot_locked(state)
         if snapshot is not None:
             self._publish(snapshot)
 
@@ -395,6 +403,8 @@ class PipelineSubscriber:
         self._plan_total_steps = plan.total_steps
         self._plan_risks = plan.risks_mitigations
         self._last_plan_refresh_marker = marker
+        self._snapshot_cache_state = None
+        self._snapshot_cache = None
 
     def _plan_refresh_marker(self) -> int | None:
         plan_path = self._workspace_root / ".agent" / "artifacts" / "plan.json"
@@ -420,6 +430,8 @@ class PipelineSubscriber:
                     self._analysis_phase = phase_name
                     self._analysis_decision = summary.decision
                     self._analysis_reason = summary.reason
+                    self._snapshot_cache_state = None
+                    self._snapshot_cache = None
 
     def _append_decision_log_locked(
         self,

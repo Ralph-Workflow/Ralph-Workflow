@@ -103,7 +103,7 @@ def _setup_patches(
     )
     monkeypatch.setattr(
         "ralph.pipeline.checkpoint.save",
-        lambda _state: None,
+        lambda _state, *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "ralph.git.executor.GitExecutor",

@@ -36,7 +36,7 @@ Short answer:
 - repo-specific override → `.agent/ralph-workflow.toml`
 - workflow structure changes → `.agent/pipeline.toml`
 
-## I want to change which agents Ralph uses
+## I want to change which agents Ralph Workflow uses
 
 - [Configuration Reference](configuration.md)
 - [Which Agent Should I Start With?](which-agent-should-i-start-with.md)

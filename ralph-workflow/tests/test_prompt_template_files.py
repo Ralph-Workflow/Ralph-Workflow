@@ -170,6 +170,17 @@ PLANNING_SELF_CRITIQUE_GUIDANCE = (
 PLANNING_CORE_WORKFLOW_PLANNING_GUIDANCE = (
     "Infer the core user-facing workflows and prerequisite actions that must exist"
 )
+PLANNING_SKILL_REFERENCES = (
+    "`using-superpowers`",
+    "`writing-plans`",
+    "`brainstorming`",
+    "`executing-plans`",
+    "`dispatching-parallel-agents`",
+    "`subagent-driven-development`",
+    "`coding-standards`",
+    "`verification-loop`",
+    "`security-review`",
+)
 PLANNING_ANALYSIS_CRITIC_GUIDANCE = "You are a lightweight plan critic"
 PLANNING_ANALYSIS_MISSING_WORK_GUIDANCE = "Missing work"
 PLANNING_ANALYSIS_CONTRADICTIONS_GUIDANCE = "Contradictions or inconsistency"
@@ -403,10 +414,10 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
     assert "SUBMIT_ARTIFACT_TOOL_REFERENCE" in development_analysis
     assert "SUBMIT_ARTIFACT_TOOL_REFERENCE" in planning_analysis
     assert "SUBMIT_ARTIFACT_TOOL_REFERENCE" in review_analysis
-    assert "approved" not in planning_analysis
-    assert "approved" not in review_analysis
-    assert "reject" not in planning_analysis
-    assert "reject" not in review_analysis
+    assert '"status":"approved"' not in planning_analysis
+    assert '"status":"approved"' not in review_analysis
+    assert '"status":"rejected"' not in planning_analysis
+    assert '"status":"rejected"' not in review_analysis
     assert "Use `content` for a freshly generated JSON string." in development_analysis
     assert "Use `content` for a freshly generated JSON string." in planning_analysis
     assert "Use `content` for a freshly generated JSON string." in review_analysis
@@ -483,6 +494,18 @@ def test_planning_edit_prompt_teaches_repo_wide_recomputation_not_just_local_pat
     assert PLANNING_PARALLEL_ANALYSIS_GUIDANCE in planning_edit
     assert 'artifact_type="plan"' not in planning_edit
     assert "Not submitting the revised plan is a FAILURE." in planning_edit
+
+
+def test_planning_analysis_prompt_references_baseline_planning_skills() -> None:
+    planning_analysis = (TEMPLATES_ROOT / "planning_analysis.jinja").read_text(encoding="utf-8")
+
+    assert "## BASELINE WORKFLOW SKILLS" in planning_analysis
+    for skill_reference in PLANNING_SKILL_REFERENCES:
+        assert skill_reference in planning_analysis
+    assert "{% if HAS_DOCS_MCP %}" in planning_analysis
+    assert "{% else %}" in planning_analysis
+    assert "arabold/docs-mcp-server" in planning_analysis
+    assert "localhost:6280" in planning_analysis
 
 
 def test_planning_analysis_prompt_demands_gap_and_consistency_critique() -> None:

@@ -90,6 +90,7 @@ class _RepoProtocol(typing.Protocol):
 class _RepoFactoryProtocol(typing.Protocol):
     def __call__(self, *_args: object, **_kwargs: object) -> _RepoProtocol: ...
 
+
 # Maximum number of staged files to display in output
 _MAX_DISPLAY_FILES = 5
 _DEFAULT_COMMIT_AGENT = "claude"
@@ -318,9 +319,14 @@ def _commit_drain_agent_supported(registry: AgentRegistry, agent_name: str) -> b
 def _working_tree_diff(repo_root: Path) -> str:
     if Repo is not None:
         repo = Repo(repo_root)
-        if repo.head.is_valid():
-            return _sanitize_surrogates(repo.git.diff("HEAD")) or "(no diff available)"
-        return _sanitize_surrogates(repo.git.diff("--cached")) or "(no diff available)"
+        try:
+            if repo.head.is_valid():
+                return _sanitize_surrogates(repo.git.diff("HEAD"))
+            return _sanitize_surrogates(repo.git.diff("--cached"))
+        finally:
+            close = cast("typing.Callable[[], None] | None", getattr(repo, "close", None))
+            if close is not None:
+                close()
 
     head_check = run_process(
         "git",
@@ -336,8 +342,8 @@ def _working_tree_diff(repo_root: Path) -> str:
             options=ProcessRunOptions(cwd=repo_root),
         )
     if result.returncode != 0:
-        return "(no diff available)"
-    return _sanitize_surrogates(result.stdout) or "(no diff available)"
+        return ""
+    return _sanitize_surrogates(result.stdout)
 
 
 def _commit_submit_artifact_tool_names(

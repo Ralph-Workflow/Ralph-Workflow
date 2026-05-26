@@ -20,3 +20,5 @@ class DeveloperPromptInputs:
     payload_root: str = ""
     prompt_name_prefix: str = "development"
     last_retry_error: str = ""
+    skills_inline_content: str = ""
+    has_docs_mcp: bool = False
