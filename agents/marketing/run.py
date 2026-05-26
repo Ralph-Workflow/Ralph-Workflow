@@ -1039,7 +1039,35 @@ def _latest_measurement_hold_window(now: datetime) -> dict[str, Any] | None:
     return shared_latest_measurement_hold_window(now, LOG_DIR)
 
 
+def _latest_measurement_hold_skip_log(hold_window: dict[str, Any]) -> Path | None:
+    hold_started_at = hold_window.get("hold_started_at")
+    hold_until = hold_window.get("hold_until")
+    source_log = str(hold_window.get("source_log") or "").strip()
+    if not isinstance(hold_started_at, datetime) or not isinstance(hold_until, datetime) or not source_log:
+        return None
+
+    expected_hold_until = hold_until.isoformat()
+    for path, payload, timestamp in _recent_marketing_log_payloads():
+        if timestamp <= hold_started_at:
+            continue
+        chosen_action = payload.get("chosen_action") if isinstance(payload.get("chosen_action"), dict) else {}
+        action_type = str(chosen_action.get("type") or payload.get("action_type") or "").strip()
+        if action_type != "measurement_hold_cooldown_skip":
+            continue
+        why_this_action = payload.get("why_this_action") if isinstance(payload.get("why_this_action"), dict) else {}
+        logged_source_log = str(why_this_action.get("source_log") or "").strip()
+        logged_hold_until = str(why_this_action.get("hold_until") or "").strip()
+        if logged_source_log == source_log and logged_hold_until == expected_hold_until:
+            return path
+    return None
+
+
+
 def _write_measurement_hold_skip_log(now: datetime, hold_window: dict[str, Any]) -> Path:
+    recent_skip_log = _latest_measurement_hold_skip_log(hold_window)
+    if recent_skip_log is not None and recent_skip_log.exists():
+        return recent_skip_log
+
     payload = {
         "timestamp": now.isoformat(),
         "run_type": "marketing-measurement-hold-skip",
@@ -1122,15 +1150,6 @@ def _measurement_hold_follow_through_is_stale(recent_follow_through: dict[str, A
         except OSError:
             continue
     return False
-
-
-def _distribution_architecture_truth_artifact_paths() -> list[Path]:
-    return [
-        *_measurement_hold_truth_artifact_paths(),
-        DRAFTS_DIR / "marketing_execution_board_latest.md",
-        LOG_DIR / "marketing_workflow_audit_latest.json",
-        LOG_DIR / "adoption_metrics_latest.json",
-    ]
 
 
 def _distribution_architecture_execution_from_payload(
@@ -1266,16 +1285,6 @@ def _distribution_architecture_guard_execution_is_stale(recent_execution: dict[s
     log_path = str(recent_execution.get("log_path") or "").strip()
     if log_path and not Path(log_path).exists():
         return True
-
-    execution_timestamp = recent_execution.get("timestamp")
-    if isinstance(execution_timestamp, datetime):
-        for path in _distribution_architecture_truth_artifact_paths():
-            try:
-                if path.exists() and datetime.fromtimestamp(path.stat().st_mtime) > execution_timestamp:
-                    return True
-            except OSError:
-                continue
-
     return False
 
 

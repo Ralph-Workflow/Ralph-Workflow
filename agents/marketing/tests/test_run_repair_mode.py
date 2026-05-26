@@ -13,6 +13,67 @@ from agents.marketing.distribution_lane_selector import LaneDecision
 
 
 class RunRepairModeTests(unittest.TestCase):
+    def test_write_measurement_hold_skip_log_reuses_matching_log_in_same_window(self):
+        hold_started_at = datetime(2026, 5, 26, 19, 55, 0)
+        hold_until = datetime(2026, 5, 26, 20, 55, 18)
+        now = datetime(2026, 5, 26, 20, 20, 0)
+        hold_window = {
+            'hold_started_at': hold_started_at,
+            'hold_until': hold_until,
+            'source_log': '/tmp/measurement_hold.json',
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            existing = log_dir / 'marketing_2026-05-26_200011_measurement_hold_skip.json'
+            existing.write_text(json.dumps({
+                'timestamp': '2026-05-26T20:00:11',
+                'chosen_action': {
+                    'type': 'measurement_hold_cooldown_skip',
+                },
+                'why_this_action': {
+                    'hold_until': hold_until.isoformat(),
+                    'source_log': '/tmp/measurement_hold.json',
+                },
+            }), encoding='utf-8')
+
+            with patch.object(run, 'LOG_DIR', log_dir):
+                path = run._write_measurement_hold_skip_log(now, hold_window)
+
+            self.assertEqual(path, existing)
+            self.assertEqual(len(list(log_dir.glob('*measurement_hold_skip.json'))), 1)
+
+    def test_write_measurement_hold_skip_log_writes_new_when_hold_truth_changes(self):
+        hold_started_at = datetime(2026, 5, 26, 19, 55, 0)
+        now = datetime(2026, 5, 26, 20, 20, 0)
+        hold_window = {
+            'hold_started_at': hold_started_at,
+            'hold_until': datetime(2026, 5, 26, 20, 55, 18),
+            'source_log': '/tmp/measurement_hold.json',
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            existing = log_dir / 'marketing_2026-05-26_200011_measurement_hold_skip.json'
+            existing.write_text(json.dumps({
+                'timestamp': '2026-05-26T20:00:11',
+                'chosen_action': {
+                    'type': 'measurement_hold_cooldown_skip',
+                },
+                'why_this_action': {
+                    'hold_until': '2026-05-26T20:30:00',
+                    'source_log': '/tmp/measurement_hold.json',
+                },
+            }), encoding='utf-8')
+
+            with patch.object(run, 'LOG_DIR', log_dir):
+                path = run._write_measurement_hold_skip_log(now, hold_window)
+
+            self.assertNotEqual(path, existing)
+            payload = json.loads(path.read_text(encoding='utf-8'))
+            self.assertEqual(payload['why_this_action']['hold_until'], '2026-05-26T20:55:18')
+            self.assertEqual(len(list(log_dir.glob('*measurement_hold_skip.json'))), 2)
+
     def test_sync_post_hold_release_run_if_needed_skips_non_hold_lane(self):
         decision = LaneDecision(
             lane='manual_outreach_asset_follow_through',
@@ -882,6 +943,34 @@ class RunRepairModeTests(unittest.TestCase):
                 'artifact_path': str(tmp / 'missing.md'),
                 'log_path': str(log),
             }))
+
+    def test_distribution_architecture_guard_execution_ignores_latest_alias_mtime_churn(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            artifact = tmp / 'repair.md'
+            artifact.write_text('# repair\n', encoding='utf-8')
+            log = tmp / 'repair.json'
+            log.write_text('{}', encoding='utf-8')
+            board = tmp / 'marketing_execution_board_latest.md'
+            board.write_text('# newer board\n', encoding='utf-8')
+            audit = tmp / 'marketing_workflow_audit_latest.json'
+            audit.write_text('{}\n', encoding='utf-8')
+            adoption = tmp / 'adoption_metrics_latest.json'
+            adoption.write_text('{}\n', encoding='utf-8')
+
+            original_drafts_dir = run.DRAFTS_DIR
+            original_log_dir = run.LOG_DIR
+            run.DRAFTS_DIR = tmp
+            run.LOG_DIR = tmp
+            try:
+                self.assertFalse(run._distribution_architecture_guard_execution_is_stale({
+                    'timestamp': datetime(2026, 5, 26, 19, 21, 43),
+                    'artifact_path': str(artifact),
+                    'log_path': str(log),
+                }))
+            finally:
+                run.DRAFTS_DIR = original_drafts_dir
+                run.LOG_DIR = original_log_dir
 
     def test_latest_distribution_architecture_repair_accepts_current_fingerprint(self):
         with tempfile.TemporaryDirectory() as tmpdir:

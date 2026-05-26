@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-05-26T19:31:35+02:00",
+  "type": "post_hold_primary_repo_packet_release_repair",
+  "channel": "distribution_architecture_repair",
+  "title": "Let the current primary-repo-flat packet reappear once the short hold clears",
+  "summary": "Patched the distribution lane selector so the prepared-only repeat guard stops blocking the already-current primary-repo-flat publisher packet after the documented short-window release time passes, preventing another fake-empty post-hold repair loop.",
+  "evidence": [
+    "distribution_lane_latest.md says the current board is truthfully empty until 2026-05-26T20:55:18.",
+    "marketing_execution_board_latest.md says a refreshed primary-repo-flat publisher packet already exists but is post-hold only until 2026-05-26T20:55:18.",
+    "The repeat guard could still suppress that same current packet after release just because it had been prepared twice during the hold."
+  ],
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_193135_post_hold_primary_repo_packet_release_repair.md",
+    "files_changed": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_distribution_lane_selector_repair_pause.py"
+    ],
+    "tests": [
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_primary_repo_flat_manual_asset_reappears_after_post_hold_release_even_if_repeat_blocked agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_post_hold_release_reuses_current_primary_repo_flat_packet_even_if_prep_repeat_threshold_was_hit -q",
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_primary_repo_flat_manual_asset_is_hidden_when_post_hold_only_and_repeat_blocked agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_post_hold_only_primary_repo_flat_packet_yields_guard_pause_instead_of_fake_do_now -q"
+    ],
+    "release_at": "2026-05-26T20:55:18"
+  }
+}

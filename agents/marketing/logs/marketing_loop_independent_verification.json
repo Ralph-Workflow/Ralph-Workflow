@@ -1,27 +1,24 @@
 {
-  "checked_at": "2026-05-26T17:34:05.632858+02:00",
+  "checked_at": "2026-05-26T20:00:53.572244+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-26T17:34:05.613397"
+      "summary": "runner ok=False generated_at=2026-05-26T20:00:53.547034"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_monitor_degraded', 'primary_repo_adoption_flat', 'measurement_hold_active']"
+      "summary": "momentum status=needs_attention; actions=['reddit_monitor_degraded']; watch_actions=['primary_repo_adoption_flat', 'measurement_hold_active']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "repair_window_status=measurement_pending; failing_tactics=['primary_repo_flat_window', 'mirror_repo_flat_window', 'execution_ceiling_repetition']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat', 'execution_ceiling_repetition']"
+      "summary": "repair_window_status=measurement_pending; failing_tactics=['primary_repo_flat_window', 'mirror_repo_flat_window']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat']"
     }
   ],
-  "watchpoints": [
-    "primary repo adoption remains measurement-pending after shipped repairs",
-    "measurement hold is active, and the current manual/external follow-through queue is consolidated in a fresh execution board"
-  ],
+  "watchpoints": [],
   "blockers": [
-    "Reddit monitor is degraded without a fresh healthy fallback report inside the grace window.",
-    "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
+    "Marketing runner bundle is not healthy.",
+    "Momentum watchdog status is needs_attention with actions: reddit_monitor_degraded."
   ]
 }

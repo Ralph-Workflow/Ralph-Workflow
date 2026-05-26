@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-26T17:33:09.124857",
+  "timestamp": "2026-05-26T20:20:08.885396",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -112,13 +112,14 @@
     }
   },
   "backlinks": {
-    "count_approx": 2,
+    "count_approx": 3,
     "google_count_approx": 0,
     "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data",
-    "verified_live_listings": 2,
+    "verified_live_listings": 3,
     "verified_live_listing_source": "backlink_status_latest.json",
     "verified_live_listing_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_status_latest.json",
     "verified_live_listing_directories": [
+      "ClaudeCodeAlternatives",
       "SaaSHub",
       "ToolWise"
     ]

@@ -1,6 +1,6 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-26 11:51 UTC
+Timestamp: 2026-05-26 18:00 UTC
 
 ## ralph-docs-watchdog
 - Status: ok
@@ -17,8 +17,8 @@ Timestamp: 2026-05-26 11:51 UTC
   - runner failed after checker failure
   - independent verifier failed after remediation
   - checker still failing after remediation/verifier pass
-- Checker: `MARKETING_LOOP_FAIL: primary repo adoption remains flat inside a measurement-pending repair window; do not certify health yet`
-- Checker after repair: `MARKETING_LOOP_FAIL: primary repo adoption remains flat inside a measurement-pending repair window; do not certify health yet`
+- Checker: `MARKETING_LOOP_FAIL: runner bundle still reports failure`
+- Checker after repair: `MARKETING_LOOP_FAIL: runner bundle still reports failure`
 
 ## ralph-site-owner-loop
 - Status: owner_only
@@ -41,8 +41,6 @@ Timestamp: 2026-05-26 11:51 UTC
 
 ## agent-architecture-watchdog
 - Status: ok
-- Notes:
-  - Verifier artifact is red because the loop correctly failed closed on a live blocker; this is not, by itself, a loop-integrity contract failure.
 - Checker: `AGENT_ARCHITECTURE_OK`
 
 ## research-findings-sync

@@ -1,6 +1,6 @@
 # Apollo Sequence Status
 
-- Generated: `2026-05-26T17:33:20.454783+02:00`
+- Generated: `2026-05-26T20:23:48.527119+02:00`
 - Status: `verified_live_sequence`
 - Measurement pending: `True`
 - Summary: Apollo outbound verification confirms a live Ralph Workflow sequence with Codeberg-primary CTA is active.

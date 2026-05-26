@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-05-26T18:46:49.593281",
+  "timestamp": "2026-05-26T19:39:00.103508",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "distribution_architecture_churn_guard_repair",
     "channel": "distribution_architecture_repair",
     "title": "Distribution lane execution: distribution_architecture_repair",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_184649_distribution_architecture_repair.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_193900_distribution_architecture_repair.md"
   },
   "why_this_action": {
-    "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window. Refreshed stale manual execution packets so the next truthful slot can reuse current assets. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
+    "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -16,19 +16,7 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "targets_prepared": [
-      "AI Resources",
-      "Built In \u2014 Claude Code vs. Codex vs. Cursor vs. GitHub Copilot",
-      "nandhakt/awesome-ai-coding-resources",
-      "VibeCoders tool directory",
-      "VibeFactory directory",
-      "Aider",
-      "Claude Code",
-      "Conductor (Teams)",
-      "Conductor OSS",
-      "Continue",
-      "TLDL"
-    ]
+    "targets_prepared": []
   },
   "result": {
     "status": "executed",
