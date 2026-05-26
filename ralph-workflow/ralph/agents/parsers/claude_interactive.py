@@ -35,6 +35,9 @@ class ClaudeInteractiveParser:
                 yield from self._flush_accumulators()
                 if event.kind == "session":
                     continue
+                if event.kind == "error":
+                    yield AgentOutputLine(type="error", content=event.text, raw=raw)
+                    continue
                 if event.kind == "tool_use":
                     tool_name = (
                         event.text.split(":", 1)[-1].strip() if ":" in event.text else event.text

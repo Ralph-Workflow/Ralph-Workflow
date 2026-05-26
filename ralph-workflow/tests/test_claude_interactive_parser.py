@@ -4,7 +4,10 @@ import json
 
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.execution_state import ClaudeInteractiveExecutionStrategy
-from ralph.agents.parsers.claude_interactive import ClaudeInteractiveTranscriptParser
+from ralph.agents.parsers.claude_interactive import (
+    ClaudeInteractiveParser,
+    ClaudeInteractiveTranscriptParser,
+)
 from ralph.display.vt_normalizer import normalize_vt_text
 
 
@@ -98,3 +101,26 @@ def test_claude_interactive_strategy_prioritizes_tool_use_over_later_output_from
     assert signal is not None
     assert signal.kind == AgentActivityKind.TOOL_USE
     assert signal.raw == "claude tool: read_file"
+
+
+def test_claude_interactive_parser_surfaces_subscription_limit_errors() -> None:
+    parser = ClaudeInteractiveParser()
+    lines = iter(
+        [
+            json.dumps(
+                {
+                    "type": "error",
+                    "error": {
+                        "type": "rate_limit_error",
+                        "message": "You've hit your session limit · resets 3:45pm",
+                    },
+                }
+            )
+        ]
+    )
+
+    results = list(parser.parse(lines))
+
+    assert len(results) == 1
+    assert results[0].type == "error"
+    assert results[0].content == "You've hit your session limit · resets 3:45pm"

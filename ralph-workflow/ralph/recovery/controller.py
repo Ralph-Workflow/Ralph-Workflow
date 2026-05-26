@@ -125,7 +125,10 @@ class RecoveryController:
         agent = context.agent
         retry_in_session = context.retry_in_session
         failure = context.classified_failure or self._classifier.classify(
-            raw_failure, phase=phase, agent=agent
+            raw_failure,
+            phase=phase,
+            agent=agent,
+            connectivity_state=state.last_connectivity_state,
         )
 
         chain = state.chain_for_phase(phase)

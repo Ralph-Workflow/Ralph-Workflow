@@ -59,6 +59,19 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
     }
 )
 
+# Claude Code documented usage/billing limit messages that indicate the current
+# Claude run cannot continue without waiting for reset time or adding usage.
+_SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
+    "You've hit your session limit",
+    "You've hit your weekly limit",
+    "You've hit your Opus limit",
+    "Credit balance is too low",
+    "You're out of extra usage",
+    "Extra usage is required for long context requests",
+    "workspace API usage limits",
+    "billing_error",
+)
+
 # Typed *ValidationError class names that should route to ARTIFACT_VALIDATION.
 # Matched by type(exc).__name__ to avoid circular imports between ralph.recovery
 # and ralph.mcp/ralph.pipeline.
@@ -144,6 +157,39 @@ def _is_stale_session_message(raw_message: str) -> bool:
     return contains_casefolded_marker((raw_message,), SESSION_NOT_FOUND_SUBSTRINGS)
 
 
+def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) -> bool:
+    """Return True if the message matches Claude Code documented limit/billing families."""
+    return contains_casefolded_marker(detail_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
+
+
+_NO_OUTPUT_SUBSTRINGS: tuple[str, ...] = (
+    "no output",
+    "empty output",
+    "produced empty output",
+    "without producing output",
+)
+
+_TIMEOUT_SUBSTRINGS: tuple[str, ...] = (
+    "timed out",
+    "timeout",
+    "idle",
+)
+
+
+def _is_suspicious_timeout_without_output(
+    detail_parts: tuple[str, ...] | list[str],
+    connectivity_state: str | None,
+) -> bool:
+    """Return True when a timeout/no-output failure occurs while connectivity is known online."""
+    if (connectivity_state or "").casefold() != "online":
+        return False
+    has_no_output_signal = contains_casefolded_marker(detail_parts, _NO_OUTPUT_SUBSTRINGS)
+    return has_no_output_signal and contains_casefolded_marker(
+        detail_parts,
+        _TIMEOUT_SUBSTRINGS,
+    )
+
+
 class FailureClassifier:
     """Classify failures into categories for intelligent recovery routing.
 
@@ -157,6 +203,7 @@ class FailureClassifier:
         *,
         phase: str,
         agent: str | None,
+        connectivity_state: str | None = None,
     ) -> ClassifiedFailure:
         """Classify a failure and return a ClassifiedFailure."""
         if isinstance(exc, str):
@@ -171,7 +218,12 @@ class FailureClassifier:
             detail_parts = failure_detail_parts(exc)
 
         exc_obj = exc if isinstance(exc, BaseException) else None
-        category, counts, reset_session = self._categorize(exc_obj, raw_message, detail_parts)
+        category, counts, reset_session = self._categorize(
+            exc_obj,
+            raw_message,
+            detail_parts,
+            connectivity_state=connectivity_state,
+        )
 
         if category == FailureCategory.AMBIGUOUS:
             logger.warning(
@@ -198,31 +250,87 @@ class FailureClassifier:
         exc: BaseException,
         raw_message: str,
         detail_parts: list[str],
+        *,
+        connectivity_state: str | None,
     ) -> tuple[FailureCategory, bool, bool] | None:
-        if _is_user_config_exc(exc):
-            return FailureCategory.USER_CONFIG, False, False
-        # Route typed *ValidationError exceptions by type name BEFORE environmental
-        # checks so a future validation error that wraps an OSError is still caught here.
-        if type(exc).__name__ in _ARTIFACT_VALIDATION_TYPE_NAMES:
-            return FailureCategory.ARTIFACT_VALIDATION, False, False
-        if _is_environmental_exc(exc):
-            return FailureCategory.ENVIRONMENTAL, False, False
+        for predicate, result in (
+            (_is_user_config_exc(exc), (FailureCategory.USER_CONFIG, False, False)),
+            (
+                type(exc).__name__ in _ARTIFACT_VALIDATION_TYPE_NAMES,
+                (FailureCategory.ARTIFACT_VALIDATION, False, False),
+            ),
+            (_is_environmental_exc(exc), (FailureCategory.ENVIRONMENTAL, False, False)),
+        ):
+            if predicate:
+                return result
         type_name = type(exc).__name__
         if type_name == "AgentInactivityTimeoutError":
             return FailureCategory.AGENT, True, False
         if type_name == "AgentInvocationError":
-            reset_session = contains_casefolded_marker(
-                detail_parts, SESSION_NOT_FOUND_SUBSTRINGS
+            return self._classify_agent_invocation_error(
+                raw_message,
+                detail_parts,
+                connectivity_state=connectivity_state,
             )
-            if reset_session or (
-                not _message_looks_environmental(raw_message)
-                and (
-                    "empty" in (msg_lower := raw_message.lower())
-                    or "no output" in msg_lower
-                    or "timed out" in msg_lower
-                )
-            ):
-                return FailureCategory.AGENT, True, reset_session
+        return None
+
+    def _classify_agent_invocation_error(
+        self,
+        raw_message: str,
+        detail_parts: list[str],
+        *,
+        connectivity_state: str | None,
+    ) -> tuple[FailureCategory, bool, bool] | None:
+        reset_session = contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS)
+        if reset_session:
+            return FailureCategory.AGENT, True, True
+        if _is_subscription_limit_message(detail_parts):
+            return FailureCategory.AGENT, True, False
+        if _is_suspicious_timeout_without_output(detail_parts, connectivity_state):
+            return FailureCategory.AGENT, True, False
+        msg_lower = raw_message.lower()
+        if not _message_looks_environmental(raw_message) and (
+            "empty" in msg_lower or "no output" in msg_lower or "timed out" in msg_lower
+        ):
+            return FailureCategory.AGENT, True, False
+        return None
+
+    def _classify_message_only_failure(
+        self,
+        raw_message: str,
+        detail_parts: list[str],
+        *,
+        connectivity_state: str | None,
+    ) -> tuple[FailureCategory, bool, bool] | None:
+        checks = (
+            (
+                contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS),
+                (FailureCategory.AGENT, True, True),
+            ),
+            (
+                _is_subscription_limit_message(detail_parts),
+                (FailureCategory.AGENT, True, False),
+            ),
+            (
+                _is_suspicious_timeout_without_output(detail_parts, connectivity_state),
+                (FailureCategory.AGENT, True, False),
+            ),
+            (
+                _message_looks_environmental(raw_message),
+                (FailureCategory.ENVIRONMENTAL, False, False),
+            ),
+            (
+                _is_user_config_message(raw_message),
+                (FailureCategory.USER_CONFIG, False, False),
+            ),
+            (
+                _is_artifact_validation_message(raw_message),
+                (FailureCategory.ARTIFACT_VALIDATION, False, False),
+            ),
+        )
+        for predicate, result in checks:
+            if predicate:
+                return result
         return None
 
     def _categorize(
@@ -230,19 +338,25 @@ class FailureClassifier:
         exc: BaseException | None,
         raw_message: str,
         detail_parts: list[str],
+        *,
+        connectivity_state: str | None,
     ) -> tuple[FailureCategory, bool, bool]:
         if exc is not None:
-            result = self._categorize_exc(exc, raw_message, detail_parts)
+            result = self._categorize_exc(
+                exc,
+                raw_message,
+                detail_parts,
+                connectivity_state=connectivity_state,
+            )
             if result is not None:
                 return result
-        if contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS):
-            return FailureCategory.AGENT, True, True
-        if _message_looks_environmental(raw_message):
-            return FailureCategory.ENVIRONMENTAL, False, False
-        if _is_user_config_message(raw_message):
-            return FailureCategory.USER_CONFIG, False, False
-        if _is_artifact_validation_message(raw_message):
-            return FailureCategory.ARTIFACT_VALIDATION, False, False
+        result = self._classify_message_only_failure(
+            raw_message,
+            detail_parts,
+            connectivity_state=connectivity_state,
+        )
+        if result is not None:
+            return result
         return FailureCategory.AMBIGUOUS, False, False
 
     def _build_reason(self, category: FailureCategory, raw_message: str) -> str:

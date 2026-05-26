@@ -75,6 +75,69 @@ def test_environmental_error_reset_session_false() -> None:
     assert failure.reset_session is False
 
 
+def test_documented_claude_session_limit_message_classifies_as_agent_fault() -> None:
+    """Official Claude Code session-limit text should classify as an agent-attributed fault."""
+    classifier = FailureClassifier()
+    exc = _AgentInvocationError("You've hit your session limit · resets 3:45pm")
+
+    failure = classifier.classify(exc, phase="development", agent="claude")
+
+    assert failure.category == FailureCategory.AGENT
+    assert failure.counts_against_budget is True
+    assert failure.reset_session is False
+    assert failure.attributed_agent == "claude"
+
+
+def test_agent_invocation_parsed_output_session_limit_message_is_detected() -> None:
+    """Classifier should inspect parsed output for documented Claude Code limit messages."""
+    from ralph.agents.invoke import AgentInvocationError
+
+    classifier = FailureClassifier()
+    exc = AgentInvocationError(
+        "claude",
+        1,
+        "",
+        ["You've hit your weekly limit · resets Mon 12:00am"],
+    )
+
+    failure = classifier.classify(exc, phase="development", agent="claude")
+
+    assert failure.category == FailureCategory.AGENT
+    assert failure.counts_against_budget is True
+    assert failure.reset_session is False
+
+
+def test_online_timeout_with_no_output_is_treated_as_suspicious_agent_fault() -> None:
+    """When connectivity is known online, no-output timeout should fall over as agent fault."""
+    classifier = FailureClassifier()
+    exc = _AgentInvocationError("Agent timed out with no output while connectivity remained online")
+
+    failure = classifier.classify(
+        exc,
+        phase="development",
+        agent="claude",
+        connectivity_state="online",
+    )
+
+    assert failure.category == FailureCategory.AGENT
+    assert failure.counts_against_budget is True
+    assert failure.reset_session is False
+
+
+def test_unknown_connectivity_timeout_with_no_output_stays_non_agent_specific() -> None:
+    """Without online connectivity evidence, suspicious timeout text stays non-agent-specific."""
+    classifier = FailureClassifier()
+    failure = classifier.classify(
+        "Agent timed out with no output",
+        phase="development",
+        agent="claude",
+        connectivity_state="unknown",
+    )
+
+    assert failure.category == FailureCategory.AMBIGUOUS
+    assert failure.counts_against_budget is False
+
+
 def test_stale_session_counts_against_budget() -> None:
     """Stale-session failures consume agent retry budget."""
     classifier = FailureClassifier()

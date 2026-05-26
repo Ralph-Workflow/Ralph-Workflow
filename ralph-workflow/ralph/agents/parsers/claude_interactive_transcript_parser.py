@@ -31,6 +31,17 @@ def _extract_message_text(value: object) -> str:
     return ""
 
 
+def _extract_error_text(value: object) -> str:
+    if isinstance(value, dict):
+        error = value.get("message")
+        if isinstance(error, str) and error.strip():
+            return error.strip()
+        error_type = value.get("type")
+        if isinstance(error_type, str) and error_type.strip():
+            return error_type.strip()
+    return ""
+
+
 class ClaudeInteractiveTranscriptParser:
     """Extract semantic events from a normalized Claude interactive transcript."""
 
@@ -133,6 +144,13 @@ class ClaudeInteractiveTranscriptParser:
         elif event_type == "user":
             for event in self._events_from_user_message(obj.get("message")):
                 self._append_if_new(events, event)
+        elif event_type == "error":
+            error_text = _extract_error_text(obj.get("error"))
+            if error_text:
+                self._append_if_new(
+                    events,
+                    InteractiveTranscriptEvent(kind="error", text=error_text),
+                )
         return events
 
     def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:

@@ -132,3 +132,24 @@ def test_empty_output_message_classified_as_agent_fault() -> None:
 
     assert failure.category == FailureCategory.AGENT
     assert failure.counts_against_budget is True
+
+
+def test_online_timeout_with_no_output_debits_budget_in_controller() -> None:
+    """Known-online timeout with no output should trigger suspicious-agent fallback."""
+    registry = _make_registry_with_budget("development", "claude", max_retries=2)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
+    state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+
+    _, _, evt = controller.handle(
+        state,
+        "Agent timed out with no output",
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert evt.category == "agent"
+    assert evt.counted_against_budget is True
+    budget = controller.budget_registry.get("development", "claude")
+    assert budget is not None
+    assert budget.consumed == 1

@@ -68,6 +68,23 @@ def test_claude_parser_error() -> None:
     assert results[0].content == "Rate limited"
 
 
+def test_claude_interactive_parser_error_via_public_factory() -> None:
+    """Public parser factory should surface Claude interactive limit errors as error lines."""
+    parser = get_parser("claude_interactive")
+    lines = [
+        (
+            '{"type":"error","error":{"type":"rate_limit_error",'
+            '"message":"You\'ve hit your session limit · resets 3:45pm"}}'
+        )
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "error"
+    assert results[0].content == "You've hit your session limit · resets 3:45pm"
+
+
 def test_claude_parser_invalid_json() -> None:
     """Test Claude parser handles invalid JSON gracefully."""
     parser = ClaudeParser()
