@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 from ralph.testing._fake_psutil_process import FakePsutilProcess
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from ralph.process.manager._process_manager_types import _PsutilProcessLike
 
