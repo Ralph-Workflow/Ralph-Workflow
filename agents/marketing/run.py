@@ -1182,6 +1182,16 @@ def _distribution_architecture_guard_execution_is_stale(recent_execution: dict[s
     log_path = str(recent_execution.get("log_path") or "").strip()
     if log_path and not Path(log_path).exists():
         return True
+
+    execution_timestamp = recent_execution.get("timestamp")
+    if isinstance(execution_timestamp, datetime):
+        for path in _distribution_architecture_truth_artifact_paths():
+            try:
+                if path.exists() and datetime.fromtimestamp(path.stat().st_mtime) > execution_timestamp:
+                    return True
+            except OSError:
+                continue
+
     return False
 
 

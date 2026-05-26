@@ -1,9 +1,16 @@
 {
-  "generated_at": "2026-05-26T12:41:40.361964",
+  "generated_at": "2026-05-26T14:10:33.804702",
   "priority_keywords": [],
   "gaps": [],
   "onpage_score": "100/100 (A)",
   "ranked_keywords": 0,
   "backlinks_approx": 2,
-  "weekly_decisions": []
+  "weekly_decisions": [
+    "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
+    "Keep publishing seo-guide content.",
+    "Shift one future slot away from usecase toward seo-guide.",
+    "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
+    "Ship comparison-led backlink outreach packets whenever the curator queue is already full.",
+    "Leverage competitor comparison pages in content and outreach."
+  ]
 }

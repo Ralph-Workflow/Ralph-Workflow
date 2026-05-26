@@ -1,6 +1,6 @@
 {
-  "ts": "2026-05-26T12:47:08.021560",
-  "jobs_checked": 24,
+  "ts": "2026-05-26T13:54:35.800035",
+  "jobs_checked": 22,
   "issues_found": 4,
   "issues": [
     {
@@ -26,8 +26,8 @@
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=335",
-      "repeats_in_recent_history": 335,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=341",
+      "repeats_in_recent_history": 341,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification::loop_verification_fail",
       "escalation_level": "critical",
@@ -40,8 +40,8 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
       "category": "escalation_required",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=241",
-      "repeats_in_recent_history": 241,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=247",
+      "repeats_in_recent_history": 247,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin::review_followup_required",
       "escalation_level": "critical",
@@ -55,19 +55,19 @@
       "type": "immediate_review_followup_owner_action",
       "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779796468460:19\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779796470167:20\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779796471863:21\"\n}"
     }
   ]
 }

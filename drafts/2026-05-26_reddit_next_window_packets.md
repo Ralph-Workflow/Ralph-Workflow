@@ -1,10 +1,10 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-26 11:49 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-26 13:51 CEST
 
 Live posting is **not** the move right now.
 
 Latest watchdog state references report `reddit_monitor_2026-05-26_1119.md`.
-- `status: repair_blocked`
-- `detail: audit:failing_tactic:reddit_style_repetition; retro:repeated_openings:1; retro:channel_concentration:r/ClaudeCode:5/6`
+- `status: weak_fit_only_skip`
+- `detail: opportunity_state:weak_fit_only; opportunities:4`
 
 So this packet is optimized for the **next safe window**, not for forcing a post now.
 

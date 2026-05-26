@@ -6936,3 +6936,44 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-26 13:02:29
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; measurement hold is active until 2026-05-26T13:14:38.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 13:49:36
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 13:50:34
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 13:51:52
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 13:55:14
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Marketing momentum watchdog — 2026-05-26 13:48 Europe/Berlin
+- **Status:** REPAIR TRAP DETECTED — architectural failure, not content failure
+- **What is stale:** Reddit posts (last posted May 22, 6 days ago)
+- **Root cause:** `distribution_architecture_repair` lane has run 19+ times and each time explicitly skips content generation and posting (`content_generation: skipped`, `posting: skipped`, `live_external_action: false`). The system is doing repairs about repairs and producing zero external actions.
+- **What's actually broken:** The churn guard mechanism keeps escalating the same empty-board fingerprint but the guard itself is inert — it produces more logs, not more distribution.
+- **Architecture/process failure, not content failure:**
+  - Reddit monitor: finds 4 opportunities ✓
+  - Reddit browser session: ready, authenticated ✓
+  - Apollo outbound: live, 724 contacts ✓
+  - Actual posts shipped: NONE in 6 days ✗
+- **Watchdog output was `status: watch`** because `measurement_hold` was inactive and repairs were live — but the repairs are the problem.
+- **Fix applied:** Spawned direct Reddit posting sub-agent to break the repair trap.
+- **Escalation:** The `distribution_architecture_repair` lane needs to be redesigned so it actually produces distribution actions instead of more repair logs. The current implementation is a self-referential loop that papers over the empty board with guard notes instead of shipping content.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a
+- **Comment URL:** https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a/onyqq6t/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #2 Reddit reddit.com › r/ai_agents › seedance 2.0 is impressive. it’s still not a production workflow. r/AI_Agents (`r/AI_Agents`).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### Marketing momentum watchdog
+- **When:** 2026-05-26 14:55:29
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.

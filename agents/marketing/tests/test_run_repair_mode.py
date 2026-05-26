@@ -3,7 +3,7 @@ import os
 import subprocess
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -1108,6 +1108,82 @@ class RunRepairModeTests(unittest.TestCase):
                 self.assertEqual(payload['distribution_execution']['action_type'], 'distribution_architecture_churn_guard_repair')
                 self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_distribution_architecture_repair.md')
                 self.assertEqual(payload['distribution_execution_log'], str(prior_log))
+            finally:
+                run.LOG_DIR = original_log_dir
+                run.DRAFTS_DIR = original_drafts_dir
+
+    def test_main_does_not_reuse_distribution_architecture_repair_when_board_truth_is_newer(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            original_drafts_dir = run.DRAFTS_DIR
+            run.LOG_DIR = Path(tmpdir)
+            run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
+            run.DRAFTS_DIR.mkdir()
+            try:
+                prior_log = run.LOG_DIR / 'marketing_prior_distribution_architecture_repair.json'
+                prior_log.write_text(json.dumps({'ok': True}), encoding='utf-8')
+                prior_timestamp = datetime.now() - timedelta(minutes=30)
+                board_latest = run.DRAFTS_DIR / 'marketing_execution_board_latest.md'
+                board_latest.write_text('# newer board truth\n', encoding='utf-8')
+                (run.LOG_DIR / 'distribution_lane_latest.json').write_text('{}', encoding='utf-8')
+                (run.LOG_DIR / 'marketing_workflow_audit_latest.json').write_text('{}', encoding='utf-8')
+                (run.LOG_DIR / 'adoption_metrics_latest.json').write_text('{}', encoding='utf-8')
+
+                decision = LaneDecision(
+                    lane='distribution_architecture_repair',
+                    reason='Repair empty-board churn after the hold cleared.',
+                    reasons=['execution board stayed empty after blocker release'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='/tmp/current.md',
+                )
+                execution = SimpleNamespace(
+                    lane='distribution_architecture_repair',
+                    action_type='distribution_architecture_churn_guard_repair',
+                    status='executed',
+                    artifact_path='/tmp/new-repair.md',
+                    summary='Ran a fresh architecture repair.',
+                    targets_prepared=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=None), \
+                     patch.object(run, 'run_seo_daily', return_value={'priority_actions': [], 'ranks': {}, 'backlinks': {'count_approx': 0}}), \
+                     patch.object(run, 'load_seo_trends', return_value=[]), \
+                     patch.object(run, 'compute_trends', return_value={}), \
+                     patch.object(run, 'recent_successful_posts', return_value=[]), \
+                     patch.object(run, 'load_posted_records', return_value=[]), \
+                     patch.object(run, 'enrich_posts_with_views', return_value=[]), \
+                     patch.object(run, 'summarize_content_performance', return_value={}), \
+                     patch.object(run, 'competitor_report_is_stale', return_value=False), \
+                     patch.object(run, 'load_shared_market_intelligence', return_value=None), \
+                     patch.object(run, 'load_adoption_data', return_value={}), \
+                     patch.object(run, 'write_seo_insights', return_value=run.LOG_DIR / 'seo-insights.json'), \
+                     patch.object(run, '_latest_distribution_architecture_execution', return_value={
+                         'timestamp': prior_timestamp,
+                         'log_path': str(prior_log),
+                         'action_type': 'distribution_architecture_churn_guard_repair',
+                         'artifact_path': '/tmp/existing_distribution_architecture_repair.md',
+                         'status': 'executed',
+                         'summary': 'Existing architecture repair is still current.',
+                         'targets_prepared': [],
+                         'shared_findings_used': ['adoption_metrics_latest.json'],
+                         'live_external_action': False,
+                         'blocking_factors': [],
+                     }), \
+                     patch.object(run, 'choose_distribution_lane', return_value=decision), \
+                     patch.object(run, 'execute_distribution_lane', return_value=execution) as execute_mock:
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                execute_mock.assert_called_once()
+                daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
+                payload = json.loads(daily_log.read_text(encoding='utf-8'))
+                self.assertFalse(payload['reused_existing_distribution_execution'])
+                self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/new-repair.md')
             finally:
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir

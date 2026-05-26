@@ -1,17 +1,58 @@
 {
-  "generated_at": "2026-05-26T13:02:29.410789",
-  "count": 25,
-  "total_logged_rows": 85,
+  "generated_at": "2026-05-26T14:55:28.979965",
+  "count": 26,
+  "total_logged_rows": 86,
   "cadence_records_filtered": 60,
-  "recent_window_count": 0,
-  "by_account": {},
-  "by_community": {},
-  "top_title_words": [],
-  "top_body_tokens": [],
+  "recent_window_count": 1,
+  "by_account": {
+    "Informal-Salt827": 1
+  },
+  "by_community": {
+    "r/AI_Agents": 1
+  },
+  "top_title_words": [
+    "reddit",
+    "agents",
+    "seedance",
+    "impressive",
+    "production",
+    "workflow"
+  ],
+  "top_body_tokens": [
+    "code",
+    "review",
+    "finish",
+    "state",
+    "ralph",
+    "workflow",
+    "coding",
+    "thread",
+    "angle",
+    "agree",
+    "most",
+    "production",
+    "failure",
+    "useful",
+    "simple",
+    "babysitting",
+    "finished",
+    "tested",
+    "ready",
+    "clear"
+  ],
   "phrase_hits": {},
   "repeated_openings": [],
   "account_switches": [],
-  "recent_posts": [],
+  "recent_posts": [
+    {
+      "timestamp": "2026-05-26T14:55:18.485562",
+      "account": "Informal-Salt827",
+      "community": "r/AI_Agents",
+      "title": "Reddit reddit.com › r/ai_agents › seedance 2.0 is impressive. it’s still not a production workflow. r/AI_Agents",
+      "comment_url": "https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a/onyqq6t/",
+      "opening_line": "The thread angle I agree with most is production failure; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed. That is the finish-state bar I use in Ralph Workflow, the free/open-source operating system for autonomous coding. If you want one concrete finish-state example instead of a pitch, this is the proof surface I use:"
+    }
+  ],
   "recommendations": [
     "Before each autopost, compare the candidate body against the last 3 logged bodies and rewrite if the opening, structure, or closing feel too similar.",
     "Score opportunities not just on topic fit but on whether they create a distinctly new reply angle versus existing logged comments."

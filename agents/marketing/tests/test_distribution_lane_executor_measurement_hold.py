@@ -629,6 +629,46 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('Targets: ctxt.dev / Signum', board_text)
         self.assertIn('human-executable via verified public contact paths', board_text)
 
+    def test_execution_board_surfaces_primary_repo_flat_packet_for_github_issue_only_target_when_discovery_explicitly_recommends_it(self):
+        now = datetime(2026, 5, 26, 13, 58, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'TLDL',
+                            'recommended_next_step': 'GitHub issue/PR path is now identified',
+                            'channels': [
+                                {'type': 'github_issue', 'value': 'https://github.com/shenli/tldl/issues/new', 'label': 'GitHub issue'},
+                            ],
+                        },
+                    ],
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text(
+                '# publisher packet\n\n- ToolWise — https://toolwise.ai/tools/ralph-workflow\n\n### 1. TLDL\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertIn('Targets: TLDL', board_text)
+        self.assertIn('human-executable via verified public contact paths', board_text)
+
     def test_execution_board_hides_stale_primary_repo_flat_packet_until_refreshed(self):
         now = datetime(2026, 5, 25, 0, 20, 0)
 
@@ -2399,6 +2439,53 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
         self.assertIn('Primary-repo-flat publisher contact packet was already manually delivered in the current review window', board_text)
+
+    def test_execution_board_hides_primary_repo_flat_packet_when_prepared_only_repeat_threshold_is_hit(self):
+        now = datetime(2026, 5, 26, 14, 11, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'TLDL',
+                            'channels': [{'type': 'website', 'value': 'https://www.tldl.io/resources/ai-coding-tools-2026'}],
+                        }
+                    ]
+                }),
+                encoding='utf-8',
+            )
+            packet_path = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
+            packet_path.write_text('# publisher packet\n\n### 1. TLDL\n', encoding='utf-8')
+            for filename, timestamp in [
+                ('marketing_2026-05-26_033641_primary_repo_flat_contact_handoff_packet_execution.json', '2026-05-26T03:36:41'),
+                ('marketing_2026-05-26_141021_primary_repo_flat_contact_handoff_packet_execution.json', '2026-05-26T14:10:21'),
+            ]:
+                (log_dir / filename).write_text(
+                    json.dumps({
+                        'timestamp': timestamp,
+                        'chosen_action': {'type': 'primary_repo_flat_contact_handoff_packet_execution'},
+                        'why_this_action': {'targets_prepared': ['TLDL']},
+                        'result': {'status': 'prepared', 'ok': True},
+                    }),
+                    encoding='utf-8',
+                )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertIn('No do-now handoff packet is currently truthful in this review window.', board_text)
 
     def test_execution_board_hides_primary_repo_flat_packet_after_manual_delivery_refresh_in_active_review_window(self):
         now = datetime(2026, 5, 25, 6, 53, 23)

@@ -55,6 +55,7 @@ class RedditAutopostTests(unittest.TestCase):
 - URL: https://www.reddit.com/r/codex/comments/example/
 - Community: `r/codex`
 - Freshness: published today
+- Direct reply fit: **high**
 - Recommended angle:
   - trust the process, not the model
 - Mention fit: **medium-high**
@@ -62,6 +63,7 @@ class RedditAutopostTests(unittest.TestCase):
         opps = reddit_autopost.parse_opportunities(report)
         self.assertEqual(len(opps), 1)
         self.assertEqual(opps[0].mention_fit, "**medium-high**")
+        self.assertEqual(opps[0].direct_reply_fit, "**high**")
 
     def test_parse_opportunities_supports_inline_angle_and_missing_freshness(self):
         report = """### 1) Claude Code Agent Teams W/ Gemini and Codex
@@ -295,6 +297,43 @@ class RedditAutopostTests(unittest.TestCase):
             reddit_autopost.already_used = original_already_used
         self.assertIsNone(chosen)
         self.assertEqual(state, "weak_fit_only")
+
+    def test_choose_opportunity_allows_discussion_seed_when_direct_reply_fit_is_high_and_reddit_has_been_quiet(self):
+        medium_low = reddit_autopost.Opportunity(
+            rank=1,
+            title="seedance 2.0 is impressive. it’s still not a production workflow.",
+            url="https://www.reddit.com/r/AI_Agents/comments/example/",
+            community="`r/AI_Agents`",
+            angle="thread angle: production_failure",
+            freshness="during this pass",
+            mention_fit="**medium-low**",
+            direct_reply_fit="**high**",
+        )
+        original_load_recent = reddit_autopost.load_recent_post_records
+        original_already_used = reddit_autopost.already_used
+        try:
+            reddit_autopost.load_recent_post_records = lambda hours=24: []
+            reddit_autopost.already_used = lambda url: False
+            chosen, state = reddit_autopost.choose_opportunity([medium_low])
+        finally:
+            reddit_autopost.load_recent_post_records = original_load_recent
+            reddit_autopost.already_used = original_already_used
+        self.assertIsNotNone(chosen)
+        self.assertEqual(state, "discussion_seed")
+
+    def test_build_comment_adds_codeberg_proof_link_for_discussion_seed_thread(self):
+        opp = reddit_autopost.Opportunity(
+            rank=1,
+            title="seedance 2.0 is impressive. it’s still not a production workflow.",
+            url="https://www.reddit.com/r/AI_Agents/comments/example/",
+            community="`r/AI_Agents`",
+            angle="thread angle: production_failure",
+            freshness="during this pass",
+            mention_fit="**medium-low**",
+            direct_reply_fit="**high**",
+        )
+        body = reddit_autopost.build_comment(opp, recent=[])
+        self.assertIn(reddit_autopost.CODEBERG_REVIEW_PROOF_URL, body)
 
     def test_choose_opportunity_prefers_fresh_rate_limited_over_stale_fallback(self):
         fresh = reddit_autopost.Opportunity(
