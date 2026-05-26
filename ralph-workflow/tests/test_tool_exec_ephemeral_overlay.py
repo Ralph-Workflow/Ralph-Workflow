@@ -38,6 +38,23 @@ class TestCreateEphemeralOverlay:
             assert overlay != workspace
             assert overlay.parent != workspace.parent
 
+    def test_create_ephemeral_overlay_yields_unique_temp_roots(
+        self, tmp_path: Path
+    ) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+
+        with exec_overlay.create_ephemeral_overlay(workspace) as overlay1:
+            overlay1_path = overlay1
+            overlay1_parent = overlay1.parent
+            with exec_overlay.create_ephemeral_overlay(workspace) as overlay2:
+                overlay2_path = overlay2
+                overlay2_parent = overlay2.parent
+                assert overlay1_path != overlay2_path
+                assert overlay1_parent != overlay2_parent
+                assert overlay1_path.is_dir()
+                assert overlay2_path.is_dir()
+
     def test_mirrors_nested_directories(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()

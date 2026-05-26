@@ -426,13 +426,32 @@ def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) 
     return cwd_provider()
 
 
+def _rewrite_env_path(value: str, source_root: str, overlay_root: str, os_name: str) -> str:
+    if not source_root:
+        return value
+    if os_name != "nt":
+        return value.replace(source_root, overlay_root)
+
+    value_lower = value.lower()
+    source_root_lower = source_root.lower()
+    rewritten = value
+    while True:
+        idx = value_lower.find(source_root_lower)
+        if idx < 0:
+            return rewritten
+        rewritten = (
+            rewritten[:idx]
+            + overlay_root
+            + rewritten[idx + len(source_root) :]
+        )
+        value_lower = rewritten.lower()
+
+
 def _child_process_env(workspace_root: Path, cwd: Path) -> dict[str, str]:
     source_root = str(workspace_root)
     overlay_root = str(cwd)
     env = {
-        key: value.replace(source_root, overlay_root)
-        if source_root in value
-        else value
+        key: _rewrite_env_path(value, source_root, overlay_root, os.name)
         for key, value in os.environ.items()
     }
     env["PWD"] = overlay_root

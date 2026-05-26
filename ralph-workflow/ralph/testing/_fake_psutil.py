@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 from ralph.testing._fake_psutil_process import FakePsutilProcess
@@ -16,9 +16,11 @@ class FakePsutil:
 
     NoSuchProcess: type[BaseException] = Exception
     AccessDenied: type[BaseException] = Exception
+    Process: Callable[[int], FakePsutilProcess]
 
     def __init__(self) -> None:
         self._processes: dict[int, FakePsutilProcess] = {}
+        self.Process = self.process_from_pid
 
     def process_from_pid(self, pid: int) -> FakePsutilProcess:
         if pid not in self._processes:

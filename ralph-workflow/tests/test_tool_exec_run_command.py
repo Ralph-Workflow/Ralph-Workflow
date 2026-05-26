@@ -12,6 +12,8 @@ from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools.exec import (
     ExecRunDeps,
     ExecutionError,
+    _child_process_env,
+    _rewrite_env_path,
     run_command,
 )
 from tests.mock_workspace_root import MockWorkspaceRoot
@@ -26,6 +28,52 @@ EXPECTED_TIMEOUT_SECONDS = 2.5
 @contextmanager
 def _passthrough_overlay(workspace_root: Path) -> Iterator[Path]:
     yield workspace_root
+
+
+class TestRewriteEnvPath:
+    def test_posix_replaces_source_root_in_value(self) -> None:
+        result = _rewrite_env_path(
+            "/home/user/proj/main.py",
+            "/home/user/proj",
+            "/overlay",
+            "posix",
+        )
+
+        assert result == "/overlay/main.py"
+
+    def test_posix_passes_through_unrelated_value(self) -> None:
+        value = "/etc/hosts"
+
+        result = _rewrite_env_path(value, "/home/user/proj", "/overlay", "posix")
+
+        assert result == value
+
+    def test_windows_replaces_with_different_casing(self) -> None:
+        result = _rewrite_env_path(
+            r"c:\users\user\proj\file.txt",
+            r"C:\Users\User\proj",
+            r"D:\overlay",
+            "nt",
+        )
+
+        assert result == r"D:\overlay\file.txt"
+
+    def test_windows_passes_through_when_absent(self) -> None:
+        value = r"C:\Windows\System32"
+
+        result = _rewrite_env_path(value, r"C:\proj", r"D:\overlay", "nt")
+
+        assert result == value
+
+    def test_source_root_as_substring_is_also_replaced(self) -> None:
+        result = _rewrite_env_path(
+            "/home/user/proj_old/data",
+            "/home/user/proj",
+            "/overlay",
+            "posix",
+        )
+
+        assert result == "/overlay_old/data"
 
 
 class TestRunCommand:
@@ -98,3 +146,43 @@ class TestRunCommand:
         assert seen["command"] == ["python", "--version"]
         assert seen["cwd"] == tmp_path
         assert seen["timeout"] == EXPECTED_TIMEOUT_SECONDS
+
+
+class TestChildProcessEnv:
+    def test_sets_pwd_to_overlay_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANYVAR", "value")
+
+        env = _child_process_env(tmp_path / "workspace", tmp_path / "overlay")
+
+        assert env["PWD"] == str(tmp_path / "overlay")
+
+    def test_removes_oldpwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OLDPWD", "/old")
+
+        env = _child_process_env(tmp_path / "workspace", tmp_path / "overlay")
+
+        assert "OLDPWD" not in env
+
+    def test_replaces_source_root_in_env_values(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        workspace_root = tmp_path / "workspace"
+        overlay_root = tmp_path / "overlay"
+        monkeypatch.setenv("SOMEVAR", f"{workspace_root}/sub")
+
+        env = _child_process_env(workspace_root, overlay_root)
+
+        assert env["SOMEVAR"] == f"{overlay_root}/sub"
+
+    def test_passes_through_unrelated_env_values(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("UNRELATED", "/etc/hosts")
+
+        env = _child_process_env(tmp_path / "workspace", tmp_path / "overlay")
+
+        assert env["UNRELATED"] == "/etc/hosts"
