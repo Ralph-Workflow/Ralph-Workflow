@@ -137,6 +137,7 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
     def test_placeholder_email_detection_filters_known_junk_samples(self):
         self.assertTrue(discovery._looks_placeholder_email('you@example.com'))
         self.assertTrue(discovery._looks_placeholder_email('jane@acme.com'))
+        self.assertTrue(discovery._looks_placeholder_email('john.doe@acme.com'))
         self.assertTrue(discovery._looks_placeholder_email('you@work.com'))
         self.assertTrue(discovery._looks_placeholder_email('you@company.com'))
         self.assertFalse(discovery._looks_placeholder_email('info@digitalapplied.com'))
@@ -417,6 +418,18 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
 
         self.assertIn('Bollwerk / Werkstatt', recent)
         self.assertNotIn('AXME Code', recent)
+
+    def test_target_seed_list_includes_fresh_publisher_repair_targets(self):
+        targets = {target.name: target for target in discovery.TARGETS}
+
+        self.assertIn('Requesty', targets)
+        self.assertEqual(targets['Requesty'].explicit_emails, ('sales@requesty.ai',))
+
+        self.assertIn('ComputingForGeeks', targets)
+        self.assertIn('https://computingforgeeks.com/contact-us/', targets['ComputingForGeeks'].contact_urls)
+
+        self.assertIn('SOTAAZ', targets)
+        self.assertEqual(targets['SOTAAZ'].explicit_emails, ('support@oncreative.ai',))
 
 
 if __name__ == '__main__':

@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -204,6 +206,57 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
         self.assertEqual(payload['selected_lane'], 'distribution_architecture_repair')
         self.assertEqual(payload['selected_action_type'], 'distribution_architecture_churn_guard_repair')
 
+    def test_sync_from_execution_keeps_distribution_architecture_repair_after_release_when_refresh_stays_repair(self):
+        now = datetime(2026, 5, 27, 2, 53, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='empty board is still stuck after the hold cleared',
+            reasons=['post-hold empty board must repair again'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/selected.md',
+            short_review_window_release_at='2026-05-26T22:47:35',
+        )
+        refreshed = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='board is still empty after the hold cleared',
+            reasons=['still needs concrete repair'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/refreshed.md',
+            short_review_window_release_at='2026-05-26T22:47:35',
+        )
+        execution = SimpleNamespace(
+            lane='distribution_architecture_repair',
+            action_type='distribution_architecture_churn_guard_repair',
+            status='executed',
+            artifact_path='/tmp/execution.md',
+            summary='repaired the post-hold empty board again',
+            targets_prepared=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            live_external_action=False,
+            blocking_factors=[],
+        )
+
+        with patch.object(outcome_execution_board_runner, 'choose_distribution_lane', return_value=refreshed), \
+             patch.object(outcome_execution_board_runner.distribution_lane_selector, 'persist_latest_lane_decision') as persist_mock, \
+             patch.object(outcome_execution_board_runner, '_write_status'):
+            outcome_execution_board_runner.sync_from_execution(
+                now=now,
+                audit={},
+                decision=decision,
+                board_path=Path('/tmp/board.md'),
+                board_targets=[],
+                execution=execution,
+            )
+
+        persisted_lane = persist_mock.call_args.args[0]
+        self.assertEqual(persisted_lane.lane, 'distribution_architecture_repair')
+        self.assertEqual(persisted_lane.reason, 'board is still empty after the hold cleared')
+        self.assertEqual(persisted_lane.short_review_window_release_at, '2026-05-26T22:47:35')
+
     def test_run_reuses_existing_distribution_architecture_execution(self):
         now = datetime(2026, 5, 26, 19, 32, 0)
         decision = LaneDecision(
@@ -252,6 +305,72 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
         self.assertEqual(payload['selected_action_type'], 'distribution_architecture_churn_guard_repair')
         self.assertEqual(payload['artifact_path'], '/tmp/existing.md')
         self.assertEqual(payload['summary'], 'already repaired this fingerprint in the current review window')
+
+    def test_run_uses_contract_release_for_repair_reuse_staleness(self):
+        now = datetime(2026, 5, 27, 2, 40, 18)
+        decision = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='same empty-board fingerprint still active',
+            reasons=['execution board still has no truthful do-now lane'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/selected.md',
+            short_review_window_release_at=None,
+        )
+        refreshed = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='same empty-board fingerprint still active',
+            reasons=['execution board still has no truthful do-now lane'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/refreshed.md',
+            short_review_window_release_at=None,
+        )
+        reused_execution = {
+            'action_type': 'distribution_architecture_repair',
+            'status': 'executed',
+            'artifact_path': '/tmp/existing.md',
+            'summary': 'stale pre-release repair',
+            'targets_prepared': [],
+            'shared_findings_used': ['adoption_metrics_latest.json'],
+            'live_external_action': False,
+            'blocking_factors': [],
+            'log_path': '/tmp/existing.json',
+        }
+        execution = SimpleNamespace(
+            lane='distribution_architecture_repair',
+            action_type='distribution_architecture_repair',
+            status='executed',
+            artifact_path='/tmp/new.md',
+            summary='fresh repair executed',
+            targets_prepared=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            live_external_action=False,
+            blocking_factors=[],
+        )
+
+        with patch.object(outcome_execution_board_runner, '_load_json', return_value={}), \
+             patch.object(outcome_execution_board_runner, '_write_marketing_execution_board', return_value=(Path('/tmp/board.md'), [])), \
+             patch.object(outcome_execution_board_runner, 'choose_distribution_lane', side_effect=[decision, refreshed]), \
+             patch.object(outcome_execution_board_runner, '_latest_distribution_architecture_execution', return_value=reused_execution), \
+             patch.object(outcome_execution_board_runner, '_contract_short_window_release_at', return_value='2026-05-26T22:47:35'), \
+             patch.object(outcome_execution_board_runner, '_distribution_architecture_execution_is_stale', return_value=True) as stale_mock, \
+             patch.object(outcome_execution_board_runner, 'execute_distribution_lane', return_value=execution) as execute_mock, \
+             patch.object(outcome_execution_board_runner.distribution_lane_selector, 'persist_latest_lane_decision'), \
+             patch.object(outcome_execution_board_runner, '_write_status'):
+            payload = outcome_execution_board_runner.run(now)
+
+        stale_mock.assert_called_once_with(
+            reused_execution,
+            lane='distribution_architecture_repair',
+            now=now,
+            short_review_window_release_at='2026-05-26T22:47:35',
+        )
+        execute_mock.assert_called_once_with(decision, now=now)
+        self.assertEqual(payload['artifact_path'], '/tmp/new.md')
+        self.assertEqual(payload['summary'], 'fresh repair executed')
 
     def test_sync_from_execution_promotes_post_release_same_fingerprint_repair_to_guard_pause(self):
         now = datetime(2026, 5, 26, 23, 16, 0)
@@ -367,6 +486,41 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
                 now=datetime(2026, 5, 26, 22, 37, 0),
                 short_review_window_release_at='2026-05-26T22:47:35',
             )
+
+        self.assertTrue(stale)
+
+    def test_distribution_architecture_repair_reuse_is_stale_after_hold_release_clears(self):
+        with patch.object(outcome_execution_board_runner, 'LOG_DIR', Path('/tmp')):
+            stale = outcome_execution_board_runner._distribution_architecture_execution_is_stale(
+                {
+                    'timestamp': datetime(2026, 5, 26, 3, 17, 35),
+                    'artifact_path': '',
+                    'log_path': '',
+                },
+                lane='distribution_architecture_repair',
+                now=datetime(2026, 5, 27, 2, 37, 26),
+                short_review_window_release_at='2026-05-26T22:47:35',
+            )
+
+        self.assertTrue(stale)
+
+    def test_distribution_architecture_repair_reuse_is_stale_when_wrapper_is_fresh_but_artifact_predates_release(self):
+        with tempfile.NamedTemporaryFile() as tmp:
+            artifact_path = Path(tmp.name)
+            artifact_timestamp = datetime(2026, 5, 26, 3, 17, 35).timestamp()
+            os.utime(artifact_path, (artifact_timestamp, artifact_timestamp))
+
+            with patch.object(outcome_execution_board_runner, 'LOG_DIR', Path('/tmp')):
+                stale = outcome_execution_board_runner._distribution_architecture_execution_is_stale(
+                    {
+                        'timestamp': datetime(2026, 5, 27, 2, 39, 20),
+                        'artifact_path': str(artifact_path),
+                        'log_path': '',
+                    },
+                    lane='distribution_architecture_repair',
+                    now=datetime(2026, 5, 27, 2, 39, 20),
+                    short_review_window_release_at='2026-05-26T22:47:35',
+                )
 
         self.assertTrue(stale)
 

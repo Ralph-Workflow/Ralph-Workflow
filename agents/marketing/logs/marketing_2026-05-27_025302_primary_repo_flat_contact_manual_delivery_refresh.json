@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-05-27T02:53:02+02:00",
+  "run_type": "marketing-live-action",
+  "chosen_action": {
+    "type": "primary_repo_flat_contact_manual_delivery_refresh",
+    "channel": "current_chat",
+    "title": "Deliver refreshed primary-repo-flat publisher contact packet for immediate manual execution",
+    "packet": "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md"
+  },
+  "why_this_action": {
+    "summary": "The execution board no longer had a truthful do-now asset until the publisher discovery changed. The packet was refreshed with new untouched targets (Requesty, SOTAAZ), has not been delivered in the current review window, and is now the highest-leverage Codeberg-first action that can execute immediately.",
+    "shared_findings_used": [
+      "agents/marketing/logs/market_intelligence_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.md",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "drafts/marketing_execution_board_latest.md",
+      "agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json",
+      "drafts/primary_repo_flat_contact_handoff_packet_latest.md"
+    ],
+    "verification": [
+      "Verified the current execution board said the previous packet was stale until the target set changed.",
+      "Verified the refreshed packet now covers new targets Requesty and SOTAAZ.",
+      "Verified no log in the current review window records delivery of this refreshed packet."
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "artifact_created": true,
+    "delivery_surface": "current_chat",
+    "targets_delivered": ["Requesty", "SOTAAZ"]
+  },
+  "expected_outcome": "Immediate manual execution of at least one refreshed publisher-contact request that can create a Codeberg-first citation or comparison mention without waiting for another automated lane.",
+  "measurement_window": {
+    "review_at": "2026-06-03T02:53:02+02:00",
+    "success_metric": "At least one publisher contact attempt sent from the delivered packet, followed by any reply, citation, backlink, attributable repo inspection, or Codeberg adoption movement.",
+    "kill_condition": "If still unsent or untouched by the review checkpoint, replace this lane instead of refreshing the same packet again."
+  }
+}

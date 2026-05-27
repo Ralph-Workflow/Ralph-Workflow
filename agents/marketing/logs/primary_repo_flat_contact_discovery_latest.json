@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-26T22:52:35.187786+00:00",
+  "generated_at": "2026-05-27T00:48:21.278685+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -185,6 +185,124 @@
         }
       ],
       "recommended_next_step": "GitHub issue/PR path is now identified"
+    },
+    {
+      "target": "Requesty",
+      "article_url": "https://www.requesty.ai/blog/agentic-coding-tools-compared-2026-claude-code-cursor-codex-aider",
+      "root_url": "https://www.requesty.ai/",
+      "hook": "Agentic Coding Tools Compared (2026): Claude Code, Cursor, Codex, Aider, and the Gateway That Connects Them",
+      "reason": "High-intent agentic-coding comparison audience already evaluating tool stacks, gateways, and workflow control layers.",
+      "outreach_subject": "Ralph Workflow for your next agentic coding tools comparison refresh",
+      "channels": [
+        {
+          "type": "email",
+          "value": "sales@requesty.ai",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://requesty.ai",
+          "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://www.requesty.ai",
+          "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://www.requesty.ai/support",
+          "label": "support page"
+        },
+        {
+          "type": "email",
+          "value": "support@requesty.ai",
+          "label": "email"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/RequestyAI",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/requesty",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/in/thibaultjaigu",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "ComputingForGeeks",
+      "article_url": "https://computingforgeeks.com/opencode-vs-claude-code-vs-cursor/",
+      "root_url": "https://computingforgeeks.com/",
+      "hook": "OpenCode vs Claude Code vs Cursor: AI Coding Agents Compared (2026)",
+      "reason": "Large Linux/DevOps engineering audience already reading practical AI coding workflow comparisons.",
+      "outreach_subject": "Ralph Workflow for your next AI coding agents comparison update",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://computingforgeeks.com/about",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://computingforgeeks.com/about-us",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://computingforgeeks.com/contact",
+          "label": "contact page"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/nicepkg/oh-my-openagent.git/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/jj_mutai",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/86415623",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "public website contact path is now identified"
+    },
+    {
+      "target": "SOTAAZ",
+      "article_url": "https://www.sotaaz.com/post/cursor-vs-claude-code-vs-codex-2026-en",
+      "root_url": "https://www.sotaaz.com/",
+      "hook": "2026 AI Coding Tool War: Cursor vs Claude Code vs Codex \u2014 Hands-On Comparison",
+      "reason": "AI-engineer readers already consuming hands-on coding-agent comparisons and adjacent orchestration pieces.",
+      "outreach_subject": "Ralph Workflow for your next AI coding tools comparison update",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://sotaaz.com",
+          "label": "website"
+        },
+        {
+          "type": "email",
+          "value": "support@oncreative.ai",
+          "label": "email"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/sotaaz_lab",
+          "label": "X/Twitter"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
     }
   ],
   "omitted_recent_targets": [

@@ -1,5 +1,5 @@
 # Ralph Workflow Primary-Repo-Flat Publisher Contact Packet
-Generated: 2026-05-27T01:40:21
+Generated: 2026-05-27T02:49:47
 
 ## Why this exists now
 - Codeberg adoption is still flat in the active window.
@@ -24,28 +24,31 @@ Generated: 2026-05-27T01:40:21
 - Anchor the pitch on finished, tested code that is ready to review by morning.
 
 ## Execute these first
-### 1. TLDL
-- URL: https://www.tldl.io/resources/ai-coding-tools-2026
-- Hook: AI Coding Tools Compared (2026): Cursor vs Claude Code vs Copilot — Benchmarks & Pricing
-- Why this target: Comparison audience overlaps strongly with evaluators looking for autonomous coding workflows, not just single tools.
-- Suggested subject: Ralph Workflow for your next AI coding tools comparison refresh
-- Recommended next step: GitHub issue/PR path is now identified
-- First channel to try: Use the site contact path first: https://www.tldl.io/about
+### 1. Requesty
+- URL: https://www.requesty.ai/blog/agentic-coding-tools-compared-2026-claude-code-cursor-codex-aider
+- Hook: Agentic Coding Tools Compared (2026): Claude Code, Cursor, Codex, Aider, and the Gateway That Connects Them
+- Why this target: High-intent agentic-coding comparison audience already evaluating tool stacks, gateways, and workflow control layers.
+- Suggested subject: Ralph Workflow for your next agentic coding tools comparison refresh
+- Recommended next step: email/contact send path is now identified
+- First channel to try: Email first: sales@requesty.ai
 - Contact channels:
-  - about page: https://www.tldl.io/about
-  - website: https://www.tldl.io
-  - faq page: https://www.tldl.io/resources/tldl-faq
-  - GitHub issue: https://github.com/shenli/tldl/issues/new
-  - X/Twitter: https://x.com/shenli3514
+  - email: sales@requesty.ai
+  - website: https://requesty.ai
+  - website: https://www.requesty.ai
+  - support page: https://www.requesty.ai/support
+  - email: support@requesty.ai
+  - X/Twitter: https://x.com/RequestyAI
+  - LinkedIn: https://www.linkedin.com/company/requesty
+  - LinkedIn: https://www.linkedin.com/in/thibaultjaigu
 - Outreach angle: keep it publisher-native and pain-led; ask for comparison/citation consideration with Codeberg as the canonical repo, not a generic product pitch.
 - Ready-to-send email draft:
 ```text
 Hi,
 
-I liked AI Coding Tools Compared (2026): Cursor vs Claude Code vs Copilot — Benchmarks & Pricing. A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
+I liked Agentic Coding Tools Compared (2026): Claude Code, Cursor, Codex, Aider, and the Gateway That Connects Them. A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
 
 Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
-Why I thought of your audience: Comparison audience overlaps strongly with evaluators looking for autonomous coding workflows, not just single tools. It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
+Why I thought of your audience: High-intent agentic-coding comparison audience already evaluating tool stacks, gateways, and workflow control layers. It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
 
 If you keep comparison roundups, workflow references, or follow-up links on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
 
@@ -54,7 +57,38 @@ Ralph Workflow
 ```
 - Short contact-form version:
 ```text
-I liked AI Coding Tools Compared (2026): Cursor vs Claude Code vs Copilot — Benchmarks & Pricing. Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. Comparison audience overlaps strongly with evaluators looking for autonomous coding workflows, not just single tools. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
+I liked Agentic Coding Tools Compared (2026): Claude Code, Cursor, Codex, Aider, and the Gateway That Connects Them. Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. High-intent agentic-coding comparison audience already evaluating tool stacks, gateways, and workflow control layers. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
+```
+
+### 2. SOTAAZ
+- URL: https://www.sotaaz.com/post/cursor-vs-claude-code-vs-codex-2026-en
+- Hook: 2026 AI Coding Tool War: Cursor vs Claude Code vs Codex — Hands-On Comparison
+- Why this target: AI-engineer readers already consuming hands-on coding-agent comparisons and adjacent orchestration pieces.
+- Suggested subject: Ralph Workflow for your next AI coding tools comparison update
+- Recommended next step: email/contact send path is now identified
+- First channel to try: Use the site contact path first: https://sotaaz.com
+- Contact channels:
+  - website: https://sotaaz.com
+  - email: support@oncreative.ai
+  - X/Twitter: https://x.com/sotaaz_lab
+- Outreach angle: keep it publisher-native and pain-led; ask for comparison/citation consideration with Codeberg as the canonical repo, not a generic product pitch.
+- Ready-to-send email draft:
+```text
+Hi,
+
+I liked 2026 AI Coding Tool War: Cursor vs Claude Code vs Codex — Hands-On Comparison. A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
+Why I thought of your audience: AI-engineer readers already consuming hands-on coding-agent comparisons and adjacent orchestration pieces. It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
+
+If you keep comparison roundups, workflow references, or follow-up links on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
+
+Thanks,
+Ralph Workflow
+```
+- Short contact-form version:
+```text
+I liked 2026 AI Coding Tool War: Cursor vs Claude Code vs Codex — Hands-On Comparison. Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. AI-engineer readers already consuming hands-on coding-agent comparisons and adjacent orchestration pieces. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
 ```
 
 ## Process rule now in force

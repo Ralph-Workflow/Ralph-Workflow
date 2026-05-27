@@ -1,3 +1,3 @@
-The thread angle I agree with most is production failure; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed. That is the finish-state bar I use in Ralph Workflow, the free/open-source operating system for autonomous coding. If you want one concrete finish-state example instead of a pitch, this is the proof surface I use:
+A workflow is only trustworthy when it returns finished code, tested code, and a clean review surface. Ralph Workflow is a free/open-source example of that approach on your own machine, with the primary repo on Codeberg: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
+If the run cannot do that without babysitting, it is still pushing the hard part back onto the human.
