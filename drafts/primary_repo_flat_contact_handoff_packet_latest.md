@@ -1,5 +1,5 @@
 # Ralph Workflow Primary-Repo-Flat Publisher Contact Packet
-Generated: 2026-05-27T02:49:47
+Generated: 2026-05-27T06:00:30
 
 ## Why this exists now
 - Codeberg adoption is still flat in the active window.
@@ -89,6 +89,83 @@ Ralph Workflow
 - Short contact-form version:
 ```text
 I liked 2026 AI Coding Tool War: Cursor vs Claude Code vs Codex — Hands-On Comparison. Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. AI-engineer readers already consuming hands-on coding-agent comparisons and adjacent orchestration pieces. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
+```
+
+### 3. SitePoint
+- URL: https://www.sitepoint.com/claude-code-vs-codex-2026/
+- Hook: Claude Code vs Codex: A Developer's 2026 Workflow Comparison
+- Why this target: Large developer publication already comparing AI coding workflows, with clear editorial contact paths and a strong fit for workflow-layer follow-up.
+- Suggested subject: Ralph Workflow for your next AI coding workflow comparison refresh
+- Recommended next step: email/contact send path is now identified
+- First channel to try: Use the site contact path first: https://www.sitepoint.com/about-us
+- Contact channels:
+  - about page: https://www.sitepoint.com/about-us
+  - advertise page: https://www.sitepoint.com/advertise
+  - website: https://www.sitepoint.com/author/sitepointteam
+  - email: support@sitepoint.com
+  - GitHub issue: https://github.com/discourse/discourse/issues/new
+  - X/Twitter: https://twitter.com/billmousoulis
+  - X/Twitter: https://twitter.com/daxatron
+  - X/Twitter: https://twitter.com/MattMickiewicz
+  - X/Twitter: https://twitter.com/pageaffairs
+  - X/Twitter: https://twitter.com/sitepointdotcom
+  - X/Twitter: https://twitter.com/spiky_simon
+- Outreach angle: keep it publisher-native and pain-led; ask for comparison/citation consideration with Codeberg as the canonical repo, not a generic product pitch.
+- Ready-to-send email draft:
+```text
+Hi,
+
+I liked Claude Code vs Codex: A Developer's 2026 Workflow Comparison. A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
+Why I thought of your audience: Large developer publication already comparing AI coding workflows, with clear editorial contact paths and a strong fit for workflow-layer follow-up. It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
+
+If you keep comparison roundups, workflow references, or follow-up links on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
+
+Thanks,
+Ralph Workflow
+```
+- Short contact-form version:
+```text
+I liked Claude Code vs Codex: A Developer's 2026 Workflow Comparison. Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. Large developer publication already comparing AI coding workflows, with clear editorial contact paths and a strong fit for workflow-layer follow-up. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
+```
+
+### 4. Codersera
+- URL: https://codersera.com/blog/ai-coding-agents-complete-guide-2026/
+- Hook: AI Coding Agents in 2026: The Complete Guide
+- Why this target: Fresh AI coding agent guide with strong evaluator intent and a public support path that can carry a Codeberg-first workflow addition.
+- Suggested subject: Ralph Workflow for your next AI coding agents guide refresh
+- Recommended next step: email/contact send path is now identified
+- First channel to try: Email first: info@codersera.com
+- Contact channels:
+  - email: info@codersera.com
+  - about page: https://codersera.com/about-us
+  - contact page: https://codersera.com/blog
+  - contact page: https://codersera.com/blog/hire/hire-python-developer
+  - email: support@codersera.com
+  - GitHub issue: https://github.com/anthropics/skills/issues/new
+  - X/Twitter: https://twitter.com/codersera
+  - X/Twitter: https://twitter.com/codersera11
+  - LinkedIn: https://www.linkedin.com/company/codersera
+  - LinkedIn: https://www.linkedin.com/company/codersera1
+- Outreach angle: keep it publisher-native and pain-led; ask for comparison/citation consideration with Codeberg as the canonical repo, not a generic product pitch.
+- Ready-to-send email draft:
+```text
+Hi,
+
+I liked AI Coding Agents in 2026: The Complete Guide. A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
+Why I thought of your audience: Fresh AI coding agent guide with strong evaluator intent and a public support path that can carry a Codeberg-first workflow addition. It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
+
+If you keep comparison roundups, workflow references, or follow-up links on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
+
+Thanks,
+Ralph Workflow
+```
+- Short contact-form version:
+```text
+I liked AI Coding Agents in 2026: The Complete Guide. Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. Fresh AI coding agent guide with strong evaluator intent and a public support path that can carry a Codeberg-first workflow addition. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
 ```
 
 ## Process rule now in force

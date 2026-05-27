@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-27T00:48:21+00:00
+Generated: 2026-05-27T03:59:38+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -112,3 +112,38 @@ Generated: 2026-05-27T00:48:21+00:00
   - website: https://sotaaz.com
   - email: support@oncreative.ai
   - X/Twitter: https://x.com/sotaaz_lab
+
+### 9. SitePoint
+- Hook: Claude Code vs Codex: A Developer's 2026 Workflow Comparison
+- Article/root: https://www.sitepoint.com/claude-code-vs-codex-2026/ / https://www.sitepoint.com/
+- Recommended next step: email/contact send path is now identified
+- Suggested subject: Ralph Workflow for your next AI coding workflow comparison refresh
+- Discovered channels:
+  - about page: https://www.sitepoint.com/about-us
+  - advertise page: https://www.sitepoint.com/advertise
+  - website: https://www.sitepoint.com/author/sitepointteam
+  - email: support@sitepoint.com
+  - GitHub issue: https://github.com/discourse/discourse/issues/new
+  - X/Twitter: https://twitter.com/billmousoulis
+  - X/Twitter: https://twitter.com/daxatron
+  - X/Twitter: https://twitter.com/MattMickiewicz
+  - X/Twitter: https://twitter.com/pageaffairs
+  - X/Twitter: https://twitter.com/sitepointdotcom
+  - X/Twitter: https://twitter.com/spiky_simon
+
+### 10. Codersera
+- Hook: AI Coding Agents in 2026: The Complete Guide
+- Article/root: https://codersera.com/blog/ai-coding-agents-complete-guide-2026/ / https://codersera.com/
+- Recommended next step: email/contact send path is now identified
+- Suggested subject: Ralph Workflow for your next AI coding agents guide refresh
+- Discovered channels:
+  - email: info@codersera.com
+  - about page: https://codersera.com/about-us
+  - contact page: https://codersera.com/blog
+  - contact page: https://codersera.com/blog/hire/hire-python-developer
+  - email: support@codersera.com
+  - GitHub issue: https://github.com/anthropics/skills/issues/new
+  - X/Twitter: https://twitter.com/codersera
+  - X/Twitter: https://twitter.com/codersera11
+  - LinkedIn: https://www.linkedin.com/company/codersera
+  - LinkedIn: https://www.linkedin.com/company/codersera1

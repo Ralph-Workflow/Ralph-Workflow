@@ -180,6 +180,12 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 encoding='utf-8',
             )
 
+            reddit_execution_status = log_dir / 'reddit_execution_status_latest.json'
+            reddit_execution_status.write_text(json.dumps({
+                'generated_at': '2026-05-25T14:07:59+02:00',
+                'status': 'browser_session_ready',
+            }), encoding='utf-8')
+
             decision = LaneDecision(
                 lane='distribution_architecture_repair',
                 reason='repair the empty board',
@@ -199,6 +205,8 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'ADOPTION_PATH', log_dir / 'adoption_metrics_latest.json'), \
                  patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', tmp / 'outreach-log.md'), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={}), \
+                 patch.object(distribution_lane_selector, 'REDDIT_EXECUTION_STATUS_PATH', reddit_execution_status), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', seo_dir / 'reddit_monitor_latest.md'), \
                  patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
                  patch.object(distribution_lane_selector, '_distribution_architecture_repair_state', return_value={
                      'third_strike': True,
@@ -222,6 +230,133 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             board_text = (drafts_dir / 'marketing_execution_board_latest.md').read_text(encoding='utf-8')
             self.assertIn('Manual community discussion asset', board_text)
+
+    def test_distribution_architecture_repair_skips_manual_reddit_discussion_asset_when_reddit_execution_is_blocked(self):
+        now = datetime(2026, 5, 27, 5, 12, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+
+            (log_dir / 'adoption_metrics_latest.json').write_text(
+                json.dumps({
+                    'recent_window': {
+                        'Codeberg': {
+                            'samples': 9,
+                            'stars_delta_window': 0,
+                            'watchers_delta_window': 0,
+                            'forks_delta_window': 0,
+                        }
+                    }
+                }),
+                encoding='utf-8',
+            )
+            (seo_dir / 'reddit_monitor_latest.md').write_text(
+                '\n'.join([
+                    '# Reddit monitor',
+                    '',
+                    '## Best current discussion opportunities (reply-worthiness first, product-fit second)',
+                    '',
+                    '### 1) live thread that would normally be usable',
+                    '- URL: <https://www.reddit.com/r/AI_Agents/comments/example1>',
+                    '- Community: `r/AI_Agents`',
+                    '- Freshness: during this pass',
+                    '- Direct reply fit: **high**',
+                    '- Mention fit: **medium-low**',
+                    '- Best RalphWorkflow angle: **content-family match: production_failure**',
+                    '- Why it fits: current pain thread',
+                ]),
+                encoding='utf-8',
+            )
+            reddit_execution_status = log_dir / 'reddit_execution_status_latest.json'
+            reddit_execution_status.write_text(json.dumps({
+                'generated_at': '2026-05-27T05:05:29+02:00',
+                'status': 'execution_blocked',
+            }), encoding='utf-8')
+
+            decision = LaneDecision(
+                lane='distribution_architecture_repair',
+                reason='repair the empty board',
+                reasons=['empty board'],
+                owned_content_posts_last_36h=0,
+                unsubmitted_directory_channels=[],
+                shared_findings_used=['adoption_metrics_latest.json: Codeberg movement is the primary success gate'],
+                artifact_path=str(drafts_dir / 'distribution_action_brief.md'),
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', log_dir / 'adoption_metrics_latest.json'), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', tmp / 'outreach-log.md'), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={}), \
+                 patch.object(distribution_lane_selector, 'REDDIT_EXECUTION_STATUS_PATH', reddit_execution_status), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', seo_dir / 'reddit_monitor_latest.md'), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
+                 patch.object(distribution_lane_selector, '_distribution_architecture_repair_state', return_value={
+                     'third_strike': True,
+                     'execution_board_fingerprint': 'abc123',
+                     'repeat_count': 6,
+                     'guard_follow_through_count': 7,
+                     'guard_pause_count': 5,
+                 }), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=5), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now=now)
+
+            self.assertIn(execution.action_type, {'distribution_architecture_repair', 'distribution_architecture_churn_guard_repair'})
+            self.assertNotEqual(execution.action_type, 'reddit_discussion_channel_ready_outreach_asset')
+            self.assertFalse((drafts_dir / 'reddit_discussion_handoff_packet_latest.md').exists())
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertNotIn('Reddit Discussion Handoff Packet', artifact_text)
+
+    def test_distribution_architecture_repair_does_not_create_manual_publisher_asset_when_board_has_no_truthful_targets(self):
+        now = datetime(2026, 5, 27, 5, 30, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='repair the empty board',
+            reasons=['empty board'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json: Codeberg movement is the primary success gate'],
+            artifact_path='/tmp/distribution_action_brief.md',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={}), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(drafts_dir / 'marketing_execution_board_latest.md', [])), \
+                 patch.object(distribution_lane_executor, '_load_primary_repo_flat_contact_discovery', return_value=[{
+                     'target': 'ComputingForGeeks',
+                     'channels': [{'type': 'website', 'value': 'https://computingforgeeks.com/contact'}],
+                 }]), \
+                 patch.object(distribution_lane_executor, '_write_reddit_discussion_handoff_asset', return_value=None), \
+                 patch.object(distribution_lane_selector, '_distribution_architecture_repair_state', return_value={
+                     'third_strike': False,
+                     'execution_board_fingerprint': 'empty-board',
+                     'repeat_count': 1,
+                     'guard_follow_through_count': 0,
+                     'guard_pause_count': 0,
+                 }), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now=now)
+
+        self.assertIn(execution.action_type, {'distribution_architecture_repair', 'distribution_architecture_churn_guard_repair'})
+        self.assertNotEqual(execution.action_type, 'publisher_manual_review_channel_ready_outreach_asset')
 
     def test_distribution_architecture_repair_refreshes_stale_manual_packets(self):
         now = datetime(2026, 5, 26, 18, 42, 0)
@@ -3501,6 +3636,100 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 assets = distribution_lane_executor._manual_outreach_assets_waiting_for_execution(now)
 
         self.assertEqual(assets, [])
+
+    def test_active_manual_outreach_delivery_targets_uses_measurement_window_review_at(self):
+        now = datetime(2026, 5, 27, 5, 24, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+
+            (log_dir / 'marketing_2026-05-27_manual_asset_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T03:41:50+02:00',
+                    'chosen_action': {
+                        'type': 'manual_publisher_review_asset_delivery',
+                        'channel': 'current_chat_final_reply',
+                        'target': 'TLDL',
+                    },
+                    'why_this_action': {
+                        'targets_prepared': ['TLDL', 'ComputingForGeeks'],
+                    },
+                    'result': {
+                        'status': 'delivered',
+                        'ok': True,
+                        'targets_prepared': ['TLDL', 'ComputingForGeeks'],
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-03T03:41:50+02:00'
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir):
+                targets = distribution_lane_executor._active_manual_outreach_delivery_targets(now)
+
+        self.assertEqual(targets, {'TLDL', 'ComputingForGeeks'})
+
+    def test_active_manual_outreach_delivery_targets_backfills_targets_from_matching_prepared_asset_log(self):
+        now = datetime(2026, 5, 27, 5, 24, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            asset_path = drafts_dir / '2026-05-27_primary_repo_flat_manual_review_asset.md'
+            asset_path.write_text('# shared manual review asset\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-27_prepared_manual_asset.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T03:39:30+02:00',
+                    'chosen_action': {
+                        'type': 'publisher_manual_review_channel_ready_outreach_asset',
+                        'channel': 'distribution_architecture_repair',
+                        'draft': str(asset_path),
+                    },
+                    'result': {
+                        'status': 'prepared',
+                        'ok': True,
+                        'targets_prepared': ['TLDL', 'ComputingForGeeks'],
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-03T03:39:30+02:00'
+                    },
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-27_manual_asset_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T03:41:50+02:00',
+                    'chosen_action': {
+                        'type': 'manual_publisher_review_asset_delivery',
+                        'channel': 'current_chat_final_reply',
+                        'target': 'TLDL',
+                        'packet': str(asset_path),
+                    },
+                    'result': {
+                        'status': 'delivered',
+                        'ok': True,
+                        'packet_path': str(asset_path),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-03T03:41:50+02:00'
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir):
+                targets = distribution_lane_executor._active_manual_outreach_delivery_targets(now)
+
+        self.assertEqual(targets, {'TLDL', 'ComputingForGeeks'})
 
     def test_execution_board_surfaces_repo_proof_asset_after_exhausted_stackoverflow_slot(self):
         now = datetime(2026, 5, 26, 6, 30, 0)

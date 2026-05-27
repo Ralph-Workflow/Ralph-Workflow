@@ -140,6 +140,8 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         self.assertTrue(discovery._looks_placeholder_email('john.doe@acme.com'))
         self.assertTrue(discovery._looks_placeholder_email('you@work.com'))
         self.assertTrue(discovery._looks_placeholder_email('you@company.com'))
+        self.assertTrue(discovery._looks_placeholder_email('example@gmail.com'))
+        self.assertFalse(discovery._looks_placeholder_email('test@proton.me'))
         self.assertFalse(discovery._looks_placeholder_email('info@digitalapplied.com'))
 
     def test_extract_follow_on_contact_urls_finds_same_site_faq_like_pages(self):
@@ -430,6 +432,14 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
 
         self.assertIn('SOTAAZ', targets)
         self.assertEqual(targets['SOTAAZ'].explicit_emails, ('support@oncreative.ai',))
+
+        self.assertIn('SitePoint', targets)
+        self.assertIn('https://www.sitepoint.com/contact-us/', targets['SitePoint'].contact_urls)
+        self.assertEqual(targets['SitePoint'].explicit_emails, ('support@sitepoint.com',))
+
+        self.assertIn('Codersera', targets)
+        self.assertIn('https://codersera.com/about-us', targets['Codersera'].contact_urls)
+        self.assertEqual(targets['Codersera'].explicit_emails, ('support@codersera.com',))
 
 
 if __name__ == '__main__':

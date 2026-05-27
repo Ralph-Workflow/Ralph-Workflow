@@ -5541,6 +5541,100 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
         self.assertEqual(assets, [])
         self.assertTrue(empty)
 
+    def test_active_manual_outreach_delivery_targets_uses_measurement_window_review_at(self):
+        now = datetime(2026, 5, 27, 5, 24, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+
+            (log_dir / 'marketing_2026-05-27_manual_asset_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T03:41:50+02:00',
+                    'chosen_action': {
+                        'type': 'manual_publisher_review_asset_delivery',
+                        'channel': 'current_chat_final_reply',
+                        'target': 'TLDL',
+                    },
+                    'why_this_action': {
+                        'targets_prepared': ['TLDL', 'ComputingForGeeks'],
+                    },
+                    'result': {
+                        'status': 'delivered',
+                        'ok': True,
+                        'targets_prepared': ['TLDL', 'ComputingForGeeks'],
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-03T03:41:50+02:00'
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir):
+                targets = distribution_lane_selector._active_manual_outreach_delivery_targets(now)
+
+        self.assertEqual(targets, {'TLDL', 'ComputingForGeeks'})
+
+    def test_active_manual_outreach_delivery_targets_backfills_targets_from_matching_prepared_asset_log(self):
+        now = datetime(2026, 5, 27, 5, 24, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            asset_path = drafts_dir / '2026-05-27_primary_repo_flat_manual_review_asset.md'
+            asset_path.write_text('# shared manual review asset\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-27_prepared_manual_asset.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T03:39:30+02:00',
+                    'chosen_action': {
+                        'type': 'publisher_manual_review_channel_ready_outreach_asset',
+                        'channel': 'distribution_architecture_repair',
+                        'draft': str(asset_path),
+                    },
+                    'result': {
+                        'status': 'prepared',
+                        'ok': True,
+                        'targets_prepared': ['TLDL', 'ComputingForGeeks'],
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-03T03:39:30+02:00'
+                    },
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-27_manual_asset_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T03:41:50+02:00',
+                    'chosen_action': {
+                        'type': 'manual_publisher_review_asset_delivery',
+                        'channel': 'current_chat_final_reply',
+                        'target': 'TLDL',
+                        'packet': str(asset_path),
+                    },
+                    'result': {
+                        'status': 'delivered',
+                        'ok': True,
+                        'packet_path': str(asset_path),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-03T03:41:50+02:00'
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir):
+                targets = distribution_lane_selector._active_manual_outreach_delivery_targets(now)
+
+        self.assertEqual(targets, {'TLDL', 'ComputingForGeeks'})
+
     def test_existing_manual_outreach_asset_beats_measurement_hold(self):
         now = datetime(2026, 5, 25, 5, 20, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -6343,6 +6437,60 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                 result = distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now)
 
         self.assertTrue(result)
+
+    def test_execution_board_explicit_empty_marker_does_not_count_as_empty_when_live_review_blockers_exist(self):
+        now = datetime(2026, 5, 27, 6, 10, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            drafts_dir.mkdir()
+
+            execution_board = drafts_dir / 'marketing_execution_board_latest.md'
+            execution_board.write_text(
+                '# Ralph Workflow Marketing Execution Board\n\n'
+                '## Active review windows\n'
+                '- Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.\n\n'
+                '## Best executable assets still waiting\n'
+                '- No do-now handoff packet is currently truthful in this review window.\n'
+                '- Directory secondary-surface repair already shipped in the current review window; wait for the follow-up date or a target-set change before resurfacing it.\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', execution_board), \
+                 patch.object(distribution_lane_selector, '_manual_outreach_assets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_selector, '_pending_confirmation_actions', return_value=[]):
+                result = distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now)
+
+        self.assertFalse(result)
+
+    def test_execution_board_waiting_blocks_parses_plain_bullet_waiting_section(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            drafts_dir.mkdir()
+
+            execution_board = drafts_dir / 'marketing_execution_board_latest.md'
+            execution_board.write_text(
+                '# Ralph Workflow Marketing Execution Board\n\n'
+                '## Best executable assets still waiting\n'
+                '- No do-now handoff packet is currently truthful in this review window.\n'
+                '- Directory secondary-surface repair already shipped in the current review window; wait for the follow-up date or a target-set change before resurfacing it.\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', execution_board):
+                blocks = distribution_lane_selector._execution_board_waiting_blocks()
+
+        self.assertEqual(
+            blocks,
+            [
+                ['- No do-now handoff packet is currently truthful in this review window.'],
+                ['- Directory secondary-surface repair already shipped in the current review window; wait for the follow-up date or a target-set change before resurfacing it.'],
+            ],
+        )
 
     def test_choose_distribution_lane_repairs_empty_post_hold_board_even_without_runtime_release_timestamp(self):
         now = datetime(2026, 5, 26, 2, 37, 0)

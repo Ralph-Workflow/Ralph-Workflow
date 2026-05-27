@@ -3946,6 +3946,72 @@ class DistributionLaneExecutorTests(unittest.TestCase):
 
         self.assertIsNone(asset)
 
+    def test_marketing_execution_board_hides_reddit_manual_discussion_asset_when_execution_is_blocked(self):
+        now = datetime(2026, 5, 27, 5, 12, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+
+            reddit_asset = drafts_dir / 'reddit_discussion_handoff_packet_latest.md'
+            reddit_asset.write_text('# Reddit packet\n', encoding='utf-8')
+            (log_dir / 'reddit_execution_status_latest.json').write_text(json.dumps({
+                'generated_at': '2026-05-27T05:05:29+02:00',
+                'status': 'execution_blocked',
+            }), encoding='utf-8')
+            (seo_dir / 'reddit_monitor_latest.md').write_text(
+                '# Reddit monitor\n\n'
+                '## Best current discussion opportunities (reply-worthiness first, product-fit second)\n\n'
+                '### 1) live thread\n'
+                '- URL: <https://www.reddit.com/r/AI_Agents/comments/example/>\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-27_reddit_discussion_channel_ready_outreach_asset.json').write_text(json.dumps({
+                'timestamp': '2026-05-27T04:59:00+02:00',
+                'chosen_action': {
+                    'type': 'reddit_discussion_channel_ready_outreach_asset',
+                    'artifact': str(reddit_asset),
+                    'title': 'Prepare Reddit discussion handoff packet',
+                },
+                'result': {
+                    'status': 'prepared',
+                    'artifact': str(reddit_asset),
+                },
+            }), encoding='utf-8')
+            (log_dir / 'distribution_lane_latest.json').write_text(json.dumps({}), encoding='utf-8')
+            (log_dir / 'apollo_sequence_status_latest.json').write_text('{}', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
+                 patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}), \
+                 patch.object(distribution_lane_executor, '_current_stackoverflow_scheduled_run', return_value=''), \
+                 patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_manual_outreach_assets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_current_measurement_hold_release_run', return_value=''), \
+                 patch.object(distribution_lane_executor, '_adoption_summary', return_value='Codeberg is flat.'), \
+                 patch.object(distribution_lane_selector, 'REDDIT_EXECUTION_STATUS_PATH', log_dir / 'reddit_execution_status_latest.json'), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', seo_dir / 'reddit_monitor_latest.md'), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0):
+                artifact, _prepared = distribution_lane_executor._write_marketing_execution_board(now)
+
+            text = artifact.read_text(encoding='utf-8')
+
+        self.assertNotIn('Manual community discussion asset', text)
+        self.assertNotIn(str(reddit_asset), text)
+
     def test_marketing_execution_board_hides_reddit_execution_check_after_aligned_rerun_exists(self):
         now = datetime(2026, 5, 26, 17, 33, 9)
 

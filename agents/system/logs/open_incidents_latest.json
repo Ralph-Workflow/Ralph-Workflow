@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-27T02:40:47.181829+00:00",
+  "updated_at": "2026-05-27T04:06:36.129878+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 119,
+      "repeat_count": 120,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -345,22 +345,30 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779848112263:1\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=118"
+        },
+        {
+          "at": "2026-05-27T03:50:16.143189+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779853816115:12\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=120"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-27T02:15:19.770901+00:00",
+      "last_seen": "2026-05-27T03:50:12.328749+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-05-27T02:15:12.308438+00:00"
+      "closed_at": "2026-05-27T03:50:16.143204+00:00"
     },
     "marketing_independent_verification::loop_verification_fail": {
       "key": "marketing_independent_verification::loop_verification_fail",
       "name": "marketing_independent_verification",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-22T23:28:25.701171+00:00",
-      "repeat_count": 411,
+      "repeat_count": 437,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1709,13 +1717,117 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "blocked_external",
           "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=409"
+        },
+        {
+          "at": "2026-05-27T03:12:23.590633+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779851543545:5\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=412"
+        },
+        {
+          "at": "2026-05-27T03:12:36.055591+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=414"
+        },
+        {
+          "at": "2026-05-27T03:32:46.628900+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779852766580:8\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=416"
+        },
+        {
+          "at": "2026-05-27T03:32:57.196217+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=417"
+        },
+        {
+          "at": "2026-05-27T03:33:08.952512+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=420"
+        },
+        {
+          "at": "2026-05-27T03:33:22.836344+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=422"
+        },
+        {
+          "at": "2026-05-27T03:50:01.724750+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779853801683:11\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=424"
+        },
+        {
+          "at": "2026-05-27T03:50:17.879653+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=426"
+        },
+        {
+          "at": "2026-05-27T03:50:26.985996+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=427"
+        },
+        {
+          "at": "2026-05-27T03:50:38.632219+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=430"
+        },
+        {
+          "at": "2026-05-27T03:50:52.922184+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=432"
+        },
+        {
+          "at": "2026-05-27T03:51:14.961396+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=434"
+        },
+        {
+          "at": "2026-05-27T04:06:28.825043+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779854788797:16\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.::Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=436"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-27T02:40:47.181801+00:00",
+      "last_seen": "2026-05-27T04:06:36.129854+00:00",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -1725,7 +1837,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 242,
+      "repeat_count": 249,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2781,22 +2893,70 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779849643287:4\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T04:20:56.172699+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=241"
+        },
+        {
+          "at": "2026-05-27T03:12:28.868225+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779851548841:6\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T04:47:17.143747+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=243"
+        },
+        {
+          "at": "2026-05-27T03:32:52.071695+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779852772038:9\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T05:22:30.859381+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=244"
+        },
+        {
+          "at": "2026-05-27T03:33:28.028571+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779852808002:10\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T05:32:44.814277+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=245"
+        },
+        {
+          "at": "2026-05-27T03:50:23.426100+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779853823393:13\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T05:49:25.587600+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=247"
+        },
+        {
+          "at": "2026-05-27T03:50:58.091780+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779853858065:14\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T05:50:14.291344+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=248"
+        },
+        {
+          "at": "2026-05-27T04:06:32.306342+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (loop_integrity_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T05:50:51.050364+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=249"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-27T02:40:34.702340+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T04:20:56.172699+02:00\"\n}",
+      "last_seen": "2026-05-27T04:06:23.355336+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (loop_integrity_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T05:50:51.050364+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-05-27T02:40:43.315659+00:00"
+      "closed_at": "2026-05-27T04:06:32.306357+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
       "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T00:07:36.250186+00:00",
-      "repeat_count": 135,
+      "repeat_count": 159,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -3733,13 +3893,109 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "blocked_external",
           "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=133"
+        },
+        {
+          "at": "2026-05-27T03:12:25.392427+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=136"
+        },
+        {
+          "at": "2026-05-27T03:12:37.848389+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=138"
+        },
+        {
+          "at": "2026-05-27T03:32:48.432828+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=140"
+        },
+        {
+          "at": "2026-05-27T03:32:58.986616+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=141"
+        },
+        {
+          "at": "2026-05-27T03:33:10.779577+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=144"
+        },
+        {
+          "at": "2026-05-27T03:33:24.542882+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=146"
+        },
+        {
+          "at": "2026-05-27T03:50:03.549783+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=148"
+        },
+        {
+          "at": "2026-05-27T03:50:19.609935+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=150"
+        },
+        {
+          "at": "2026-05-27T03:50:28.731379+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=151"
+        },
+        {
+          "at": "2026-05-27T03:50:40.361511+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=154"
+        },
+        {
+          "at": "2026-05-27T03:50:54.644581+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=156"
+        },
+        {
+          "at": "2026-05-27T03:51:16.684338+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation::escalation_required::Marketing runner bundle is not healthy.::Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=158"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-27T02:40:47.181814+00:00",
+      "last_seen": "2026-05-27T03:51:22.342951+00:00",
       "last_error": "Marketing runner bundle is not healthy.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is not healthy.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -3749,7 +4005,7 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T00:07:36.250195+00:00",
-      "repeat_count": 285,
+      "repeat_count": 287,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -5713,13 +5969,29 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "blocked_external",
           "issue_signature": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation::escalation_required::Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.::Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=284"
+        },
+        {
+          "at": "2026-05-27T04:06:25.120664+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779854785093:15\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin::review_followup_required::Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.::Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
+        },
+        {
+          "at": "2026-05-27T04:06:30.603327+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779854790576:17\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation::escalation_required::Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.::Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=286"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-27T01:32:49.266176+00:00",
+      "last_seen": "2026-05-27T04:06:36.129867+00:00",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -6243,7 +6515,7 @@
       "name": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T13:44:56.633984+00:00",
-      "repeat_count": 94,
+      "repeat_count": 118,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -6893,13 +7165,109 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "blocked_external",
           "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=92"
+        },
+        {
+          "at": "2026-05-27T03:12:27.121266+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=95"
+        },
+        {
+          "at": "2026-05-27T03:12:39.596132+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=97"
+        },
+        {
+          "at": "2026-05-27T03:32:50.152158+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=99"
+        },
+        {
+          "at": "2026-05-27T03:33:00.697922+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=100"
+        },
+        {
+          "at": "2026-05-27T03:33:12.574386+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=103"
+        },
+        {
+          "at": "2026-05-27T03:33:26.321279+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=105"
+        },
+        {
+          "at": "2026-05-27T03:50:05.339158+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=107"
+        },
+        {
+          "at": "2026-05-27T03:50:21.429059+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=109"
+        },
+        {
+          "at": "2026-05-27T03:50:30.506004+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=110"
+        },
+        {
+          "at": "2026-05-27T03:50:42.031170+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=113"
+        },
+        {
+          "at": "2026-05-27T03:50:56.353984+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=115"
+        },
+        {
+          "at": "2026-05-27T03:51:18.411303+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation::escalation_required::Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.::Incident escalation level=critical: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=117"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-27T02:40:47.181817+00:00",
+      "last_seen": "2026-05-27T03:51:22.342956+00:00",
       "last_error": "Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Momentum watchdog status is needs_attention with actions: no_recent_reddit_post.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"

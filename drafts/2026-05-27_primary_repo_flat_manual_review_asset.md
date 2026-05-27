@@ -1,5 +1,5 @@
 # Ralph Workflow Manual Publisher Outreach Asset
-Generated: 2026-05-27T04:19:50
+Generated: 2026-05-27T05:32:00
 
 ## Why this exists now
 - The runtime cannot send these publisher/contact routes directly from this environment.
@@ -14,25 +14,7 @@ Generated: 2026-05-27T04:19:50
 - latest research / reddit monitor → current pain language around trust, verification, and morning-after review
 
 ## Execute these first
-### 1. TLDL
-- URL: https://www.tldl.io/resources/ai-coding-tools-2026
-- Hook: AI Coding Tools Compared (2026): Cursor vs Claude Code vs Copilot — Benchmarks & Pricing
-- Why this target: Comparison audience overlaps strongly with evaluators looking for autonomous coding workflows, not just single tools.
-- Suggested subject: Ralph Workflow for your next AI coding tools comparison refresh
-- Recommended next step: GitHub issue/PR path is now identified
-- Best human-first path: Use the site contact path first: https://www.tldl.io/about
-- Contact channels:
-  - about page: https://www.tldl.io/about
-  - website: https://www.tldl.io
-  - faq page: https://www.tldl.io/resources/tldl-faq
-  - GitHub issue: https://github.com/shenli/tldl/issues/new
-  - X/Twitter: https://x.com/shenli3514
-- Suggested short message:
-```text
-I liked AI Coding Tools Compared (2026): Cursor vs Claude Code vs Copilot — Benchmarks & Pricing. Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. Comparison audience overlaps strongly with evaluators looking for autonomous coding workflows, not just single tools. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
-```
-
-### 2. ComputingForGeeks
+### 1. ComputingForGeeks
 - URL: https://computingforgeeks.com/opencode-vs-claude-code-vs-cursor/
 - Hook: OpenCode vs Claude Code vs Cursor: AI Coding Agents Compared (2026)
 - Why this target: Large Linux/DevOps engineering audience already reading practical AI coding workflow comparisons.

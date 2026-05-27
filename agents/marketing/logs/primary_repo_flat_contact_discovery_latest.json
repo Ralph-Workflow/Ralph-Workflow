@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-27T00:48:21.278685+00:00",
+  "generated_at": "2026-05-27T03:59:38.483486+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -300,6 +300,133 @@
           "type": "x",
           "value": "https://x.com/sotaaz_lab",
           "label": "X/Twitter"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "SitePoint",
+      "article_url": "https://www.sitepoint.com/claude-code-vs-codex-2026/",
+      "root_url": "https://www.sitepoint.com/",
+      "hook": "Claude Code vs Codex: A Developer's 2026 Workflow Comparison",
+      "reason": "Large developer publication already comparing AI coding workflows, with clear editorial contact paths and a strong fit for workflow-layer follow-up.",
+      "outreach_subject": "Ralph Workflow for your next AI coding workflow comparison refresh",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://www.sitepoint.com/about-us",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://www.sitepoint.com/advertise",
+          "label": "advertise page"
+        },
+        {
+          "type": "website",
+          "value": "https://www.sitepoint.com/author/sitepointteam",
+          "label": "website"
+        },
+        {
+          "type": "email",
+          "value": "support@sitepoint.com",
+          "label": "email"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/discourse/discourse/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/billmousoulis",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/daxatron",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/MattMickiewicz",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/pageaffairs",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/sitepointdotcom",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/spiky_simon",
+          "label": "X/Twitter"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "Codersera",
+      "article_url": "https://codersera.com/blog/ai-coding-agents-complete-guide-2026/",
+      "root_url": "https://codersera.com/",
+      "hook": "AI Coding Agents in 2026: The Complete Guide",
+      "reason": "Fresh AI coding agent guide with strong evaluator intent and a public support path that can carry a Codeberg-first workflow addition.",
+      "outreach_subject": "Ralph Workflow for your next AI coding agents guide refresh",
+      "channels": [
+        {
+          "type": "email",
+          "value": "info@codersera.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://codersera.com/about-us",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://codersera.com/blog",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://codersera.com/blog/hire/hire-python-developer",
+          "label": "contact page"
+        },
+        {
+          "type": "email",
+          "value": "support@codersera.com",
+          "label": "email"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/anthropics/skills/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/codersera",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/codersera11",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/codersera",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/codersera1",
+          "label": "LinkedIn"
         }
       ],
       "recommended_next_step": "email/contact send path is now identified"

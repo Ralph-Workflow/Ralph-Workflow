@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-27T04:19:50.202667",
+  "timestamp": "2026-05-27T06:04:42.863011",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -188,7 +188,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-27T04:13:55.792801",
+    "timestamp": "2026-05-27T05:47:37.276007",
     "metrics": [
       {
         "platform": "GitHub",
@@ -410,8 +410,7 @@
       "No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
-      "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
-      "Some remaining publisher targets only expose non-runtime-executable channels (TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
+      "An active manual publisher handoff already covers (Codivox, ComputingForGeeks, Reddit reddit.com \u203a r/ai_agents \u203a genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents), so those targets should stay out of fresh packet selection until their review window expires.",
       "The primary-repo-flat publisher contact packet was already manually delivered in the current review window, so another packet refresh right now would be fake progress.",
       "A refreshed primary-repo-flat packet already has a live review window, so the loop should not re-select that same packet until the window expires or the target set materially changes.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
@@ -424,9 +423,9 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "3 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "4 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
-      "3 concrete distribution-architecture repair run(s) already hit this same guarded fingerprint."
+      "4 concrete distribution-architecture repair run(s) already hit this same guarded fingerprint."
     ],
     "owned_content_posts_last_36h": 1,
     "unsubmitted_directory_channels": [],
@@ -444,14 +443,11 @@
   },
   "distribution_execution": {
     "lane": "distribution_architecture_repair",
-    "action_type": "publisher_manual_review_channel_ready_outreach_asset",
-    "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_primary_repo_flat_manual_review_asset.md",
-    "summary": "Converted repeated empty-board architecture churn into a Codeberg-first manual publisher outreach asset for untouched human-executable contact routes.",
-    "targets_prepared": [
-      "TLDL",
-      "ComputingForGeeks"
-    ],
+    "action_type": "distribution_architecture_churn_guard_repair",
+    "status": "executed",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_060442_distribution_architecture_repair.md",
+    "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window.",
+    "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -462,7 +458,7 @@
     "live_external_action": false,
     "blocking_factors": []
   },
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_041950_publisher_manual_review_channel_ready_outreach_asset.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_060442_distribution_architecture_churn_guard_repair.json",
   "post_hold_release_schedule": {},
   "post_execution_distribution_lane": {
     "lane": "distribution_architecture_repair",
@@ -479,8 +475,7 @@
       "No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
-      "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
-      "Some remaining publisher targets only expose non-runtime-executable channels (TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
+      "An active manual publisher handoff already covers (Codivox, ComputingForGeeks, Reddit reddit.com \u203a r/ai_agents \u203a genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents), so those targets should stay out of fresh packet selection until their review window expires.",
       "The primary-repo-flat publisher contact packet was already manually delivered in the current review window, so another packet refresh right now would be fake progress.",
       "A refreshed primary-repo-flat packet already has a live review window, so the loop should not re-select that same packet until the window expires or the target set materially changes.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
@@ -493,9 +488,9 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "3 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "5 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
-      "3 concrete distribution-architecture repair run(s) already hit this same guarded fingerprint."
+      "5 concrete distribution-architecture repair run(s) already hit this same guarded fingerprint."
     ],
     "owned_content_posts_last_36h": 1,
     "unsubmitted_directory_channels": [],
