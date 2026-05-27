@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-27T22:25:00
+Generated: 2026-05-27T22:42:10
 Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
-- No active short review window remains, but the guarded empty-board fingerprint is still unchanged after a newer concrete repair already ran past the last guard pause; perform another concrete distribution-architecture repair now instead of logging another guard pause.
+- The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; perform another concrete distribution-architecture repair now instead of logging another guard pause.
 - 2 owned-content posts already shipped in the last 36 hours.
 - Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
@@ -28,7 +28,7 @@ Chosen lane: **distribution_architecture_repair**
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
-- 8 prior distribution-architecture repair run(s) already hit this same empty-board window.
+- 2 prior distribution-architecture repair run(s) already hit this same empty-board window.
 - A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
 
 ## Shared findings reused

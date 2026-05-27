@@ -1,5 +1,16 @@
 # Outreach Log
 
+## 2026-05-27 (Wednesday) — Reddit monitoring (20:48 UTC / 22:48 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-27_2248.md`
+- **Scan summary:** forced-refresh local monitor degraded to **12 scanned / 2 shortlisted** with **ok=1 / reddit_ip_blocked=3 / time_budget_exceeded=1**.
+- **Coverage note:** this was a **worse partial-visibility** pass than the earlier **12:45 CEST** and **21:15 CEST** runs, so I treated it as degraded telemetry rather than a new market truth. I kept the broader earlier same-day shortlist as the more reliable discussion picture and failed closed on posting.
+- **Current verdict:** still **not** a posting pass. The surviving threads were useful research, but honest RalphWorkflow mention-fit stayed **medium-low** and the retrieval layer got weaker, not stronger.
+- **Best current discussion fits from the degraded rerun:**
+  - `r/cybersecurity` — "The 12 ways AI agents fail in production. A taxonomy for security teams reviewing agent deployments"
+  - `r/AI_Agents` — "After 6 months of agent failures in production, I stopped blaming the model"
+- **Self-improving lesson:** keep **cross-community production-failure threads** in scope as research surfaces, but do **not** let a thinner later rerun overwrite a healthier earlier same-day content-first pass. If telemetry worsens, preserve the broader shortlist truth and fail closed on posting.
+- **Posting note:** No posting attempted. Research-first only while coverage remains partial and the later rerun is thinner than the earlier same-day pass.
+
 ## 2026-05-27 (Wednesday) — Reddit monitoring (19:15 UTC / 21:15 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-27_2115.md`
 - **Scan summary:** forced-refresh local monitor returned **47 scanned / 4 shortlisted** with **ok=5 / reddit_ip_blocked=2 / time_budget_exceeded=1**.
@@ -7306,4 +7317,8 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-27 22:06:06
+- **Note:** Momentum watch state: Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 22:39:17
 - **Note:** Momentum watch state: Reddit monitoring coverage is degraded.

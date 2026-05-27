@@ -1,18 +1,18 @@
 {
-  "timestamp": "2026-05-27T22:21:40.098791",
+  "timestamp": "2026-05-27T22:42:10.687203",
   "repair_types_seen": [],
-  "selected_lane": "distribution_architecture_guard_pause",
-  "selected_action_type": "distribution_architecture_guard_pause",
-  "execution_status": "skipped_repair",
+  "selected_lane": "distribution_architecture_repair",
+  "selected_action_type": "distribution_architecture_churn_guard_repair",
+  "execution_status": "executed",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_222140_distribution_architecture_guard_pause.md",
-  "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn.",
-  "expected_outcome": "Advance distribution via lane distribution_architecture_guard_pause without defaulting back to monitoring-only work.",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_224210_distribution_architecture_repair.md",
+  "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window. Refreshed stale manual execution packets so the next truthful slot can reuse current assets.",
+  "expected_outcome": "Advance distribution via lane distribution_architecture_repair without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
   "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
   "decision": {
-    "lane": "distribution_architecture_guard_pause",
-    "reason": "The guarded empty-board fingerprint is still unchanged and a newer concrete repair already ran after the last guard pause, but no live release-window metadata changed afterward; pause duplicate guard churn until a real board-truth change lands.",
+    "lane": "distribution_architecture_repair",
+    "reason": "The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; perform another concrete distribution-architecture repair now instead of logging another guard pause.",
     "reasons": [
       "2 owned-content posts already shipped in the last 36 hours.",
       "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
@@ -38,7 +38,7 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "8 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "2 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint."
     ],
     "owned_content_posts_last_36h": 2,
@@ -56,11 +56,11 @@
     "skip_curator_outreach": false
   },
   "execution": {
-    "lane": "distribution_architecture_guard_pause",
-    "action_type": "distribution_architecture_guard_pause",
-    "status": "skipped_repair",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_222140_distribution_architecture_guard_pause.md",
-    "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn.",
+    "lane": "distribution_architecture_repair",
+    "action_type": "distribution_architecture_churn_guard_repair",
+    "status": "executed",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_224210_distribution_architecture_repair.md",
+    "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window. Refreshed stale manual execution packets so the next truthful slot can reuse current assets.",
     "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",

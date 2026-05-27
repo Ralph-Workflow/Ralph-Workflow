@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-27T21:28:00",
+  "timestamp": "2026-05-27T22:42:10.687203",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -41,7 +41,7 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "5 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "2 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint."
     ]
   },
@@ -50,6 +50,6 @@
     "ok": true
   },
   "verification": {
-    "execution_board_fingerprint": "967b5acbb7f448ff1e0bb49ff243497c88d3ad57"
+    "execution_board_fingerprint": "8dc33ae8ea4df1ff39bc712959cdb3a7afb2c1e9"
   }
 }

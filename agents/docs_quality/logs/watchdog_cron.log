@@ -18585,3 +18585,83 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are tightly aligned to positioning. Clean journey, no internal leakage on top-level surfaces, copy is natural and uncluttered.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (GitHub mirror)",
+      "reason": "Opens with the exact tagline, calls itself an AI agent orchestrator, frames simple-core/complex-composition cleanly, mentions strong default workflow, routes to START_HERE first."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first-run page. Task fit guidance (good vs bad), result-first success criteria, clean install steps. No plumbing, no artifacts, no process receipts."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Docs switchboard routes by user intent, demotes proof to secondary, reinforces the simple-core story before routing anywhere."
+    },
+    {
+      "path": "reviewable-output.md",
+      "reason": "Riskiest page for internal leakage \u2014 executed correctly. Explicitly secondary ('supporting proof'), leads with working behavior then real checks, puts logs/artifacts last. No merge-decision or handoff framing."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with the positioning reference. Every surface keeps the same core framing (simple Ralph-loop \u2192 composable workflow \u2192 strong default \u2192 ambitious work), each file has a distinct non-overlapping role, the journey is coherent, and no internal plumbing leaks into top-level copy. The proof pages correctly position themselves as secondary supporting material rather than primary pitch.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Clean, marketable tagline-to-route-to-install flow. No internal leakage. Correctly frames GitHub as mirror, Codeberg as primary. Every sentence serves a clear purpose."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Result-first orientation (judge by what software does and what checks ran). Clear good/bad task fit. No artifact or workflow-plumbing language. Manages expectations without over-promising."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Intent-routed switchboard with distinct paths. 'Keep proof secondary' section shows awareness of the positioning guardrails. Promoted next-click pages all use consistent framing."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
