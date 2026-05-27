@@ -1,15 +1,14 @@
 {
-  "generated_at": "2026-05-27T06:54:01.104724",
-  "count": 27,
-  "total_logged_rows": 88,
-  "cadence_records_filtered": 61,
-  "recent_window_count": 2,
+  "generated_at": "2026-05-27T08:04:31.043214",
+  "count": 88,
+  "recent_window_count": 6,
   "by_account": {
-    "Informal-Salt827": 2
+    "unknown": 3,
+    "Informal-Salt827": 3
   },
   "by_community": {
-    "r/AI_Agents": 1,
-    "unknown": 1
+    "unknown": 5,
+    "r/AI_Agents": 1
   },
   "top_title_words": [
     "reddit",
@@ -25,28 +24,60 @@
     "state",
     "ralph",
     "workflow",
-    "failure",
-    "code",
-    "review",
-    "answer",
-    "changed",
-    "coding",
-    "merge",
     "team",
     "worth",
     "problem",
-    "thread",
-    "angle",
-    "agree",
-    "production",
-    "useful"
+    "failure",
+    "answer",
+    "changed",
+    "merge",
+    "code",
+    "review",
+    "coding",
+    "which",
+    "five",
+    "made",
+    "difference",
+    "thinking"
   ],
   "phrase_hits": {
-    "diff": 1
+    "diff": 2
   },
-  "repeated_openings": [],
-  "account_switches": [],
+  "repeated_openings": [
+    "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+  ],
+  "account_switches": [
+    {
+      "from": "unknown",
+      "to": "Informal-Salt827",
+      "timestamp": "2026-05-26T14:55:18.485562"
+    }
+  ],
   "recent_posts": [
+    {
+      "timestamp": null,
+      "account": "unknown",
+      "community": "unknown",
+      "title": "",
+      "comment_url": null,
+      "opening_line": ""
+    },
+    {
+      "timestamp": null,
+      "account": "unknown",
+      "community": "unknown",
+      "title": "",
+      "comment_url": null,
+      "opening_line": ""
+    },
+    {
+      "timestamp": null,
+      "account": "unknown",
+      "community": "unknown",
+      "title": "",
+      "comment_url": null,
+      "opening_line": ""
+    },
     {
       "timestamp": "2026-05-26T14:55:18.485562",
       "account": "Informal-Salt827",
@@ -62,9 +93,19 @@
       "title": "",
       "comment_url": "https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small",
       "opening_line": "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+    },
+    {
+      "timestamp": "2026-05-26T14:47:44.016876+00:00",
+      "account": "Informal-Salt827",
+      "community": "unknown",
+      "title": "",
+      "comment_url": "https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small",
+      "opening_line": "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
     }
   ],
   "recommendations": [
+    "Avoid reusing the same opening line; vary the first paragraph deliberately.",
+    "Treat pre-switch Clear-Past7954 posts as historical only; future retros and posting rules should optimize for the currently allowed account only.",
     "Before each autopost, compare the candidate body against the last 3 logged bodies and rewrite if the opening, structure, or closing feel too similar.",
     "Score opportunities not just on topic fit but on whether they create a distinctly new reply angle versus existing logged comments."
   ]

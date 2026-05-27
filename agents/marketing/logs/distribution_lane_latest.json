@@ -1,6 +1,6 @@
 {
-  "lane": "distribution_architecture_repair",
-  "reason": "The same primary-repo-flat publisher packet keeps getting regenerated as prepared-only follow-through without entering a live delivery window; repair the distribution architecture now instead of refreshing that handoff again.",
+  "lane": "primary_repo_flat_contact_handoff_packet",
+  "reason": "A current Codeberg-first publisher contact packet already exists for fresh primary-repo-flat targets; reuse that packet as the truthful follow-through surface instead of stalling behind another measurement hold or churn guard.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "1 owned-content posts already shipped in the last 36 hours.",
@@ -18,7 +18,6 @@
     "No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.",
     "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
     "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
-    "A channel-ready manual publisher outreach asset already exists (TLDL), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.",
     "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
     "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
     "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (TLDL, Requesty, SOTAAZ), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",

@@ -7,8 +7,12 @@
   "selected_action_type": "distribution_architecture_guard_pause",
   "artifact_path": "/tmp/guard-pause.md",
   "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md",
-  "execution_board_targets": [],
-  "execution_board_fingerprint": "fffa32ef55b7ea6d152a0a3edd57b685244c22c2",
+  "execution_board_targets": [
+    "Requesty",
+    "SOTAAZ",
+    "SitePoint"
+  ],
+  "execution_board_fingerprint": "0576b6b06f64d1c07159b103f685587a95da7997",
   "short_review_window_release_at": "2026-05-27T06:53:36",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.",
@@ -36,7 +40,7 @@
       "distribution_architecture_guard_pause",
       "distribution_architecture_repair"
     ],
-    "board_target_count": 0
+    "board_target_count": 3
   },
   "fake_green_guard": "This runner only counts if it refreshes the consolidated execution board and either advances one of its executable lanes or explicitly records that no truthful do-now lane exists yet.",
   "shared_findings_used": [

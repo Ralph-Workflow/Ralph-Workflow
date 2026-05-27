@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
 Generated: 2026-05-25T18:53:00
-Chosen lane: **distribution_architecture_repair**
+Chosen lane: **primary_repo_flat_contact_handoff_packet**
 
 ## Why this lane
-- The same primary-repo-flat publisher packet keeps getting regenerated as prepared-only follow-through without entering a live delivery window; repair the distribution architecture now instead of refreshing that handoff again.
+- A current Codeberg-first publisher contact packet already exists for fresh primary-repo-flat targets; reuse that packet as the truthful follow-through surface instead of stalling behind another measurement hold or churn guard.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 2 directory submissions already shipped in the last 24 hours.
@@ -20,7 +20,6 @@ Chosen lane: **distribution_architecture_repair**
 - No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.
 - Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.
-- A channel-ready manual publisher outreach asset already exists (TLDL), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.
 - An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.
 - Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.
 - Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (TLDL, Requesty, SOTAAZ), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.
@@ -47,8 +46,9 @@ Chosen lane: **distribution_architecture_repair**
 ## Recent owned-content already shipped
 - Distribution lane execution: owned_content (owned_content)
 
-## Immediate lane-architecture repair work
-- Do not emit another measurement hold once the short review window has already cleared
-- Treat this as a process-repair slot: replace stale lane-selection logic, prompts, or scheduling rules that still point back to idle holds
-- Preserve Codeberg as the primary CTA while forcing the next post-hold slot to choose either a truthful untouched lane or a concrete runtime repair
-- Use the execution board and shared findings as the truth source for what is actually blocked, exhausted, or already delivered
+## Immediate primary-repo-flat contact handoff work
+- Reuse `primary_repo_flat_contact_discovery_latest.json` and `primary_repo_flat_contact_handoff_packet_latest.md` as the canonical publisher-contact asset pair
+- Focus on the fresh developer-native publishers discovered in the primary-repo-flat repair, not the saturated same-family curator queue
+- Keep each message Codeberg-first, concrete about workflow pain, and comparison/citation oriented rather than generic outbound copy
+- Refresh this packet only when the discovered target set or public contact routes materially change
+- Treat this as a different executable lane from the blocked GitHub-PR curator packet, not another measurement-hold note

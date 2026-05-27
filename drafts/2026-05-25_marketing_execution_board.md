@@ -16,15 +16,12 @@ Generated: 2026-05-25T18:53:00
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
-- No do-now handoff packet is currently truthful in this review window.
-- Fresh publisher outreach already shipped in the current review window for: AI Saying, ToolChase.
-- The current primary-repo-flat publisher contact packet was already prepared 9 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
-- Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
-- Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.
-- Comparison backlink packet exists, but it was already manually delivered in the current review window.
-- Directory secondary-surface repair already shipped in the current review window; wait for the follow-up date or a target-set change before resurfacing it.
-- StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.
-- If this board is still empty after one of these blockers clears, the lane architecture needs another repair.
+### 1. Primary-repo-flat publisher contact packet
+- When: After short-window congestion clears (2026-05-25T23:07:41)
+- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
+- Targets: Requesty, SOTAAZ, SitePoint
+- Why this matters: Fresh developer-native publisher contacts are already discovered for the flat-Codeberg repair lane.
+
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
 - adoption_metrics_latest.json → Codeberg movement remains the primary success gate
