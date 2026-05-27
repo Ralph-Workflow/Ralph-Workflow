@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-05-27T11:57:53+02:00",
+  "type": "install_page_conversion_cta_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "title": "Strengthen install-page Codeberg-first evaluator path",
+  "repo": "/home/mistlight/.openclaw/workspace/Ralph-Site",
+  "commit": "ee8b9c7",
+  "expected_outcome": "Install-page traffic gets a clearer Codeberg-first path into first-task selection and real overnight evaluation.",
+  "measurement_window": "Review install-page engagement and downstream Codeberg-linked movement within 7 days.",
+  "shared_findings_used": [
+    "ADOPTION_FUNNEL_NEXT.md",
+    "marketing_workflow_audit_latest.json",
+    "distribution_lane_latest.json",
+    "market_intelligence_latest.json",
+    "marketing_2026-05-27_114220_comparison_page_conversion_cta_repair.md",
+    "marketing_2026-05-27_115319_comparison_page_conversion_guardrail.md"
+  ],
+  "changes": [
+    "Added a Best evaluator path block to /install",
+    "Linked Codeberg primary repo, first-task guide, and first-task prompt templates from the install page",
+    "Added request-spec coverage for the install-page evaluator path"
+  ],
+  "verification": [
+    "RAILS_ENV=test PGHOST=/home/mistlight/.openclaw/workspace/Ralph-Site/tmp/pgsocket PGPORT=55432 ./bin/with-ruby bundle exec rspec spec/requests/pages_spec.rb",
+    "./bin/with-ruby ruby -c spec/requests/pages_spec.rb",
+    "git push origin main"
+  ]
+}

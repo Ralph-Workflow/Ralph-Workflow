@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-27T11:02:58.754075+02:00",
+  "checked_at": "2026-05-27T11:58:55.185877+02:00",
   "verdict": "qualified_pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
@@ -41,7 +41,7 @@
     {
       "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
       "status": "verified",
-      "details": "recent_failures=0, consecutive_passes_since_last_fail=24"
+      "details": "recent_failures=0, consecutive_passes_since_last_fail=25"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -49,9 +49,9 @@
       "details": "market_intelligence_consumption_latest.json contains acceptable runtime proof for agents/marketing/run.py and agents/marketing/reddit_monitor.py."
     },
     {
-      "claim": "marketing learning remains outcome-driven rather than activity-only",
+      "claim": "marketing audit still reports an owned measurable bottleneck",
       "status": "verified",
-      "details": "marketing_workflow_audit_latest.json keeps the bottleneck explicit and ties repairs to Codeberg adoption movement."
+      "details": "marketing_workflow_audit_latest.json current_bottleneck='conversion_to_free_use'."
     },
     {
       "claim": "architecture escalation system is independently sound even though an external domain blocker remains unresolved",
@@ -89,14 +89,14 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "Marketing audit keeps the current bottleneck explicit as 'distribution_and_message_to_primary_repo_conversion'."
+      "summary": "Marketing audit keeps the current bottleneck explicit as 'conversion_to_free_use'."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]

@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-05-27T12:16:21+02:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "repo_conversion_proof_asset",
+    "channel": "repo_conversion_proof_asset",
+    "title": "Repo conversion proof asset: tomorrow-morning scorecard",
+    "draft": "/home/mistlight/.openclaw/workspace/content/examples/tomorrow_morning_scorecard.md"
+  },
+  "why_this_action": {
+    "summary": "Conversion to free use is still the bottleneck, the execution board has no truthful do-now external packet in the current review window, and a durable repo-first evaluator scorecard is a real do-now asset that improves the Codeberg-first trial path immediately.",
+    "supporting_reasons": [
+      "ADOPTION_FUNNEL_NEXT.md names proof assets and the free-use path as the highest-priority adoption work.",
+      "marketing_workflow_audit_latest.json marks conversion_to_free_use as the current bottleneck and warns against repeating same-family publisher churn during overlapping measurement windows.",
+      "marketing_execution_board_latest.md says there is no truthful do-now packet in the current review window, so this slot needed either a different executable lane or a concrete architecture/process repair.",
+      "market_intelligence_latest.json preserves the Codeberg-first / GitHub-mirror positioning and four core truths reused in the new asset."
+    ],
+    "shared_findings_used": [
+      "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "drafts/marketing_execution_board_latest.md",
+      "agents/marketing/logs/market_intelligence_latest.json"
+    ],
+    "targets_prepared": [
+      "README.md",
+      "START_HERE.md",
+      "docs/README.md",
+      "docs/first-task-guide.md",
+      "content/guides/review_ai_coding_output_before_merge.md",
+      "content/examples/tomorrow_morning_scorecard.md"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "summary": "Shipped a new Codeberg-first tomorrow-morning scorecard proof asset and linked it into the repo-first trial path so evaluators can judge the first run in 10 minutes instead of trusting an agent summary.",
+    "targets_prepared": [
+      "README.md",
+      "START_HERE.md",
+      "docs/README.md",
+      "docs/first-task-guide.md",
+      "content/guides/review_ai_coding_output_before_merge.md",
+      "content/examples/tomorrow_morning_scorecard.md"
+    ],
+    "live_external_action": false,
+    "outcome_ready": true,
+    "blocking_factors": []
+  },
+  "measurement_contract": {
+    "expected_outcome": "Higher-quality Codeberg-first evaluator conversion from repo traffic that is already arriving during current external measurement windows.",
+    "review_window": "2026-06-01T23:11:13+02:00 for first-path engagement review; 2026-06-08T23:11:13+02:00 for repo-visit review.",
+    "replacement_condition": "If Codeberg movement and evaluator-path clarity are still flat after the current Apollo review window, replace this proof-asset angle with a different repo-first conversion surface rather than repeating the same docs pass."
+  },
+  "verification": {
+    "checks": [
+      "Confirmed the new scorecard file exists with Codeberg-first routing and a concrete 10-minute checklist.",
+      "Confirmed README.md links the new scorecard in the main route-to-use list.",
+      "Confirmed START_HERE.md, docs/README.md, and docs/first-task-guide.md all link the new scorecard."
+    ]
+  }
+}

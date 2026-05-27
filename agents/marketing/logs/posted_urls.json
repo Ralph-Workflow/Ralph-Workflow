@@ -515,7 +515,19 @@
       "error": null,
       "draft_hash": "463324ac7fcf584cdefbda1eaeeb921e84b8516a9a0e831b63ca66493f9c0450",
       "experiment_id": "2026-05-27-unattended_agent"
+    },
+    {
+      "date": "2026-05-27",
+      "draft": "2026-05-27_review_ai_coding_output_before_merge_telegraph.md",
+      "title": "Review AI Coding Output Before Merge",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Review-AI-Coding-Output-Before-Merge-05-27",
+      "error": null,
+      "draft_hash": "10e2d5cc4e87b9d04f6c5f340837155001bf340802ca6d3e44882c2610ee020f",
+      "source_path": "/home/mistlight/.openclaw/workspace/content/guides/review_ai_coding_output_before_merge.md"
     }
   ],
-  "last_run": "2026-05-27T08:07:09.284627"
+  "last_run": "2026-05-27T12:28:24.163225"
 }
