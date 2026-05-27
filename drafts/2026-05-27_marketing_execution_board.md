@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-27T07:44:00
+Generated: 2026-05-27T09:16:32
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -7,18 +7,20 @@ Generated: 2026-05-27T07:44:00
 - Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
 ## Active review windows
-- Apollo next review: 2026-06-02T07:23:34.700335+02:00
-- Apollo launch review: 2026-06-02T07:23:34.700335+02:00
+- Apollo next review: 2026-05-25T23:11:13.732870+02:00
+- Apollo launch review: 2026-06-01T23:11:13.732870+02:00
+- Short review-window congestion clears at: 2026-05-27T14:26:29
+- Post-hold marketer rerun scheduled: 2026-05-27T14:26:29
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
-### 1. Primary-repo-flat publisher contact packet
+### 1. Apollo outcome-readiness review packet
 - When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
-- Targets: Requesty, SOTAAZ, SitePoint
-- Why this matters: Fresh developer-native publisher contacts are already discovered for the flat-Codeberg repair lane.
+- Packet: /home/mistlight/.openclaw/workspace/drafts/apollo_launch_handoff_packet_latest.md
+- Targets: Ralph Workflow curator follow-up — Codeberg CTA
+- Why this matters: Apollo already passed its first review checkpoint and is still not outcome-ready, so the next truthful step is a same-day live-state review instead of another empty-board hold.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing

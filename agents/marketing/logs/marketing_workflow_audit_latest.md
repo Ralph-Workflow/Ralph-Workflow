@@ -1,19 +1,20 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-27T07:09:39.221666
+- Generated: 2026-05-27T09:17:31.183074
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
-- Reddit posts analyzed: **2**
+- Reddit posts analyzed: **6**
 
 ## Why this is the bottleneck
 - Owned content and outreach exist, but repo/public adoption signals are still low.
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
-- The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains reddit_comment_published; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (reddit_comment_published), so the system is still shipping output even though outcome movement is not visible yet.
+- Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
+- 4 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
+- The most recent runtime activity was apollo_launch_handoff_packet, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
+- The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.
 - A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
-- Apollo managed outbound is already inside an active measurement window until 2026-06-02T07:23:34.700335+02:00, so the loop should not repackage the same lane before that checkpoint.
 
 ## What actually worked
 - No meaningful tactic produced a trustworthy win in this window.
@@ -23,22 +24,27 @@
 - Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface.
 
 ## What is repetitive
+- Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.
+- 4 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.
 - The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 7 times inside the last 48 hours.
 
 ## What is low-signal
-- Recent live external action exists (reddit_comment_published), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Recent live external action exists (publisher_email_outreach), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 
 ## What should change now
 - Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.
 - REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
+- HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.
 - Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
 ## Observed risks
-- No exact repeated outreach opening detected in the latest audit inputs.
+- Repetition risk in outreach opening: "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
 - Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
+- Failing tactic detected: same_family_publisher_overlap
+- Dormant risk parked for now: reddit_style_repetition_suspended_while_channel_blocked
 
 ## Outcome evaluation
 - GitHub: samples=9, stars +0, watchers +0, forks +0
@@ -52,6 +58,10 @@
   - Repair state: pending_measurement
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
+- **same_family_publisher_overlap** (tactic) → HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.
+  - Repair state: needs_execution
+  - Kill condition: Another audit adds more same-family publisher outreach before the current reply/review windows have materially aged or produced evidence
+  - Success metric: Next execution lane is not another same-day publisher-contact burst and produces a cleaner measurement path toward Codeberg movement
 - **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
   - Repair state: pending_measurement
   - Kill condition: N/A (mirror, not primary)
@@ -60,12 +70,11 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
 
 ## Latest executed marketing action
-- Type: reddit_comment_published
-- Title: Reddit comment published: Reddit reddit.com › r/cursor › after months with ai coding agents, these 5 small workflow changes made the biggest difference r/cursor
-- Status: published (ok=True)
+- Type: publisher_email_outreach
+- Title: publisher email outreach
+- Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_164735_reddit_comment_published.json
-- URL: https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_codersera_publisher_outreach.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

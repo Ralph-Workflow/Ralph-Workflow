@@ -1,5 +1,5 @@
 # Apollo Launch / Send Confirmation Handoff Packet
-Generated: 2026-05-26T02:18:00
+Generated: 2026-05-27T09:16:32
 
 ## Why this exists now
 - Apollo already passed its first launch checkpoint, but the sequence is still not outcome-ready.
@@ -22,7 +22,7 @@ Generated: 2026-05-26T02:18:00
 ## Canonical packet to use
 - Launch packet: /home/mistlight/.openclaw/workspace/drafts/apollo_sequence_launch_packet_latest.md
 - Launch log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_apollo_sequence_launch.json
-- Latest verification log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_231113_apollo_outbound_verification.json
+- Latest verification log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072359_apollo_outbound_verification.json
 
 ## Do this next
 - Open Apollo on the logged sequence/list and verify whether the sequence is actually active, paused, blocked, or never launched.

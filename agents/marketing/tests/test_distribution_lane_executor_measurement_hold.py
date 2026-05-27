@@ -1288,6 +1288,57 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertEqual(rows[0]['status'], 'sent_via_email_fallback')
         self.assertEqual(rows[0]['last_contact_path'], 'email:support@sitepoint.com')
 
+    def test_execution_board_hides_primary_repo_flat_packet_when_recent_outreach_target_uses_long_title(self):
+        now = datetime(2026, 5, 27, 8, 39, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            (log_dir / 'primary_repo_flat_contact_discovery_latest.json').write_text(
+                json.dumps({
+                    'targets': [
+                        {
+                            'target': 'SitePoint',
+                            'channels': [
+                                {'type': 'email', 'value': 'support@sitepoint.com', 'label': 'email'},
+                            ],
+                        },
+                    ],
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md').write_text(
+                '# publisher packet\n\n### 1. SitePoint\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-24_sitepoint_publisher_outreach.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T10:46:12+02:00',
+                    'action_type': 'publisher_email_outreach',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                    'target': 'SitePoint — AI Coding Tools Comparison 2026',
+                    'recipient': 'support@sitepoint.com',
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', log_dir / 'primary_repo_flat_contact_discovery_latest.json'):
+                board_path, targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertEqual(targets, [])
+        self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertNotIn('Targets: SitePoint', board_text)
+
     def test_active_measurement_hold_becomes_follow_through_not_new_hold(self):
         now = datetime(2026, 5, 24, 5, 20, 0)
         decision = LaneDecision(

@@ -11,6 +11,7 @@ Self-improving SEO loop:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -49,6 +50,9 @@ MARKET_INTELLIGENCE_FILE = LOG_DIR / "market_intelligence_latest.json"
 PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH = LOG_DIR / "primary_repo_flat_contact_discovery_latest.json"
 PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_SCRIPT_PATH = AGENTS_DIR / "primary_repo_flat_contact_discovery.py"
 PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_STALE_AFTER = timedelta(hours=6)
+PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW = timedelta(hours=48)
+PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD = 2
+PRIMARY_REPO_FLAT_REPEAT_REFRESH_SUPPRESSION_WINDOW = timedelta(hours=12)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 BLOCKED_CHANNELS = {
@@ -653,32 +657,108 @@ def _load_json_file(path: Path) -> dict[str, Any]:
         return {}
 
 
+def _stable_json_fingerprint(payload: Any) -> str:
+    try:
+        normalized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    except TypeError:
+        normalized = json.dumps(str(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+
+
+def _normalized_target_list(targets: Iterable[str]) -> list[str]:
+    return [str(target).strip() for target in targets if str(target).strip()]
+
+
+def _recent_primary_repo_flat_repeat_refresh_matches_current_state(
+    *,
+    now: datetime,
+    discovery_generated_at: str | None,
+    discovery_fingerprint: str,
+    board_targets_before: list[str],
+) -> bool:
+    cutoff = now - PRIMARY_REPO_FLAT_REPEAT_REFRESH_SUPPRESSION_WINDOW
+    normalized_before = _normalized_target_list(board_targets_before)
+    for path in LOG_DIR.glob("marketing_*.json"):
+        payload = _load_json_file(path)
+        chosen_action = payload.get("chosen_action") if isinstance(payload.get("chosen_action"), dict) else {}
+        action_type = str(
+            chosen_action.get("type")
+            or payload.get("type")
+            or payload.get("action_type")
+            or ""
+        ).strip()
+        if action_type != "primary_repo_flat_contact_discovery_staleness_repair":
+            continue
+        timestamp = parse_iso_date(str(payload.get("timestamp") or payload.get("timestamp_utc") or "").strip())
+        if timestamp is None:
+            try:
+                timestamp = datetime.fromtimestamp(path.stat().st_mtime)
+            except OSError:
+                continue
+        if timestamp < cutoff:
+            continue
+        why = payload.get("why_this_action") if isinstance(payload.get("why_this_action"), dict) else {}
+        if str(why.get("refresh_trigger") or "").strip() != "prepared_only_packet_repeat":
+            continue
+        logged_before = _normalized_target_list(why.get("board_targets_before") or [])
+        if logged_before != normalized_before:
+            continue
+        logged_generated_at = str(why.get("stale_generated_at") or "").strip() or None
+        if logged_generated_at and discovery_generated_at and logged_generated_at != discovery_generated_at:
+            continue
+        verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
+        logged_fingerprint = str(verification.get("discovery_artifact_fingerprint") or "").strip()
+        if logged_fingerprint and logged_fingerprint != discovery_fingerprint:
+            continue
+        return True
+    return False
+
+
 def _write_primary_repo_flat_contact_discovery_refresh_log(
     *,
     now: datetime,
     discovery_generated_at: str | None,
+    discovery_fingerprint: str,
     board_targets_before: list[str],
     board_targets_after: list[str],
     refresh_result: subprocess.CompletedProcess[str],
+    refresh_trigger: str = "stale_artifact",
+    prep_repeat_count: int = 0,
 ) -> Path:
     action_type = "primary_repo_flat_contact_discovery_staleness_repair"
     json_path = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d_%H%M%S')}_{action_type}.json"
     md_path = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d_%H%M%S')}_{action_type}.md"
     ok = refresh_result.returncode == 0
-    summary = (
-        "Refreshed stale primary-repo-flat contact discovery before lane selection so the current execution board reused a fresh publisher-contact artifact."
-        if ok else
-        "Tried to refresh stale primary-repo-flat contact discovery before lane selection, but the refresh failed."
-    )
+    stale_trigger = refresh_trigger == "stale_artifact"
+    if ok:
+        summary = (
+            "Refreshed stale primary-repo-flat contact discovery before lane selection so the current execution board reused a fresh publisher-contact artifact."
+            if stale_trigger else
+            "Refreshed primary-repo-flat contact discovery before lane selection because the same prepared-only publisher packet kept recurring without a live delivery window."
+        )
+    else:
+        summary = (
+            "Tried to refresh stale primary-repo-flat contact discovery before lane selection, but the refresh failed."
+            if stale_trigger else
+            "Tried to refresh primary-repo-flat contact discovery after repeated prepared-only publisher packet churn, but the refresh failed."
+        )
     payload = {
         "timestamp": now.isoformat(),
         "type": action_type,
+        "chosen_action": {
+            "type": action_type,
+            "channel": "primary_repo_flat_contact_discovery",
+        },
         "status": "executed" if ok else "failed",
         "summary": summary,
         "why_this_action": {
             "findings": [
                 "the execution board had no truthful do-now packet in the active review window",
-                "the primary-repo-flat contact discovery artifact was stale enough to reduce the odds of the scheduled post-hold rerun finding a fresh publisher-contact lane",
+                (
+                    "the primary-repo-flat contact discovery artifact was stale enough to reduce the odds of the scheduled post-hold rerun finding a fresh publisher-contact lane"
+                    if stale_trigger else
+                    f"the same prepared-only primary-repo-flat publisher packet had already recurred {prep_repeat_count} time(s) in the last 48 hours without a truthful live-delivery window"
+                ),
             ],
             "shared_findings_used": [
                 "marketing_execution_board_latest.md: no truthful do-now packet existed in the current review window",
@@ -687,6 +767,8 @@ def _write_primary_repo_flat_contact_discovery_refresh_log(
                 "adoption_metrics_latest.json: Codeberg movement remains the primary success gate",
             ],
             "stale_generated_at": discovery_generated_at,
+            "refresh_trigger": refresh_trigger,
+            "prepared_only_repeat_count": prep_repeat_count,
             "board_targets_before": board_targets_before,
             "board_targets_after": board_targets_after,
         },
@@ -700,6 +782,11 @@ def _write_primary_repo_flat_contact_discovery_refresh_log(
             "board_target_count_after": len(board_targets_after),
             "live_external_action": False,
         },
+        "verification": {
+            "discovery_artifact_fingerprint": discovery_fingerprint,
+            "board_targets_before_fingerprint": _stable_json_fingerprint(_normalized_target_list(board_targets_before)),
+            "board_targets_after_fingerprint": _stable_json_fingerprint(_normalized_target_list(board_targets_after)),
+        },
     }
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     md_lines = [
@@ -712,7 +799,11 @@ def _write_primary_repo_flat_contact_discovery_refresh_log(
         "## Why this ran",
         "- The execution board had no truthful do-now packet in the active review window.",
         f"- The latest publisher-contact discovery artifact timestamp was: {discovery_generated_at or 'missing'}.",
-        "- Refreshing the shared publisher-contact artifact is a valid hold-window action because it improves the next rerun's odds without faking a fresh delivery lane.",
+        (
+            "- Refreshing the shared publisher-contact artifact is a valid hold-window action because it improves the next rerun's odds without faking a fresh delivery lane."
+            if stale_trigger else
+            f"- The same prepared-only publisher packet had already recurred {prep_repeat_count} time(s) in the last 48 hours, so the next rerun needed a fresh target search instead of another packet refresh."
+        ),
         "",
         "## Result",
         f"- Status: {'executed' if ok else 'failed'}",
@@ -725,6 +816,40 @@ def _write_primary_repo_flat_contact_discovery_refresh_log(
     return json_path
 
 
+def _primary_repo_flat_prepared_only_repeat_count(now: datetime) -> int:
+    cutoff = now - PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW
+    count = 0
+    for path in LOG_DIR.glob("marketing_*.json"):
+        payload = _load_json_file(path)
+        chosen_action = payload.get("chosen_action")
+        if not isinstance(chosen_action, dict):
+            chosen_action = {}
+        action_type = str(
+            (chosen_action.get("type"))
+            or payload.get("type")
+            or payload.get("action_type")
+            or ""
+        ).strip()
+        if action_type not in {
+            "primary_repo_flat_contact_handoff_packet_execution",
+            "primary_repo_flat_contact_handoff_follow_through",
+        }:
+            continue
+        timestamp = parse_iso_date(str(payload.get("timestamp") or payload.get("timestamp_utc") or "").strip())
+        if timestamp is None:
+            try:
+                timestamp = datetime.fromtimestamp(path.stat().st_mtime)
+            except OSError:
+                continue
+        if timestamp < cutoff:
+            continue
+        result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+        if bool(result.get("live_external_action")):
+            continue
+        count += 1
+    return count
+
+
 def _refresh_primary_repo_flat_contact_discovery_for_empty_board(
     *,
     now: datetime,
@@ -735,8 +860,28 @@ def _refresh_primary_repo_flat_contact_discovery_for_empty_board(
         return execution_board_path, execution_board_targets, None
 
     discovery_payload = _load_json_file(PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH)
-    generated_at = parse_iso_date(str(discovery_payload.get("generated_at") or "").strip())
-    if generated_at is not None and now - generated_at < PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_STALE_AFTER:
+    generated_at_value = str(discovery_payload.get("generated_at") or "").strip() or None
+    generated_at = parse_iso_date(generated_at_value)
+    discovery_fingerprint = _stable_json_fingerprint(discovery_payload)
+    prep_repeat_count = _primary_repo_flat_prepared_only_repeat_count(now)
+    forced_repeat_refresh = prep_repeat_count >= PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD
+    if (
+        forced_repeat_refresh
+        and generated_at is not None
+        and now - generated_at < PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_STALE_AFTER
+        and _recent_primary_repo_flat_repeat_refresh_matches_current_state(
+            now=now,
+            discovery_generated_at=generated_at_value,
+            discovery_fingerprint=discovery_fingerprint,
+            board_targets_before=execution_board_targets,
+        )
+    ):
+        return execution_board_path, execution_board_targets, None
+    if (
+        generated_at is not None
+        and now - generated_at < PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_STALE_AFTER
+        and not forced_repeat_refresh
+    ):
         return execution_board_path, execution_board_targets, None
 
     refresh_result = subprocess.run(
@@ -753,10 +898,13 @@ def _refresh_primary_repo_flat_contact_discovery_for_empty_board(
 
     log_path = _write_primary_repo_flat_contact_discovery_refresh_log(
         now=now,
-        discovery_generated_at=str(discovery_payload.get("generated_at") or "").strip() or None,
+        discovery_generated_at=generated_at_value,
+        discovery_fingerprint=discovery_fingerprint,
         board_targets_before=list(execution_board_targets),
         board_targets_after=list(refreshed_board_targets),
         refresh_result=refresh_result,
+        refresh_trigger="prepared_only_packet_repeat" if forced_repeat_refresh else "stale_artifact",
+        prep_repeat_count=prep_repeat_count,
     )
     return refreshed_board_path, refreshed_board_targets, log_path
 

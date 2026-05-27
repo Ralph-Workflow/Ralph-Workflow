@@ -1,0 +1,22 @@
+Hi,
+
+I liked your piece "2026 AI Coding Tool War: Cursor vs Claude Code vs Codex — Hands-On Comparison." It is aimed at exactly the kind of reader who already knows the individual tools and is really trying to answer a harder question: what workflow actually holds up once the task is too big to babysit.
+
+That is why I wanted to suggest Ralph Workflow for a future refresh, comparison, or follow-up reference.
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator. It runs with the agent tools people already use on their own machine, but the point is not just "more agent autonomy." The point is getting a morning-after result that is finished, tested, and reviewable instead of a long confident transcript.
+
+The fit with your audience seems strong because your article already compares hands-on coding tools, while Ralph Workflow sits one layer up: planning, development, verification, and explicit finish-state handoff for work that is too risky to trust blindly.
+
+Canonical repo (primary): https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+A few public proof surfaces already exist if helpful for evaluation:
+- https://toolwise.ai/tools/ralph-workflow
+- https://saashub.com/ralph-workflow
+- https://claude-code-alternatives.com/cli-agents/ralph-workflow/
+
+If you keep updating the comparison or maintain related references around AI coding workflows, I think Ralph Workflow would be a strong fit.
+
+Thanks,
+Ralph Workflow

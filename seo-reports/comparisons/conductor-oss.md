@@ -6,7 +6,7 @@
 
 | | **Ralph Workflow** | **Conductor OSS** |
 |---|---|---|
-| **What it is** | Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. | Enterprise-grade workflow orchestration for AI agents |
+| **What it is** | Unattended multi-agent orchestration | Enterprise-grade workflow orchestration for AI agents |
 | **License** | AGPL (source) / CC0 (outputs) | Free / Open source (Apache 2.0) |
 | **Setup** | TOML config files, no cloud required | Varies |
 | **Vendor lock-in** | None — own your config | Varies |
@@ -15,10 +15,10 @@
 
 **Ralph Workflow** is a **Conductor OSS** *alternative* for teams that want:
 
-- A simple Ralph-loop core composed into bigger workflow stages
-- A strong default workflow for writing software
+- Multi-agent orchestration where different phases use different model families
 - Cost control via model routing (cheap models where sufficient)
-- A workflow you can use as-is or build on top
+- Policy-defined workflows anyone can read and version in git
+- True unattended execution with artifact-based completion criteria
 
 **Conductor OSS** is better for:
 
@@ -39,6 +39,7 @@
 | Policy-defined config (TOML) | ✅ | ❌ |
 | Checkpoint / resume | ✅ | ⚠️ |
 | MCP support | ✅ | ✅ |
+| Artifact-based completion | ✅ | ❌ |
 | Parallel work units | ✅ | ✅ |
 | Open source | ✅ | ✅ |
 | Self-hosted | ✅ | ⚠️ |
@@ -46,15 +47,10 @@
 ## Why Choose Ralph Workflow Over Conductor OSS
 
 Conductor OSS focuses on Enterprise-grade workflow orchestration for AI agents.
-Ralph Workflow's focus is **a simple core loop composed into a stronger software workflow**.
+Ralph Workflow's focus is **multi-agent phase routing with cost arbitrage and policy-defined orchestration**.
 
-Ralph Workflow's key differentiator is that the core stays simple while the surrounding workflow remains composable,
-so teams can use the default path or build their own system on top.
-
-Key advantages:
-- **Cost arbitrage**: Route work to cheap models where sufficient, save frontier models for what matters
-- **Composable workflow**: planning, development, verification, and follow-up each loop cleanly
-- **Policy as code**: Your workflow is a TOML file you diff, version, and audit
+Ralph Workflow's key differentiator is the ability to compose multiple agents (Claude, Codex,
+OpenCode) into a single unattended pipeline where each phase uses the most cost-effective model.
 
 ## Try Ralph Workflow
 

@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-05-27T08:39:00+02:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "primary_repo_flat_outreach_state_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Primary-repo-flat outreach state repair",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_083900_primary_repo_flat_outreach_state_repair.md"
+  },
+  "why_this_action": {
+    "summary": "Normalized live publisher-outreach state and fixed stale recent-target matching so the board stops resurfacing already-contacted publisher packets.",
+    "shared_findings_used": [
+      "primary_repo_flat_contact_discovery_latest.json",
+      "market_intelligence_latest.json",
+      "adoption_metrics_latest.json",
+      "outreach-log.md"
+    ],
+    "targets_prepared": []
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": []
+  },
+  "verification": {
+    "tests": [
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold -k long_title",
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold -k recipient_only_payload"
+    ],
+    "execution_board_fingerprint": "7d9d4bbd7d1e7347568599aa15b2e216922123cc",
+    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md"
+  }
+}

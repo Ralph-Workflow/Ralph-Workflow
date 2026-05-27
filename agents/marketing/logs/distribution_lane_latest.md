@@ -1,28 +1,27 @@
 # Ralph Workflow Distribution Action Brief
 Generated: 2026-05-25T18:53:00
-Chosen lane: **primary_repo_flat_contact_handoff_packet**
+Chosen lane: **apollo_outreach**
 
 ## Why this lane
-- A current Codeberg-first publisher contact packet already exists for fresh primary-repo-flat targets; reuse that packet as the truthful follow-through surface instead of stalling behind another measurement hold or churn guard.
+- Reddit is blocked, GitHub PR auth is blocked here, and Apollo is live; use managed outbound with the already-prepared curator/comparison proof spine instead of another manual handoff packet.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 2 directory submissions already shipped in the last 24 hours.
 - 2 curator contact attempts already shipped in the last 24 hours.
-- 14 live external marketing action(s) already shipped in the last 6 hours.
+- 16 live external marketing action(s) already shipped in the last 6 hours.
 - If no new outcome lands first, this short-window congestion clears at 2026-05-25T23:07:41. Before then, another live outbound action would mostly blur measurement.
 - Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.
+- Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
-- Apollo already has an active measurement window until 2026-06-02T07:23:34.700335+02:00, so do not spend this run repackaging the same outbound lane.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
-- No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.
 - Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.
 - An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.
 - Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.
-- Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (TLDL, Requesty, SOTAAZ), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.
+- Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (TLDL), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.
 - The same primary-repo-flat publisher packet has already been prepared 2 time(s) in the last 48 hours without a live delivery window, so selecting it again would be fake progress.
 - The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
@@ -46,9 +45,8 @@ Chosen lane: **primary_repo_flat_contact_handoff_packet**
 ## Recent owned-content already shipped
 - Distribution lane execution: owned_content (owned_content)
 
-## Immediate primary-repo-flat contact handoff work
-- Reuse `primary_repo_flat_contact_discovery_latest.json` and `primary_repo_flat_contact_handoff_packet_latest.md` as the canonical publisher-contact asset pair
-- Focus on the fresh developer-native publishers discovered in the primary-repo-flat repair, not the saturated same-family curator queue
-- Keep each message Codeberg-first, concrete about workflow pain, and comparison/citation oriented rather than generic outbound copy
-- Refresh this packet only when the discovered target set or public contact routes materially change
-- Treat this as a different executable lane from the blocked GitHub-PR curator packet, not another measurement-hold note
+## Immediate Apollo managed-outbound work
+- Reuse `market_intelligence_latest.json`, `curator_outreach_queue_latest.json`, and `comparison_backlink_queue_latest.json` as the proof spine
+- Build one execution packet with ICP filters, sequence copy, and Codeberg-primary CTA instead of another general marketing note
+- Keep GitHub framed as the mirror only; Apollo copy should route serious evaluators to Codeberg first
+- Use Apollo because Reddit is degraded/blocked from this environment and GitHub PR auth is not the only available path

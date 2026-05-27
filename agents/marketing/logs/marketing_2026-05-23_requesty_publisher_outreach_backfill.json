@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-23T10:53:55+02:00",
+  "action_type": "publisher_email_outreach",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "target": "Requesty",
+  "recipient": "sales@requesty.ai",
+  "subject": "Suggestion for your agentic coding tools comparison: Ralph Workflow",
+  "hook": "Agentic Coding Tools Compared (2026): Claude Code, Cursor, Codex, Aider, and the Gateway That Connects Them",
+  "primary_repo_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "mirror_repo_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+  "supporting_artifacts": [
+    "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_requesty_curator_email.txt",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/adoption_metrics_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_085355_requesty_curator_email.json"
+  ],
+  "source_evidence": {
+    "article_url": "https://www.requesty.ai/blog/agentic-coding-tools-compared-2026-claude-code-cursor-codex-aider",
+    "public_contact_source": "sales@requesty.ai / https://www.requesty.ai/support",
+    "backfill_reason": "Earlier live publisher contact was only logged through the raw SMTP send artifact, which left later board state stale."
+  },
+  "smtp_delivery": {
+    "server": "smtp.ionos.com",
+    "port": 587,
+    "tls": true,
+    "accepted_by_server": true,
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_085355_requesty_curator_email.json"
+  },
+  "expected_outcome": "Publisher awareness and possible comparison-page inclusion, workflow citation, or follow-up mention that sends qualified evaluators to Codeberg first.",
+  "review_window": {
+    "reply_review_at": "2026-05-30T10:53:55+02:00",
+    "citation_review_at": "2026-06-06T10:53:55+02:00"
+  },
+  "replacement_condition": "If there is no reply or public mention signal by the review window, switch the next publisher-contact slot to a different untouched target instead of recontacting Requesty immediately."
+}

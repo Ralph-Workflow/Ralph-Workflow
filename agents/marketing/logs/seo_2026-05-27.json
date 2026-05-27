@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-27T06:51:10.396920",
+  "timestamp": "2026-05-27T09:16:32.885513",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6604,
+      "word_count": 6626,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -112,17 +112,8 @@
     }
   },
   "backlinks": {
-    "count_approx": 3,
-    "google_count_approx": 0,
-    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data",
-    "verified_live_listings": 3,
-    "verified_live_listing_source": "backlink_status_latest.json",
-    "verified_live_listing_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_status_latest.json",
-    "verified_live_listing_directories": [
-      "ClaudeCodeAlternatives",
-      "SaaSHub",
-      "ToolWise"
-    ]
+    "count_approx": 0,
+    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data"
   },
   "domain_rating": {
     "dr": null,
@@ -156,18 +147,19 @@
     }
   },
   "content_gap": {
-    "gaps": [],
-    "covered": [
-      "unattended coding agent",
+    "gaps": [
       "AI agent orchestration CLI",
       "spec-driven AI agent",
       "AI coding workflow automation",
       "Claude Code automation",
       "Claude Code unattended",
-      "AI agent workflow composer",
+      "AI agent workflow composer"
+    ],
+    "covered": [
+      "unattended coding agent",
       "Ralph Workflow"
     ],
-    "coverage_pct": 100.0
+    "coverage_pct": 25.0
   },
   "serp": {
     "position": null,
@@ -175,5 +167,8 @@
     "related_searches": false,
     "keyword": "unattended coding agent"
   },
-  "priority_actions": []
+  "priority_actions": [
+    "Create content targeting: AI agent orchestration CLI, spec-driven AI agent, AI coding workflow automation",
+    "Build backlinks: submit to directories, guest post, earn citations"
+  ]
 }

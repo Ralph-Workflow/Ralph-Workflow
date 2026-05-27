@@ -1,16 +1,19 @@
 {
-  "generated_at": "2026-05-27T06:51:22.443899",
-  "priority_keywords": [],
-  "gaps": [],
+  "generated_at": "2026-05-27T09:16:36.261567",
+  "priority_keywords": [
+    "Create content targeting: AI agent orchestration CLI, spec-driven AI agent, AI coding workflow automation",
+    "Build backlinks: submit to directories, guest post, earn citations"
+  ],
+  "gaps": [
+    "AI agent orchestration CLI",
+    "spec-driven AI agent",
+    "AI coding workflow automation",
+    "Claude Code automation",
+    "Claude Code unattended",
+    "AI agent workflow composer"
+  ],
   "onpage_score": "100/100 (A)",
   "ranked_keywords": 0,
-  "backlinks_approx": 3,
-  "weekly_decisions": [
-    "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
-    "Keep publishing seo-guide content.",
-    "Shift one future slot away from usecase toward seo-guide.",
-    "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
-    "Ship comparison-led backlink outreach packets whenever the curator queue is already full.",
-    "Leverage competitor comparison pages in content and outreach."
-  ]
+  "backlinks_approx": 0,
+  "weekly_decisions": []
 }

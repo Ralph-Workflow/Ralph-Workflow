@@ -166,6 +166,7 @@ class RunRepairModeTests(unittest.TestCase):
             )
 
             with patch.object(run, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(run, 'LOG_DIR', tmp), \
                  patch.object(run.subprocess, 'run') as refresh_run:
                 board_path, board_targets, log_path = run._refresh_primary_repo_flat_contact_discovery_for_empty_board(
                     now=datetime(2026, 5, 26, 12, 9, 0),
@@ -175,6 +176,103 @@ class RunRepairModeTests(unittest.TestCase):
 
             refresh_run.assert_not_called()
             self.assertEqual(board_path, tmp / 'board.md')
+            self.assertEqual(board_targets, [])
+            self.assertIsNone(log_path)
+
+    def test_refresh_primary_repo_flat_contact_discovery_for_empty_board_forces_refresh_after_repeated_prepared_only_packet_churn(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            discovery_path = tmp / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(
+                json.dumps({'generated_at': '2026-05-26T11:00:00+00:00', 'targets': []}),
+                encoding='utf-8',
+            )
+            script_path = tmp / 'primary_repo_flat_contact_discovery.py'
+            script_path.write_text('print("ok")\n', encoding='utf-8')
+            for name, timestamp, action_type in [
+                ('marketing_2026-05-26_090000_primary_repo_flat_contact_handoff_packet_execution.json', '2026-05-26T09:00:00+00:00', 'primary_repo_flat_contact_handoff_packet_execution'),
+                ('marketing_2026-05-26_100000_primary_repo_flat_contact_handoff_follow_through.json', '2026-05-26T10:00:00+00:00', 'primary_repo_flat_contact_handoff_follow_through'),
+            ]:
+                (tmp / name).write_text(
+                    json.dumps({
+                        'timestamp': timestamp,
+                        'chosen_action': {'type': action_type},
+                        'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                    }),
+                    encoding='utf-8',
+                )
+
+            with patch.object(run, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(run, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_SCRIPT_PATH', script_path), \
+                 patch.object(run, 'LOG_DIR', tmp), \
+                 patch.object(run, '_write_marketing_execution_board', return_value=(tmp / 'board.md', ['fresh publisher target'])), \
+                 patch.object(run.subprocess, 'run', return_value=subprocess.CompletedProcess(args=['python'], returncode=0, stdout='refreshed', stderr='')) as refresh_run:
+                board_path, board_targets, log_path = run._refresh_primary_repo_flat_contact_discovery_for_empty_board(
+                    now=datetime(2026, 5, 26, 12, 9, 0),
+                    execution_board_path=tmp / 'old_board.md',
+                    execution_board_targets=[],
+                )
+
+            refresh_run.assert_called_once()
+            self.assertEqual(board_path, tmp / 'board.md')
+            self.assertEqual(board_targets, ['fresh publisher target'])
+            self.assertIsNotNone(log_path)
+            payload = json.loads(log_path.read_text(encoding='utf-8'))
+            self.assertEqual(payload['why_this_action']['refresh_trigger'], 'prepared_only_packet_repeat')
+            self.assertEqual(payload['why_this_action']['prepared_only_repeat_count'], 2)
+            self.assertEqual(payload['chosen_action']['type'], 'primary_repo_flat_contact_discovery_staleness_repair')
+            self.assertIn('discovery_artifact_fingerprint', payload['verification'])
+
+    def test_refresh_primary_repo_flat_contact_discovery_for_empty_board_suppresses_duplicate_repeat_refresh_while_artifact_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            discovery_payload = {'generated_at': '2026-05-26T11:00:00+00:00', 'targets': []}
+            discovery_path = tmp / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(json.dumps(discovery_payload), encoding='utf-8')
+            script_path = tmp / 'primary_repo_flat_contact_discovery.py'
+            script_path.write_text('print("ok")\n', encoding='utf-8')
+            discovery_fingerprint = run._stable_json_fingerprint(discovery_payload)
+            for name, timestamp, action_type in [
+                ('marketing_2026-05-26_090000_primary_repo_flat_contact_handoff_packet_execution.json', '2026-05-26T09:00:00+00:00', 'primary_repo_flat_contact_handoff_packet_execution'),
+                ('marketing_2026-05-26_100000_primary_repo_flat_contact_handoff_follow_through.json', '2026-05-26T10:00:00+00:00', 'primary_repo_flat_contact_handoff_follow_through'),
+            ]:
+                (tmp / name).write_text(
+                    json.dumps({
+                        'timestamp': timestamp,
+                        'chosen_action': {'type': action_type},
+                        'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                    }),
+                    encoding='utf-8',
+                )
+            (tmp / 'marketing_2026-05-26_120000_primary_repo_flat_contact_discovery_staleness_repair.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-26T12:00:00+00:00',
+                    'chosen_action': {'type': 'primary_repo_flat_contact_discovery_staleness_repair'},
+                    'why_this_action': {
+                        'refresh_trigger': 'prepared_only_packet_repeat',
+                        'stale_generated_at': '2026-05-26T11:00:00+00:00',
+                        'board_targets_before': [],
+                    },
+                    'verification': {
+                        'discovery_artifact_fingerprint': discovery_fingerprint,
+                    },
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(run, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(run, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_SCRIPT_PATH', script_path), \
+                 patch.object(run, 'LOG_DIR', tmp), \
+                 patch.object(run.subprocess, 'run') as refresh_run:
+                board_path, board_targets, log_path = run._refresh_primary_repo_flat_contact_discovery_for_empty_board(
+                    now=datetime(2026, 5, 26, 12, 9, 0),
+                    execution_board_path=tmp / 'old_board.md',
+                    execution_board_targets=[],
+                )
+
+            refresh_run.assert_not_called()
+            self.assertEqual(board_path, tmp / 'old_board.md')
             self.assertEqual(board_targets, [])
             self.assertIsNone(log_path)
 

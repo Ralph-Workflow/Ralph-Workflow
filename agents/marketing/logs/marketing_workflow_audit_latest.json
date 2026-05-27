@@ -1,9 +1,11 @@
 {
-  "generated_at": "2026-05-27T07:09:39.221666",
+  "generated_at": "2026-05-27T09:17:31.183074",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
-  "reddit_posts_analyzed": 2,
-  "repeated_openings": [],
+  "reddit_posts_analyzed": 6,
+  "repeated_openings": [
+    "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+  ],
   "adoption_metrics": [
     {
       "platform": "GitHub",
@@ -51,7 +53,8 @@
   },
   "failing_tactics": [
     "primary_repo_flat_window",
-    "mirror_repo_flat_window"
+    "mirror_repo_flat_window",
+    "same_family_publisher_overlap"
   ],
   "worked": [],
   "not_worked": [
@@ -59,19 +62,24 @@
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
+    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.",
+    "4 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.",
     "The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 7 times inside the last 48 hours."
   ],
   "low_signal": [
-    "Recent live external action exists (reddit_comment_published), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
+    "Recent live external action exists (publisher_email_outreach), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution.",
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now."
   ],
   "should_change_now": [
     "Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.",
     "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
+    "HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.",
     "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
-  "dormant_risks": [],
+  "dormant_risks": [
+    "reddit_style_repetition_suspended_while_channel_blocked"
+  ],
   "repair_actions": [
     {
       "target_tactic": "content_distribution",
@@ -84,6 +92,16 @@
       "repair_state": "pending_measurement"
     },
     {
+      "target_tactic": "publisher_outreach_burst",
+      "failure_type": "same_family_publisher_overlap",
+      "repair_kind": "tactic",
+      "action": "HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.",
+      "kill_condition": "Another audit adds more same-family publisher outreach before the current reply/review windows have materially aged or produced evidence",
+      "success_metric": "Next execution lane is not another same-day publisher-contact burst and produces a cleaner measurement path toward Codeberg movement",
+      "priority": 2,
+      "repair_state": "needs_execution"
+    },
+    {
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
@@ -94,7 +112,7 @@
       "repair_state": "pending_measurement"
     }
   ],
-  "repair_window_status": "measurement_pending",
+  "repair_window_status": "needs_repair",
   "measurement_pending_reasons": [
     "primary_repo_flat",
     "mirror_repo_flat"
@@ -105,10 +123,11 @@
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
-    "The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains reddit_comment_published; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (reddit_comment_published), so the system is still shipping output even though outcome movement is not visible yet.",
-    "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
-    "Apollo managed outbound is already inside an active measurement window until 2026-06-02T07:23:34.700335+02:00, so the loop should not repackage the same lane before that checkpoint."
+    "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
+    "4 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
+    "The most recent runtime activity was apollo_launch_handoff_packet, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.",
+    "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -142,42 +161,42 @@
   },
   "latest_marketing_activity": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27.json",
-    "type": "measurement_hold_execution",
-    "title": "Distribution lane execution: measurement_hold",
+    "type": "apollo_launch_handoff_packet",
+    "title": "Distribution lane execution: apollo_launch_handoff_packet",
     "status": "prepared",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_065110_measurement_hold.md"
+    "url": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_apollo_launch_handoff_packet.md"
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_164735_reddit_comment_published.json",
-    "type": "reddit_comment_published",
-    "title": "Reddit comment published: Reddit reddit.com › r/cursor › after months with ai coding agents, these 5 small workflow changes made the biggest difference r/cursor",
-    "status": "published",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_codersera_publisher_outreach.json",
+    "type": "publisher_email_outreach",
+    "title": "publisher email outreach",
+    "status": "executed",
     "ok": true,
     "live_external_action": true,
     "outcome_ready": true,
     "warning": null,
-    "url": "https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small"
+    "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-27T06:51:22.498801+02:00",
-    "status": "verified_live_sequence",
-    "measurement_pending": true,
-    "summary": "Apollo outbound verification confirms a live Ralph Workflow sequence with Codeberg-primary CTA is active.",
-    "launch_log": null,
-    "live_list_log": null,
+    "generated_at": "2026-05-27T09:14:00.507818+02:00",
+    "status": "not_outcome_ready",
+    "measurement_pending": false,
+    "summary": "Apollo launch exists, but the sequence is not yet outcome-ready.",
+    "launch_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_apollo_sequence_launch.json",
+    "live_list_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_apollo_list_verification.json",
     "outbound_verification_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072359_apollo_outbound_verification.json",
-    "launch_timestamp": "2026-05-26T07:23:34.700335+02:00",
-    "record_count": 829,
-    "sequence_name": "Ralph Workflow Seq",
-    "final_url": "https://app.apollo.io/#/sequences/69b1c2bad74f30001d57b003",
-    "launch_review_at": "2026-06-02T07:23:34.700335+02:00",
-    "repo_visit_review_at": "2026-06-09T07:23:34.700335+02:00",
-    "adoption_review_at": "2026-06-25T07:23:34.700335+02:00",
-    "next_review_at": "2026-06-02T07:23:34.700335+02:00",
+    "launch_timestamp": "2026-05-25T23:11:13.732870+02:00",
+    "record_count": 5,
+    "sequence_name": "Ralph Workflow curator follow-up — Codeberg CTA",
+    "final_url": "https://app.apollo.io/#/lists?sortByField=updated_at&sortAscending=false&groupBy[]=labelModality",
+    "launch_review_at": "2026-06-01T23:11:13.732870+02:00",
+    "repo_visit_review_at": "2026-06-08T23:11:13.732870+02:00",
+    "adoption_review_at": "2026-06-24T23:11:13.732870+02:00",
+    "next_review_at": "2026-05-25T23:11:13.732870+02:00",
     "verification_timestamp": "2026-05-26T07:23:34.700335+02:00",
     "evidence": [
       "Apollo sequence 'Ralph Workflow Seq' is active with 724 active contacts, 105 not yet sent, and 1008 delivered.",

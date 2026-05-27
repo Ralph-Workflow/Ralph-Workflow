@@ -1,0 +1,17 @@
+{
+  "type": "comparison_backlink_outreach",
+  "ok": false,
+  "live_external_action": false,
+  "outcome_ready": false,
+  "title": "Prepared a GitHub awesome-list addition for Ralph Workflow on ai-for-developers/awesome-ai-coding-tools, but external submission was blocked by missing GitHub authentication",
+  "url": "https://github.com/ai-for-developers/awesome-ai-coding-tools",
+  "timestamp": "2026-05-27T07:06:40Z",
+  "details": {
+    "target_section": "Coding Agents",
+    "proposed_entry": "- **[Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow)** – Open-source autonomous coding loop framework with multi-agent execution, durable schedules, memory, messaging connectors, and Codeberg-primary self-hosting workflows.",
+    "blocking_issue": "gh auth status shows no GitHub login, and direct git push to GitHub failed with username/auth prompt",
+    "local_commit": "e921a6b",
+    "local_branch": "add-ralph-workflow",
+    "local_repo_path": "/tmp/rw_marketing/awesome-ai-coding-tools"
+  }
+}

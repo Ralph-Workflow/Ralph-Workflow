@@ -7,21 +7,24 @@ Generated: 2026-05-25T18:53:00
 - Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
 ## Active review windows
-- Apollo next review: 2026-06-02T07:23:34.700335+02:00
-- Apollo launch review: 2026-06-02T07:23:34.700335+02:00
+- Apollo next review: 2026-05-25T23:11:13.732870+02:00
+- Apollo launch review: 2026-06-01T23:11:13.732870+02:00
 - Short review-window congestion clears at: 2026-05-25T23:07:41
+- Post-hold marketer rerun scheduled: 2026-05-27T14:26:29
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
-- A refreshed primary-repo-flat publisher packet now exists for the current waiting target set, but the short review window is still active; hold manual delivery until that congestion clears.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
-### 1. Primary-repo-flat publisher contact packet
-- When: After short-window congestion clears (2026-05-25T23:07:41)
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md
-- Targets: Requesty, SOTAAZ, SitePoint
-- Why this matters: Fresh developer-native publisher contacts are already discovered for the flat-Codeberg repair lane.
-
+- No do-now handoff packet is currently truthful in this review window.
+- Fresh publisher outreach already shipped in the current review window for: AI Saying, Codersera, Requesty.
+- The current primary-repo-flat publisher contact packet was already prepared 9 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
+- Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
+- Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.
+- Comparison backlink packet exists, but it was already manually delivered in the current review window.
+- Directory secondary-surface repair already shipped in the current review window; wait for the follow-up date or a target-set change before resurfacing it.
+- StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.
+- If this board is still empty after one of these blockers clears, the lane architecture needs another repair.
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
 - adoption_metrics_latest.json → Codeberg movement remains the primary success gate

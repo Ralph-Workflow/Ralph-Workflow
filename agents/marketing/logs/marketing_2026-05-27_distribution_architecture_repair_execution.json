@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-27T07:44:00",
+  "timestamp": "2026-05-27T08:13:52.821512",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "distribution_architecture_churn_guard_repair",
     "channel": "distribution_architecture_repair",
     "title": "Distribution lane execution: distribution_architecture_repair",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_074400_distribution_architecture_repair.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_081352_distribution_architecture_repair.md"
   },
   "why_this_action": {
     "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window.",
@@ -16,7 +16,11 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "targets_prepared": []
+    "targets_prepared": [
+      "Requesty",
+      "SOTAAZ",
+      "SitePoint"
+    ]
   },
   "result": {
     "status": "executed",
@@ -25,6 +29,6 @@
     "blocking_factors": []
   },
   "verification": {
-    "execution_board_fingerprint": "9bee923cdc6ad42506648b4b855bf33fe1180980"
+    "execution_board_fingerprint": "26964d15e994850067e87770a4039389375dcba6"
   }
 }
