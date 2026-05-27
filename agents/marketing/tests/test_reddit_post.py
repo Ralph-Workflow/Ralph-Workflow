@@ -56,6 +56,15 @@ class RedditPostValidationTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("body cadence matches", reason)
 
+    def test_validate_body_rejects_recently_banned_question_style_opening(self):
+        candidate = (
+            "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.\n\n"
+            "The repeated pain is re-entry, not generation speed."
+        )
+        ok, reason = reddit_post.validate_body(candidate)
+        self.assertFalse(ok)
+        self.assertIn("banned opening prefix", reason)
+
     def test_validate_body_allows_fresh_body(self):
         self._write_posts([
             "Approval mode works until 2am when you're still clicking approve.\n\nNeed a finish contract.",

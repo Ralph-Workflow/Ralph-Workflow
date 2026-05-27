@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-05-27T16:34:09+02:00",
+  "type": "distribution_architecture_repair",
+  "title": "Release-window truth repair for empty-board escalation",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": false,
+  "target": "distribution_lane_selector / active release-window empty-board guard",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_release_window_truth_repair.md",
+  "shared_findings_used": [
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/logs/adoption_metrics_latest.json"
+  ],
+  "files_changed": [
+    "agents/marketing/distribution_lane_selector.py",
+    "agents/marketing/tests/test_distribution_lane_selector_repair_pause.py"
+  ],
+  "verification": {
+    "tests": [
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_active_release_window_without_congestion_keeps_guard_pause_when_concrete_repair_already_ran_after_pause_started agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_active_short_window_keeps_guard_pause_when_concrete_repair_already_ran_after_pause_started agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_cleared_short_window_escalates_to_repair_after_newer_repair_for_same_fingerprint -v"
+    ],
+    "selector_after_patch": {
+      "timestamp_checked": "2026-05-27T16:24:00",
+      "lane": "owned_content",
+      "reason": "No stronger autonomous lane detected.",
+      "short_review_window_release_at": "2026-05-27T18:35:08"
+    },
+    "board_refresh": {
+      "timestamp": "2026-05-27T16:34:22.832687",
+      "selected_lane": "owned_content",
+      "do_now_lane_available": false,
+      "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_marketing_execution_board.md"
+    }
+  },
+  "result": {
+    "summary": "Stopped the selector from misclassifying an active post-action release window as a cleared/idle window when recent live-action count was below the congestion threshold.",
+    "behavior_changes": [
+      "Empty-board escalation no longer jumps into duplicate distribution_architecture_repair while the release window is still active.",
+      "The selector now reuses the active release-window truth instead of inventing a false 'short window already cleared' reason.",
+      "The consolidated execution board and latest lane snapshot were refreshed after the fix."
+    ]
+  }
+}

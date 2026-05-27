@@ -1,17 +1,28 @@
 # Apollo.io Channel Status
 
-**Last checked:** 2026-05-26 17:48 (Europe/Berlin)
+**Checked:** 2026-05-27 17:26 UTC (5:22 PM Europe/Berlin)
 **Status:** ✅ Login Succeeded
 
-## Blocker State
-No active blocker. Apollo is reachable and the authenticated app surface is usable for outreach actions.
+## Blocker State: **none**
+
+Apollo is authenticated and the UI is fully usable. Real-browser automation path succeeded.
 
 ## Details
-- Cloudflare protection: present (background challenges on ancillary requests, but authenticated UI unaffected)
-- Login attempted: no (session was already authenticated)
-- Final URL: https://app.apollo.io/#/home
-- Auth endpoint status codes: none (no auth failures)
-- Blocker type: none — downstream outreach is actionable
+
+- **Final URL:** https://app.apollo.io/#/home
+- **Cloudflare blocked:** No (background challenges seen on ancillary requests but did not interrupt the authenticated UI)
+- **Login attempted:** No (session was already authenticated)
+- **Browserless probe:** Not used — real browser path succeeded
 
 ## Notes
-Apollo was already on an authenticated surface when the monitor ran. Cloudflare interstitial content was detected in background response bodies (API requests and challenge-platform calls), but the authenticated UI remained usable throughout. No email/ATO verification was required. Apollo is in a downstream-ready state.
+
+Cloudflare interstitial was detected in response bodies from:
+- `https://app.apollo.io/`
+- `https://app.apollo.io/api/v1/contacts/search?...`
+- `https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/...`
+
+These were background challenges on ancillary requests. The authenticated Apollo surface was already active and remained usable throughout.
+
+## Downstream Status
+
+Apollo is a **managed outbound channel** — outbound email/sequence sends are **actionable** via this authenticated session.

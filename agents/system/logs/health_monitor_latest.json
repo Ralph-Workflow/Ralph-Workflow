@@ -1,5 +1,5 @@
 {
-  "ts": "2026-05-27T15:20:57.972152",
+  "ts": "2026-05-27T17:14:35.635405",
   "jobs_checked": 25,
   "issues_found": 2,
   "issues": [
@@ -19,11 +19,11 @@
       "name": "marketing-workflow-audit_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=owner: marketing-workflow-audit:timeout repeat_count=2",
-      "repeats_in_recent_history": 2,
+      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:timeout repeat_count=10",
+      "repeats_in_recent_history": 10,
       "owner_domain": "marketing",
       "incident_key": "marketing-workflow-audit::timeout",
-      "escalation_level": "owner",
+      "escalation_level": "critical",
       "blocked_by": []
     }
   ],
@@ -32,25 +32,13 @@
       "type": "rerun_job",
       "job": "marketing-workflow-audit",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:50578fdf-ea83-46bd-8580-36d2bae7ba54:1779888050181:91\"\n}"
-    },
-    {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
-    },
-    {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T15:20:52.132232+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:50578fdf-ea83-46bd-8580-36d2bae7ba54:1779894870018:100\"\n}"
     },
     {
       "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
+      "job": "marketing-workflow-audit_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779888053967:92\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779894871810:101\"\n}"
     }
   ]
 }

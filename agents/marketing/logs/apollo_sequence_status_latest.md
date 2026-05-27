@@ -1,6 +1,6 @@
 # Apollo Sequence Status
 
-- Generated: `2026-05-27T16:12:00.504443+02:00`
+- Generated: `2026-05-27T17:32:56.612311+02:00`
 - Status: `measurement_pending_launch_window`
 - Measurement pending: `True`
 - Summary: Apollo launch is live and in the 7-day launch/reply measurement window.

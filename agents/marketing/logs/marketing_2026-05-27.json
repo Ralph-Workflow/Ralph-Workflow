@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-27T16:11:47.979790",
+  "timestamp": "2026-05-27T17:32:44.210346",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -153,7 +153,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-27T13:09:19.608986",
+    "timestamp": "2026-05-27T16:13:54.214119",
     "metrics": [
       {
         "platform": "GitHub",
@@ -358,8 +358,8 @@
     }
   },
   "distribution_lane": {
-    "lane": "distribution_architecture_repair",
-    "reason": "The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; perform another concrete distribution-architecture repair now instead of logging another guard follow-through.",
+    "lane": "distribution_architecture_guard_pause",
+    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and a newer concrete repair already ran after the current guard pause started; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
     "reasons": [
       "2 owned-content posts already shipped in the last 36 hours.",
       "1 live external marketing action(s) already shipped in the last 6 hours.",
@@ -385,7 +385,7 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "1 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "4 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint."
     ],
     "owned_content_posts_last_36h": 2,
@@ -403,11 +403,11 @@
     "skip_curator_outreach": false
   },
   "distribution_execution": {
-    "lane": "distribution_architecture_repair",
-    "action_type": "distribution_architecture_repair",
-    "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_161147_distribution_architecture_repair.md",
-    "summary": "Converted a cleared post-hold slot into a structural lane-repair action instead of logging another idle measurement hold. Refreshed stale manual execution packets so the next truthful slot can reuse current assets. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
+    "lane": "distribution_architecture_guard_pause",
+    "action_type": "distribution_architecture_guard_pause",
+    "status": "skipped_repair",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_151345_distribution_architecture_guard_pause.md",
+    "summary": "Reused existing distribution-architecture guard artifact.",
     "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
@@ -419,7 +419,7 @@
     "live_external_action": false,
     "blocking_factors": []
   },
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_161147_distribution_architecture_repair.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_distribution_architecture_guard_pause_execution.json",
   "post_hold_release_schedule": {
     "status": "already_scheduled",
     "scheduled_run_at": "2026-05-27T18:35:08",
@@ -428,8 +428,8 @@
     "removed_stale_jobs": []
   },
   "post_execution_distribution_lane": {
-    "lane": "distribution_architecture_repair",
-    "reason": "The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; perform another concrete distribution-architecture repair now instead of logging another guard follow-through.",
+    "lane": "distribution_architecture_guard_pause",
+    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and a newer concrete repair already ran after the current guard pause started; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
     "reasons": [
       "2 owned-content posts already shipped in the last 36 hours.",
       "1 live external marketing action(s) already shipped in the last 6 hours.",
@@ -455,7 +455,7 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "2 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "4 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint."
     ],
     "owned_content_posts_last_36h": 2,
@@ -472,17 +472,17 @@
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
   },
-  "reused_existing_distribution_execution": false,
+  "reused_existing_distribution_execution": true,
   "failure_signals": [],
   "marketing_status": "initial",
   "content_generation": {
     "returncode": 0,
-    "stdout": "skipped: lane=distribution_architecture_repair",
+    "stdout": "skipped: lane=distribution_architecture_guard_pause",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "skipped: lane=distribution_architecture_repair",
+    "stdout": "skipped: lane=distribution_architecture_guard_pause",
     "stderr": ""
   }
 }
