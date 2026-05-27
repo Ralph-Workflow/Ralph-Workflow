@@ -791,6 +791,95 @@ class RunRepairModeTests(unittest.TestCase):
             finally:
                 run.LOG_DIR = original_log_dir
 
+    def test_main_collapses_non_truthful_packet_lane_back_to_measurement_hold_during_active_hold(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_window = {
+                    'hold_started_at': datetime(2026, 5, 27, 8, 0, 0),
+                    'hold_until': datetime(2026, 5, 27, 14, 26, 29),
+                    'source_log': '/tmp/marketing_2026-05-27_measurement_hold_execution.json',
+                    'reason': 'Existing hold still active.',
+                }
+                stale_packet_decision = LaneDecision(
+                    lane='apollo_launch_handoff_packet',
+                    reason='Apollo packet still available.',
+                    reasons=['prepared asset exists'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='/tmp/apollo.md',
+                    short_review_window_release_at='2026-05-27T14:26:29',
+                )
+                execution = SimpleNamespace(
+                    action_type='measurement_hold_follow_through',
+                    status='executed',
+                    artifact_path='/tmp/hold.md',
+                    summary='Active hold respected and follow-through surfaced.',
+                    targets_prepared=['Example target'],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
+                     patch.object(run, '_write_marketing_execution_board', return_value=(Path('/tmp/board.md'), [])), \
+                     patch.object(run, 'choose_distribution_lane', return_value=stale_packet_decision), \
+                     patch.object(run.distribution_lane_selector, '_execution_board_has_no_truthful_do_now_packet', return_value=True), \
+                     patch.object(run, 'execute_distribution_lane', return_value=execution) as execute_mock:
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                executed_decision = execute_mock.call_args.args[0]
+                self.assertEqual(executed_decision.lane, 'measurement_hold')
+                self.assertIn('empty execution board truth', executed_decision.reason.lower())
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_main_keeps_architecture_repair_lane_during_active_hold_even_with_empty_board(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                hold_window = {
+                    'hold_started_at': datetime(2026, 5, 27, 8, 0, 0),
+                    'hold_until': datetime(2026, 5, 27, 14, 26, 29),
+                    'source_log': '/tmp/marketing_2026-05-27_measurement_hold_execution.json',
+                    'reason': 'Existing hold still active.',
+                }
+                repair_decision = LaneDecision(
+                    lane='distribution_architecture_repair',
+                    reason='Selector found a concrete repair.',
+                    reasons=['repair the loop instead of churning'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='/tmp/repair.md',
+                    short_review_window_release_at='2026-05-27T14:26:29',
+                )
+                execution = SimpleNamespace(
+                    action_type='distribution_architecture_repair',
+                    status='executed',
+                    artifact_path='/tmp/repair.md',
+                    summary='Repaired hold-window execution truth.',
+                    targets_prepared=[],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
+                     patch.object(run, '_write_marketing_execution_board', return_value=(Path('/tmp/board.md'), [])), \
+                     patch.object(run, 'choose_distribution_lane', return_value=repair_decision), \
+                     patch.object(run.distribution_lane_selector, '_execution_board_has_no_truthful_do_now_packet', return_value=True), \
+                     patch.object(run, 'execute_distribution_lane', return_value=execution) as execute_mock:
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                executed_decision = execute_mock.call_args.args[0]
+                self.assertEqual(executed_decision.lane, 'distribution_architecture_repair')
+            finally:
+                run.LOG_DIR = original_log_dir
+
     def test_main_refreshes_execution_board_during_active_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR
@@ -833,7 +922,8 @@ class RunRepairModeTests(unittest.TestCase):
                 sync_mock.assert_called_once()
                 self.assertEqual(sync_mock.call_args.kwargs['board_path'], Path('/tmp/board.md'))
                 self.assertEqual(sync_mock.call_args.kwargs['board_targets'], ['board target'])
-                self.assertEqual(sync_mock.call_args.kwargs['decision'], decision)
+                synced_decision = sync_mock.call_args.kwargs['decision']
+                self.assertEqual(synced_decision.lane, 'measurement_hold')
                 self.assertEqual(sync_mock.call_args.kwargs['execution'], execution)
             finally:
                 run.LOG_DIR = original_log_dir

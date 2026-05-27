@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-05-27T11:53:19+02:00",
+  "run_type": "marketing-action",
+  "chosen_action": {
+    "type": "comparison_page_conversion_guardrail",
+    "channel": "owned_content",
+    "title": "Harden comparison-page Codeberg-first evaluator CTA with regression coverage",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_115319_comparison_page_conversion_guardrail.md",
+    "commit": "49bb549"
+  },
+  "why_this_action": {
+    "shared_findings_used": [
+      "ADOPTION_FUNNEL_NEXT.md",
+      "marketing_workflow_audit_latest.json",
+      "distribution_lane_latest.json",
+      "market_intelligence_latest.json",
+      "marketing_2026-05-27_114220_comparison_page_conversion_cta_repair.md"
+    ],
+    "reasoning": "Outbound overlap is still in a measurement hold and conversion_to_free_use is the active bottleneck, so the best executable move was to harden the already-shipped comparison CTA path instead of generating another packet."
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "outcome_ready": false
+  },
+  "verification": {
+    "rspec": "PGHOST=/home/mistlight/.openclaw/workspace/Ralph-Site/tmp/pgsocket PGPORT=55432 ./bin/with-ruby bundle exec rspec spec/requests/pages_spec.rb",
+    "syntax": "./bin/with-ruby ruby -c spec/requests/pages_spec.rb",
+    "push_commit": "49bb549"
+  },
+  "expected_outcome": "Keep the Codeberg-first evaluator path stable across high-intent comparison pages so comparison traffic is more likely to turn into repo inspection and first-run evaluation.",
+  "measurement_window": "7 days"
+}

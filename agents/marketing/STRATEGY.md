@@ -485,7 +485,7 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 ## Weekly Review — 2026-05-27
 
 ### SEO Health
-**SEO Score:** 100/100 (A) | Ranked keywords: 0 | Backlinks: 3 | DR: None
+**SEO Score:** 100/100 (A) | Ranked keywords: 0 | Backlinks: 0 | DR: None
 **Trends:** ranks 0.0
 
 ### Content Performance
@@ -500,10 +500,12 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 - **[HIGH]** MARK AS FAILING: Current content/distribution tactics are not driving repo adoption. — Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)
 - **[MEDIUM]** Keep publishing seo-guide content. — Best avg views: 133.0 — lean into what's working.
 - **[MEDIUM]** Shift one future slot away from usecase toward seo-guide. — seo-guide outperforms usecase on avg views.
+- **[MEDIUM]** Build backlinks: submit to directories, guest post, earn citations — Identified by daily SEO analysis as a top priority.
 - **[MEDIUM]** Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move. — Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes.
 - **[MEDIUM]** Ship comparison-led backlink outreach packets whenever the curator queue is already full. — A follow-through note is not enough when the queue is saturated; the loop needs a fresh executable distribution asset tied to existing comparison pages.
 - **[MEDIUM]** Leverage competitor comparison pages in content and outreach. — Monitoring 8 competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked.
-- **[INFO]** Note: hermes-agent has 168638 GitHub stars — lean into Ralph's cost and flexibility advantages. — Competitor intelligence for positioning decisions.
+- **[INFO]** Note: hermes-agent has 169289 GitHub stars — lean into Ralph's cost and flexibility advantages. — Competitor intelligence for positioning decisions.
 
 ### Priority Actions (from SEO analysis)
-- Collect more data
+- Create content targeting: AI agent orchestration CLI, spec-driven AI agent, AI coding workflow automation
+- Build backlinks: submit to directories, guest post, earn citations

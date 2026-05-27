@@ -14,6 +14,58 @@ from agents.marketing import run_posting
 
 
 class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
+    def test_execution_board_empty_marker_wins_over_informational_review_window_bullets(self):
+        now = datetime(2026, 5, 27, 11, 21, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            board_path = tmp / 'marketing_execution_board_latest.md'
+            board_path.write_text(
+                '\n'.join([
+                    '# Ralph Workflow Marketing Execution Board',
+                    'Generated: 2026-05-27T11:20:34',
+                    '',
+                    '## Active review windows',
+                    '- Short review-window congestion clears at: 2026-05-27T14:26:29',
+                    '- Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.',
+                    '',
+                    '## Best executable assets still waiting',
+                    '- No do-now handoff packet is currently truthful in this review window.',
+                    '- Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.',
+                ]),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', board_path), \
+                 patch.object(distribution_lane_selector, '_manual_outreach_assets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_selector, '_pending_confirmation_actions', return_value=[]):
+                empty = distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now)
+
+        self.assertTrue(empty)
+
+    def test_execution_board_empty_marker_still_yields_to_real_waiting_asset(self):
+        now = datetime(2026, 5, 27, 11, 21, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            board_path = tmp / 'marketing_execution_board_latest.md'
+            board_path.write_text(
+                '\n'.join([
+                    '# Ralph Workflow Marketing Execution Board',
+                    '',
+                    '## Best executable assets still waiting',
+                    '- No do-now handoff packet is currently truthful in this review window.',
+                ]),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', board_path), \
+                 patch.object(distribution_lane_selector, '_manual_outreach_assets_waiting_for_execution', return_value=[{'path': '/tmp/packet.md'}]), \
+                 patch.object(distribution_lane_selector, '_pending_confirmation_actions', return_value=[]):
+                empty = distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now)
+
+        self.assertFalse(empty)
+
     def test_owned_content_lane_publishes_unposted_repo_guide(self):
         now = datetime(2026, 5, 26, 2, 53, 0)
         decision = LaneDecision(
@@ -3684,6 +3736,33 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir):
+                assets = distribution_lane_executor._manual_outreach_assets_waiting_for_execution(now)
+
+        self.assertEqual(assets, [])
+
+    def test_manual_outreach_assets_skip_post_hold_only_primary_repo_flat_packet_after_repeat_threshold(self):
+        now = datetime(2026, 5, 25, 5, 54, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            packet_path = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
+            packet_path.write_text('# packet\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[{
+                     'target': 'TLDL',
+                     'channels': [{'type': 'email', 'value': 'tips@tldl.example'}],
+                 }]), \
+                 patch.object(distribution_lane_executor, '_handoff_packet_is_current', return_value=True), \
+                 patch.object(distribution_lane_executor, '_primary_repo_flat_packet_delivery_still_active', return_value=False), \
+                 patch.object(distribution_lane_executor, '_primary_repo_flat_recent_prep_count', return_value=2), \
+                 patch.object(distribution_lane_executor, '_short_review_window_release_at', return_value=datetime(2026, 5, 25, 7, 20, 16)):
                 assets = distribution_lane_executor._manual_outreach_assets_waiting_for_execution(now)
 
         self.assertEqual(assets, [])

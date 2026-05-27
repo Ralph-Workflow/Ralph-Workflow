@@ -316,6 +316,86 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
         self.assertEqual(payload["drafts_created"], 1)
         self.assertEqual(payload["drafts"][0]["question_url"], fresh_question["url"])
 
+    def test_so_search_site_falls_back_to_search_excerpts_when_advanced_search_is_empty(self):
+        spec = {
+            "title": "useful results",
+            "tagged": "artificial-intelligence",
+            "label": "useful-results",
+            "q": '"useful results" ai coding agents review verification workflow',
+            "body": "review verification workflow",
+        }
+
+        def fake_get(path, params):
+            if path == "/search/advanced":
+                return {"items": []}
+            if path == "/search/excerpts":
+                self.assertEqual(params["accepted"], "False")
+                self.assertEqual(params["closed"], "False")
+                return {
+                    "items": [
+                        {
+                            "item_type": "question",
+                            "title": "How can I get more useful results from AI coding agents?",
+                            "link": "https://stackoverflow.com/questions/79950000/fresh",
+                            "question_score": 2,
+                            "answer_count": 0,
+                            "question_id": 79950000,
+                            "tags": ["claude-code", "artificial-intelligence"],
+                            "is_answered": False,
+                            "excerpt": "Need a workflow with review and verification instead of babysitting every step.",
+                        }
+                    ]
+                }
+            raise AssertionError(f"unexpected path: {path}")
+
+        with patch.object(stackoverflow_answer_lane, "_stackexchange_get", side_effect=fake_get):
+            results = stackoverflow_answer_lane.so_search_site(spec)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["url"], "https://stackoverflow.com/questions/79950000/fresh")
+        self.assertIn("review and verification", results[0]["body_snippet"])
+
+    def test_so_search_site_filters_answer_rows_from_excerpt_fallback(self):
+        spec = {
+            "title": "agent workflow",
+            "tagged": "artificial-intelligence",
+            "label": "agent-workflow",
+            "q": '"agent workflow" orchestration review verification',
+        }
+
+        def fake_get(path, params):
+            if path == "/search/advanced":
+                return {"items": []}
+            if path == "/search/excerpts":
+                return {
+                    "items": [
+                        {
+                            "item_type": "answer",
+                            "title": "This is an answer row",
+                            "link": "https://stackoverflow.com/a/1",
+                            "question_id": 1,
+                        },
+                        {
+                            "item_type": "question",
+                            "title": "How should I structure an agent workflow?",
+                            "link": "https://stackoverflow.com/questions/2/example",
+                            "question_score": 1,
+                            "answer_count": 0,
+                            "question_id": 2,
+                            "tags": ["artificial-intelligence"],
+                            "is_answered": False,
+                            "excerpt": "Need orchestration and verification.",
+                        },
+                    ]
+                }
+            raise AssertionError(f"unexpected path: {path}")
+
+        with patch.object(stackoverflow_answer_lane, "_stackexchange_get", side_effect=fake_get):
+            results = stackoverflow_answer_lane.so_search_site(spec)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["question_id"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

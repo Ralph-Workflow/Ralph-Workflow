@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-27T10:08:12.340217+02:00
+- Checked: 2026-05-27T10:10:54.190824+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by the marketing independent fail on primary-repo outcome evidence.
 - Most urgent fix: Do not certify green until marketing produces a fresh independent pass backed by measurable Codeberg movement.

@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-26T11:10:06
+Generated: 2026-05-26T23:16:00
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -7,17 +7,17 @@ Generated: 2026-05-26T11:10:06
 - Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
 ## Active review windows
-- Apollo next review: 2026-06-02T07:23:34.700335+02:00
-- Apollo launch review: 2026-06-02T07:23:34.700335+02:00
-- Short review-window congestion clears at: 2026-05-26T12:30:22
+- Apollo next review: 2026-06-01T23:11:13.732870+02:00
+- Apollo launch review: 2026-06-01T23:11:13.732870+02:00
+- Short review-window congestion clears at: 2026-05-27T14:26:29
+- Post-hold marketer rerun scheduled: 2026-05-27T14:26:29
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
-- A refreshed primary-repo-flat publisher packet now exists for the current waiting target set, but the short review window is still active; hold manual delivery until that congestion clears.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
 - No do-now handoff packet is currently truthful in this review window.
-- Fresh publisher outreach already shipped in the current review window for: AI Saying, ToolChase.
+- Fresh publisher outreach already shipped in the current review window for: AI Saying, SitePoint, ToolChase.
 - The current primary-repo-flat publisher contact packet was already prepared 8 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
 - Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.

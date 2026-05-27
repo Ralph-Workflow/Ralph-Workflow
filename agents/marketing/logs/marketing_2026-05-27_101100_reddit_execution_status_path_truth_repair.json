@@ -1,0 +1,45 @@
+{
+  "timestamp": "2026-05-27T10:11:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "reddit_execution_status_path_truth_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Restore truthful Reddit browser-ready detection for manual discussion fallback"
+  },
+  "why_this_action": {
+    "summary": "The highest-leverage executable move in the current hold window was a concrete distribution-architecture repair: the selector/executor path was ignoring an overridden reddit_execution_status_latest.json path unless LOG_DIR itself was also patched, which kept browser_session_ready from clearing reddit_blocked and prevented the manual Reddit discussion asset from surfacing truthfully in repair mode.",
+    "shared_findings_used": [
+      "agents/marketing/logs/reddit_execution_status_latest.json",
+      "agents/marketing/logs/reddit_post_analysis_latest.json",
+      "agents/marketing/logs/adoption_metrics_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "drafts/marketing_execution_board_latest.md"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched distribution_lane_selector._reddit_execution_status_path() to honor an explicitly overridden status file path. That restores truthful browser-ready detection, clears the false reddit_blocked state in repair/test contexts, and lets distribution_architecture_repair surface a manual Reddit discussion packet when the runtime is actually ready.",
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py"
+    ],
+    "verification": {
+      "tests": {
+        "command": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_load_recent_monitor_summary_clears_reddit_blocked_when_browser_session_is_ready agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_distribution_architecture_repair_creates_manual_reddit_discussion_asset_when_monitor_has_live_opportunities -v",
+        "result": "passed"
+      },
+      "runtime": {
+        "selector_command": "python3 agents/marketing/distribution_lane_selector.py",
+        "selector_lane": "distribution_architecture_repair",
+        "selector_note": "Actual runtime still truthfully stays off Reddit because the live environment is execution_blocked; this repair fixes the false-blocked path for browser-ready/manual-discussion contexts instead of forcing a fake lane today."
+      }
+    }
+  },
+  "expected_outcome": "The next browser-session-ready Reddit/manual-discussion repair window can surface a truthful discussion handoff packet instead of falling back to another empty-board repair, improving high-intent demand-capture coverage without violating the current live Reddit block.",
+  "measurement_window": {
+    "review_at": "2026-06-01T23:11:13.732870+02:00",
+    "success_metric": "When reddit_execution_status_latest.json is browser_session_ready, load_recent_monitor_summary() returns reddit_blocked=false and distribution_architecture_repair can emit reddit_discussion_channel_ready_outreach_asset instead of another churn-only repair.",
+    "kill_condition": "If a future browser-session-ready context still routes to reddit_blocked=true or suppresses the manual discussion asset, escalate into a broader Reddit runtime truth repair across selector and executor recency handling."
+  }
+}

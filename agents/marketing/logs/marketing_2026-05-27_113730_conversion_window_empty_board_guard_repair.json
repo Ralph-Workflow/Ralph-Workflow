@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-27T11:37:30+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "conversion_window_empty_board_guard_repair",
+    "channel": "marketing_runtime",
+    "title": "Conversion-window empty-board guard repair",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_113730_conversion_window_empty_board_guard_repair.md"
+  },
+  "why_this_action": {
+    "summary": "Fresh Codeberg movement shifted the bottleneck away from primary-repo-flat distribution, so the selector needed to stop escalating the same empty-board hold window into guard-pause churn.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "marketing_workflow_audit_latest.json: bottleneck shifted to conversion_to_free_use",
+      "distribution_lane_latest.json: guard-pause churn was still reachable after the star movement",
+      "marketing_execution_board_latest.md: no truthful do-now packet remained in the active review window",
+      "market_intelligence_latest.json: reuse existing conversion/distribution truths instead of inventing a new packet"
+    ],
+    "targets_prepared": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_marketing_system.py"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "summary": "Patched the selector so fresh Codeberg movement suppresses stale distribution-architecture guard churn, added regression coverage, and refreshed the latest board artifacts.",
+    "targets_prepared": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_marketing_system.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_lane_latest.json",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json"
+    ],
+    "live_external_action": false,
+    "blocking_factors": []
+  }
+}

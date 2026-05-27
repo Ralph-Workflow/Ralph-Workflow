@@ -19,6 +19,7 @@ import subprocess
 import sys
 import urllib.request
 from collections import defaultdict
+from dataclasses import is_dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -364,6 +365,43 @@ def _refresh_distribution_lane_after_execution(now: datetime, pending_repairs: l
     if pending_repairs:
         refreshed = _apply_repair_mode_overrides(refreshed, pending_repairs, now=now)
     return refreshed
+
+
+def _collapse_non_truthful_hold_lane_to_measurement_hold(
+    distribution_lane: Any,
+    *,
+    now: datetime,
+    execution_board_targets: list[str],
+) -> Any:
+    if getattr(distribution_lane, 'lane', '') in {'measurement_hold', *DISTRIBUTION_ARCHITECTURE_REUSE_LANES}:
+        return distribution_lane
+    if execution_board_targets:
+        return distribution_lane
+    release_at = parse_iso_date(str(getattr(distribution_lane, 'short_review_window_release_at', '') or '').strip())
+    if release_at is not None and now >= release_at:
+        return distribution_lane
+    if not distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now):
+        return distribution_lane
+
+    reasons = list(getattr(distribution_lane, 'reasons', []) or [])
+    reasons.insert(
+        0,
+        'Execution board truth is empty in the active hold window, so collapse back to measurement_hold_follow_through instead of resurfacing a stale packet lane.',
+    )
+    reason = (
+        'Active measurement hold + empty execution board truth: reuse measurement_hold_follow_through '
+        'instead of preparing another non-truthful packet lane before the short-window blockers clear.'
+    )
+    if is_dataclass(distribution_lane):
+        return replace(distribution_lane, lane='measurement_hold', reason=reason, reasons=reasons)
+    return SimpleNamespace(
+        **{
+            **getattr(distribution_lane, '__dict__', {}),
+            'lane': 'measurement_hold',
+            'reason': reason,
+            'reasons': reasons,
+        }
+    )
 
 
 def _latest_lane_to_persist_after_execution(selected_lane: Any, refreshed_lane: Any, execution: Any) -> Any:
@@ -1572,6 +1610,11 @@ def main() -> int:
         distribution_lane = choose_distribution_lane(now, persist_latest_artifacts=False)
         if pending_repairs:
             distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs, now=now)
+        distribution_lane = _collapse_non_truthful_hold_lane_to_measurement_hold(
+            distribution_lane,
+            now=now,
+            execution_board_targets=execution_board_targets,
+        )
         distribution_lane = _refresh_latest_distribution_lane_alias_if_stale(distribution_lane, now)
         _sync_post_hold_release_run_if_needed(
             now=now,

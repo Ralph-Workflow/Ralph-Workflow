@@ -1,8 +1,8 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-27T09:29:10
+Generated: 2026-05-27T11:36:54
 
 ## Why this board exists
-- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
+- Codeberg is still flat in the active window (9 samples; stars +1, watchers +0, forks +0).
 - Multiple live lanes already exist, so this board consolidates the best executable assets instead of letting them stay siloed across separate packet files.
 - Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
@@ -17,8 +17,8 @@ Generated: 2026-05-27T09:29:10
 
 ## Best executable assets still waiting
 - No do-now handoff packet is currently truthful in this review window.
-- Fresh publisher outreach already shipped in the current review window for: AI Saying, Codersera, Requesty.
-- The current primary-repo-flat publisher contact packet was already prepared 7 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
+- Fresh publisher outreach already shipped in the current review window for: AI Saying, SitePoint, ToolChase.
+- The current primary-repo-flat publisher contact packet was already prepared 5 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
 - Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.
 - Comparison backlink packet exists, but it was already manually delivered in the current review window.

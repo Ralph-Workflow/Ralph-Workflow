@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-27T09:29:10.779956",
-  "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
+  "generated_at": "2026-05-27T11:31:45.208745",
+  "current_bottleneck": "conversion_to_free_use",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
   "repeated_openings": [
@@ -17,7 +17,7 @@
     },
     {
       "platform": "Codeberg",
-      "stars": 10,
+      "stars": 11,
       "watchers": 2,
       "forks": 2,
       "open_issues": 5,
@@ -33,38 +33,33 @@
     },
     "Codeberg": {
       "samples": 9,
-      "stars_delta_window": 0,
+      "stars_delta_window": 1,
       "watchers_delta_window": 0,
       "forks_delta_window": 0
     }
   },
   "adoption_evaluation": {
     "findings": [
-      "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target."
     ],
-    "failing_signals": [
-      "primary_repo_flat"
-    ],
+    "failing_signals": [],
     "next_focus": [
-      "Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta."
+      "Keep measuring adoption deltas and replace any tactic that stays flat across the window."
     ]
   },
   "failing_tactics": [
-    "primary_repo_flat_window",
     "mirror_repo_flat_window",
     "same_family_publisher_overlap"
   ],
   "worked": [],
   "not_worked": [
-    "Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.",
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
     "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.",
     "4 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.",
-    "The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 7 times inside the last 48 hours."
+    "The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 5 times inside the last 48 hours."
   ],
   "low_signal": [
     "Recent live external action exists (apollo_outbound_verification), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
@@ -73,7 +68,6 @@
   ],
   "should_change_now": [
     "Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.",
-    "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
     "HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.",
     "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
@@ -82,16 +76,6 @@
   ],
   "repair_actions": [
     {
-      "target_tactic": "content_distribution",
-      "failure_type": "primary_repo_flat",
-      "repair_kind": "tactic",
-      "action": "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
-      "kill_condition": "Still no Codeberg delta after 7 days of new approach",
-      "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
-      "priority": 1,
-      "repair_state": "pending_measurement"
-    },
-    {
       "target_tactic": "publisher_outreach_burst",
       "failure_type": "same_family_publisher_overlap",
       "repair_kind": "tactic",
@@ -99,7 +83,8 @@
       "kill_condition": "Another audit adds more same-family publisher outreach before the current reply/review windows have materially aged or produced evidence",
       "success_metric": "Next execution lane is not another same-day publisher-contact burst and produces a cleaner measurement path toward Codeberg movement",
       "priority": 2,
-      "repair_state": "needs_execution"
+      "repair_state": "pending_measurement",
+      "repair_acknowledged_at": "2026-05-27T10:20:34.343589"
     },
     {
       "target_tactic": "github_mirror_outreach",
@@ -112,19 +97,19 @@
       "repair_state": "pending_measurement"
     }
   ],
-  "repair_window_status": "needs_repair",
+  "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
-    "primary_repo_flat",
-    "mirror_repo_flat"
+    "mirror_repo_flat",
+    "same_family_publisher_overlap"
   ],
   "has_failing_tactics": true,
   "reasons": [
     "Owned content and outreach exist, but repo/public adoption signals are still low.",
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
-    "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
     "4 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
+    "The most recent runtime activity was execution_board_empty_marker_truth_repair, but the latest meaningful external/replacement execution remains apollo_outbound_verification; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (apollo_outbound_verification), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint."
@@ -160,13 +145,13 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_092656_apollo_outbound_verification.json",
-    "type": "apollo_outbound_verification",
-    "title": "Apollo outbound verification",
-    "status": "verified_live_sequence",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_112802_execution_board_empty_marker_truth_repair.json",
+    "type": "execution_board_empty_marker_truth_repair",
+    "title": "Make the execution board explicit-empty marker authoritative unless a real waiting asset still exists",
+    "status": "executed",
     "ok": true,
-    "live_external_action": true,
-    "outcome_ready": true,
+    "live_external_action": false,
+    "outcome_ready": false,
     "warning": null,
     "url": null
   },
@@ -182,7 +167,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-27T09:29:10.262389+02:00",
+    "generated_at": "2026-05-27T11:18:24.767977+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",
