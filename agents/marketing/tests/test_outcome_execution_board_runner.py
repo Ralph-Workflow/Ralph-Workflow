@@ -108,6 +108,56 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
         self.assertEqual(payload['selected_lane'], 'distribution_architecture_repair')
         self.assertEqual(payload['selected_action_type'], 'distribution_architecture_churn_guard_repair')
 
+    def test_sync_from_execution_refreshes_execution_board_after_latest_lane_persist(self):
+        now = datetime(2026, 5, 27, 6, 26, 47)
+        decision = LaneDecision(
+            lane='measurement_hold',
+            reason='hold truth is current',
+            reasons=['no truthful do-now packet exists in the review window'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['distribution_lane_latest.json'],
+            artifact_path='/tmp/selected.md',
+            short_review_window_release_at=None,
+        )
+        refreshed = LaneDecision(
+            lane='measurement_hold',
+            reason='hold truth is current',
+            reasons=['no truthful do-now packet exists in the review window'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['distribution_lane_latest.json'],
+            artifact_path='/tmp/refreshed.md',
+            short_review_window_release_at=None,
+        )
+        execution = SimpleNamespace(
+            lane='measurement_hold',
+            action_type='measurement_hold_follow_through',
+            status='executed',
+            artifact_path='/tmp/execution.md',
+            summary='reused current measurement hold truth',
+            targets_prepared=['old-target'],
+            shared_findings_used=['distribution_lane_latest.json'],
+            live_external_action=False,
+            blocking_factors=[],
+        )
+
+        with patch.object(outcome_execution_board_runner, 'choose_distribution_lane', return_value=refreshed), \
+             patch.object(outcome_execution_board_runner.distribution_lane_selector, 'persist_latest_lane_decision'), \
+             patch.object(outcome_execution_board_runner, '_write_marketing_execution_board', return_value=(Path('/tmp/refreshed-board.md'), ['fresh-target'])), \
+             patch.object(outcome_execution_board_runner, '_write_status'):
+            payload = outcome_execution_board_runner.sync_from_execution(
+                now=now,
+                audit={},
+                decision=decision,
+                board_path=Path('/tmp/stale-board.md'),
+                board_targets=['stale-target'],
+                execution=execution,
+            )
+
+        self.assertEqual(payload['execution_board_path'], '/tmp/refreshed-board.md')
+        self.assertEqual(payload['execution_board_targets'], ['fresh-target'])
+
     def test_sync_from_execution_keeps_distribution_architecture_repair_when_refresh_regresses_to_owned_content(self):
         now = datetime(2026, 5, 26, 15, 14, 24)
         decision = LaneDecision(

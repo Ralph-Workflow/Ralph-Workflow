@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-27T06:05:41.611611+02:00",
+  "checked_at": "2026-05-27T06:33:03.799670+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
@@ -14,6 +14,10 @@
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
       "summary": "repair_window_status=measurement_pending; failing_tactics=['primary_repo_flat_window', 'mirror_repo_flat_window']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat']"
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
+      "summary": "fresh=True; reason=ok"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json",

@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-05-27T07:09:49.432197",
+  "timestamp": "2026-05-27T06:47:50.603572",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
-    "channel": "distribution_architecture_repair",
-    "title": "Distribution lane decision: distribution_architecture_repair",
+    "channel": "directory_confirmation",
+    "title": "Distribution lane decision: directory_confirmation",
     "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_distribution_action_brief.md"
   },
   "why_this_action": {
@@ -15,7 +15,7 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "reasoning": "The short review window already cleared, but the execution board is still empty for this guarded fingerprint after repeated concrete repairs; perform another concrete distribution-architecture repair now instead of letting the churn guard suppress the next truthful post-window slot.",
+    "reasoning": "Directory submissions already burst; refresh live listing and backlink evidence so the next move reuses real approvals instead of stacking more low-intent submissions.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
@@ -35,23 +35,17 @@
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
       "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
-      "A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.",
+      "The directory-confirmation snapshot is stale relative to the current submission burst, so refresh live listing/backlink evidence before adding more low-intent distribution.",
       "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
       "The live secondary-surface repair already has an active review window until 2026-05-31T00:00:00, so selecting directory confirmation again before then would be fake progress.",
       "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
-      "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "5 prior distribution-architecture repair run(s) already hit this same empty-board window.",
-      "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
-      "5 concrete distribution-architecture repair run(s) already hit this same guarded fingerprint."
+      "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
     ]
   },
   "result": {
     "status": "prepared",
     "ok": true
-  },
-  "verification": {
-    "execution_board_fingerprint": "9bee923cdc6ad42506648b4b855bf33fe1180980"
   }
 }

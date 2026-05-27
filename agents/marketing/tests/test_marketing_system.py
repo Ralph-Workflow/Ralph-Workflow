@@ -1015,6 +1015,42 @@ class DistributionLaneSelectorTests(unittest.TestCase):
         self.assertEqual(execution.action_type, 'repo_conversion_proof_asset')
         self.assertEqual(call_order, ['proof_asset', 'action_log', 'execution_board'])
 
+    def test_execute_apollo_launch_handoff_refreshes_execution_board(self):
+        now = datetime(2026, 5, 27, 6, 41, 0)
+        decision = SimpleNamespace(
+            lane='apollo_launch_handoff_packet',
+            shared_findings_used=['agents/marketing/logs/marketing_workflow_audit_latest.json'],
+            short_review_window_release_at=None,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            artifact = tmp / 'apollo_launch_handoff_packet.md'
+            board = tmp / 'board.md'
+            call_order: list[str] = []
+
+            def fake_write_apollo_launch_handoff_packet(_now):
+                call_order.append('apollo_launch_handoff')
+                artifact.write_text('# apollo launch handoff\n', encoding='utf-8')
+                return artifact, ['Apollo sequence launch confirmation']
+
+            def fake_write_action_log(_execution, _now):
+                call_order.append('action_log')
+
+            def fake_write_marketing_execution_board(_now):
+                call_order.append('execution_board')
+                board.write_text('# board refreshed\n', encoding='utf-8')
+                return board, []
+
+            with patch.object(distribution_lane_executor, '_write_apollo_launch_handoff_packet', side_effect=fake_write_apollo_launch_handoff_packet), \
+                 patch.object(distribution_lane_executor, '_write_action_log', side_effect=fake_write_action_log), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', side_effect=fake_write_marketing_execution_board):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+                self.assertTrue(board.exists())
+
+        self.assertEqual(execution.action_type, 'apollo_launch_handoff_packet')
+        self.assertEqual(call_order, ['apollo_launch_handoff', 'action_log', 'execution_board'])
+
     def test_prefers_apollo_launch_handoff_when_launch_ready_but_not_live(self):
         now = datetime(2026, 5, 26, 4, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -6717,6 +6753,40 @@ class MarketingLoopCertificationTests(unittest.TestCase):
         self.assertTrue(any('do not issue a healthy certification artifact yet' in blocker for blocker in blockers))
         self.assertIn('primary repo adoption remains measurement-pending after shipped repairs', watchpoints)
 
+    def test_independent_verifier_flags_stale_execution_board_generated_timestamp_during_hold(self):
+        now = datetime(2026, 5, 27, 6, 18, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            runner = tmp / 'runner.json'
+            momentum = tmp / 'momentum.json'
+            audit = tmp / 'audit.json'
+            board = tmp / 'marketing_execution_board_latest.md'
+            outcome_status = tmp / 'outcome_execution_board_latest.json'
+            lane_status = tmp / 'distribution_lane_latest.json'
+            for path in (runner, momentum, audit, board, outcome_status, lane_status):
+                path.write_text('{}\n', encoding='utf-8')
+            board.write_text('# Ralph Workflow Marketing Execution Board\nGenerated: 2026-05-25T18:53:00\n', encoding='utf-8')
+            outcome_status.write_text(json.dumps({'timestamp': '2026-05-27T06:18:00'}) + '\n', encoding='utf-8')
+            fresh_ts = now.timestamp()
+            for path in (runner, momentum, audit, board, outcome_status, lane_status):
+                os.utime(path, (fresh_ts, fresh_ts))
+
+            with patch.object(marketing_loop_independent_verify, 'RUNNER', runner), \
+                 patch.object(marketing_loop_independent_verify, 'MOMENTUM', momentum), \
+                 patch.object(marketing_loop_independent_verify, 'AUDIT', audit), \
+                 patch.object(marketing_loop_independent_verify, 'EXECUTION_BOARD', board), \
+                 patch.object(marketing_loop_independent_verify, 'OUTCOME_EXECUTION_BOARD_STATUS', outcome_status), \
+                 patch.object(marketing_loop_independent_verify, 'DISTRIBUTION_LANE_STATUS', lane_status):
+                ok, blockers, watchpoints = marketing_loop_independent_verify.watch_state_is_certifiable(
+                    {'watch_actions': ['measurement_hold_active'], 'actions': []},
+                    {'repair_window_status': 'measurement_pending', 'measurement_pending_reasons': ['primary_repo_flat']},
+                )
+
+        self.assertFalse(ok)
+        self.assertTrue(any('consolidated execution board' in blocker for blocker in blockers))
+        self.assertTrue(any('stale_generated_timestamp' in blocker for blocker in blockers))
+        self.assertEqual(watchpoints, [])
+
     def test_independent_verifier_flags_stale_outcome_execution_board_status_during_hold(self):
         now = datetime(2026, 5, 26, 23, 30, 0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -6729,7 +6799,7 @@ class MarketingLoopCertificationTests(unittest.TestCase):
             lane_status = tmp / 'distribution_lane_latest.json'
             for path in (runner, momentum, audit, board, lane_status):
                 path.write_text('{}\n', encoding='utf-8')
-            board.write_text('# board\n', encoding='utf-8')
+            board.write_text('# Ralph Workflow Marketing Execution Board\nGenerated: 2026-05-26T23:30:00\n', encoding='utf-8')
             outcome_status.write_text(json.dumps({'timestamp': '2026-05-25T18:53:00'}) + '\n', encoding='utf-8')
             fresh_ts = now.timestamp()
             for path in (runner, momentum, audit, board, lane_status):
@@ -6764,7 +6834,7 @@ class MarketingLoopCertificationTests(unittest.TestCase):
             lane_status = tmp / 'distribution_lane_latest.json'
             for path in (runner, momentum, audit, board, lane_status):
                 path.write_text('{}\n', encoding='utf-8')
-            board.write_text('# board\n', encoding='utf-8')
+            board.write_text('# Ralph Workflow Marketing Execution Board\nGenerated: 2026-05-26T23:30:00\n', encoding='utf-8')
             outcome_status.write_text(json.dumps({'timestamp': '2026-05-26T23:30:00'}) + '\n', encoding='utf-8')
             fresh_ts = now.timestamp()
             for path in (runner, momentum, audit, board, outcome_status, lane_status):

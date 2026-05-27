@@ -1,5 +1,12 @@
 # Outreach Log
 
+## 2026-05-27 (Wednesday) — Execution-board auto-refresh repair (04:33 UTC / 06:33 CEST)
+- **What I executed:** patched `agents/marketing/outcome_execution_board_runner.py` so the runner now rewrites `marketing_execution_board_latest.md` immediately after persisting latest-lane truth, then writes `outcome_execution_board_latest.*` from that refreshed board instead of whatever stale board path the run started with.
+- **Regression gate added:** `agents/marketing/tests/test_outcome_execution_board_runner.py` now checks that `sync_from_execution(...)` replaces stale board inputs with the freshly regenerated board path/targets.
+- **Verification:** targeted `unittest` suite passed (**6 tests, OK**), `python3 agents/marketing/outcome_execution_board_runner.py` refreshed the live hold-truth surfaces at **2026-05-27T06:32:31.096127**, and `python3 agents/marketing/marketing_loop_independent_verify.py` now fails only for the real business blocker (**primary repo adoption still measurement-pending**).
+- **Why this action:** the truthful lane is still `measurement_hold`, so another outbound packet would have been fake progress. Tightening the live board/status sync improves the odds that the next runnable slot acts on current Codeberg-first truth.
+- **Type:** **REPAIRED / RUNTIME_TRUTH_SYNC**
+
 ## 2026-05-26 (Tuesday) — Reddit monitoring (19:29 UTC / 21:29 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-26_2129.md`
 - **Scan summary:** forced-refresh local monitor returned **24 scanned / 4 shortlisted** with **ok=4 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
@@ -7212,3 +7219,15 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-27 06:07:18
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing execution-board freshness guard repair
+- **When:** 2026-05-27 06:27:18
+- **Why:** `distribution_lane_latest.*` was current but the shared `marketing_execution_board_latest.md` truth surface could still be stale, which risks fake hold-window follow-through.
+- **What I did:** patched `marketing_loop_independent_verify.py` to fail closed on stale execution-board content, added regression tests, refreshed `marketing_execution_board_latest.md`, and resynced `outcome_execution_board_latest.*`.
+- **Expected outcome:** future measurement-hold runs should reuse current Codeberg-first truth instead of an obsolete execution board.
+- **Measurement window:** verify on the next marketing verifier / hold-window run that the board and outcome status stay fresh together.
+- **Replace if it fails:** patch the marketing runner to regenerate execution-board truth surfaces before the active-loop prompt reads them.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 06:54:01
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-27T07:51:10.314851.
