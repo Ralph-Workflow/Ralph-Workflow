@@ -9,9 +9,8 @@ Generated: 2026-05-25T18:53:00
 ## Active review windows
 - Apollo next review: 2026-06-02T07:23:34.700335+02:00
 - Apollo launch review: 2026-06-02T07:23:34.700335+02:00
-- Short review-window congestion clears at: 2026-05-26T22:47:35
+- Short review-window congestion clears at: 2026-05-25T23:07:41
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
-- A refreshed primary-repo-flat publisher packet now exists for the current waiting target set, but the short review window is still active; hold manual delivery until that congestion clears.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
@@ -19,7 +18,6 @@ Generated: 2026-05-25T18:53:00
 - No do-now handoff packet is currently truthful in this review window.
 - Remaining publisher-contact discovery is not runtime-sendable here: TLDL.
 - Fresh publisher outreach already shipped in the current review window for: AI Saying, ToolChase.
-- The current primary-repo-flat publisher contact packet was already prepared 2 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
 - Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.
 - Comparison backlink packet exists, but it was already manually delivered in the current review window.

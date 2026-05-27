@@ -752,7 +752,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('Targets: ctxt.dev / Signum', board_text)
         self.assertIn('human-executable via verified public contact paths', board_text)
 
-    def test_execution_board_surfaces_primary_repo_flat_packet_for_github_issue_only_target_when_discovery_explicitly_recommends_it(self):
+    def test_execution_board_does_not_surface_primary_repo_flat_packet_for_github_issue_only_target(self):
         now = datetime(2026, 5, 26, 13, 58, 0)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -788,9 +788,8 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             board_text = board_path.read_text(encoding='utf-8')
 
-        self.assertIn('### 1. Primary-repo-flat publisher contact packet', board_text)
-        self.assertIn('Targets: TLDL', board_text)
-        self.assertIn('human-executable via verified public contact paths', board_text)
+        self.assertNotIn('### 1. Primary-repo-flat publisher contact packet', board_text)
+        self.assertIn('Remaining publisher-contact discovery is not runtime-sendable here: TLDL.', board_text)
 
     def test_execution_board_hides_stale_primary_repo_flat_packet_until_refreshed(self):
         now = datetime(2026, 5, 25, 0, 20, 0)
@@ -2126,6 +2125,91 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('This packet was already delivered in the current review window.', text)
         self.assertIn('## Reference targets already covered in the active review window', text)
         self.assertIn('Another manual delivery right now would be fake progress', text)
+
+    def test_primary_repo_flat_packet_refresh_excludes_targets_already_covered_by_recent_outreach_or_manual_delivery(self):
+        now = datetime(2026, 5, 27, 0, 53, 4)
+        findings = [
+            {
+                'target': 'ctxt.dev / Signum',
+                'article_url': 'https://ctxt.dev/posts/en/tasks-are-not-goals',
+                'hook': 'Tasks Are Not Goals',
+                'reason': 'Contract-first workflow audience overlap.',
+                'outreach_subject': 'RalphWorkflow for your next contract-first roundup',
+                'recommended_next_step': 'Telegram consulting contact path is explicitly confirmed',
+                'channels': [
+                    {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
+                ],
+            },
+            {
+                'target': 'ToolChase',
+                'article_url': 'https://toolchase.com/blog/best-ai-coding-tools-2026/',
+                'hook': 'AI coding tools comparison page',
+                'reason': 'Comparison audience overlap.',
+                'outreach_subject': 'Ralph Workflow for your next AI coding tools comparison refresh',
+                'recommended_next_step': 'email/contact send path is now identified',
+                'channels': [
+                    {'type': 'email', 'value': 'hello@toolchase.com', 'label': 'email'},
+                ],
+            },
+            {
+                'target': 'TLDL',
+                'article_url': 'https://www.tldl.io/resources/ai-coding-tools-2026',
+                'hook': 'AI Coding Tools Compared (2026)',
+                'reason': 'Comparison audience overlap strongly with workflow evaluators.',
+                'outreach_subject': 'Ralph Workflow for your next AI coding tools comparison refresh',
+                'recommended_next_step': 'GitHub issue/PR path is now identified',
+                'channels': [
+                    {'type': 'github_issue', 'value': 'https://github.com/shenli/tldl/issues/new', 'label': 'GitHub issue'},
+                ],
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            (log_dir / 'marketing_2026-05-25_toolchase_publisher_outreach.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T12:00:00',
+                    'chosen_action': {'type': 'publisher_email_outreach'},
+                    'target': 'ToolChase',
+                    'status': 'executed',
+                    'ok': True,
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_primary_repo_flat_contact_manual_delivery_refresh.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T10:23:54+02:00',
+                    'chosen_action': {
+                        'type': 'primary_repo_flat_contact_manual_delivery_refresh',
+                        'packet': str(drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'),
+                    },
+                    'why_this_action': {
+                        'targets_prepared': ['ctxt.dev / Signum'],
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-01T10:23:54+02:00',
+                    },
+                    'result': {'status': 'delivered_to_current_chat', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, '_latest_research_signals', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_append_live_listing_proof', return_value=None):
+                artifact, prepared = distribution_lane_executor._write_primary_repo_flat_contact_handoff_packet(now, findings)
+
+            text = artifact.read_text(encoding='utf-8')
+
+        self.assertEqual(prepared, ['ToolChase'])
+        self.assertIn('### 1. ToolChase', text)
+        self.assertNotIn('### 1. ctxt.dev / Signum', text)
+        self.assertNotIn('### 2. TLDL', text)
 
     def test_comparison_packet_marks_active_review_window_as_reference_only(self):
         now = datetime(2026, 5, 24, 19, 21, 0)

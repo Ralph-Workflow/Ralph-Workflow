@@ -455,7 +455,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
             {'type': 'website', 'value': 'https://aisaying.net', 'label': 'feedback form'},
         ]))
 
-    def test_primary_repo_flat_waiting_targets_include_github_issue_only_when_discovery_marks_it_as_next_move(self):
+    def test_primary_repo_flat_waiting_targets_treat_github_issue_only_as_non_executable(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             discovery_path = tmp / 'primary_repo_flat_contact_discovery_latest.json'
@@ -486,11 +486,11 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                  patch.object(distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path):
                 self.assertEqual(
                     distribution_lane_selector._primary_repo_flat_contact_targets_waiting_for_execution(),
-                    ['TLDL'],
+                    [],
                 )
                 self.assertEqual(
                     distribution_lane_selector._primary_repo_flat_non_executable_targets_waiting_for_execution(),
-                    ['ctxt.dev / Signum'],
+                    ['TLDL', 'ctxt.dev / Signum'],
                 )
 
     def test_handoff_packet_allow_superset_matches_executor_truth(self):
