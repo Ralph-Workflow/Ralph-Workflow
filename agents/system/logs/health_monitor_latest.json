@@ -1,85 +1,9 @@
 {
-  "ts": "2026-05-27T19:08:02.198366",
+  "ts": "2026-05-27T22:06:34.061481",
   "jobs_checked": 25,
-  "issues_found": 6,
-  "issues": [
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification",
-      "category": "stale_artifact",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 293.07,
-      "max_age_minutes": 240,
-      "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review",
-      "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Docs system is coherent, well-aligned with positioning, and routes cleanly. No internal leakage on top-level surfaces. The README \u2192 START_HERE \u2192 docs/README journey is tight and every promoted page reinforces the same story."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_docs-readme-md-lists-reviewable-output-md-under",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "docs/README.md lists `reviewable-output.md` under 'I want product framing before I go deeper' \u2014 it is a proof/supporting page, not a product framing page. Move it under a 'proof' bucket or demote it from that section so the section label matches the content.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: docs/README.md lists `reviewable-output.md` under 'I want product framing before I go deeper' \u2014 it is a proof/supporting page, not a product framing page. Move it under a 'proof' bucket or demote it from that section so the section label matches the content."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_escalation",
-      "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:stale_artifact repeat_count=61",
-      "repeats_in_recent_history": 61,
-      "owner_domain": "marketing",
-      "incident_key": "marketing_independent_verification::stale_artifact",
-      "escalation_level": "critical",
-      "blocked_by": [
-        "marketing_independent_verification"
-      ]
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_escalation",
-      "category": "escalation_required",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=43",
-      "repeats_in_recent_history": 43,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review::loop_verification_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_docs-readme-md-lists-reviewable-output-md-under_escalation",
-      "category": "escalation_required",
-      "last_error": "docs/README.md lists `reviewable-output.md` under 'I want product framing before I go deeper' \u2014 it is a proof/supporting page, not a product framing page. Move it under a 'proof' bucket or demote it from that section so the section label matches the content.",
-      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_docs-readme-md-lists-reviewable-output-md-under:review_followup_required repeat_count=3",
-      "repeats_in_recent_history": 3,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review_mustFix_docs-readme-md-lists-reviewable-output-md-under::review_followup_required",
-      "escalation_level": "owner",
-      "blocked_by": []
-    }
-  ],
+  "issues_found": 0,
+  "issues": [],
   "repairs_attempted": [
-    {
-      "type": "rerun_docs_verifier",
-      "job": "docs_agentic_review",
-      "ok": true,
-      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is coherent, well-aligned with positioning, and routes cleanly. No internal leakage on top-level surfaces. The README \\u2192 START_HERE \\u2192 docs/README journey"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "docs_agentic_review_mustFix_repetitive-identical-opening-sentence-on-every-d",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-05-27T17:07:18.101023+00:00"
-    },
     {
       "type": "rerun_independent_architecture_verification",
       "job": "agent_architecture_verifier_runtime",
@@ -90,37 +14,13 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T19:07:47.911180+02:00\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779901669867:113\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "marketing_independent_verification_escalation",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779901671745:114\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779901673632:115\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_mustFix_repetitive-identical-opening-sentence-on-every-d_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779901675429:116\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T22:06:28.378905+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779901677132:117\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     }
   ]
 }

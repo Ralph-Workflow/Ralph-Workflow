@@ -1,15 +1,15 @@
 {
-  "checked_at": "2026-05-27T14:14:54.684633+02:00",
+  "checked_at": "2026-05-27T22:06:06.410714+02:00",
   "verdict": "pass",
   "summary": "Independent verifier found the marketing owner loop healthy enough to certify while keeping active watchpoints open.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-27T14:14:54.663832"
+      "summary": "runner ok=True generated_at=2026-05-27T22:06:06.387463"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_channel_blocked']"
+      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_monitor_degraded']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
@@ -25,7 +25,7 @@
     }
   ],
   "watchpoints": [
-    "reddit is blocked from this environment, but a replacement distribution execution has already shipped"
+    "reddit monitoring is degraded, but a fresh healthy fallback report still exists inside the grace window"
   ],
   "blockers": []
 }

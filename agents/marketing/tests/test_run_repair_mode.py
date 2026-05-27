@@ -1482,15 +1482,18 @@ class RunRepairModeTests(unittest.TestCase):
             run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
             run.DRAFTS_DIR.mkdir()
             try:
+                prior_artifact = run.LOG_DIR / 'existing_distribution_architecture_repair.md'
+                prior_artifact.write_text('repair\n', encoding='utf-8')
                 prior_log = run.LOG_DIR / 'marketing_2026-05-26_094455_distribution_architecture_repair.json'
                 prior_log.write_text(json.dumps({
                     'timestamp': '2026-05-26T09:44:55',
                     'chosen_action': {
                         'type': 'distribution_architecture_churn_guard_repair',
                         'channel': 'distribution_architecture_repair',
-                        'draft': '/tmp/existing_distribution_architecture_repair.md',
+                        'draft': str(prior_artifact),
                     },
                     'why_this_action': {
+                        'summary': 'Repair empty-board churn.',
                         'shared_findings_used': ['adoption_metrics_latest.json'],
                     },
                     'result': {
@@ -1499,6 +1502,9 @@ class RunRepairModeTests(unittest.TestCase):
                         'targets_prepared': [],
                         'live_external_action': False,
                         'blocking_factors': [],
+                    },
+                    'verification': {
+                        'execution_board_fingerprint': 'abc123',
                     },
                 }), encoding='utf-8')
 
@@ -1524,19 +1530,8 @@ class RunRepairModeTests(unittest.TestCase):
                      patch.object(run, 'load_shared_market_intelligence', return_value=None), \
                      patch.object(run, 'load_adoption_data', return_value={}), \
                      patch.object(run, 'write_seo_insights', return_value=run.LOG_DIR / 'seo-insights.json'), \
-                     patch.object(run, '_latest_distribution_architecture_execution', return_value={
-                         'timestamp': datetime(2026, 5, 26, 9, 44, 55),
-                         'log_path': str(prior_log),
-                         'action_type': 'distribution_architecture_churn_guard_repair',
-                         'artifact_path': '/tmp/existing_distribution_architecture_repair.md',
-                         'status': 'executed',
-                         'summary': 'Existing architecture repair is still current.',
-                         'targets_prepared': [],
-                         'shared_findings_used': ['adoption_metrics_latest.json'],
-                         'live_external_action': False,
-                         'blocking_factors': [],
-                     }), \
-                     patch.object(run, '_distribution_architecture_guard_execution_is_stale', return_value=False), \
+                     patch.object(run.distribution_lane_selector, '_execution_board_fingerprint', return_value='abc123'), \
+                     patch.object(run.outcome_execution_board_runner, 'STATUS_JSON', run.LOG_DIR / 'missing_outcome_status.json'), \
                      patch.object(run, 'choose_distribution_lane', return_value=decision) as choose_mock, \
                      patch.object(run, 'execute_distribution_lane') as execute_mock:
                     rc = run.main()
@@ -1548,7 +1543,7 @@ class RunRepairModeTests(unittest.TestCase):
                 payload = json.loads(daily_log.read_text(encoding='utf-8'))
                 self.assertTrue(payload['reused_existing_distribution_execution'])
                 self.assertEqual(payload['distribution_execution']['action_type'], 'distribution_architecture_churn_guard_repair')
-                self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_distribution_architecture_repair.md')
+                self.assertEqual(payload['distribution_execution']['artifact_path'], str(prior_artifact))
                 self.assertEqual(payload['distribution_execution_log'], str(prior_log))
             finally:
                 run.LOG_DIR = original_log_dir

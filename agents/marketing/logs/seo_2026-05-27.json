@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-27T17:32:44.297262",
+  "timestamp": "2026-05-27T22:20:46.912547",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "Unattended coding agent \u2014 Ralph Workflow",
-      "meta_description": "Open-source unattended coding agent for Claude Code, Codex CLI, and OpenCode. Start one real task before bed and wake up to tested code ready to review.",
+      "title": "Autonomous coding workflow \u2014 Ralph Workflow",
+      "meta_description": "Open-source autonomous coding workflow for Claude Code, Codex CLI, and OpenCode. Plan, build, test, and fix real backlog work overnight on your machine.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Open-source unattended coding agent for Claude Code, Codex CLI, and OpenCode. Start one real task before bed and wake up to tested code ready to review.",
-        "title": "Unattended coding agent \u2014 Ralph Workflow",
+        "description": "Open-source autonomous coding workflow for Claude Code, Codex CLI, and OpenCode. Plan, build, test, and fix real backlog work overnight on your machine.",
+        "title": "Autonomous coding workflow \u2014 Ralph Workflow",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6640,
+      "word_count": 6628,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -148,6 +148,7 @@
   },
   "content_gap": {
     "gaps": [
+      "unattended coding agent",
       "AI agent orchestration CLI",
       "spec-driven AI agent",
       "AI coding workflow automation",
@@ -156,10 +157,9 @@
       "AI agent workflow composer"
     ],
     "covered": [
-      "unattended coding agent",
       "Ralph Workflow"
     ],
-    "coverage_pct": 25.0
+    "coverage_pct": 12.5
   },
   "serp": {
     "position": null,
@@ -168,7 +168,7 @@
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
-    "Create content targeting: AI agent orchestration CLI, spec-driven AI agent, AI coding workflow automation",
+    "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]
 }

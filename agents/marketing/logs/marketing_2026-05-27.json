@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-27T17:32:44.210346",
+  "timestamp": "2026-05-27T22:20:46.829102",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -76,7 +76,7 @@
       "prev_avg_bl": 0.5
     },
     "priority_actions": [
-      "Create content targeting: AI agent orchestration CLI, spec-driven AI agent, AI coding workflow automation",
+      "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
       "Build backlinks: submit to directories, guest post, earn citations"
     ],
     "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-05-27.md",
@@ -88,14 +88,14 @@
       "competitors": {
         "hermes-agent": {
           "status": 200,
-          "stars": 169289,
+          "stars": 170029,
           "features_found": [
             "Persistent memory"
           ]
         },
         "conductor-oss": {
           "status": 200,
-          "stars": 31840,
+          "stars": 31846,
           "features_found": [
             "Durable execution"
           ]
@@ -109,12 +109,12 @@
         },
         "aider": {
           "status": 200,
-          "stars": 45393,
+          "stars": 45424,
           "features_found": []
         },
         "continue": {
           "status": 200,
-          "stars": 33412,
+          "stars": 33422,
           "features_found": []
         },
         "cursor": {
@@ -153,7 +153,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-27T16:13:54.214119",
+    "timestamp": "2026-05-27T20:13:18.118979",
     "metrics": [
       {
         "platform": "GitHub",
@@ -210,7 +210,7 @@
     }
   },
   "market_intelligence": {
-    "generated_at": "2026-05-27T09:38:48.926307",
+    "generated_at": "2026-05-27T21:04:11.769037",
     "source": "competitor_analysis.py",
     "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
     "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-27.md",
@@ -262,7 +262,7 @@
         "name": "Hermes Agent",
         "positioning": "Self-improving agent that learns from experience",
         "site_status": 200,
-        "github_stars": 169289,
+        "github_stars": 170029,
         "key_features_found": [
           "Persistent memory"
         ]
@@ -271,7 +271,7 @@
         "name": "Conductor OSS",
         "positioning": "Enterprise-grade workflow orchestration for AI agents",
         "site_status": 200,
-        "github_stars": 31840,
+        "github_stars": 31846,
         "key_features_found": [
           "Durable execution"
         ]
@@ -289,14 +289,14 @@
         "name": "Aider",
         "positioning": "Terminal-based AI pair programming in your git repo",
         "site_status": 200,
-        "github_stars": 45393,
+        "github_stars": 45424,
         "key_features_found": []
       },
       "continue": {
         "name": "Continue",
         "positioning": "The leading AI code assistant inside your IDE",
         "site_status": 200,
-        "github_stars": 33412,
+        "github_stars": 33422,
         "key_features_found": []
       },
       "cursor": {
@@ -359,10 +359,9 @@
   },
   "distribution_lane": {
     "lane": "distribution_architecture_guard_pause",
-    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and a newer concrete repair already ran after the current guard pause started; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
+    "reason": "The guarded empty-board fingerprint is still unchanged and a newer concrete repair already ran after the last guard pause, but no live release-window metadata changed afterward; pause duplicate guard churn until a real board-truth change lands.",
     "reasons": [
       "2 owned-content posts already shipped in the last 36 hours.",
-      "1 live external marketing action(s) already shipped in the last 6 hours.",
       "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
@@ -372,7 +371,8 @@
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
-      "An active manual publisher handoff already covers (Codivox, ComputingForGeeks, Reddit reddit.com \u203a r/ai_agents \u203a genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents), so those targets should stay out of fresh packet selection until their review window expires.",
+      "An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.",
+      "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
       "The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, so another packet refresh would be fake progress even if the exact target list drifted.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
@@ -385,7 +385,7 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "4 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "8 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint."
     ],
     "owned_content_posts_last_36h": 2,
@@ -398,7 +398,7 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_distribution_action_brief.md",
-    "short_review_window_release_at": "2026-05-27T18:35:08",
+    "short_review_window_release_at": null,
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
   },
@@ -406,33 +406,28 @@
     "lane": "distribution_architecture_guard_pause",
     "action_type": "distribution_architecture_guard_pause",
     "status": "skipped_repair",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_151345_distribution_architecture_guard_pause.md",
-    "summary": "Reused existing distribution-architecture guard artifact.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_215754_distribution_architecture_guard_pause.md",
+    "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn.",
     "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
       "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
-      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging",
+      "marketing_execution_board_latest.md: consolidated do-now assets across all non-Reddit lanes",
+      "marketing_workflow_audit_latest.json: outcome_system_underpowered repair source"
     ],
     "live_external_action": false,
     "blocking_factors": []
   },
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_distribution_architecture_guard_pause_execution.json",
-  "post_hold_release_schedule": {
-    "status": "already_scheduled",
-    "scheduled_run_at": "2026-05-27T18:35:08",
-    "job_id": "841fc1af-7ebc-44eb-a5e9-5fd53a10990f",
-    "job_name": "marketing-measurement-hold-release",
-    "removed_stale_jobs": []
-  },
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json",
+  "post_hold_release_schedule": {},
   "post_execution_distribution_lane": {
     "lane": "distribution_architecture_guard_pause",
-    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and a newer concrete repair already ran after the current guard pause started; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
+    "reason": "The guarded empty-board fingerprint is still unchanged and a newer concrete repair already ran after the last guard pause, but no live release-window metadata changed afterward; pause duplicate guard churn until a real board-truth change lands.",
     "reasons": [
       "2 owned-content posts already shipped in the last 36 hours.",
-      "1 live external marketing action(s) already shipped in the last 6 hours.",
       "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
@@ -442,7 +437,8 @@
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
-      "An active manual publisher handoff already covers (Codivox, ComputingForGeeks, Reddit reddit.com \u203a r/ai_agents \u203a genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents), so those targets should stay out of fresh packet selection until their review window expires.",
+      "An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.",
+      "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
       "The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, so another packet refresh would be fake progress even if the exact target list drifted.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
@@ -455,7 +451,7 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "4 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "8 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint."
     ],
     "owned_content_posts_last_36h": 2,
@@ -468,7 +464,7 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_distribution_action_brief.md",
-    "short_review_window_release_at": "2026-05-27T18:35:08",
+    "short_review_window_release_at": null,
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
   },

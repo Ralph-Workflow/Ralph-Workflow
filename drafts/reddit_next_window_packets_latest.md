@@ -1,8 +1,8 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-27 14:14 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-27 22:06 CEST
 
 Live posting is **not** the move right now.
 
-Latest watchdog state references report `reddit_monitor_2026-05-27_1245.md`.
+Latest watchdog state references report `reddit_monitor_2026-05-27_2115.md`.
 - `status: banned_content`
 - `detail: body cadence matches one of the last 3 logged Reddit posts`
 
@@ -18,8 +18,8 @@ Messaging guardrails preserved in every draft:
 
 ---
 
-## 1) `r/AI_Agents` - Reddit reddit.com › r/ai_agents › agents vs workflows r/AI_Agents
-- URL: <https://www.reddit.com/r/AI_Agents/comments/1syk8dy/agents_vs_workflows>
+## 1) `r/AI_Agents` - Reddit reddit.com › r/ai_agents › tried 12+ agentic ai workflow builders this year — these 5 actually work in production r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1tcptqt/tried_12_agentic_ai_workflow_builders_this_year>
 - Mention fit: medium-low
 - Best landing page to seed:
   - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
@@ -29,9 +29,7 @@ Messaging guardrails preserved in every draft:
   - best RalphWorkflow angle from the monitor: *content-family match: production_failure
 
 ### Draft body A
-What stands out to me here is *content-family match: production_failure**; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed.
-
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
+What stands out to me here is *content-family match: production_failure**; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed. If you want one concrete proof surface for that finish line instead of a pitch, this is the doc I keep pointing people to: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
 
 ---
 
@@ -63,9 +61,7 @@ If the run cannot do that without babysitting, it is still pushing the hard part
   - best RalphWorkflow angle from the monitor: *parallel, multiple coding agents
 
 ### Draft body C
-What stands out to me here is *parallel, multiple coding agents**; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed.
-
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+What stands out to me here is *parallel, multiple coding agents**; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed. If you want one concrete proof surface for that finish line instead of a pitch, this is the doc I keep pointing people to: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
 
 ---
 

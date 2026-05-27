@@ -1,28 +1,13 @@
-# Apollo.io Channel Status
+# Apollo Status
 
-**Checked:** 2026-05-27 17:26 UTC (5:22 PM Europe/Berlin)
-**Status:** ✅ Login Succeeded
-
-## Blocker State: **none**
-
-Apollo is authenticated and the UI is fully usable. Real-browser automation path succeeded.
-
-## Details
-
-- **Final URL:** https://app.apollo.io/#/home
-- **Cloudflare blocked:** No (background challenges seen on ancillary requests but did not interrupt the authenticated UI)
-- **Login attempted:** No (session was already authenticated)
-- **Browserless probe:** Not used — real browser path succeeded
-
-## Notes
-
-Cloudflare interstitial was detected in response bodies from:
-- `https://app.apollo.io/`
-- `https://app.apollo.io/api/v1/contacts/search?...`
-- `https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/...`
-
-These were background challenges on ancillary requests. The authenticated Apollo surface was already active and remained usable throughout.
-
-## Downstream Status
-
-Apollo is a **managed outbound channel** — outbound email/sequence sends are **actionable** via this authenticated session.
+- Timestamp: `2026-05-27T22:02:35.952454+02:00`
+- Status: `login_succeeded`
+- Final URL: `https://app.apollo.io/#/home`
+- Login attempted: `False`
+- Cloudflare/auth blocked: `False`
+- Auth endpoint status codes: `[]`
+- Browserless probe status: `None`
+- Browserless probe final URL: `None`
+- Browserless auth endpoint status codes: `[]`
+- Browserless notes: none
+- Notes: Cloudflare interstitial detected in response body from https://app.apollo.io/. Apollo was already on an authenticated app surface before form automation. Background Cloudflare challenges were seen on ancillary Apollo requests, but the authenticated UI remained usable.

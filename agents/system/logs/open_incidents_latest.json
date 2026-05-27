@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-27T17:08:02.195285+00:00",
+  "updated_at": "2026-05-27T20:06:34.058492+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
@@ -2293,7 +2293,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 289,
+      "repeat_count": 291,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -3597,15 +3597,31 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779901677132:117\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T17:56:42.648981+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=289"
+        },
+        {
+          "at": "2026-05-27T19:11:51.141948+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T19:07:47.911180+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=290"
+        },
+        {
+          "at": "2026-05-27T20:06:30.162401+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T21:11:47.642038+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=291"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-27T17:07:14.303293+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T17:56:42.648981+02:00\"\n}",
+      "last_seen": "2026-05-27T20:06:26.369311+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T21:11:47.642038+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-05-27T17:07:57.159008+00:00"
+      "closed_at": "2026-05-27T20:06:30.162417+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -7205,7 +7221,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 61,
+      "repeat_count": 63,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -7379,13 +7395,21 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779901671745:114\"\n}",
           "outcome": "blocked_external",
           "issue_signature": "marketing_independent_verification_escalation::escalation_required::::Incident escalation level=critical: marketing_independent_verification:stale_artifact repeat_count=56"
+        },
+        {
+          "at": "2026-05-27T19:11:49.390200+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779909109364:118\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_escalation::escalation_required::::Incident escalation level=critical: marketing_independent_verification:stale_artifact repeat_count=62"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-27T17:08:02.195255+00:00",
+      "last_seen": "2026-05-27T19:11:55.116892+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -11903,12 +11927,13 @@
       "owner_domain": "docs",
       "escalation_level": "owner",
       "owner_actions": [],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
       "last_seen": "2026-05-27T17:08:02.195273+00:00",
       "last_error": "docs/README.md lists `reviewable-output.md` under 'I want product framing before I go deeper' \u2014 it is a proof/supporting page, not a product framing page. Move it under a 'proof' bucket or demote it from that section so the section label matches the content.",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: docs/README.md lists `reviewable-output.md` under 'I want product framing before I go deeper' \u2014 it is a proof/supporting page, not a product framing page. Move it under a 'proof' bucket or demote it from that section so the section label matches the content.",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-27T19:11:45.683796+00:00"
     }
   }
 }

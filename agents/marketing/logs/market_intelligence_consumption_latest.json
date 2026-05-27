@@ -1,6 +1,6 @@
 {
   "schema_version": "market-intelligence-consumption.v1",
-  "updated_at": "2026-05-27T18:57:19.722539+00:00",
+  "updated_at": "2026-05-27T20:35:57.289051+00:00",
   "shared_artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
   "runtime_proven_consumers": [
     "agents/marketing/reddit_monitor.py",
@@ -12,36 +12,36 @@
   ],
   "producer": {
     "name": "competitor_analysis.py",
-    "recorded_at": "2026-05-27T15:56:38.650233+00:00",
-    "artifact_generated_at": "2026-05-27T17:56:38.649975"
+    "recorded_at": "2026-05-27T19:04:11.770094+00:00",
+    "artifact_generated_at": "2026-05-27T21:04:11.769037"
   },
   "consumers": {
     "agents/marketing/run.py": {
       "consumer": "agents/marketing/run.py",
-      "recorded_at": "2026-05-27T15:32:56.565635+00:00",
+      "recorded_at": "2026-05-27T20:20:59.826188+00:00",
       "required": false,
       "status": "loaded",
-      "artifact_generated_at": "2026-05-27T09:38:48.926307",
+      "artifact_generated_at": "2026-05-27T21:04:11.769037",
       "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-27.md",
       "competitor_count": 8,
       "comparison_page_count": 8
     },
     "agents/marketing/reddit_monitor.py": {
       "consumer": "agents/marketing/reddit_monitor.py",
-      "recorded_at": "2026-05-27T12:14:54.244179+00:00",
+      "recorded_at": "2026-05-27T20:06:05.945720+00:00",
       "required": false,
       "status": "loaded",
-      "artifact_generated_at": "2026-05-27T09:38:48.926307",
+      "artifact_generated_at": "2026-05-27T21:04:11.769037",
       "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-27.md",
       "competitor_count": 8,
       "comparison_page_count": 8
     },
     "agents/marketing/distribution_lane_executor.py": {
       "consumer": "agents/marketing/distribution_lane_executor.py",
-      "recorded_at": "2026-05-27T18:57:19.722468+00:00",
+      "recorded_at": "2026-05-27T20:35:57.288938+00:00",
       "required": false,
       "status": "loaded",
-      "artifact_generated_at": "2026-05-27T17:56:38.649975",
+      "artifact_generated_at": "2026-05-27T21:04:11.769037",
       "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-27.md",
       "competitor_count": 8,
       "comparison_page_count": 8

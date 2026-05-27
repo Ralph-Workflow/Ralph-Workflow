@@ -141,6 +141,7 @@ DISTRIBUTION_ARCHITECTURE_REUSE_LANES = {
 DISTRIBUTION_ARCHITECTURE_REUSE_ACTION_TYPE_MAP = {
     "distribution_architecture_repair": {
         "distribution_architecture_repair",
+        "distribution_architecture_churn_guard_repair",
     },
     "distribution_architecture_guard_follow_through": {"distribution_architecture_guard_follow_through"},
     "distribution_architecture_guard_pause": {"distribution_architecture_guard_pause"},

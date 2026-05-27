@@ -831,6 +831,45 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
             self.assertEqual(written['execution_board_fingerprint'], 'fresh123')
             self.assertIn(now.isoformat(), status_md.read_text(encoding='utf-8'))
 
+    def test_sync_latest_truth_snapshot_resyncs_latest_execution_board_alias(self):
+        now = datetime(2026, 5, 27, 21, 15, 0)
+        decision = LaneDecision(
+            lane='owned_content',
+            reason='no stronger autonomous lane detected',
+            reasons=['hold window still has no truthful do-now packet'],
+            owned_content_posts_last_36h=2,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['distribution_lane_latest.json'],
+            artifact_path='/tmp/owned-content.md',
+            short_review_window_release_at='2026-05-27T18:35:08',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            status_json = tmp / 'outcome_execution_board_latest.json'
+            status_md = tmp / 'outcome_execution_board_latest.md'
+            dated_board = tmp / '2026-05-27_marketing_execution_board.md'
+            dated_board.write_text('# dated board\n', encoding='utf-8')
+            stale_latest = tmp / 'marketing_execution_board_latest.md'
+            stale_latest.write_text('# stale board\n', encoding='utf-8')
+
+            with patch.object(outcome_execution_board_runner, 'STATUS_JSON', status_json), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_MD', status_md), \
+                 patch.object(outcome_execution_board_runner, 'LOG_DIR', tmp), \
+                 patch.object(outcome_execution_board_runner, 'AUDIT_JSON', tmp / 'audit.json'), \
+                 patch.object(outcome_execution_board_runner, 'LATEST_EXECUTION_BOARD', stale_latest), \
+                 patch.object(outcome_execution_board_runner, 'choose_distribution_lane', return_value=decision), \
+                 patch.object(outcome_execution_board_runner.distribution_lane_selector, 'persist_latest_lane_decision'), \
+                 patch.object(outcome_execution_board_runner.distribution_lane_selector, '_execution_board_fingerprint', return_value='fresh123'):
+                outcome_execution_board_runner.sync_latest_truth_snapshot(
+                    now=now,
+                    audit={},
+                    board_path=dated_board,
+                    board_targets=['no-do-now-packet'],
+                )
+
+            self.assertEqual(stale_latest.read_text(encoding='utf-8'), dated_board.read_text(encoding='utf-8'))
+
 
 if __name__ == '__main__':
     unittest.main()

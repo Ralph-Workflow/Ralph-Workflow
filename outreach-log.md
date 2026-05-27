@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-27 (Wednesday) — Reddit monitoring (19:15 UTC / 21:15 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-27_2115.md`
+- **Scan summary:** forced-refresh local monitor returned **47 scanned / 4 shortlisted** with **ok=5 / reddit_ip_blocked=2 / time_budget_exceeded=1**.
+- **Coverage note:** still a **partial-visibility** pass. Coverage stayed healthier than the thin **2026-05-27 03:05 CEST** snapshot and close to the broader **12:45 CEST** pass, so I treated the blocked query families as degraded telemetry rather than as evidence the market went quiet.
+- **Current verdict:** still **not** a posting pass. Discussion-fit is real, but honest RalphWorkflow mention fit remains **medium-low** across the surviving threads.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
+  - `r/AI_Agents` — "Tried 12+ agentic AI workflow builders this year — these 5 actually work in production"
+  - `r/AI_Agents` — "How are you managing multiple coding agents in parallel without things getting messy?"
+  - `r/ClaudeAI` — "Running multiple AI coding agents in parallel with full dev environment (not git-worktree!)"
+- **Repeated pains worth tracking:** context continuity across tools, workflow-builder claims that still dodge visible finish-state proof, parallel-agent repo mess, and morning-after reviewability.
+- **Self-improving lesson:** keep **context continuity**, **parallel repo mess**, and **visible finish state** ahead of approval/mobile-control families, and add a stronger watch for **workflow-builder roundup** posts as research surfaces that still rarely justify a clean RalphWorkflow mention.
+- **Posting note:** No posting attempted. Research-first only while mention-fit stays low under partial coverage.
+
 ## 2026-05-27 (Wednesday) — Reddit monitoring (10:45 UTC / 12:45 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-27_1245.md`
 - **Scan summary:** forced-refresh local monitor returned **49 scanned / 4 shortlisted** with **ok=6 / reddit_ip_blocked=2 / time_budget_exceeded=1**.
@@ -7284,4 +7298,12 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-27 19:58:01
+- **Note:** Momentum watch state: Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 21:59:23
+- **Note:** Momentum watch state: Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 22:06:06
 - **Note:** Momentum watch state: Reddit monitoring coverage is degraded.

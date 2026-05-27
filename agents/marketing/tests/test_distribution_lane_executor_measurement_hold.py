@@ -247,6 +247,35 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             self.assertIn('No do-now handoff packet is currently truthful in this review window.', board_text)
             self.assertEqual(targets, [])
 
+    def test_primary_repo_flat_manual_review_asset_marks_no_truthful_targets_when_selector_is_empty(self):
+        now = datetime(2026, 5, 27, 20, 12, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            drafts_dir.mkdir()
+
+            findings = [
+                {
+                    'target': 'ComputingForGeeks',
+                    'article_url': 'https://computingforgeeks.com/opencode-vs-claude-code-vs-cursor/',
+                    'channels': [
+                        {'type': 'website', 'value': 'https://computingforgeeks.com/about', 'label': 'about page'},
+                        {'type': 'x', 'value': 'https://twitter.com/jj_mutai', 'label': 'X/Twitter'},
+                    ],
+                }
+            ]
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_targets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_executor, '_latest_research_signals', return_value=[]):
+                artifact_path, prepared = distribution_lane_executor._write_primary_repo_flat_manual_review_asset(now, findings)
+
+            artifact_text = artifact_path.read_text(encoding='utf-8')
+            self.assertEqual(prepared, [])
+            self.assertIn('No truthful manual-executable publisher target is currently waiting.', artifact_text)
+            self.assertIn('Do not treat about pages, generic site pages, GitHub issues, X, or LinkedIn alone as a do-now publisher handoff lane.', artifact_text)
+
     def test_execution_board_empty_marker_yields_to_manual_review_asset(self):
         now = datetime(2026, 5, 27, 15, 37, 0)
 

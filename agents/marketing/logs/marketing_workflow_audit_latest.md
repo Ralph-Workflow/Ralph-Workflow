@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-27T20:46:32.471118
+- Generated: 2026-05-27T22:06:06.131106
 - Current bottleneck: **conversion_to_free_use**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,7 +11,7 @@
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 4 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
-- The most recent runtime activity was distribution_architecture_churn_guard_repair, but the latest meaningful external/replacement execution remains owned_content_publication; do not confuse follow-through with fresh outcome-bearing distribution.
+- The most recent runtime activity was distribution_architecture_guard_pause, but the latest meaningful external/replacement execution remains owned_content_publication; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (owned_content_publication), so the system is still shipping output even though outcome movement is not visible yet.
 - A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint.
