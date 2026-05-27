@@ -61,6 +61,10 @@ from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
+from ralph.skills._prompt_skill_references import (
+    development_skill_references_text,
+    planning_skill_references_text,
+)
 from ralph.skills._skill_resolver import get_inline_skill_content
 from ralph.skills.manager import SkillManager
 
@@ -520,6 +524,8 @@ def _render_template_based_prompt(
     variables["LAST_RETRY_ERROR"] = last_retry_error
     variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
+    variables["PLANNING_SKILL_REFERENCES"] = planning_skill_references_text()
+    variables["DEVELOPMENT_SKILL_REFERENCES"] = development_skill_references_text()
     return render_template(
         template,
         _merged_variables(variables, session_caps),

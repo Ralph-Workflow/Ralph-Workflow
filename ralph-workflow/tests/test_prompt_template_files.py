@@ -170,17 +170,6 @@ PLANNING_SELF_CRITIQUE_GUIDANCE = (
 PLANNING_CORE_WORKFLOW_PLANNING_GUIDANCE = (
     "Infer the core user-facing workflows and prerequisite actions that must exist"
 )
-PLANNING_SKILL_REFERENCES = (
-    "`using-superpowers`",
-    "`writing-plans`",
-    "`brainstorming`",
-    "`executing-plans`",
-    "`dispatching-parallel-agents`",
-    "`subagent-driven-development`",
-    "`coding-standards`",
-    "`verification-loop`",
-    "`security-review`",
-)
 PLANNING_ANALYSIS_CRITIC_GUIDANCE = "You are a lightweight plan critic"
 PLANNING_ANALYSIS_MISSING_WORK_GUIDANCE = "Missing work"
 PLANNING_ANALYSIS_CONTRADICTIONS_GUIDANCE = "Contradictions or inconsistency"
@@ -500,8 +489,7 @@ def test_planning_analysis_prompt_references_baseline_planning_skills() -> None:
     planning_analysis = (TEMPLATES_ROOT / "planning_analysis.jinja").read_text(encoding="utf-8")
 
     assert "## BASELINE WORKFLOW SKILLS" in planning_analysis
-    for skill_reference in PLANNING_SKILL_REFERENCES:
-        assert skill_reference in planning_analysis
+    assert "{{ PLANNING_SKILL_REFERENCES }}" in planning_analysis
     assert "{% if HAS_DOCS_MCP %}" in planning_analysis
     assert "{% else %}" in planning_analysis
     assert "arabold/docs-mcp-server" in planning_analysis

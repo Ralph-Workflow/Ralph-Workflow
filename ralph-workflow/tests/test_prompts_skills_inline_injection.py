@@ -68,7 +68,8 @@ def test_developer_inline_content_appears_in_rendered_prompt(
         "# INJECTED_SKILL_MARKER\nInjected guidance text.",
         encoding="utf-8",
     )
-    monkeypatch.setenv("RALPH_SKILLS_PROCESS_DIR", str(tmp_path))
+    monkeypatch.delenv("RALPH_SKILLS_PROCESS_DIR", raising=False)
+    monkeypatch.setenv("RALPH_INLINE_SKILLS_DIR", str(tmp_path))
     inline = get_inline_skill_content()
     assert "INJECTED_SKILL_MARKER" in inline
     rendered = _render_developer(tmp_path, inline, "developer_iteration.jinja")
@@ -88,11 +89,26 @@ def test_planning_inline_content_appears_in_rendered_prompt(
         "# INJECTED_SKILL_MARKER\nInjected planning guidance.",
         encoding="utf-8",
     )
-    monkeypatch.setenv("RALPH_SKILLS_PROCESS_DIR", str(tmp_path))
+    monkeypatch.delenv("RALPH_SKILLS_PROCESS_DIR", raising=False)
+    monkeypatch.setenv("RALPH_INLINE_SKILLS_DIR", str(tmp_path))
     inline = get_inline_skill_content()
     assert "INJECTED_SKILL_MARKER" in inline
     rendered = _render_planning(tmp_path, inline, "planning.jinja")
     assert "INJECTED_SKILL_MARKER" in rendered
+
+
+def test_process_skill_dir_does_not_inline_into_planning_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "discoverable-skill.md").write_text(
+        "# DISCOVERABLE_ONLY\nDo not inline this.",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("RALPH_SKILLS_PROCESS_DIR", str(tmp_path))
+    monkeypatch.delenv("RALPH_INLINE_SKILLS_DIR", raising=False)
+    inline = get_inline_skill_content()
+    assert inline == ""
 
 
 def test_planning_empty_inline_content_shows_normal_skill_names(tmp_path: Path) -> None:

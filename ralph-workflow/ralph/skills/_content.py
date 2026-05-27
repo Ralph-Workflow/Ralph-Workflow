@@ -21,6 +21,9 @@ class SkillMetadata(TypedDict):
     skill_sources: dict[str, dict[str, object]]
 
 
+_MANAGED_MARKER = ".ralph-managed.json"
+
+
 def _read_skill_metadata() -> SkillMetadata:
     content_dir = files(__package__) / "content"
     raw = (content_dir / "metadata.json").read_text(encoding="utf-8")
@@ -46,6 +49,13 @@ def get_skill_metadata() -> SkillMetadata:
     return _read_skill_metadata()
 
 
+def managed_skill_marker(name: str) -> dict[str, str]:
+    return {
+        "managed_by": "ralph-workflow",
+        "skill": name,
+    }
+
+
 def materialize_skills_to_dir(target: Path) -> list[str]:
     target.mkdir(parents=True, exist_ok=True)
     written_names: list[str] = []
@@ -60,10 +70,33 @@ def materialize_skills_to_dir(target: Path) -> list[str]:
     return written_names
 
 
+def materialize_skills_to_claude_dir(target: Path) -> list[str]:
+    target.mkdir(parents=True, exist_ok=True)
+    written_names: list[str] = []
+    metadata = get_skill_metadata()
+    for name in BASELINE_SKILL_NAMES:
+        skill_dir = target / name
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(get_skill_content(name), encoding="utf-8")
+        (skill_dir / _MANAGED_MARKER).write_text(
+            json.dumps(managed_skill_marker(name), indent=2) + "\n",
+            encoding="utf-8",
+        )
+        written_names.append(name)
+    (target / "metadata.json").write_text(
+        json.dumps(metadata, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return written_names
+
+
 __all__ = [
     "BASELINE_SKILL_NAMES",
+    "_MANAGED_MARKER",
     "get_skill_content",
     "get_skill_metadata",
     "list_skill_names",
+    "managed_skill_marker",
+    "materialize_skills_to_claude_dir",
     "materialize_skills_to_dir",
 ]

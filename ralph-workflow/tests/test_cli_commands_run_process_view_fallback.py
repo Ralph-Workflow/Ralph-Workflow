@@ -71,9 +71,9 @@ def test_maybe_enter_process_view_enters_context_when_partial_install(
             return False
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    skills_dir = tmp_path / ".claude" / "plugins" / "ralph-workflow-skills" / "skills"
+    skills_dir = tmp_path / ".claude" / "skills" / "using-superpowers"
     skills_dir.mkdir(parents=True)
-    (skills_dir / "using-superpowers.md").write_text("# using-superpowers\n", encoding="utf-8")
+    (skills_dir / "SKILL.md").write_text("# using-superpowers\n", encoding="utf-8")
     monkeypatch.setattr(run_module, "SkillsProcessView", FakeView)
     with ExitStack() as stack:
         target = run_module._maybe_enter_process_view(stack)

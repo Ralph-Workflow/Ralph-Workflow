@@ -12,6 +12,10 @@ from ralph.prompts.developer import (
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.skills._prompt_skill_references import (
+    development_skill_references_text,
+    planning_skill_references_text,
+)
 from ralph.workspace.memory import MemoryWorkspace
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (
@@ -276,6 +280,7 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
     assert PLANNING_STABLE_ID_TEXT in prompt
     assert PLANNING_PARALLEL_ANALYSIS_TEXT in prompt
     assert PLANNING_FIRST_PASS_RISK_AUDIT_TEXT in prompt
+    assert planning_skill_references_text().strip() in prompt
 
 
 def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: Path) -> None:
@@ -520,6 +525,7 @@ def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path: Path
     assert DEVELOPER_CLEAR_OVER_CLEVER_TEXT in prompt
     assert DEVELOPER_NARROW_INTERFACES_TEXT in prompt
     assert DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT in prompt
+    assert development_skill_references_text().strip() in prompt
 
 
 def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(

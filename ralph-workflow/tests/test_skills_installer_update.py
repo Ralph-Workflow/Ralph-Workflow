@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.skills._content import materialize_skills_to_dir
-from ralph.skills._installer import check_skills_update_available
+from ralph.skills._installer import check_skills_update_available, install_baseline_skills
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,7 +28,7 @@ def test_check_skills_update_available_returns_false_when_contents_match(
     tmp_path: Path,
 ) -> None:
     installed_dir = tmp_path / "skills"
-    materialize_skills_to_dir(installed_dir)
+    install_baseline_skills(target_dir=installed_dir)
     monkeypatch.setattr(
         "ralph.skills._installer._installed_skills_dir",
         lambda: installed_dir,
@@ -42,8 +41,8 @@ def test_check_skills_update_available_returns_true_when_content_differs(
     tmp_path: Path,
 ) -> None:
     installed_dir = tmp_path / "skills"
-    materialize_skills_to_dir(installed_dir)
-    (installed_dir / "using-superpowers.md").write_text("changed", encoding="utf-8")
+    install_baseline_skills(target_dir=installed_dir)
+    (installed_dir / "using-superpowers" / "SKILL.md").write_text("changed", encoding="utf-8")
     monkeypatch.setattr(
         "ralph.skills._installer._installed_skills_dir",
         lambda: installed_dir,
@@ -56,10 +55,41 @@ def test_check_skills_update_available_returns_true_when_metadata_missing(
     tmp_path: Path,
 ) -> None:
     installed_dir = tmp_path / "skills"
-    materialize_skills_to_dir(installed_dir)
+    install_baseline_skills(target_dir=installed_dir)
     metadata_path = installed_dir / "metadata.json"
     if metadata_path.exists():
         metadata_path.unlink()
+    monkeypatch.setattr(
+        "ralph.skills._installer._installed_skills_dir",
+        lambda: installed_dir,
+    )
+    assert check_skills_update_available() is True
+
+
+def test_check_skills_update_available_returns_true_when_user_conflict_present(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    installed_dir = tmp_path / "skills"
+    install_baseline_skills(target_dir=installed_dir)
+    (installed_dir / "using-superpowers" / "SKILL.md").write_text(
+        "# user override\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "ralph.skills._installer._installed_skills_dir",
+        lambda: installed_dir,
+    )
+    assert check_skills_update_available() is True
+
+
+def test_check_skills_update_available_returns_true_when_managed_marker_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    installed_dir = tmp_path / "skills"
+    install_baseline_skills(target_dir=installed_dir)
+    (installed_dir / "using-superpowers" / ".ralph-managed.json").unlink()
     monkeypatch.setattr(
         "ralph.skills._installer._installed_skills_dir",
         lambda: installed_dir,

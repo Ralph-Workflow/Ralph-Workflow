@@ -103,7 +103,7 @@ That is the real product test.
 
 ## Running `ralph --init` and diagnosing capability health
 
-`ralph --init` installs Ralph Workflow's mirrored default skill bundles by copying the bundled skill files to `~/.claude/plugins/ralph-workflow-skills/skills/`. The shipped set includes the core workflow bundle plus a namespaced design bundle, and the mirrored snapshots ship inside the Python package without requiring a separate skill registry fetch or network access. After installing, it prints a Baseline Capabilities table showing:
+`ralph --init` installs Ralph Workflow's mirrored default skill bundles into Claude Code's personal skill discovery tree at `~/.claude/skills/<skill-name>/SKILL.md`. The shipped set includes the core workflow bundle plus a namespaced design bundle, and the mirrored snapshots ship inside the Python package without requiring a separate skill registry fetch or network access. After installing, it prints a Baseline Capabilities table showing:
 
 - **Always-available built-in capabilities:** workspace_ops, git_read_ops, artifact_ops, plan_read, media_read (these are built into Ralph and cannot degrade)
 - **Managed helpers:** web_search, visit_url, docs_mcp, and skills (these are tracked with health state)

@@ -1,11 +1,11 @@
-"""Resolve inline skill content for prompt injection."""
+"""Resolve explicitly requested inline skill content for prompt injection."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-_ENV_VAR = "RALPH_SKILLS_PROCESS_DIR"
+_ENV_VAR = "RALPH_INLINE_SKILLS_DIR"
 
 
 def get_inline_skill_content() -> str:
