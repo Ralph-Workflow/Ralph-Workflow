@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-27T09:16:32.769620",
+  "timestamp": "2026-05-27T09:26:56.809844",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "apollo_launch_handoff_packet",
@@ -8,7 +8,7 @@
     "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_apollo_launch_handoff_packet.md"
   },
   "why_this_action": {
-    "summary": "Prepared the Apollo launch/send confirmation handoff so the loop advances the already-verified non-zero list into real live-send evidence instead of regenerating prep artifacts. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
+    "summary": "Prepared the Apollo launch/send confirmation handoff so the loop advances the already-verified non-zero list into real live-send evidence instead of regenerating prep artifacts. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",

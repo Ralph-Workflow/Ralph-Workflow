@@ -1,5 +1,5 @@
 # Apollo Launch / Send Confirmation Handoff Packet
-Generated: 2026-05-27T09:16:32
+Generated: 2026-05-27T09:26:56
 
 ## Why this exists now
 - Apollo already passed its first launch checkpoint, but the sequence is still not outcome-ready.
@@ -22,7 +22,7 @@ Generated: 2026-05-27T09:16:32
 ## Canonical packet to use
 - Launch packet: /home/mistlight/.openclaw/workspace/drafts/apollo_sequence_launch_packet_latest.md
 - Launch log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_apollo_sequence_launch.json
-- Latest verification log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072359_apollo_outbound_verification.json
+- Latest verification log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_092656_apollo_outbound_verification.json
 
 ## Do this next
 - Open Apollo on the logged sequence/list and verify whether the sequence is actually active, paused, blocked, or never launched.
@@ -39,8 +39,7 @@ Generated: 2026-05-27T09:16:32
 - Review window starts only after live send confirmation lands; a blocker log should reset the loop back into truthful repair instead of fake-green measurement.
 
 
-## Post-hold marketer rerun scheduled
+## Post-hold marketer rerun already scheduled
 - Scheduled run: 2026-05-27T14:26:29
 - Cron job: marketing-measurement-hold-release (49bff4f7-33b6-4652-ba1e-c1c9e7a2bd38)
-- Log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_091632_measurement_hold_release_cron.json
-- This keeps the first truthful post-hold slot alive even though the current lane is still blocked by short-window congestion.
+- The current one-shot already matches the live short-window release time; do not create another duplicate wake.

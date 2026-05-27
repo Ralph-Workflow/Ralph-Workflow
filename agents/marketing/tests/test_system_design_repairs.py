@@ -91,6 +91,43 @@ class ApolloSequenceStatusTests(unittest.TestCase):
         self.assertEqual(payload['result']['status'], 'launch_ready_needs_send_confirmation')
         self.assertFalse(payload['result']['outcome_ready'])
 
+    def test_build_status_prefers_verified_live_sequence_over_launch_ready_packet(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir)
+            launch = log_dir / 'marketing_2026-05-25_apollo_sequence_launch.json'
+            launch.write_text(json.dumps({
+                'timestamp': '2026-05-25T11:00:00+02:00',
+                'chosen_action': {'type': 'apollo_sequence_launch', 'sequence_name': 'Seq', 'url': 'https://app.apollo.io/#/lists'},
+                'result': {
+                    'status': 'launch_ready_packet_created',
+                    'outcome_ready': False,
+                    'record_count': 5,
+                    'sequence_name': 'Seq',
+                    'final_url': 'https://app.apollo.io/#/lists',
+                },
+            }), encoding='utf-8')
+            outbound = log_dir / 'marketing_2026-05-25_120500_apollo_outbound_verification.json'
+            outbound.write_text(json.dumps({
+                'timestamp': '2026-05-25T12:05:00+02:00',
+                'chosen_action': {'type': 'apollo_outbound_verification'},
+                'result': {
+                    'status': 'verified_live_sequence',
+                    'record_count': 758,
+                    'sequence_name': 'Ralph Workflow Seq',
+                    'final_url': 'https://app.apollo.io/#/sequences/seq',
+                    'evidence': ['live proof'],
+                },
+            }), encoding='utf-8')
+            with patch.object(apollo_sequence_status, 'LOG_DIR', log_dir), \
+                 patch.object(apollo_sequence_status, 'STATUS_JSON', log_dir / 'apollo_sequence_status_latest.json'), \
+                 patch.object(apollo_sequence_status, 'STATUS_MD', log_dir / 'apollo_sequence_status_latest.md'):
+                payload = apollo_sequence_status.build_status(datetime.fromisoformat('2026-05-25T12:10:00+02:00'))
+        self.assertEqual(payload['status'], 'measurement_pending_launch_window')
+        self.assertTrue(payload['measurement_pending'])
+        self.assertEqual(payload['record_count'], 758)
+        self.assertEqual(payload['sequence_name'], 'Ralph Workflow Seq')
+        self.assertEqual(payload['final_url'], 'https://app.apollo.io/#/sequences/seq')
+
     def test_build_status_surfaces_runtime_auth_blocker_for_launch_ready_apollo(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
@@ -137,6 +174,33 @@ class ApolloSequenceStatusTests(unittest.TestCase):
         self.assertEqual(payload['result']['runtime_blocker_status'], 'cloudflare_auth_blocked')
         self.assertFalse(payload['result']['outcome_ready'])
 
+    def test_apollo_outbound_verifier_refreshes_sequence_status_before_audit_and_board(self):
+        call_order: list[str] = []
+
+        def _mark(name: str):
+            def _inner() -> int:
+                call_order.append(name)
+                return 0
+            return _inner
+
+        with patch('agents.marketing.apollo_sequence_status.main', side_effect=_mark('apollo_sequence_status_latest')) as status_mock, \
+             patch('agents.marketing.marketing_workflow_audit.main', side_effect=_mark('marketing_workflow_audit_latest')) as audit_mock, \
+             patch('agents.marketing.outcome_execution_board_runner.main', side_effect=_mark('marketing_execution_board_latest')) as board_mock:
+            refresh = apollo_outbound_verifier._refresh_dependent_truths()
+
+        self.assertTrue(refresh['ok'])
+        self.assertEqual(
+            refresh['refreshed'],
+            ['apollo_sequence_status_latest', 'marketing_workflow_audit_latest', 'marketing_execution_board_latest'],
+        )
+        self.assertEqual(
+            call_order,
+            ['apollo_sequence_status_latest', 'marketing_workflow_audit_latest', 'marketing_execution_board_latest'],
+        )
+        status_mock.assert_called_once()
+        audit_mock.assert_called_once()
+        board_mock.assert_called_once()
+
     def test_apollo_outbound_verifier_main_refreshes_audit_and_execution_board(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
@@ -152,14 +216,14 @@ class ApolloSequenceStatusTests(unittest.TestCase):
             with patch.object(apollo_outbound_verifier, 'LOG_DIR', log_dir), \
                  patch.object(apollo_outbound_verifier, 'STATUS_PATH', status_path), \
                  patch.object(apollo_outbound_verifier, 'OUTPUT_MD', log_dir / 'apollo_outbound_verification_latest.md'), \
-                 patch.object(apollo_outbound_verifier, '_refresh_dependent_truths', return_value={'ok': True, 'refreshed': ['marketing_workflow_audit_latest', 'marketing_execution_board_latest'], 'errors': []}) as refresh_mock:
+                 patch.object(apollo_outbound_verifier, '_refresh_dependent_truths', return_value={'ok': True, 'refreshed': ['apollo_sequence_status_latest', 'marketing_workflow_audit_latest', 'marketing_execution_board_latest'], 'errors': []}) as refresh_mock:
                 rc = apollo_outbound_verifier.main()
             self.assertEqual(rc, 0)
             refresh_mock.assert_called_once()
             logs = sorted(log_dir.glob('marketing_*_apollo_outbound_verification.json'))
             self.assertTrue(logs)
             payload = json.loads(logs[-1].read_text(encoding='utf-8'))
-            self.assertEqual(payload['post_verification_refresh']['refreshed'], ['marketing_workflow_audit_latest', 'marketing_execution_board_latest'])
+            self.assertEqual(payload['post_verification_refresh']['refreshed'], ['apollo_sequence_status_latest', 'marketing_workflow_audit_latest', 'marketing_execution_board_latest'])
             self.assertIn('Refreshed dependent audit/board artifacts', ' '.join(payload['result']['notes']))
 
 

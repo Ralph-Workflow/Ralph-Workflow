@@ -7,7 +7,7 @@ Generated: 2026-05-25T18:53:00
 - Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
 ## Active review windows
-- Apollo next review: 2026-05-25T23:11:13.732870+02:00
+- Apollo next review: 2026-06-01T23:11:13.732870+02:00
 - Apollo launch review: 2026-06-01T23:11:13.732870+02:00
 - Short review-window congestion clears at: 2026-05-25T23:07:41
 - Post-hold marketer rerun scheduled: 2026-05-27T14:26:29

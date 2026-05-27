@@ -1,6 +1,6 @@
 {
-  "ts": "2026-05-27T08:58:37.146327",
-  "jobs_checked": 24,
+  "ts": "2026-05-27T09:49:59.119975",
+  "jobs_checked": 25,
   "issues_found": 6,
   "issues": [
     {
@@ -15,27 +15,27 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
+      "name": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr",
       "category": "review_followup_required",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
+      "last_error": "Primary repo adoption is flat and the current primary-repo repair is still awaiting real execution from the consolidated execution board.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption is flat and the current primary-repo repair is still awaiting real execution from the consolidated execution board."
     },
     {
       "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T08:57:53.440337+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
+      "name": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "last_error": "Workflow audit still reports needs_repair.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Workflow audit still reports needs_repair."
     },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=471",
-      "repeats_in_recent_history": 471,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=499",
+      "repeats_in_recent_history": 499,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification::loop_verification_fail",
       "escalation_level": "critical",
@@ -45,13 +45,13 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
+      "name": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr_escalation",
       "category": "escalation_required",
-      "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=321",
-      "repeats_in_recent_history": 321,
+      "last_error": "Primary repo adoption is flat and the current primary-repo repair is still awaiting real execution from the consolidated execution board.",
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr:review_followup_required repeat_count=32",
+      "repeats_in_recent_history": 32,
       "owner_domain": "marketing",
-      "incident_key": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin::review_followup_required",
+      "incident_key": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr::review_followup_required",
       "escalation_level": "critical",
       "blocked_by": [
         "marketing_independent_verification"
@@ -59,35 +59,49 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
+      "name": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair_escalation",
       "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T08:57:53.440337+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=259",
-      "repeats_in_recent_history": 259,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
+      "last_error": "Workflow audit still reports needs_repair.",
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required repeat_count=88",
+      "repeats_in_recent_history": 88,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair::review_followup_required",
       "escalation_level": "critical",
-      "blocked_by": []
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
     }
   ],
   "repairs_attempted": [
     {
       "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
+      "job": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr",
       "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-05-27T04:06:25.120664+00:00"
+      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-05-27T07:21:42.388184+00:00"
+    },
+    {
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-05-27T07:21:44.197026+00:00"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779865111480:33\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779868191450:76\"\n}"
     },
     {
       "type": "owner_loop_escalation",
-      "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
+      "job": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779868193296:77\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair_escalation",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779868195073:78\"\n}"
     }
   ]
 }
