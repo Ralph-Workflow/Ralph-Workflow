@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-05-27T12:35:08.815501",
+  "timestamp": "2026-05-27T23:51:49.851857",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "owned_content_publication",
+    "type": "owned_content_lane_noop",
     "channel": "owned_content",
     "title": "Distribution lane execution: owned_content",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_good_unattended_task_telegraph.md"
+    "draft": null
   },
   "why_this_action": {
-    "summary": "Published a repo-native proof guide to Telegraph so the hold window still creates fresh Codeberg-first demand capture instead of another owned-content noop.",
+    "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -16,15 +16,14 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "targets_prepared": [
-      "https://telegra.ph/Good-Unattended-AI-Coding-Task-vs-Bad-One-05-27",
-      "/home/mistlight/.openclaw/workspace/content/guides/good_unattended_task.md"
-    ]
+    "targets_prepared": []
   },
   "result": {
-    "status": "executed",
+    "status": "skipped",
     "ok": true,
-    "live_external_action": true,
-    "blocking_factors": []
+    "live_external_action": false,
+    "blocking_factors": [
+      "No unpublished owned-content guide was available for Telegraph publication."
+    ]
   }
 }

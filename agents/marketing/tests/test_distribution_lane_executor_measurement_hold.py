@@ -27,11 +27,12 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             distribution_lane_latest = log_dir / 'distribution_lane_latest.json'
             distribution_lane_latest.write_text(json.dumps({}), encoding='utf-8')
-            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n', encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n\n### 1. ctxt.dev / Signum\n', encoding='utf-8')
 
             with ExitStack() as stack:
                 stack.enter_context(patch.object(distribution_lane_executor, 'LOG_DIR', log_dir))
                 stack.enter_context(patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, 'DRAFTS_DIR', drafts_dir))
                 stack.enter_context(patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]))
                 stack.enter_context(patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]))
                 stack.enter_context(patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}))
@@ -64,6 +65,69 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             self.assertIn('manual follow-through asset already exists', board_text)
             self.assertIn('ctxt.dev / Signum', board_text)
             self.assertEqual(targets, ['ctxt.dev / Signum'])
+
+    def test_distribution_architecture_repair_regenerates_manual_review_asset_when_waiting_target_exists(self):
+        now = datetime(2026, 5, 27, 23, 20, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            stale_asset = drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md'
+            stale_asset.write_text('# stale asset\n', encoding='utf-8')
+
+            decision = LaneDecision(
+                lane='distribution_architecture_repair',
+                reason='repair now',
+                reasons=[],
+                owned_content_posts_last_36h=0,
+                unsubmitted_directory_channels=[],
+                shared_findings_used=['adoption_metrics_latest.json'],
+                artifact_path=str(drafts_dir / 'brief.md'),
+            )
+            findings = [{
+                'target': 'ComputingForGeeks',
+                'article_url': 'https://computingforgeeks.com/opencode-vs-claude-code-vs-cursor/',
+                'hook': 'OpenCode vs Claude Code vs Cursor: AI Coding Agents Compared (2026)',
+                'reason': 'Large Linux/DevOps engineering audience already reading practical AI coding workflow comparisons.',
+                'outreach_subject': 'Ralph Workflow for your next AI coding agents comparison update',
+                'recommended_next_step': 'public website contact path is now identified',
+                'channels': [
+                    {'type': 'website', 'value': 'https://computingforgeeks.com/contact', 'label': 'contact page'},
+                    {'type': 'x', 'value': 'https://twitter.com/jj_mutai', 'label': 'X/Twitter'},
+                ],
+            }]
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(distribution_lane_executor, 'LOG_DIR', log_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir))
+                stack.enter_context(patch.object(
+                    distribution_lane_executor,
+                    '_write_marketing_execution_board',
+                    side_effect=[
+                        (drafts_dir / 'board.md', []),
+                        (drafts_dir / 'board.md', ['ComputingForGeeks']),
+                        (drafts_dir / 'board.md', ['ComputingForGeeks']),
+                    ],
+                ))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_distribution_architecture_repair_state', return_value={'third_strike': False}))
+                stack.enter_context(patch.object(distribution_lane_executor, '_reddit_discussion_opportunities', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_reddit_discussion_packet_delivery_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_targets_waiting_for_execution', return_value=['ComputingForGeeks']))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_asset_current', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_primary_repo_flat_contact_discovery', return_value=findings))
+                stack.enter_context(patch.object(distribution_lane_executor, '_latest_research_signals', return_value=[]))
+
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'publisher_manual_review_channel_ready_outreach_asset')
+            self.assertEqual(execution.targets_prepared, ['ComputingForGeeks'])
+            asset_text = stale_asset.read_text(encoding='utf-8')
+            self.assertIn('### 1. ComputingForGeeks', asset_text)
 
     def test_execution_board_empty_marker_wins_over_informational_review_window_bullets(self):
         now = datetime(2026, 5, 27, 11, 21, 0)
@@ -198,6 +262,46 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertEqual(assets, [])
 
+    def test_current_manual_review_asset_survives_prepared_only_family_churn(self):
+        now = datetime(2026, 5, 27, 19, 58, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            discovery_path = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'ComputingForGeeks',
+                        'channels': [
+                            {'type': 'website', 'value': 'https://computingforgeeks.com/contact/', 'label': 'contact page'},
+                        ],
+                    }
+                ]
+            }), encoding='utf-8')
+            manual_asset = drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md'
+            manual_asset.write_text('# manual asset\n\n### 1. ComputingForGeeks\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(distribution_lane_selector, '_recent_contact_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_recent_curator_queue_contact_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_active_manual_outreach_delivery_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_contact_targets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_packet_delivery_still_active', return_value=False), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_recent_prep_count', return_value=0), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_prepared_only_family_repeat_count', return_value=distribution_lane_selector.PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD), \
+                 patch.object(distribution_lane_selector, '_execution_board_short_review_release_at', return_value=None):
+                assets = distribution_lane_selector._manual_outreach_assets_waiting_for_execution(now)
+
+        self.assertEqual(len(assets), 1)
+        self.assertEqual(assets[0]['targets'], ['ComputingForGeeks'])
+
     def test_execution_board_hides_manual_review_asset_when_primary_repo_flat_packet_family_is_churning(self):
         now = datetime(2026, 5, 27, 19, 58, 0)
 
@@ -210,7 +314,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             distribution_lane_latest = log_dir / 'distribution_lane_latest.json'
             distribution_lane_latest.write_text(json.dumps({}), encoding='utf-8')
-            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n', encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n\n### 1. ctxt.dev / Signum\n', encoding='utf-8')
 
             with ExitStack() as stack:
                 stack.enter_context(patch.object(distribution_lane_executor, 'LOG_DIR', log_dir))
@@ -307,7 +411,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                     }
                 ]
             }), encoding='utf-8')
-            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n', encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n\n### 1. ctxt.dev / Signum\n', encoding='utf-8')
 
             with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \

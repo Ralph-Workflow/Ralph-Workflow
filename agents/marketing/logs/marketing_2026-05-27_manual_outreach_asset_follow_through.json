@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-27T19:12:00",
+  "timestamp": "2026-05-27T23:27:26.991414",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -27,9 +27,9 @@
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
-      "A channel-ready manual publisher outreach asset already exists (ctxt.dev / Signum, ComputingForGeeks), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.",
-      "An active manual publisher handoff already covers (Reddit reddit.com \u203a r/ai_agents \u203a genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents, Reddit reddit.com \u203a r/ai_agents \u203a seedance 2.0 is impressive. it\u2019s still not a production workflow. r/AI_Agents, Requesty), so those targets should stay out of fresh packet selection until their review window expires.",
-      "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
+      "A channel-ready manual publisher outreach asset already exists (ComputingForGeeks), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.",
+      "An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.",
+      "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
       "The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, so another packet refresh would be fake progress even if the exact target list drifted.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",

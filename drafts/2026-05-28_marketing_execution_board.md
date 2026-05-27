@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-27T23:57:54
+Generated: 2026-05-28T00:06:58
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +1, watchers +0, forks +0).
@@ -9,6 +9,7 @@ Generated: 2026-05-27T23:57:54
 ## Active review windows
 - Apollo next review: 2026-06-01T23:11:13.732870+02:00
 - Apollo launch review: 2026-06-01T23:11:13.732870+02:00
+- Short review-window congestion clears at: 2026-05-28T01:57:00
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.

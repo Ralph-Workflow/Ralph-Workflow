@@ -1,14 +1,14 @@
 # Adoption Metrics
 
-- Timestamp: 2026-05-27T22:43:07.059488
+- Timestamp: 2026-05-27T23:10:11.389875
 
 ## GitHub (mirror)
-- Stars: 0 (+0)
+- Stars: 1 (+1)
 - Watchers: 2 (+0)
 - Forks: 0 (+0)
 - Open issues: 0
 - Recent window samples: 9
-- Window deltas: stars +0, watchers +0, forks +0
+- Window deltas: stars +1, watchers +0, forks +0
 - URL: https://github.com/Ralph-Workflow/Ralph-Workflow
 
 ## Codeberg (primary)
@@ -21,7 +21,6 @@
 - URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 
 ## Evaluation
-- GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
 
 ## Next focus
