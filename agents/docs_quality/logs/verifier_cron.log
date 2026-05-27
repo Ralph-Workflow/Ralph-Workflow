@@ -8695,3 +8695,77 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean and aligned. README -> START_HERE -> docs/README route works as a coherent journey with consistent framing. Promoted next-click pages reinforce rather than fight the story. No internal leakage, no stale framing, no hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding' tagline, frames product as composable loop framework with AI agent orchestrator identity, emphasizes simple-core/powerful-in-composition contrast, routes to START_HERE first, and includes strong default workflow copy. No internal leakage."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Clean 'shortest honest first run' page with result-first evaluation language ('judge the outcome by what the software does now and what checks ran'), good/bad first task separation, and direct continuation from README."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Docs map explicitly positions itself after README and START_HERE, uses 'Keep proof secondary' section to enforce hierarchy, promotes consistent-framing product pages, and routes to Codeberg as primary. No orphaned or misaligned links."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Coherent docs system. README\u2192START_HERE\u2192docs/README journey is clean, promoted pages reinforce the same simple-core/composition story, no internal leakage on top-level surfaces, and reviewable-output.md is correctly relegated to secondary proof.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'operating system for autonomous coding' + 'AI agent orchestrator' + simple-core composition + Codeberg-primary framing in the first screen. Clean hierarchy, no process residue."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run focused on a real task with result-first success criteria. Routes onward only when needed."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Curated switchboard with 'keep proof secondary' section. Reinforces the positioning rather than introducing competing storylines."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

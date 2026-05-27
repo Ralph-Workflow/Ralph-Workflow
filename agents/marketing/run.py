@@ -716,6 +716,7 @@ def _recent_primary_repo_flat_repeat_refresh_matches_current_state(
 ) -> bool:
     cutoff = now - PRIMARY_REPO_FLAT_REPEAT_REFRESH_SUPPRESSION_WINDOW
     normalized_before = _normalized_target_list(board_targets_before)
+    before_fingerprint = _stable_json_fingerprint(normalized_before)
     for path in LOG_DIR.glob("marketing_*.json"):
         payload = _load_json_file(path)
         chosen_action = payload.get("chosen_action") if isinstance(payload.get("chosen_action"), dict) else {}
@@ -741,10 +742,19 @@ def _recent_primary_repo_flat_repeat_refresh_matches_current_state(
         logged_before = _normalized_target_list(why.get("board_targets_before") or [])
         if logged_before != normalized_before:
             continue
+        verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
+        logged_before_fingerprint = str(verification.get("board_targets_before_fingerprint") or "").strip()
+        if logged_before_fingerprint and logged_before_fingerprint != before_fingerprint:
+            continue
+        logged_after = _normalized_target_list(why.get("board_targets_after") or [])
+        logged_after_fingerprint = str(verification.get("board_targets_after_fingerprint") or "").strip()
+        if not normalized_before and not logged_after and (
+            not logged_after_fingerprint or logged_after_fingerprint == before_fingerprint
+        ):
+            return True
         logged_generated_at = str(why.get("stale_generated_at") or "").strip() or None
         if logged_generated_at and discovery_generated_at and logged_generated_at != discovery_generated_at:
             continue
-        verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
         logged_fingerprint = str(verification.get("discovery_artifact_fingerprint") or "").strip()
         if logged_fingerprint and logged_fingerprint != discovery_fingerprint:
             continue

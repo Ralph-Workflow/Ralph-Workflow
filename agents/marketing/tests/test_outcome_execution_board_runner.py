@@ -314,6 +314,40 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
         self.assertEqual(payload['selected_lane'], 'distribution_architecture_repair')
         self.assertEqual(payload['selected_action_type'], 'distribution_architecture_churn_guard_repair')
 
+    def test_persist_latest_lane_after_guard_pause_reuses_current_decision(self):
+        now = datetime(2026, 5, 27, 15, 13, 45)
+        decision = LaneDecision(
+            lane='distribution_architecture_guard_pause',
+            reason='pause duplicate guard churn',
+            reasons=['board is still empty in the review window'],
+            owned_content_posts_last_36h=2,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['marketing_execution_board_latest.md'],
+            artifact_path='/tmp/guard-pause.md',
+            short_review_window_release_at='2026-05-27T15:23:42',
+        )
+        execution = SimpleNamespace(
+            lane='distribution_architecture_guard_pause',
+            action_type='distribution_architecture_guard_pause',
+            status='skipped_repair',
+            artifact_path='/tmp/guard-pause.md',
+            summary='Paused duplicate guard churn for the current execution-board fingerprint.',
+            targets_prepared=[],
+            shared_findings_used=['marketing_execution_board_latest.md'],
+            live_external_action=False,
+            blocking_factors=[],
+        )
+
+        with patch.object(outcome_execution_board_runner, 'choose_distribution_lane') as choose_mock, \
+             patch.object(outcome_execution_board_runner.distribution_lane_selector, 'persist_latest_lane_decision') as persist_mock:
+            latest = outcome_execution_board_runner._persist_latest_lane_after_execution(now, decision, execution)
+
+        choose_mock.assert_not_called()
+        persisted_lane = persist_mock.call_args.args[0]
+        self.assertEqual(persisted_lane.lane, 'distribution_architecture_guard_pause')
+        self.assertEqual(persisted_lane.short_review_window_release_at, '2026-05-27T15:23:42')
+        self.assertEqual(latest.lane, 'distribution_architecture_guard_pause')
+
     def test_build_payload_marks_architecture_repair_as_no_do_now_lane(self):
         now = datetime(2026, 5, 27, 14, 13, 8)
         decision = LaneDecision(

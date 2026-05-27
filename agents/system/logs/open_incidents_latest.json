@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-27T10:37:33.668081+00:00",
+  "updated_at": "2026-05-27T13:20:57.969226+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
@@ -2277,7 +2277,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 283,
+      "repeat_count": 284,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -3533,15 +3533,23 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779878249717:89\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T11:58:55.185877+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=283"
+        },
+        {
+          "at": "2026-05-27T13:20:53.993704+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779888053967:92\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T12:37:17.322159+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=284"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-27T10:36:16.073549+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T11:58:55.185877+02:00\"\n}",
+      "last_seen": "2026-05-27T13:20:48.439637+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T12:37:17.322159+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-05-27T10:37:29.745905+00:00"
+      "closed_at": "2026-05-27T13:20:53.993719+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -11649,12 +11657,13 @@
       "owner_domain": "docs",
       "escalation_level": "none",
       "owner_actions": [],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
       "last_seen": "2026-05-27T10:37:33.668064+00:00",
       "last_error": "docs/first-task-prompt-templates.md opens with 'What makes it different is the handoff' and lists 'diff, checks, artifacts' on a promoted page \u2014 edges toward internal-process verb framing, though the page is deep enough that it doesn't break the top-level journey",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: docs/first-task-prompt-templates.md opens with 'What makes it different is the handoff' and lists 'diff, checks, artifacts' on a promoted page \u2014 edges toward internal-process verb framing, though the page is deep enough that it doesn't break the top-level journey",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-27T13:20:48.439649+00:00"
     },
     "docs_agentic_review_mustFix_docs-readme-md-groups-reviewable-output-md-under::review_followup_required": {
       "key": "docs_agentic_review_mustFix_docs-readme-md-groups-reviewable-output-md-under::review_followup_required",
@@ -11665,12 +11674,29 @@
       "owner_domain": "docs",
       "escalation_level": "none",
       "owner_actions": [],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
       "last_seen": "2026-05-27T10:37:33.668070+00:00",
       "last_error": "docs/README.md groups reviewable-output.md under 'product framing' when it's really an evaluation/proof page; consider renaming the section or moving the link",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: docs/README.md groups reviewable-output.md under 'product framing' when it's really an evaluation/proof page; consider renaming the section or moving the link",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-27T13:20:48.439651+00:00"
+    },
+    "marketing-workflow-audit::timeout": {
+      "key": "marketing-workflow-audit::timeout",
+      "name": "marketing-workflow-audit",
+      "category": "timeout",
+      "first_seen": "2026-05-27T13:20:48.439614+00:00",
+      "repeat_count": 2,
+      "owner_domain": "marketing",
+      "escalation_level": "owner",
+      "owner_actions": [],
+      "status": "open",
+      "blocked_by": [],
+      "last_seen": "2026-05-27T13:20:57.969204+00:00",
+      "last_error": "cron: job execution timed out",
+      "likely_cause": "TIMEOUT_TOO_TIGHT: script took 3878096ms but limit was 3600s - needs more headroom",
+      "path": null
     }
   }
 }

@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import ExitStack
 from types import SimpleNamespace
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,55 @@ from agents.marketing import run_posting
 
 
 class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
+    def test_execution_board_lists_manual_review_asset_when_only_manual_channels_remain(self):
+        now = datetime(2026, 5, 27, 16, 20, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            distribution_lane_latest = log_dir / 'distribution_lane_latest.json'
+            distribution_lane_latest.write_text(json.dumps({}), encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n', encoding='utf-8')
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(distribution_lane_executor, 'LOG_DIR', log_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_stackoverflow_scheduled_run', return_value=''))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_targets_waiting_for_execution', return_value=['ctxt.dev / Signum']))
+                stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_packet_delivery_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_prepared_only_family_repeat_count', return_value=0))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_json', side_effect=lambda path: {}))
+                stack.enter_context(patch.object(distribution_lane_executor, '_recent_local_executed_action_type', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_backlink_status_latest_path', return_value=log_dir / 'backlink_status_latest.json'))
+                stack.enter_context(patch.object(distribution_lane_executor, '_secondary_surface_repair_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_directory_confirmation_packet_is_current', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_directory_secondary_surface_repair_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_comparison_packet_delivery_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_measurement_hold_release_run', return_value=''))
+                stack.enter_context(patch.object(distribution_lane_executor, '_adoption_summary', return_value='Codeberg is still flat.'))
+                stack.enter_context(patch.object(distribution_lane_executor, '_reddit_discussion_asset_waiting_for_execution', return_value=None))
+                stack.enter_context(patch.object(distribution_lane_executor, '_reddit_manual_discussion_blocked', return_value=False))
+
+                board_path, targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+            self.assertIn('Manual publisher outreach asset', board_text)
+            self.assertIn('manual follow-through asset already exists', board_text)
+            self.assertIn('ctxt.dev / Signum', board_text)
+            self.assertEqual(targets, ['ctxt.dev / Signum'])
+
     def test_execution_board_empty_marker_wins_over_informational_review_window_bullets(self):
         now = datetime(2026, 5, 27, 11, 21, 0)
 
@@ -61,6 +111,97 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
             with patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', board_path), \
                  patch.object(distribution_lane_selector, '_manual_outreach_assets_waiting_for_execution', return_value=[{'path': '/tmp/packet.md'}]), \
+                 patch.object(distribution_lane_selector, '_pending_confirmation_actions', return_value=[]):
+                empty = distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now)
+
+        self.assertFalse(empty)
+
+    def test_manual_review_asset_is_detected_without_prior_marketing_log(self):
+        now = datetime(2026, 5, 27, 15, 37, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            discovery_path = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'ctxt.dev / Signum',
+                        'channels': [
+                            {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
+                            {'type': 'website', 'value': 'https://ctxt.dev/work-with-me', 'label': 'work with me page'},
+                        ],
+                    }
+                ]
+            }), encoding='utf-8')
+
+            manual_asset = drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md'
+            manual_asset.write_text('# manual asset\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(distribution_lane_selector, '_recent_contact_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_recent_curator_queue_contact_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_active_manual_outreach_delivery_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_contact_targets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_packet_delivery_still_active', return_value=False), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_recent_prep_count', return_value=0), \
+                 patch.object(distribution_lane_selector, '_execution_board_short_review_release_at', return_value=None):
+                assets = distribution_lane_selector._manual_outreach_assets_waiting_for_execution(now)
+
+        self.assertEqual(len(assets), 1)
+        self.assertEqual(assets[0]['artifact_path'], str(manual_asset))
+        self.assertEqual(assets[0]['targets'], ['ctxt.dev / Signum'])
+
+    def test_execution_board_empty_marker_yields_to_manual_review_asset(self):
+        now = datetime(2026, 5, 27, 15, 37, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            board_path = drafts_dir / 'marketing_execution_board_latest.md'
+            board_path.write_text(
+                '\n'.join([
+                    '# Ralph Workflow Marketing Execution Board',
+                    '',
+                    '## Best executable assets still waiting',
+                    '- No do-now handoff packet is currently truthful in this review window.',
+                ]),
+                encoding='utf-8',
+            )
+            discovery_path = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'ctxt.dev / Signum',
+                        'channels': [
+                            {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
+                        ],
+                    }
+                ]
+            }), encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', board_path), \
+                 patch.object(distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(distribution_lane_selector, '_recent_contact_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_recent_curator_queue_contact_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_active_manual_outreach_delivery_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_contact_targets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_packet_delivery_still_active', return_value=False), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_recent_prep_count', return_value=0), \
+                 patch.object(distribution_lane_selector, '_execution_board_short_review_release_at', return_value=None), \
                  patch.object(distribution_lane_selector, '_pending_confirmation_actions', return_value=[]):
                 empty = distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now)
 

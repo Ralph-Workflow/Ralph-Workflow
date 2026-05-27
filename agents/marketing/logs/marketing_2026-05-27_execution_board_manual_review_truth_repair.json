@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-27T16:23:56+02:00",
+  "type": "distribution_architecture_repair",
+  "title": "Execution-board manual-review truth repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": false,
+  "target": "marketing_execution_board / manual follow-through asset detection",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_execution_board_manual_review_truth_repair.md",
+  "shared_findings_used": [
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/logs/adoption_metrics_latest.json",
+    "agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json",
+    "agents/marketing/logs/reddit_post_analysis.json"
+  ],
+  "files_changed": [
+    "agents/marketing/distribution_lane_executor.py",
+    "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+  ],
+  "verification": {
+    "command": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_lists_manual_review_asset_when_only_manual_channels_remain agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_empty_marker_yields_to_manual_review_asset agents.marketing.tests.test_outcome_execution_board_runner.OutcomeExecutionBoardRunnerTests.test_sync_from_execution_refreshes_execution_board_after_latest_lane_persist -v",
+    "result": "passed",
+    "tests_run": 3
+  },
+  "result": {
+    "summary": "Execution-board manual-review assets now stay visible when only manual-reviewable publisher channels remain.",
+    "behavior_changes": [
+      "Primary-repo-flat manual follow-through assets no longer depend on the runtime-sendable target list.",
+      "The board can surface a truthful manual publisher outreach asset instead of incorrectly reporting an empty do-now state.",
+      "Delivery and staleness guards remain intact, so already-used manual assets still stay fail-closed."
+    ]
+  }
+}

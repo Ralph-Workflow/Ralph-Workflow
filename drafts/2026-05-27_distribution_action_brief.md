@@ -1,12 +1,11 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-27T15:06:20
-Chosen lane: **distribution_architecture_guard_pause**
+Generated: 2026-05-27T16:22:51
+Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
-- The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and a newer concrete repair already ran after the current guard pause started; pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.
+- The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; perform another concrete distribution-architecture repair now instead of logging another guard follow-through.
 - 2 owned-content posts already shipped in the last 36 hours.
-- 3 live external marketing action(s) already shipped in the last 6 hours.
-- If no new outcome lands first, this short-window congestion clears at 2026-05-27T15:23:42. Before then, another live outbound action would mostly blur measurement.
+- 1 live external marketing action(s) already shipped in the last 6 hours.
 - Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
@@ -29,7 +28,7 @@ Chosen lane: **distribution_architecture_guard_pause**
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
-- 37 prior distribution-architecture repair run(s) already hit this same empty-board window.
+- 2 prior distribution-architecture repair run(s) already hit this same empty-board window.
 - A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
 
 ## Shared findings reused
@@ -43,7 +42,8 @@ Chosen lane: **distribution_architecture_guard_pause**
 - Distribution lane execution: owned_content (owned_content)
 - Distribution lane execution: owned_content (owned_content)
 
-## Immediate lane-architecture guard pause work
-- Do not emit another duplicate guard follow-through note for the same execution-board fingerprint in this review window
-- Preserve the current empty-board truth until a blocker clears or a genuinely new executable asset appears
-- When the fingerprint changes, force the next run to choose either a real untouched lane or a fresh architecture repair
+## Immediate lane-architecture repair work
+- Do not emit another measurement hold once the short review window has already cleared
+- Treat this as a process-repair slot: replace stale lane-selection logic, prompts, or scheduling rules that still point back to idle holds
+- Preserve Codeberg as the primary CTA while forcing the next post-hold slot to choose either a truthful untouched lane or a concrete runtime repair
+- Use the execution board and shared findings as the truth source for what is actually blocked, exhausted, or already delivered
