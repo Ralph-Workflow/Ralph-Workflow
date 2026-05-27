@@ -25,7 +25,7 @@ import urllib.parse
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Tuple
 
 AGENTS_DIR = Path("/home/mistlight/.openclaw/workspace/agents/marketing")
 ROOT = Path("/home/mistlight/.openclaw/workspace")
@@ -41,6 +41,7 @@ POSTED_FILE = LOG_DIR / "posted_urls.json"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 CTA_FOOTER = repo_cta_footer()
+CODEBERG_BLOB_ROOT = 'https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/master/'
 
 
 def load_posted() -> dict:
@@ -92,6 +93,8 @@ def already_posted_successfully(
     draft_hash: str,
     platform: str = None,
     draft_name: str | None = None,
+    experiment_id: str | None = None,
+    source_path: str | None = None,
 ) -> bool:
     for item in posted.get("posts", []):
         if platform is not None and item.get("platform") != platform:
@@ -104,6 +107,10 @@ def already_posted_successfully(
         # draft gets lightly edited after an earlier successful post. For this workflow,
         # draft identity matters more than tiny body changes once the public page exists.
         if draft_name is not None and item.get("draft") == draft_name:
+            return True
+        if experiment_id is not None and item.get("experiment_id") == experiment_id:
+            return True
+        if source_path is not None and item.get("source_path") == source_path:
             return True
     return False
 
@@ -135,7 +142,122 @@ def post_writeas(title: str, body: str) -> Tuple[bool, str]:
     return False, json.dumps(parsed)[:200]
 
 
-def post_telegraph(title: str, body: str) -> Tuple[bool, str]:
+def _repo_url_for_relative_target(target: str, source_path: str | None = None) -> str:
+    cleaned = (target or '').strip()
+    if not cleaned:
+        return cleaned
+    if re.match(r'^(?:https?:|mailto:)', cleaned, re.I):
+        return cleaned
+    if cleaned.startswith('#'):
+        return cleaned
+
+    anchor = ''
+    if '#' in cleaned:
+        cleaned, anchor = cleaned.split('#', 1)
+        anchor = f'#{anchor}'
+
+    if source_path:
+        base = Path(source_path).resolve().parent
+    else:
+        base = ROOT
+    resolved = (base / cleaned).resolve()
+    try:
+        relative = resolved.relative_to(ROOT)
+    except ValueError:
+        return target
+    return urllib.parse.urljoin(CODEBERG_BLOB_ROOT, str(relative).replace(os.sep, '/')) + anchor
+
+
+def _telegraph_inline_nodes(text: str, source_path: str | None = None) -> list[Any]:
+    pattern = re.compile(r'(\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*)')
+    nodes: list[Any] = []
+    position = 0
+    for match in pattern.finditer(text):
+        if match.start() > position:
+            nodes.append(text[position:match.start()])
+        if match.group(1).startswith('['):
+            href = _repo_url_for_relative_target(match.group(3), source_path=source_path)
+            nodes.append({
+                'tag': 'a',
+                'attrs': {'href': href},
+                'children': [match.group(2)],
+            })
+        elif match.group(4) is not None:
+            nodes.append({'tag': 'strong', 'children': [match.group(4)]})
+        elif match.group(5) is not None:
+            nodes.append({'tag': 'em', 'children': [match.group(5)]})
+        position = match.end()
+    if position < len(text):
+        nodes.append(text[position:])
+    return nodes or ['']
+
+
+def build_telegraph_nodes(body: str, source_path: str | None = None) -> list[dict[str, Any]]:
+    paragraphs: list[dict[str, Any]] = []
+    lines = body.splitlines()
+    i = 0
+
+    while i < len(lines):
+        line = lines[i].rstrip()
+        stripped = line.strip()
+        if not stripped:
+            i += 1
+            continue
+
+        if stripped.startswith('```'):
+            fence = stripped[:3]
+            code_lines: list[str] = []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith(fence):
+                code_lines.append(lines[i])
+                i += 1
+            if i < len(lines):
+                i += 1
+            paragraphs.append({'tag': 'pre', 'children': ['\n'.join(code_lines).rstrip()]})
+            continue
+
+        if stripped.startswith('# '):
+            paragraphs.append({'tag': 'h3', 'children': _telegraph_inline_nodes(stripped[2:].strip(), source_path=source_path)})
+            i += 1
+            continue
+        if stripped.startswith('## '):
+            paragraphs.append({'tag': 'h4', 'children': _telegraph_inline_nodes(stripped[3:].strip(), source_path=source_path)})
+            i += 1
+            continue
+        if stripped.startswith('### '):
+            paragraphs.append({'tag': 'h5', 'children': _telegraph_inline_nodes(stripped[4:].strip(), source_path=source_path)})
+            i += 1
+            continue
+        if stripped.startswith('> '):
+            quote_lines = [stripped[2:].strip()]
+            i += 1
+            while i < len(lines) and lines[i].strip().startswith('> '):
+                quote_lines.append(lines[i].strip()[2:].strip())
+                i += 1
+            paragraphs.append({'tag': 'blockquote', 'children': _telegraph_inline_nodes(' '.join(quote_lines), source_path=source_path)})
+            continue
+        if stripped.startswith('- '):
+            items: list[dict[str, Any]] = []
+            while i < len(lines) and lines[i].strip().startswith('- '):
+                items.append({'tag': 'li', 'children': _telegraph_inline_nodes(lines[i].strip()[2:].strip(), source_path=source_path)})
+                i += 1
+            paragraphs.append({'tag': 'ul', 'children': items})
+            continue
+
+        para_lines = [stripped]
+        i += 1
+        while i < len(lines):
+            nxt = lines[i].strip()
+            if not nxt or nxt.startswith(('```', '# ', '## ', '### ', '> ', '- ')):
+                break
+            para_lines.append(nxt)
+            i += 1
+        paragraphs.append({'tag': 'p', 'children': _telegraph_inline_nodes(' '.join(para_lines), source_path=source_path)})
+
+    return paragraphs
+
+
+def post_telegraph(title: str, body: str, source_path: str | None = None) -> Tuple[bool, str]:
     """Post article to Telegraph using correct JSON node format; returns (ok, url_or_error)."""
     r1 = subprocess.run(
         [
@@ -152,39 +274,7 @@ def post_telegraph(title: str, body: str) -> Tuple[bool, str]:
     except Exception:
         return False, f"Token error: {r1.stdout[:100]}"
 
-    # Convert markdown body to Telegraph JSON node format
-    import re
-    paragraphs = []
-    for para in body.split("\n\n"):
-        para = para.strip()
-        if not para:
-            continue
-        if para.startswith("# "):
-            paragraphs.append({"tag": "h3", "children": [para[2:]]})
-        elif para.startswith("## "):
-            paragraphs.append({"tag": "h4", "children": [para[3:]]})
-        elif para.startswith("### "):
-            paragraphs.append({"tag": "h5", "children": [para[4:]]})
-        elif para.startswith("> "):
-            paragraphs.append({"tag": "blockquote", "children": [para[2:]]})
-        elif para.startswith("```"):
-            paragraphs.append({"tag": "pre", "children": [para[3:].strip()]})
-        else:
-            # Handle inline bold/italic
-            text = para
-            nodes = []
-            parts = re.split(r'(\*{1,2}[^\*]+\*{1,2})', text)
-            for part in parts:
-                if re.match(r'\*{1,2}.*\*{1,2}', part):
-                    tag = "b" if part.startswith("**") else "i"
-                    inner = part[2 if tag == "b" else 1:-2 if tag == "b" else 1]
-                    nodes.append({"tag": tag, "children": [inner]})
-                elif part:
-                    nodes.append(part)
-            if len(nodes) > 1:
-                paragraphs.append({"tag": "p", "children": nodes})
-            else:
-                paragraphs.append({"tag": "p", "children": [para]})
+    paragraphs = build_telegraph_nodes(body, source_path=source_path)
 
     content_json = json.dumps(paragraphs)
 
@@ -246,7 +336,13 @@ def main() -> int:
             continue
 
         draft_hash = digest_text(body)
-        if already_posted_successfully(posted, draft_hash, "telegraph", draft.name):
+        if already_posted_successfully(
+            posted,
+            draft_hash,
+            "telegraph",
+            draft.name,
+            experiment_id=metadata.get("experiment_id"),
+        ):
             results.append({
                 "draft": draft.name,
                 "ok": True,
@@ -272,7 +368,7 @@ def main() -> int:
 
         # Telegraph is the primary platform (write.as is permanently blocked)
         # Dual posting: Telegraph + Dev.to when Dev.to API key is available
-        ok_tg, url_tg = post_telegraph(title, body_with_cta)
+        ok_tg, url_tg = post_telegraph(title, body_with_cta, source_path=str(draft))
         record_tg = {
             "date": today,
             "draft": draft.name,

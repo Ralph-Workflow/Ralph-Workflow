@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-05-27T14:34:45.684311",
+  "type": "execution_board_do_now_truth_repair",
+  "status": "executed",
+  "summary": "Patched outcome execution-board truth accounting so architecture-repair lanes no longer present themselves as truthful do-now lanes, then refreshed the latest runner snapshot.",
+  "problem": "outcome_execution_board_latest.* was marking do_now_lane_available=true whenever any execution existed, including distribution_architecture_guard_pause / repair lanes during empty-board hold windows.",
+  "files_changed": [
+    "agents/marketing/outcome_execution_board_runner.py",
+    "agents/marketing/tests/test_outcome_execution_board_runner.py"
+  ],
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_outcome_execution_board_runner -q",
+    "latest_selected_lane": "distribution_architecture_guard_pause",
+    "latest_selected_action_type": "distribution_architecture_guard_pause",
+    "latest_do_now_lane_available": false,
+    "latest_execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_marketing_execution_board.md"
+  },
+  "shared_findings_used": [
+    "marketing_execution_board_latest.md: no truthful do-now packet exists in the current review window",
+    "distribution_lane_latest.json: current lane is distribution_architecture_guard_pause",
+    "outcome_execution_board_latest.json: was falsely reporting do_now_lane_available=true for architecture-repair execution",
+    "marketing_workflow_audit_latest.json: fake-progress protection and execution-board truthfulness are required"
+  ]
+}

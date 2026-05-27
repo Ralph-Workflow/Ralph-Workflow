@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-05-27T08:51:52.507035+02:00",
+  "timestamp": "2026-05-27T14:18:48.217539+02:00",
   "status": "login_succeeded",
   "final_url": "https://app.apollo.io/#/home",
   "login_attempted": false,
   "cloudflare_blocked": false,
-  "notes": "Cloudflare interstitial detected in response body from https://app.apollo.io/. Apollo was already on an authenticated app surface before form automation. Background Cloudflare challenges were seen on ancillary Apollo requests, but the authenticated UI remained usable.",
+  "notes": "Cloudflare interstitial detected in response body from https://app.apollo.io/. Cloudflare interstitial detected in response body from https://app.apollo.io/api/v1/contacts/search?q_contact_fuzzy_name_or_phone=&has_phone=yes&display_mode=fuzzy_select_mode&page=1&per_page=25&call_from_voice_setting_id=&cacheKey=1779884325647. Cloudflare interstitial detected in response body from https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/f/ov2/av0/rch/balux/0x4AAAAAABI5GqZtId4RpSvo/light/fbE/new/normal?lang=auto. Apollo was already on an authenticated app surface before form automation. Background Cloudflare challenges were seen on ancillary Apollo requests, but the authenticated UI remained usable.",
   "auth_endpoint_status_codes": [],
   "browserless_probe_status": null,
   "browserless_probe_final_url": null,

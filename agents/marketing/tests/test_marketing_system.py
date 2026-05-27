@@ -46,6 +46,94 @@ Body here.
         self.assertTrue(run_posting.already_posted_successfully(posted, "abc"))
         self.assertFalse(run_posting.already_posted_successfully(posted, "xyz"))
 
+    def test_already_posted_successfully_matches_experiment_id_or_source_path(self):
+        posted = {
+            "posts": [
+                {
+                    "platform": "telegraph",
+                    "ok": True,
+                    "draft_hash": "old-hash",
+                    "experiment_id": "2026-05-22-start-here-first-task-guide",
+                    "source_path": "/tmp/first-task-guide.md",
+                }
+            ]
+        }
+        self.assertTrue(
+            run_posting.already_posted_successfully(
+                posted,
+                "new-hash",
+                "telegraph",
+                experiment_id="2026-05-22-start-here-first-task-guide",
+            )
+        )
+        self.assertTrue(
+            run_posting.already_posted_successfully(
+                posted,
+                "newer-hash",
+                "telegraph",
+                source_path="/tmp/first-task-guide.md",
+            )
+        )
+
+    def test_build_telegraph_nodes_rewrites_relative_links_to_codeberg(self):
+        source = '/home/mistlight/.openclaw/workspace/docs/first-task-guide.md'
+        body = (
+            '# First Task Guide\n\n'
+            'If you want a concrete example, use [Example first task](../content/examples/first_task_example.md).\n\n'
+            '- [Start here](../START_HERE.md)\n'
+            '- **Codeberg** first\n\n'
+            '```md\nChange:\nOne thing\n```\n'
+        )
+
+        nodes = run_posting.build_telegraph_nodes(body, source_path=source)
+
+        self.assertEqual(nodes[0]['tag'], 'h3')
+        paragraph_link = next(child for child in nodes[1]['children'] if isinstance(child, dict) and child.get('tag') == 'a')
+        self.assertEqual(
+            paragraph_link['attrs']['href'],
+            'https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/master/content/examples/first_task_example.md',
+        )
+        self.assertEqual(nodes[2]['tag'], 'ul')
+        list_link = next(child for child in nodes[2]['children'][0]['children'] if isinstance(child, dict) and child.get('tag') == 'a')
+        self.assertEqual(
+            list_link['attrs']['href'],
+            'https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/master/START_HERE.md',
+        )
+        self.assertEqual(nodes[3]['tag'], 'pre')
+        self.assertEqual(nodes[3]['children'], ['Change:\nOne thing'])
+
+    def test_execute_owned_content_skips_historic_first_task_guide_repost(self):
+        now = datetime(2026, 5, 27, 12, 55, 0)
+        source = Path(tempfile.mkdtemp()) / 'first-task-guide.md'
+        source.write_text(
+            '---\n'
+            'experiment_id: "2026-05-22-start-here-first-task-guide"\n'
+            '---\n\n'
+            '# First Task Guide\n\n' + ('Useful body. ' * 40),
+            encoding='utf-8',
+        )
+        posted = {
+            'posts': [
+                {
+                    'platform': 'telegraph',
+                    'ok': True,
+                    'draft_hash': 'historic-hash',
+                    'experiment_id': '2026-05-22-start-here-first-task-guide',
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', tmp), \
+                 patch.object(distribution_lane_executor, 'OWNED_CONTENT_SOURCE_CANDIDATES', [source]), \
+                 patch.object(distribution_lane_executor, 'load_posted', return_value=posted), \
+                 patch.object(distribution_lane_executor, 'post_telegraph') as post_telegraph:
+                execution = distribution_lane_executor._execute_owned_content(now)
+
+        post_telegraph.assert_not_called()
+        self.assertEqual(execution.action_type, 'owned_content_lane_noop')
+
 
 class MarketingPathTests(unittest.TestCase):
     def test_workflow_audit_normalizes_dict_action_payloads(self):

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-27T09:18:31.031270+00:00",
+  "generated_at": "2026-05-27T12:23:51.919689+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -48,42 +48,6 @@
       "recommended_next_step": "Telegram consulting contact path is explicitly confirmed"
     },
     {
-      "target": "ToolChase",
-      "article_url": "https://toolchase.com/blog/best-ai-coding-tools-2026/",
-      "root_url": "https://toolchase.com/",
-      "hook": "AI coding tools comparison page already covering Claude Code, Codex, Cursor, and Aider",
-      "reason": "Direct comparison/discovery audience already evaluating AI coding tools and adjacent workflow choices.",
-      "outreach_subject": "Ralph Workflow for your next AI coding tools comparison refresh",
-      "channels": [
-        {
-          "type": "email",
-          "value": "hello@toolchase.com",
-          "label": "email"
-        },
-        {
-          "type": "website",
-          "value": "https://toolchase.com/about",
-          "label": "about page"
-        },
-        {
-          "type": "website",
-          "value": "https://toolchase.com/advertise",
-          "label": "advertise page"
-        },
-        {
-          "type": "website",
-          "value": "https://toolchase.com/contact",
-          "label": "contact page"
-        },
-        {
-          "type": "x",
-          "value": "https://x.com/ToolChase",
-          "label": "X/Twitter"
-        }
-      ],
-      "recommended_next_step": "email/contact send path is now identified"
-    },
-    {
       "target": "TIMEWELL",
       "article_url": "https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026",
       "root_url": "https://timewell.jp/en/",
@@ -123,32 +87,6 @@
         }
       ],
       "recommended_next_step": "email/contact send path is now identified"
-    },
-    {
-      "target": "AI Saying",
-      "article_url": "https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix",
-      "root_url": "https://aisaying.net/",
-      "hook": "AI Coding Tools Compared: The Complete 2026 Matrix (14 Tools Ranked)",
-      "reason": "Fresh AI coding tools comparison audience already evaluating terminal agents, editors, and workflow tradeoffs.",
-      "outreach_subject": "Ralph Workflow for your AI coding tools comparison update",
-      "channels": [
-        {
-          "type": "website",
-          "value": "https://aisaying.net",
-          "label": "website"
-        },
-        {
-          "type": "website",
-          "value": "https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix",
-          "label": "feedback form"
-        },
-        {
-          "type": "github_issue",
-          "value": "https://github.com/ggml-org/llama.cpp/issues/new",
-          "label": "GitHub issue"
-        }
-      ],
-      "recommended_next_step": "public feedback-form contact path is now identified"
     },
     {
       "target": "TLDL",
@@ -196,6 +134,11 @@
       "channels": [
         {
           "type": "website",
+          "value": "https://computingforgeeks.com/5-important-things-to-understand-about-file-replication-when-manage-website",
+          "label": "about page"
+        },
+        {
+          "type": "website",
           "value": "https://computingforgeeks.com/about",
           "label": "about page"
         },
@@ -203,11 +146,6 @@
           "type": "website",
           "value": "https://computingforgeeks.com/about-us",
           "label": "about page"
-        },
-        {
-          "type": "website",
-          "value": "https://computingforgeeks.com/contact",
-          "label": "contact page"
         },
         {
           "type": "github_issue",
@@ -225,7 +163,7 @@
           "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "public website contact path is now identified"
+      "recommended_next_step": "GitHub issue/PR path is now identified"
     },
     {
       "target": "SitePoint",
@@ -295,6 +233,7 @@
     }
   ],
   "omitted_recent_targets": [
+    "AI Saying",
     "AXME Code",
     "Beam",
     "Bollwerk / Werkstatt",
@@ -304,6 +243,7 @@
     "NxCode",
     "Requesty",
     "SOTAAZ",
+    "ToolChase",
     "Toolradar",
     "WyeWorks"
   ]

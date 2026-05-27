@@ -10,14 +10,14 @@ Generated: 2026-05-25T18:53:00
 - Apollo next review: 2026-06-01T23:11:13.732870+02:00
 - Apollo launch review: 2026-06-01T23:11:13.732870+02:00
 - Short review-window congestion clears at: 2026-05-25T23:07:41
-- Post-hold marketer rerun scheduled: 2026-05-27T14:26:29
+- Post-hold marketer rerun scheduled: 2026-05-27T15:23:42
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
 - No do-now handoff packet is currently truthful in this review window.
-- Fresh publisher outreach already shipped in the current review window for: AI Saying, SitePoint, ToolChase.
+- Fresh publisher outreach already shipped in the current review window for: SitePoint.
 - The current primary-repo-flat publisher contact packet was already prepared 9 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
 - Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.

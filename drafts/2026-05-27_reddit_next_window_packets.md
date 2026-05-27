@@ -1,8 +1,8 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-27 09:17 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-27 14:14 CEST
 
 Live posting is **not** the move right now.
 
-Latest watchdog state references report `reddit_monitor_2026-05-27_0305.md`.
+Latest watchdog state references report `reddit_monitor_2026-05-27_1245.md`.
 - `status: banned_content`
 - `detail: body cadence matches one of the last 3 logged Reddit posts`
 
@@ -49,6 +49,23 @@ https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai
 The useful bar here is finished code, tested code, and a clean answer to what changed before the run counts as done. Ralph Workflow is a free/open-source example of that approach on your own machine, with the primary repo on Codeberg: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 
 If the run cannot do that without babysitting, it is still pushing the hard part back onto the human.
+
+---
+
+## 3) `r/AI_Agents` - Reddit reddit.com › r/ai_agents › how are you managing multiple coding agents in parallel without things getting messy? r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1st2gkt/how_are_you_managing_multiple_coding_agents_in>
+- Mention fit: medium-low
+- Best landing page to seed:
+  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+- Why this stays in the packet:
+  - still usable as a workflow reply without forcing a product pitch
+  - landing page keeps the CTA on a concrete first-use or proof path
+  - best RalphWorkflow angle from the monitor: *parallel, multiple coding agents
+
+### Draft body C
+What stands out to me here is *parallel, multiple coding agents**; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed.
+
+https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
 
 ---
 

@@ -1,9 +1,9 @@
 # Distribution Architecture Churn Guard
-Generated: 2026-05-27T10:25:43
+Generated: 2026-05-27T15:06:20
 
 - Third-strike escalation is active for repeated empty-board architecture repairs in the same review window.
-- Current execution-board fingerprint: f257ff2429e8be961ff05dcbe06b0ed26b316db7
-- Matching prior repair runs in this window: 2
+- Current execution-board fingerprint: b4284e7c06a5f421523338b1d37da939e0d0edc3
+- Matching prior repair runs in this window: 37
 - Suppress another plain distribution_architecture_repair until at least one of these changes:
   - the execution board fingerprint changes
   - the active short-review release time moves or clears

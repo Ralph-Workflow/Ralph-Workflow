@@ -10,3 +10,10 @@ class OwnedContentPriorityTests(TestCase):
             OWNED_CONTENT_SOURCE_CANDIDATES[0].name,
             'good_unattended_task.md',
         )
+
+    def test_first_task_guide_is_second_owned_content_candidate(self):
+        self.assertGreaterEqual(len(OWNED_CONTENT_SOURCE_CANDIDATES), 2)
+        self.assertEqual(
+            OWNED_CONTENT_SOURCE_CANDIDATES[1].name,
+            'first-task-guide.md',
+        )

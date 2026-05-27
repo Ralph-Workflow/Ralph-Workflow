@@ -5,6 +5,8 @@
 - Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md`
 - Selected lane: `distribution_architecture_guard_pause`
 - Action type: `distribution_architecture_guard_pause`
+- Executed lane: `distribution_architecture_guard_pause`
+- Truthful do-now lane available: `False`
 - Artifact: `/tmp/guard-pause.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
 - Measurement window: Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.

@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-27T13:08:11+02:00",
+  "type": "owned_content_duplicate_guard_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "goal": "Improve the post-hold owned-content rerun by preventing a duplicate Telegraph publish of the already-shipped first-task guide.",
+  "shared_findings_used": [
+    "distribution_lane_latest.json: owned_content is the selected hold-window lane until 2026-05-27T14:26:29",
+    "marketing_execution_board_latest.md: no truthful do-now packet exists in the current review window",
+    "marketing_2026-05-27_125429_owned_content_first_task_reentry_repair.md: docs/first-task-guide.md was added back into owned-content priority",
+    "posted_urls.json: the first-task guide was already published on 2026-05-22 as 2026-05-22_start-here-first-task-guide_telegraph.md"
+  ],
+  "problem": "The owned-content executor only deduped Telegraph posts by body hash or generated draft name. After docs/first-task-guide.md was reintroduced as a source candidate, the scheduled post-hold rerun could republish that already-shipped conversion asset under a new dated draft name if the body changed enough.",
+  "changes": [
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py",
+      "summary": "Extended duplicate detection to also match successful posts by experiment_id and source_path, and passed experiment_id through the scheduled posting path."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py",
+      "summary": "Passed experiment_id and source_path into the owned-content duplicate guard so post-hold execution skips previously shipped assets even when the body hash changed."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/docs/first-task-guide.md",
+      "summary": "Added front-matter metadata so the existing first-task guide maps back to the historical 2026-05-22 conversion asset record."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_marketing_system.py",
+      "summary": "Added regression coverage for experiment_id/source_path dedupe and for skipping a historical first-task-guide repost in _execute_owned_content()."
+    }
+  ],
+  "verification": {
+    "command": "python3 -m unittest agents.marketing.tests.test_marketing_system.PostingTests.test_already_posted_successfully_matches_hash agents.marketing.tests.test_marketing_system.PostingTests.test_already_posted_successfully_matches_experiment_id_or_source_path agents.marketing.tests.test_marketing_system.PostingTests.test_execute_owned_content_skips_historic_first_task_guide_repost -v",
+    "result": "passed"
+  },
+  "expected_effect": "When the short review-window congestion clears at 2026-05-27T14:26:29, the owned-content rerun will no longer count a duplicate first-task-guide repost as fresh progress. That slot is forced toward a truly unpublished guide or a different concrete repair."
+}

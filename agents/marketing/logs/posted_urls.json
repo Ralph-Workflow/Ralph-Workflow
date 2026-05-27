@@ -527,7 +527,19 @@
       "error": null,
       "draft_hash": "10e2d5cc4e87b9d04f6c5f340837155001bf340802ca6d3e44882c2610ee020f",
       "source_path": "/home/mistlight/.openclaw/workspace/content/guides/review_ai_coding_output_before_merge.md"
+    },
+    {
+      "date": "2026-05-27",
+      "draft": "2026-05-27_good_unattended_task_telegraph.md",
+      "title": "Good Unattended AI Coding Task vs Bad One",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Good-Unattended-AI-Coding-Task-vs-Bad-One-05-27",
+      "error": null,
+      "draft_hash": "5294f7da2f22ef3f2896648db18a8f83ab2925da577b516563ab13133bac5201",
+      "source_path": "/home/mistlight/.openclaw/workspace/content/guides/good_unattended_task.md"
     }
   ],
-  "last_run": "2026-05-27T12:28:24.163225"
+  "last_run": "2026-05-27T12:35:08.815501"
 }

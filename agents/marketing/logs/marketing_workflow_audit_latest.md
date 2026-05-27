@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-27T11:31:45.208745
+- Generated: 2026-05-27T14:14:54.429584
 - Current bottleneck: **conversion_to_free_use**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,8 +11,8 @@
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 4 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
-- The most recent runtime activity was execution_board_empty_marker_truth_repair, but the latest meaningful external/replacement execution remains apollo_outbound_verification; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (apollo_outbound_verification), so the system is still shipping output even though outcome movement is not visible yet.
+- The most recent runtime activity was distribution_architecture_guard_pause, but the latest meaningful external/replacement execution remains owned_content_publication; do not confuse follow-through with fresh outcome-bearing distribution.
+- The active loop did execute a live marketing action recently (owned_content_publication), so the system is still shipping output even though outcome movement is not visible yet.
 - A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint.
 
@@ -28,7 +28,7 @@
 - The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 5 times inside the last 48 hours.
 
 ## What is low-signal
-- Recent live external action exists (apollo_outbound_verification), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Recent live external action exists (owned_content_publication), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 
@@ -62,11 +62,11 @@
 - Measurement-pending reasons: mirror_repo_flat, same_family_publisher_overlap
 
 ## Latest executed marketing action
-- Type: apollo_outbound_verification
-- Title: Apollo outbound verification
-- Status: verified_live_sequence (ok=True)
+- Type: owned_content_publication
+- Title: Distribution lane execution: owned_content
+- Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_092656_apollo_outbound_verification.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_owned_content_execution.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

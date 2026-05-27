@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-27T11:20:34.539644",
+  "timestamp": "2026-05-27T14:13:08.932179",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6626,
+      "word_count": 6640,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"

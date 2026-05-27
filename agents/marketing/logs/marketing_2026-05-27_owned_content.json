@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-27T12:28:24.163225",
+  "timestamp": "2026-05-27T12:35:08.815501",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "owned_content_allowed",
@@ -17,8 +17,8 @@
     ],
     "reasoning": "No stronger autonomous lane detected.",
     "supporting_reasons": [
-      "1 owned-content posts already shipped in the last 36 hours.",
-      "4 live external marketing action(s) already shipped in the last 6 hours.",
+      "2 owned-content posts already shipped in the last 36 hours.",
+      "5 live external marketing action(s) already shipped in the last 6 hours.",
       "If no new outcome lands first, this short-window congestion clears at 2026-05-27T14:26:29. Before then, another live outbound action would mostly blur measurement.",
       "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",

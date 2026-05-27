@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-27T11:59:26.683329",
+  "ts": "2026-05-27T12:37:33.671011",
   "jobs_checked": 25,
-  "issues_found": 6,
+  "issues_found": 10,
   "issues": [
     {
       "job_id": "__artifacts__",
@@ -31,11 +31,35 @@
     },
     {
       "job_id": "__artifacts__",
+      "name": "docs_agentic_review",
+      "category": "loop_verification_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "The docs system is coherent, consistent with the positioning document, and free of hard-failure patterns. The README \u2192 START_HERE \u2192 docs/README journey is clean. Promoted next-click pages reinforce the same core story (simple Ralph-loop core, composable orchestration, strong default workflow, ambitious work, result-first evaluation). No top-level surface leaks artifacts, handoff plumbing, or internal process language as the main pitch."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_docs-first-task-prompt-templates-md-opens-with-w",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "docs/first-task-prompt-templates.md opens with 'What makes it different is the handoff' and lists 'diff, checks, artifacts' on a promoted page \u2014 edges toward internal-process verb framing, though the page is deep enough that it doesn't break the top-level journey",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: docs/first-task-prompt-templates.md opens with 'What makes it different is the handoff' and lists 'diff, checks, artifacts' on a promoted page \u2014 edges toward internal-process verb framing, though the page is deep enough that it doesn't break the top-level journey"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_docs-readme-md-groups-reviewable-output-md-under",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "docs/README.md groups reviewable-output.md under 'product framing' when it's really an evaluation/proof page; consider renaming the section or moving the link",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: docs/README.md groups reviewable-output.md under 'product framing' when it's really an evaluation/proof page; consider renaming the section or moving the link"
+    },
+    {
+      "job_id": "__artifacts__",
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=514",
-      "repeats_in_recent_history": 514,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=518",
+      "repeats_in_recent_history": 518,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification::loop_verification_fail",
       "escalation_level": "critical",
@@ -48,8 +72,8 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr_escalation",
       "category": "escalation_required",
       "last_error": "Primary repo adoption is flat and the current primary-repo repair is still awaiting real execution from the consolidated execution board.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr:review_followup_required repeat_count=47",
-      "repeats_in_recent_history": 47,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr:review_followup_required repeat_count=51",
+      "repeats_in_recent_history": 51,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr::review_followup_required",
       "escalation_level": "critical",
@@ -62,14 +86,26 @@
       "name": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair_escalation",
       "category": "escalation_required",
       "last_error": "Workflow audit still reports needs_repair.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required repeat_count=103",
-      "repeats_in_recent_history": 103,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required repeat_count=107",
+      "repeats_in_recent_history": 107,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair::review_followup_required",
       "escalation_level": "critical",
       "blocked_by": [
         "marketing_independent_verification"
       ]
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_escalation",
+      "category": "escalation_required",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=37",
+      "repeats_in_recent_history": 37,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review::loop_verification_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
     }
   ],
   "repairs_attempted": [
@@ -77,13 +113,43 @@
       "type": "immediate_review_followup_owner_action_cooldown",
       "job": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-and-the-current-pr",
       "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-05-27T07:21:42.388184+00:00"
+      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-05-27T10:35:51.593252+00:00"
     },
     {
       "type": "immediate_review_followup_owner_action_cooldown",
       "job": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
       "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-05-27T07:21:44.197026+00:00"
+      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-05-27T10:35:53.429842+00:00"
+    },
+    {
+      "type": "rerun_docs_verifier",
+      "job": "docs_agentic_review",
+      "ok": true,
+      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"The docs system is coherent, consistent with the positioning document, and free of hard-failure patterns. The README \\u2192 START_HERE \\u2192 docs/README journey is clean. Pr"
+    },
+    {
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "docs_agentic_review_mustFix_deduplicate-opening-sentences-across-docs-md-pag",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-05-27T10:36:37.775318+00:00"
+    },
+    {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-27T12:37:17.322159+02:00\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779878239102:88\"\n}"
     },
     {
       "type": "owner_loop_escalation",
@@ -102,6 +168,24 @@
       "job": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair_escalation",
       "ok": true,
       "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_deduplicate-opening-sentences-across-docs-md-pag_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779878249717:89\"\n}"
     }
   ]
 }

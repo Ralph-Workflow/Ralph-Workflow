@@ -402,6 +402,26 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
                 '}\n',
                 encoding='utf-8',
             )
+            (log_dir / 'marketing_recent_form.json').write_text(
+                '{\n'
+                '  "timestamp": "2026-05-24T09:09:00+02:00",\n'
+                '  "target": "ToolChase",\n'
+                '  "action_type": "publisher_contact_form_submission",\n'
+                '  "status": "executed",\n'
+                '  "ok": true,\n'
+                '  "live_external_action": true\n'
+                '}\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_recent_feedback.json').write_text(
+                '{\n'
+                '  "timestamp": "2026-05-24T10:09:00+02:00",\n'
+                '  "chosen_action": {"type": "publisher_feedback_form_submission"},\n'
+                '  "target": "AI Saying",\n'
+                '  "result": {"status": "submitted", "ok": true, "live_external_action": true}\n'
+                '}\n',
+                encoding='utf-8',
+            )
             (log_dir / 'marketing_old.json').write_text(
                 '{\n'
                 '  "timestamp": "2026-05-10T08:09:00+02:00",\n'
@@ -419,6 +439,8 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
             )
 
         self.assertIn('Bollwerk / Werkstatt', recent)
+        self.assertIn('ToolChase', recent)
+        self.assertIn('AI Saying', recent)
         self.assertNotIn('AXME Code', recent)
 
     def test_target_seed_list_includes_fresh_publisher_repair_targets(self):

@@ -1,9 +1,9 @@
 # Ralph Workflow Comparison Backlink Follow-Through
-Generated: 2026-05-27T01:43:03
+Generated: 2026-05-27T14:35:55
 
 ## Why this exists now
 - The current comparison queue already covers every ranked competitor with a prepared packet.
-- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
+- Codeberg is still flat in the active window (9 samples; stars +1, watchers +0, forks +0).
 - Do not claim fresh execution if the run only re-describes already-prepared targets.
 
 ## Live comparison queue
@@ -21,4 +21,10 @@ Generated: 2026-05-27T01:43:03
 - If the queue is fully prepared and nothing is due, wait for review dates or add genuinely new comparison targets before counting another execution.
 
 ## Canonical manual execution packet
-- /home/mistlight/.openclaw/workspace/drafts/2026-05-27_comparison_backlink_handoff_packet.md
+- /home/mistlight/.openclaw/workspace/drafts/comparison_backlink_handoff_packet_latest.md
+
+
+## Post-hold marketer rerun already scheduled
+- Scheduled run: 2026-05-27T14:43:06
+- Cron job: marketing-measurement-hold-release (3fc85cc5-e6ae-4c78-ace6-8dece93a767d)
+- The current one-shot already matches the live short-window release time; do not create another duplicate wake.

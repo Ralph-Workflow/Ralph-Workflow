@@ -1,11 +1,11 @@
-# Reddit monitor — RalphWorkflow — 2026-05-27 03:05 Europe/Berlin
+# Reddit monitor — RalphWorkflow — 2026-05-27 12:45 Europe/Berlin
 
 ## Snapshot
-- **Threads/posts scanned:** 12
-- **Shortlisted:** 2
-- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 10
-- **Query attempts:** 7
-- **Search diagnostics:** ok=3, reddit_ip_blocked=3, time_budget_exceeded=1
+- **Threads/posts scanned:** 49
+- **Shortlisted:** 4
+- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 45
+- **Query attempts:** 9
+- **Search diagnostics:** ok=6, reddit_ip_blocked=2, time_budget_exceeded=1
 - **Prior context reviewed first:** `agents/marketing/REDDIT_LEARNINGS.md`, `outreach-log.md`, `agents/marketing/logs/reddit_posts.jsonl`, `agents/marketing/logs/reddit_post_analysis.md`
 - **Messaging ground truth used:** <https://ralphworkflow.com>
 - **Search mode:** content-first across Reddit via broad query families; subreddit is a weak secondary hint only
@@ -44,7 +44,27 @@ Broad content-first search across Reddit around:
 - Best RalphWorkflow angle: **content-family match: production_failure**
 - Why it fits: content-first match from `production_failure` query family; query=`workflow continuity ai agents reddit`
 
-### 2) Reddit reddit.com › r/ai_agents › agents vs workflows r/AI_Agents
+### 2) Reddit reddit.com › r/ai_agents › how are you managing multiple coding agents in parallel without things getting messy? r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1st2gkt/how_are_you_managing_multiple_coding_agents_in>
+- Community: `r/AI_Agents`
+- Freshness: during this pass
+- Direct reply fit: **high**
+- Mention fit: **medium-low**
+- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
+- Best RalphWorkflow angle: **parallel, multiple coding agents**
+- Why it fits: content-first match from `visible_finish_state` query family; query=`merge or rerun coding agent reddit`
+
+### 3) Reddit reddit.com › r/claudeai › running multiple ai coding agents in parallel with full dev environment (not git-worktree!) r/ClaudeAI
+- URL: <https://www.reddit.com/r/ClaudeAI/comments/1q2zl06/running_multiple_ai_coding_agents_in_parallel>
+- Community: `r/ClaudeAI`
+- Freshness: during this pass
+- Direct reply fit: **medium-high**
+- Mention fit: **medium-low**
+- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
+- Best RalphWorkflow angle: **parallel, worktree**
+- Why it fits: content-first match from `visible_finish_state` query family; query=`merge or rerun coding agent reddit`
+
+### 4) Reddit reddit.com › r/ai_agents › agents vs workflows r/AI_Agents
 - URL: <https://www.reddit.com/r/AI_Agents/comments/1syk8dy/agents_vs_workflows>
 - Community: `r/AI_Agents`
 - Freshness: during this pass
@@ -63,10 +83,10 @@ Broad content-first search across Reddit around:
 - If providers challenge or under-return, that is a monitor fault and should not be treated as a clean “no opportunities” day.
 
 ## Today’s bottom line
-- **Yes**, I found **2** credible discussion opportunities through content-first Reddit search.
+- **Yes**, I found **4** credible discussion opportunities through content-first Reddit search.
 - The search space is **not** bounded to a fixed subreddit list anymore; subreddit only affects tie-breaking after content scoring.
 - A thread can win even in a broader dev or AI community if the post itself matches the real workflow pain strongly enough.
-- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=3**), but other queries still returned usable results (**ok=3**). Treat this as partial coverage, not a total Reddit outage.
+- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=2**), but other queries still returned usable results (**ok=6**). Treat this as partial coverage, not a total Reddit outage.
 
 ## Next self-improving adjustment
 - Keep expanding query families when new pain clusters appear; do not solve search coverage by hardcoding more subreddit names.

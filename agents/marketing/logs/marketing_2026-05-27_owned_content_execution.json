@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-27T12:28:24.163225",
+  "timestamp": "2026-05-27T12:35:08.815501",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "owned_content_publication",
     "channel": "owned_content",
     "title": "Distribution lane execution: owned_content",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_review_ai_coding_output_before_merge_telegraph.md"
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_good_unattended_task_telegraph.md"
   },
   "why_this_action": {
     "summary": "Published a repo-native proof guide to Telegraph so the hold window still creates fresh Codeberg-first demand capture instead of another owned-content noop.",
@@ -17,8 +17,8 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "targets_prepared": [
-      "https://telegra.ph/Review-AI-Coding-Output-Before-Merge-05-27",
-      "/home/mistlight/.openclaw/workspace/content/guides/review_ai_coding_output_before_merge.md"
+      "https://telegra.ph/Good-Unattended-AI-Coding-Task-vs-Bad-One-05-27",
+      "/home/mistlight/.openclaw/workspace/content/guides/good_unattended_task.md"
     ]
   },
   "result": {

@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-27 (Wednesday) — Reddit monitoring (10:45 UTC / 12:45 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-27_1245.md`
+- **Scan summary:** forced-refresh local monitor returned **49 scanned / 4 shortlisted** with **ok=6 / reddit_ip_blocked=2 / time_budget_exceeded=1**.
+- **Coverage note:** still a **partial-visibility** pass, but materially healthier than the earlier **2026-05-27 03:05 CEST** snapshot (**12 scanned / 2 shortlisted / ok=3 / blocked=3**). I treated remaining blocked query families as degraded telemetry rather than as proof the market was quiet.
+- **Current verdict:** still **not** a posting pass. Discussion-fit improved, but honest RalphWorkflow mention fit remains **medium-low** across the surviving threads.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
+  - `r/AI_Agents` — "How are you managing multiple coding agents in parallel without things getting messy?"
+  - `r/ClaudeAI` — "Running multiple AI coding agents in parallel with full dev environment (not git-worktree!)"
+  - `r/AI_Agents` — "Agents vs workflows"
+- **Repeated pains worth tracking:** context continuity across tools, parallel-agent repo mess, visible finish state, and the boundary between workflow structure and true agent behavior.
+- **Self-improving lesson:** keep `parallel_repo` and `context continuity` elevated alongside `production_failure` and `visible_finish_state`. Better coverage increased shortlist breadth, but it still did **not** increase honest mention-fit enough to justify forcing a RalphWorkflow plug.
+- **Posting note:** No posting attempted. Research-first only while mention-fit stays low under partial coverage.
+
 ## 2026-05-27 (Wednesday) — Execution-board auto-refresh repair (04:33 UTC / 06:33 CEST)
 - **What I executed:** patched `agents/marketing/outcome_execution_board_runner.py` so the runner now rewrites `marketing_execution_board_latest.md` immediately after persisting latest-lane truth, then writes `outcome_execution_board_latest.*` from that refreshed board instead of whatever stale board path the run started with.
 - **Regression gate added:** `agents/marketing/tests/test_outcome_execution_board_runner.py` now checks that `sync_from_execution(...)` replaces stale board inputs with the freshly regenerated board path/targets.
@@ -7259,3 +7273,7 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-27 12:11:38
 - **Note:** Momentum watch state: Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-27T14:26:29.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 14:14:54
+- **Note:** Momentum watch state: Reddit is blocked from this environment, but a replacement distribution path has already shipped.
