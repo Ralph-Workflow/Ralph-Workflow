@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-27T18:59:43.976764",
+  "generated_at": "2026-05-27T20:46:32.471118",
   "current_bottleneck": "conversion_to_free_use",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -49,7 +49,6 @@
     ]
   },
   "failing_tactics": [
-    "reddit_style_repetition",
     "mirror_repo_flat_window",
     "same_family_publisher_overlap"
   ],
@@ -64,15 +63,18 @@
   ],
   "low_signal": [
     "Recent live external action exists (owned_content_publication), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
-    "Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution."
+    "Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution.",
+    "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
+    "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
   ],
   "should_change_now": [
     "Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.",
-    "REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.",
     "HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.",
     "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
-  "dormant_risks": [],
+  "dormant_risks": [
+    "reddit_style_repetition_suspended_while_channel_blocked"
+  ],
   "repair_actions": [
     {
       "target_tactic": "publisher_outreach_burst",
@@ -94,22 +96,11 @@
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
       "repair_state": "pending_measurement"
-    },
-    {
-      "target_tactic": "reddit_post_style",
-      "failure_type": "repetitive_outreach",
-      "repair_kind": "tactic",
-      "action": "REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.",
-      "kill_condition": "Same opening detected again in next audit",
-      "success_metric": "No repeated openings in next audit window",
-      "priority": 2,
-      "repair_state": "pending_measurement"
     }
   ],
   "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
     "mirror_repo_flat",
-    "repetitive_outreach",
     "same_family_publisher_overlap"
   ],
   "has_failing_tactics": true,
@@ -117,9 +108,9 @@
     "Owned content and outreach exist, but repo/public adoption signals are still low.",
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
-    "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
+    "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
     "4 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
-    "The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains owned_content_publication; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The most recent runtime activity was distribution_architecture_churn_guard_repair, but the latest meaningful external/replacement execution remains owned_content_publication; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (owned_content_publication), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint."
@@ -155,10 +146,10 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_distribution_architecture_guard_pause.json",
-    "type": "distribution_lane_switch",
-    "title": "Distribution lane decision: distribution_architecture_guard_pause",
-    "status": "prepared",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_distribution_architecture_repair_execution.json",
+    "type": "distribution_architecture_churn_guard_repair",
+    "title": "Distribution lane execution: distribution_architecture_repair",
+    "status": "executed",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,

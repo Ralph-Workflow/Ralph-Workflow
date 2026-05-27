@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-27T18:59:43
+Generated: 2026-05-27T20:33:29
 Chosen lane: **distribution_architecture_repair**
 
 ## Why this lane
-- The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; perform another concrete distribution-architecture repair now instead of logging another guard follow-through.
+- The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; perform another concrete distribution-architecture repair now instead of logging another guard pause.
 - 2 owned-content posts already shipped in the last 36 hours.
 - Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
@@ -14,7 +14,8 @@ Chosen lane: **distribution_architecture_repair**
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
 - Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.
-- An active manual publisher handoff already covers (Codivox, ComputingForGeeks, Reddit reddit.com › r/ai_agents › genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents), so those targets should stay out of fresh packet selection until their review window expires.
+- An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.
+- Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.
 - All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.
 - The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, so another packet refresh would be fake progress even if the exact target list drifted.
 - The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.

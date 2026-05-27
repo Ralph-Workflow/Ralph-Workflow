@@ -7281,3 +7281,7 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-27 16:41:02
 - **Note:** Momentum watch state: Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 19:58:01
+- **Note:** Momentum watch state: Reddit monitoring coverage is degraded.

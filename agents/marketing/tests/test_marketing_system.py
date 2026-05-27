@@ -6786,6 +6786,65 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertIn('reddit_style_repetition_suspended_while_channel_blocked', payload['dormant_risks'])
             self.assertFalse(any(item['target_tactic'] == 'reddit_post_style' for item in payload['repair_actions']))
 
+    def test_audit_keeps_reddit_repetition_parked_when_last_runtime_execution_is_blocked_and_monitor_is_still_partial(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            out_dir = tmp / 'logs'
+            out_dir.mkdir()
+            adoption_path = out_dir / 'adoption_metrics_latest.json'
+            retro_path = out_dir / 'reddit_post_analysis.json'
+            outreach_path = tmp / 'outreach-log.md'
+            principles_path = tmp / 'principles.md'
+            four_questions_path = tmp / 'four_questions.md'
+            self_improvement_path = tmp / 'self_improvement.md'
+            reddit_monitor_path = tmp / 'reddit_monitor_latest.md'
+            reddit_execution_status_path = out_dir / 'reddit_execution_status_latest.json'
+            audit_json = out_dir / 'marketing_workflow_audit_latest.json'
+            audit_md = out_dir / 'marketing_workflow_audit_latest.md'
+
+            adoption_path.write_text(json.dumps({
+                'metrics': [],
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                    'GitHub': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                },
+                'evaluation': {'failing_signals': ['primary_repo_flat']},
+            }), encoding='utf-8')
+            retro_path.write_text(json.dumps({'recent_posts': [], 'repeated_openings': ['same reddit hook']}), encoding='utf-8')
+            reddit_monitor_path.write_text(
+                '# Reddit monitor\n\n'
+                '- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=2**), but other queries still returned usable results (**ok=6**). Treat this as partial coverage, not a total Reddit outage.\n',
+                encoding='utf-8',
+            )
+            reddit_execution_status_path.write_text(json.dumps({
+                'generated_at': '2026-05-27T05:05:29.102014+02:00',
+                'status': 'execution_blocked',
+                'blocking_reason': 'Reddit is serving a blocked by network security page.',
+            }), encoding='utf-8')
+            outreach_path.write_text('Measurement window active.', encoding='utf-8')
+            principles_path.write_text('principles', encoding='utf-8')
+            four_questions_path.write_text('questions', encoding='utf-8')
+            self_improvement_path.write_text('self-improvement', encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_JSON', audit_json), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_MD', audit_md), \
+                 patch.object(marketing_workflow_audit, 'OUTREACH', outreach_path), \
+                 patch.object(marketing_workflow_audit, 'ADOPTION', adoption_path), \
+                 patch.object(marketing_workflow_audit, 'RETRO', retro_path), \
+                 patch.object(marketing_workflow_audit, 'PRINCIPLES', principles_path), \
+                 patch.object(marketing_workflow_audit, 'FOUR_QUESTIONS_DOC', four_questions_path), \
+                 patch.object(marketing_workflow_audit, 'SELF_IMPROVEMENT_DOC', self_improvement_path), \
+                 patch.object(marketing_workflow_audit, 'REDDIT_MONITOR_LATEST', reddit_monitor_path), \
+                 patch.object(marketing_workflow_audit, 'REDDIT_EXECUTION_STATUS', reddit_execution_status_path):
+                rc = marketing_workflow_audit.main()
+
+            self.assertEqual(rc, 0)
+            payload = json.loads(audit_json.read_text(encoding='utf-8'))
+            self.assertNotIn('reddit_style_repetition', payload['failing_tactics'])
+            self.assertIn('reddit_style_repetition_suspended_while_channel_blocked', payload['dormant_risks'])
+            self.assertFalse(any(item['target_tactic'] == 'reddit_post_style' for item in payload['repair_actions']))
+
 
 class ApolloSequenceLauncherTests(unittest.TestCase):
     def test_launcher_skips_duplicate_outreach_log_entries(self):

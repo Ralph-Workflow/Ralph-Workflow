@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-05-27T19:57:00+02:00",
+  "type": "distribution_architecture_repair",
+  "title": "Primary-repo-flat manual-review asset selector truth repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "target": "primary_repo_flat_manual_review_asset / execution_board consistency",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_195700_manual_review_asset_selector_truth_repair.md",
+  "shared_findings_used": [
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/logs/adoption_metrics_latest.json",
+    "agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json",
+    "agents/marketing/logs/reddit_post_analysis.json"
+  ],
+  "files_changed": [
+    "agents/marketing/distribution_lane_executor.py",
+    "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py",
+    "drafts/2026-05-27_primary_repo_flat_manual_review_asset.md",
+    "drafts/primary_repo_flat_manual_review_asset_latest.md",
+    "drafts/2026-05-27_marketing_execution_board.md",
+    "drafts/marketing_execution_board_latest.md"
+  ],
+  "verification": {
+    "command": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_primary_repo_flat_manual_review_asset_uses_selector_waiting_targets agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_lists_manual_review_asset_when_only_manual_channels_remain agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_hides_current_chat_final_reply_manual_asset -v",
+    "result": "passed",
+    "tests_run": 3
+  },
+  "result": {
+    "summary": "The manual-review asset now uses the same waiting-target selector as the execution board, so the do-now packet and board agree on the live target set.",
+    "behavior_changes": [
+      "Primary-repo-flat manual-review asset generation now follows selector truth instead of re-filtering targets with divergent logic.",
+      "The current Codeberg-first manual follow-through asset now truthfully surfaces ComputingForGeeks instead of emitting an empty packet.",
+      "The execution board and manual-review packet now point at the same actionable target, reducing fake-progress churn during the hold window."
+    ],
+    "targets_prepared": [
+      "ComputingForGeeks"
+    ]
+  }
+}

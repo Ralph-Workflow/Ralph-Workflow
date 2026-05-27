@@ -41,6 +41,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_targets_waiting_for_execution', return_value=['ctxt.dev / Signum']))
                 stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_packet_delivery_still_active', return_value=False))
                 stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_prepared_only_family_repeat_count', return_value=0))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_prepared_only_family_repeat_count', return_value=0))
                 stack.enter_context(patch.object(distribution_lane_executor, '_load_json', side_effect=lambda path: {}))
                 stack.enter_context(patch.object(distribution_lane_executor, '_recent_local_executed_action_type', return_value=False))
                 stack.enter_context(patch.object(distribution_lane_executor, '_backlink_status_latest_path', return_value=log_dir / 'backlink_status_latest.json'))
@@ -158,6 +159,94 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertEqual(assets[0]['artifact_path'], str(manual_asset))
         self.assertEqual(assets[0]['targets'], ['ctxt.dev / Signum'])
 
+    def test_manual_review_asset_is_suppressed_when_primary_repo_flat_packet_family_is_churning(self):
+        now = datetime(2026, 5, 27, 19, 58, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            discovery_path = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'ComputingForGeeks',
+                        'channels': [
+                            {'type': 'website', 'value': 'https://computingforgeeks.com/contact/', 'label': 'contact page'},
+                        ],
+                    }
+                ]
+            }), encoding='utf-8')
+            manual_asset = drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md'
+            manual_asset.write_text('# manual asset\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(distribution_lane_selector, '_recent_contact_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_recent_curator_queue_contact_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_active_manual_outreach_delivery_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_contact_targets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_packet_delivery_still_active', return_value=False), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_recent_prep_count', return_value=0), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_prepared_only_family_repeat_count', return_value=distribution_lane_selector.PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD), \
+                 patch.object(distribution_lane_selector, '_execution_board_short_review_release_at', return_value=None):
+                assets = distribution_lane_selector._manual_outreach_assets_waiting_for_execution(now)
+
+        self.assertEqual(assets, [])
+
+    def test_execution_board_hides_manual_review_asset_when_primary_repo_flat_packet_family_is_churning(self):
+        now = datetime(2026, 5, 27, 19, 58, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            distribution_lane_latest = log_dir / 'distribution_lane_latest.json'
+            distribution_lane_latest.write_text(json.dumps({}), encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n', encoding='utf-8')
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(distribution_lane_executor, 'LOG_DIR', log_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_stackoverflow_scheduled_run', return_value=''))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_targets_waiting_for_execution', return_value=['ComputingForGeeks']))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_asset_suppressed', return_value=True))
+                stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_packet_delivery_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_prepared_only_family_repeat_count', return_value=distribution_lane_selector.PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_json', side_effect=lambda path: {}))
+                stack.enter_context(patch.object(distribution_lane_executor, '_recent_local_executed_action_type', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_backlink_status_latest_path', return_value=log_dir / 'backlink_status_latest.json'))
+                stack.enter_context(patch.object(distribution_lane_executor, '_secondary_surface_repair_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_directory_confirmation_packet_is_current', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_directory_secondary_surface_repair_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_comparison_packet_delivery_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_measurement_hold_release_run', return_value=''))
+                stack.enter_context(patch.object(distribution_lane_executor, '_adoption_summary', return_value='Codeberg is still flat.'))
+                stack.enter_context(patch.object(distribution_lane_executor, '_reddit_discussion_asset_waiting_for_execution', return_value=None))
+                stack.enter_context(patch.object(distribution_lane_executor, '_reddit_manual_discussion_blocked', return_value=False))
+
+                board_path, targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+            self.assertNotIn('Manual publisher outreach asset', board_text)
+            self.assertIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+            self.assertEqual(targets, [])
+
     def test_execution_board_empty_marker_yields_to_manual_review_asset(self):
         now = datetime(2026, 5, 27, 15, 37, 0)
 
@@ -206,6 +295,84 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 empty = distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now)
 
         self.assertFalse(empty)
+
+    def test_active_manual_delivery_tracks_delivered_target_not_whole_manual_review_packet(self):
+        now = datetime(2026, 5, 27, 19, 12, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            packet_path = drafts_dir / '2026-05-27_primary_repo_flat_manual_review_asset.md'
+            packet_path.write_text('# manual asset\n', encoding='utf-8')
+            discovery_path = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'ctxt.dev / Signum',
+                        'channels': [
+                            {'type': 'telegram', 'value': 'https://t.me/ctxtdev', 'label': 'Telegram'},
+                        ],
+                    },
+                    {
+                        'target': 'TLDL',
+                        'channels': [
+                            {'type': 'github_issue', 'value': 'https://github.com/shenli/tldl/issues/new', 'label': 'GitHub issue'},
+                        ],
+                    },
+                ]
+            }), encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# latest manual asset\n', encoding='utf-8')
+
+            prepared_log = log_dir / 'marketing_2026-05-27_033930_publisher_manual_review_channel_ready_outreach_asset.json'
+            prepared_log.write_text(json.dumps({
+                'timestamp': '2026-05-27T03:39:30+02:00',
+                'chosen_action': {
+                    'type': 'publisher_manual_review_channel_ready_outreach_asset',
+                    'artifact': str(packet_path),
+                    'channel': 'manual_contact_asset',
+                },
+                'result': {
+                    'status': 'prepared',
+                    'targets_prepared': ['ctxt.dev / Signum', 'TLDL'],
+                },
+            }), encoding='utf-8')
+            delivery_log = log_dir / 'marketing_2026-05-27_034150_manual_publisher_review_asset_delivery.json'
+            delivery_log.write_text(json.dumps({
+                'timestamp': '2026-05-27T03:41:50+02:00',
+                'chosen_action': {
+                    'type': 'manual_publisher_review_asset_delivery',
+                    'channel': 'current_chat_final_reply',
+                    'packet': str(packet_path),
+                    'target': 'TLDL',
+                },
+                'result': {
+                    'status': 'delivered',
+                    'packet_path': str(packet_path),
+                    'targets_delivered': ['TLDL'],
+                },
+                'measurement_window': {
+                    'review_at': '2026-06-03T03:41:50+02:00',
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(distribution_lane_selector, '_recent_contact_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_recent_curator_queue_contact_targets', return_value=set()), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_contact_targets_waiting_for_execution', return_value=[]), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_packet_delivery_still_active', return_value=False), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_recent_prep_count', return_value=0), \
+                 patch.object(distribution_lane_selector, '_execution_board_short_review_release_at', return_value=None):
+                active_targets = distribution_lane_selector._active_manual_outreach_delivery_targets(now)
+                remaining_targets = distribution_lane_selector._primary_repo_flat_manual_review_targets_waiting_for_execution(now)
+
+        self.assertEqual(active_targets, {'TLDL'})
+        self.assertEqual(remaining_targets, ['ctxt.dev / Signum'])
 
     def test_owned_content_lane_publishes_unposted_repo_guide(self):
         now = datetime(2026, 5, 26, 2, 53, 0)
@@ -2236,6 +2403,27 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertEqual(scheduled, '')
 
+    def test_current_measurement_hold_release_run_hides_overdue_running_job_after_release_time_passes(self):
+        now = datetime(2026, 5, 27, 20, 33, 29)
+
+        with patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({'jobs': [
+                {
+                    'id': 'stale-running-cron',
+                    'name': 'marketing-measurement-hold-release',
+                    'enabled': True,
+                    'status': 'running',
+                    'schedule': {'kind': 'at', 'at': '2026-05-27T18:35:08'},
+                    'state': {'runningAtMs': 1779907625704},
+                }
+            ]}),
+            stderr='',
+        )):
+            scheduled = distribution_lane_executor._current_measurement_hold_release_run(now)
+
+        self.assertEqual(scheduled, '')
+
     def test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_when_post_cooldown_run_is_already_scheduled(self):
         now = datetime(2026, 5, 24, 5, 20, 0)
         decision = LaneDecision(
@@ -3880,6 +4068,57 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                 assets = distribution_lane_executor._manual_outreach_assets_waiting_for_execution(now)
 
         self.assertEqual(assets, [])
+
+    def test_primary_repo_flat_manual_review_asset_uses_selector_waiting_targets(self):
+        now = datetime(2026, 5, 27, 19, 57, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            drafts_dir.mkdir()
+
+            findings = [
+                {
+                    'target': 'TLDL',
+                    'article_url': 'https://www.tldl.io/resources/ai-coding-tools-2026',
+                    'hook': 'AI Coding Tools Compared',
+                    'reason': 'Comparison audience overlaps strongly with evaluators looking for autonomous coding workflows.',
+                    'outreach_subject': 'Ralph Workflow for your next AI coding tools comparison refresh',
+                    'recommended_next_step': 'GitHub issue/PR path is now identified',
+                    'channels': [
+                        {'type': 'github_issue', 'label': 'GitHub issue', 'value': 'https://github.com/shenli/tldl/issues/new'},
+                    ],
+                },
+                {
+                    'target': 'ComputingForGeeks',
+                    'article_url': 'https://computingforgeeks.com/opencode-vs-claude-code-vs-cursor/',
+                    'hook': 'OpenCode vs Claude Code vs Cursor: AI Coding Agents Compared (2026)',
+                    'reason': 'Large Linux/DevOps engineering audience already reading practical AI coding workflow comparisons.',
+                    'outreach_subject': 'Ralph Workflow for your next AI coding agents comparison update',
+                    'recommended_next_step': 'GitHub issue/PR path is now identified',
+                    'channels': [
+                        {'type': 'github_issue', 'label': 'GitHub issue', 'value': 'https://github.com/nicepkg/oh-my-openagent.git/issues/new'},
+                    ],
+                },
+            ]
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, '_latest_research_signals', return_value=[]))
+                stack.enter_context(
+                    patch.object(
+                        distribution_lane_executor.distribution_lane_selector,
+                        '_primary_repo_flat_manual_review_targets_waiting_for_execution',
+                        return_value=['ComputingForGeeks'],
+                    )
+                )
+                asset_path, prepared = distribution_lane_executor._write_primary_repo_flat_manual_review_asset(now, findings)
+
+            asset_text = asset_path.read_text(encoding='utf-8')
+
+        self.assertEqual(prepared, ['ComputingForGeeks'])
+        self.assertIn('### 1. ComputingForGeeks', asset_text)
+        self.assertNotIn('### 1. TLDL', asset_text)
 
     def test_manual_outreach_assets_skip_post_hold_only_primary_repo_flat_packet_after_repeat_threshold(self):
         now = datetime(2026, 5, 25, 5, 54, 0)
