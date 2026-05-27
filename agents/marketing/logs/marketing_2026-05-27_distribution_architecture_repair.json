@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-27T03:39:30.681529",
+  "timestamp": "2026-05-27T04:19:50.202667",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -19,7 +19,6 @@
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
-      "1 directory submissions already shipped in the last 24 hours.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
@@ -43,9 +42,9 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "5 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "3 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.",
-      "5 concrete distribution-architecture repair run(s) already hit this same guarded fingerprint."
+      "3 concrete distribution-architecture repair run(s) already hit this same guarded fingerprint."
     ]
   },
   "result": {

@@ -1,5 +1,5 @@
 # Ralph Workflow Manual Publisher Outreach Asset
-Generated: 2026-05-27T03:39:30
+Generated: 2026-05-27T04:19:50
 
 ## Why this exists now
 - The runtime cannot send these publisher/contact routes directly from this environment.

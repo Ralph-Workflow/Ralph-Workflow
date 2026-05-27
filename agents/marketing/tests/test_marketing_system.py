@@ -5643,6 +5643,7 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
             audit_path = status_dir / 'marketing_workflow_audit_latest.json'
             status_path = status_dir / 'marketing_momentum_watchdog.json'
             apollo_status = status_dir / 'apollo_status.json'
+            apollo_sequence_status = status_dir / 'apollo_sequence_status_latest.json'
             runner_path = status_dir / 'marketing_loop_runner_latest.json'
             reddit_jsonl = status_dir / 'reddit_posts.jsonl'
             retro_path = tmp / 'retro.py'
@@ -5659,6 +5660,7 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
             (seo_dir / 'reddit_monitor_latest.md').write_text('# report\n\n- **Shortlisted:** 0\n', encoding='utf-8')
             (seo_dir / 'reddit_monitor_latest_healthy.md').write_text('# report\n\n- **Shortlisted:** 0\n', encoding='utf-8')
             apollo_status.write_text(json.dumps({'status': 'login_succeeded', 'cloudflare_blocked': False}), encoding='utf-8')
+            apollo_sequence_status.write_text(json.dumps({'status': 'login_succeeded', 'cloudflare_blocked': False}), encoding='utf-8')
             reddit_jsonl.write_text('', encoding='utf-8')
             retro_path.write_text('print("{}")\n', encoding='utf-8')
             if runner_payload is not None:
@@ -5671,6 +5673,7 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
                  patch.object(marketing_momentum_watchdog, 'ADOPTION_PATH', adoption_path), \
                  patch.object(marketing_momentum_watchdog, 'AUDIT_PATH', audit_path), \
                  patch.object(marketing_momentum_watchdog, 'APOLLO_STATUS_PATH', apollo_status), \
+                 patch.object(marketing_momentum_watchdog, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_status), \
                  patch.object(marketing_momentum_watchdog, 'RUNNER_PATH', runner_path), \
                  patch.object(marketing_momentum_watchdog, 'LOG_JSONL', reddit_jsonl), \
                  patch.object(marketing_momentum_watchdog, 'RETRO', retro_path):

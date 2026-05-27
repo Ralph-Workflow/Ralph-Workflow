@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
 Generated: 2026-05-25T18:53:00
-Chosen lane: **reddit_execution_check**
+Chosen lane: **measurement_hold**
 
 ## Why this lane
-- The board is empty and Reddit browser session is confirmed ready — Reddit is the only genuinely executable lane right now. All other lanes produce only prepared artifacts that leave the board empty and perpetuate the repair grinding loop. Route to reddit_execution_check to trigger the reddit-watchdog pipeline and ship a real external action.
+- The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 2 directory submissions already shipped in the last 24 hours.
@@ -11,6 +11,7 @@ Chosen lane: **reddit_execution_check**
 - 14 live external marketing action(s) already shipped in the last 6 hours.
 - If no new outcome lands first, this short-window congestion clears at 2026-05-25T23:07:41. Before then, another live outbound action would mostly blur measurement.
 - Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.
+- Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
 - Apollo already has an active measurement window until 2026-06-02T07:23:34.700335+02:00, so do not spend this run repackaging the same outbound lane.
@@ -34,8 +35,6 @@ Chosen lane: **reddit_execution_check**
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
-- 1 prior distribution-architecture repair run(s) already hit this same empty-board window.
-- A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -47,6 +46,8 @@ Chosen lane: **reddit_execution_check**
 ## Recent owned-content already shipped
 - Distribution lane execution: owned_content (owned_content)
 
-## Owned-content lane remains allowed
-- No distribution-lane override triggered yet
-- If the next measurement window is still flat, escalate away from Telegraph-first output
+## Immediate measurement-hold work
+- Do not ship another fresh outreach/reset action in this short review window
+- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
+- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
+- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map

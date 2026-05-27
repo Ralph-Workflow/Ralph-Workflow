@@ -7172,3 +7172,35 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-27 04:05:13
 - **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Reddit monitor provider coverage is degraded right now, but a fresh healthy search report still exists inside the grace window, so this is being tracked without failing the whole loop. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 04:18:47
+- **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Reddit monitor provider coverage is degraded right now, but a fresh healthy search report still exists inside the grace window, so this is being tracked without failing the whole loop. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 04:19:10
+- **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Reddit monitor provider coverage is degraded right now, but a fresh healthy search report still exists inside the grace window, so this is being tracked without failing the whole loop. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 04:20:42
+- **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Reddit monitor provider coverage is degraded right now, but a fresh healthy search report still exists inside the grace window, so this is being tracked without failing the whole loop. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 04:47:45
+- **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Reddit monitor provider coverage is degraded right now, but a fresh healthy search report still exists inside the grace window, so this is being tracked without failing the whole loop. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 04:55:11
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 04:58:02
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 05:05:33
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-27 05:06:08
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

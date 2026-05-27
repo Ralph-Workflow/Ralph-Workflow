@@ -541,6 +541,74 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertIn('- Hold release at: 2026-05-26T13:22:23', contract_text)
 
+    def test_reddit_discussion_handoff_asset_regenerates_when_current_opportunities_changed(self):
+        now = datetime(2026, 5, 27, 4, 21, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+
+            latest_packet = drafts_dir / 'reddit_discussion_handoff_packet_latest.md'
+            latest_packet.write_text(
+                '# Ralph Workflow Reddit Discussion Handoff Packet\n'
+                '## Opportunity 1: stale thread title\n'
+                '- URL: <https://www.reddit.com/r/AI_Agents/comments/stale1>\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_reddit_discussion_manual_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T14:24:00+02:00',
+                    'type': 'reddit_discussion_manual_delivery',
+                    'chosen_action': {
+                        'channel': 'current_chat',
+                        'packet': str(latest_packet),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-01T14:24:00+02:00',
+                    },
+                    'result': {
+                        'status': 'executed',
+                        'artifact_reused': str(latest_packet),
+                    },
+                }),
+                encoding='utf-8',
+            )
+            (seo_dir / 'reddit_monitor_latest.md').write_text(
+                '\n'.join([
+                    '# Reddit monitor',
+                    '',
+                    '## Best current discussion opportunities (reply-worthiness first, product-fit second)',
+                    '',
+                    '### 1) fresh thread title',
+                    '- URL: <https://www.reddit.com/r/AI_Agents/comments/fresh1>',
+                    '- Community: `r/AI_Agents`',
+                    '- Freshness: during this pass',
+                    '- Direct reply fit: **high**',
+                    '- Mention fit: **medium-low**',
+                    '- Best RalphWorkflow angle: **content-family match: production_failure**',
+                    '- Why it fits: thread is still live',
+                    '',
+                    '## Strong current rejects',
+                ]),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir):
+                artifact = distribution_lane_executor._write_reddit_discussion_handoff_asset(now, ['adoption_metrics_latest.json'])
+
+            self.assertIsNotNone(artifact)
+            latest_text = latest_packet.read_text(encoding='utf-8')
+            self.assertIn('fresh thread title', latest_text)
+            self.assertIn('https://www.reddit.com/r/AI_Agents/comments/fresh1', latest_text)
+            self.assertNotIn('stale thread title', latest_text)
+
     def test_distribution_architecture_repair_does_not_regenerate_delivered_reddit_packet(self):
         now = datetime(2026, 5, 25, 15, 28, 0)
 
@@ -554,7 +622,14 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             seo_dir.mkdir()
 
             latest_packet = drafts_dir / 'reddit_discussion_handoff_packet_latest.md'
-            latest_packet.write_text('# Reddit packet\n', encoding='utf-8')
+            latest_packet.write_text(
+                '# Ralph Workflow Reddit Discussion Handoff Packet\n'
+                '## Opportunity 1: how do you keep multi-agent runs reviewable?\n'
+                '- URL: <https://www.reddit.com/r/AI_Agents/comments/example1>\n',
+                encoding='utf-8',
+            )
+            delivered_packet_ts = datetime(2026, 5, 25, 12, 20, 0).timestamp()
+            os.utime(latest_packet, (delivered_packet_ts, delivered_packet_ts))
             (log_dir / 'marketing_2026-05-25_reddit_discussion_manual_delivery.json').write_text(
                 json.dumps({
                     'timestamp': '2026-05-25T14:24:00+02:00',
@@ -626,6 +701,81 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('Suppressed regeneration of the Reddit discussion handoff packet', artifact_text)
             self.assertFalse((drafts_dir / '2026-05-25_reddit_discussion_handoff_packet.md').exists())
+
+    def test_reddit_discussion_waiting_asset_reappears_after_packet_refresh_changes_targets(self):
+        now = datetime(2026, 5, 27, 4, 21, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+
+            artifact = drafts_dir / 'reddit_discussion_handoff_packet_latest.md'
+            artifact.write_text(
+                '# Ralph Workflow Reddit Discussion Handoff Packet\n'
+                '## Opportunity 1: fresh thread title\n'
+                '- URL: <https://www.reddit.com/r/AI_Agents/comments/fresh1>\n',
+                encoding='utf-8',
+            )
+            os.utime(artifact, None)
+            (log_dir / 'marketing_2026-05-25_reddit_discussion_channel_ready_outreach_asset.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T04:20:00+02:00',
+                    'type': 'reddit_discussion_channel_ready_outreach_asset',
+                    'chosen_action': {
+                        'channel': 'manual_contact_asset',
+                        'artifact': str(artifact),
+                        'title': 'Prepare Reddit discussion handoff packet',
+                    },
+                    'measurement_window': {'review_at': '2026-06-01T14:08:00+02:00'},
+                    'result': {'status': 'prepared', 'artifact': str(artifact)},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_reddit_discussion_manual_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T14:24:00+02:00',
+                    'type': 'reddit_discussion_manual_delivery',
+                    'chosen_action': {
+                        'channel': 'current_chat',
+                        'packet': str(artifact),
+                    },
+                    'measurement_window': {'review_at': '2026-06-01T14:24:00+02:00'},
+                    'result': {'status': 'executed', 'artifact_reused': str(artifact)},
+                }),
+                encoding='utf-8',
+            )
+            (seo_dir / 'reddit_monitor_latest.md').write_text(
+                '\n'.join([
+                    '# Reddit monitor',
+                    '',
+                    '## Best current discussion opportunities (reply-worthiness first, product-fit second)',
+                    '',
+                    '### 1) fresh thread title',
+                    '- URL: <https://www.reddit.com/r/AI_Agents/comments/fresh1>',
+                    '- Community: `r/AI_Agents`',
+                    '- Freshness: during this pass',
+                    '- Direct reply fit: **high**',
+                    '- Mention fit: **medium-low**',
+                    '- Best RalphWorkflow angle: **content-family match: production_failure**',
+                    '- Why it fits: thread is still live',
+                    '',
+                    '## Strong current rejects',
+                ]),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir):
+                asset = distribution_lane_executor._reddit_discussion_asset_waiting_for_execution(now)
+
+        self.assertIsNotNone(asset)
+        self.assertEqual(asset['path'], str(artifact))
 
     def test_manual_follow_through_prefers_current_primary_repo_flat_packet_over_stale_legacy_asset(self):
         now = datetime(2026, 5, 25, 17, 8, 0)

@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-05-26T14:55:01.302353+02:00",
-  "status": "browser_session_ready",
-  "ok": true,
-  "blocking_reason": null,
-  "notes": "Direct requests from this server IP are still blocked by Reddit, but the live Chromium session is authenticated and usable.",
+  "generated_at": "2026-05-27T05:05:29.102014+02:00",
+  "status": "execution_blocked",
+  "ok": false,
+  "blocking_reason": "Reddit is serving a \"blocked by network security\" page even through the Chromium session. IP-level block is in effect.",
+  "notes": "Reddit is IP-blocked even for the authenticated Chromium session. This is an IP-level block, not a cookie/session issue.",
   "raw_request_probe": {
     "urls": [
       {
@@ -21,9 +21,10 @@
     ]
   },
   "browser_probe": {
-    "username": "Informal-Salt827",
+    "username": null,
     "expected_username": "Informal-Salt827",
-    "matches_expected": true,
-    "has_session": true
+    "matches_expected": false,
+    "has_session": false,
+    "blocked": true
   }
 }
