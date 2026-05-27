@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-28T00:06:58
+Generated: 2026-05-28T00:21:19
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +1, watchers +0, forks +0).
@@ -9,21 +9,17 @@ Generated: 2026-05-28T00:06:58
 ## Active review windows
 - Apollo next review: 2026-06-01T23:11:13.732870+02:00
 - Apollo launch review: 2026-06-01T23:11:13.732870+02:00
-- Short review-window congestion clears at: 2026-05-28T01:57:00
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
-- No do-now handoff packet is currently truthful in this review window.
-- Fresh publisher outreach already shipped in the current review window for: SitePoint.
-- The current primary-repo-flat publisher contact packet was already prepared 5 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
-- Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
-- Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.
-- Comparison backlink packet exists, but it was already manually delivered in the current review window.
-- Directory secondary-surface repair already shipped in the current review window; wait for the follow-up date or a target-set change before resurfacing it.
-- StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.
-- If this board is still empty after one of these blockers clears, the lane architecture needs another repair.
+### 1. Manual publisher outreach asset
+- When: Do now
+- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md
+- Targets: ComputingForGeeks
+- Why this matters: A current Codeberg-first manual follow-through asset already exists for the active primary-repo-flat target set; use it instead of regenerating the packet.
+
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
 - adoption_metrics_latest.json → Codeberg movement remains the primary success gate

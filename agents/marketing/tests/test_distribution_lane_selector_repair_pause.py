@@ -5557,6 +5557,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                     patch.object(distribution_lane_selector, '_backlink_status_snapshot', return_value={'payload': {'summary': {}}, 'live_listings': 2, 'age_hours': 0.1}),
                     patch.object(distribution_lane_selector, '_directory_confirmation_due', return_value=False),
                     patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)),
+                    patch.object(distribution_lane_selector, '_publisher_outreach_paused_by_repair_window', return_value=False),
                 ]:
                     stack.enter_context(patcher)
                 decision = distribution_lane_selector.choose_distribution_lane(now)
@@ -6320,6 +6321,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                     patch.object(distribution_lane_selector, '_backlink_status_snapshot', return_value={'payload': {'summary': {}}, 'live_listings': 3, 'age_hours': 0.1}),
                     patch.object(distribution_lane_selector, '_directory_confirmation_due', return_value=False),
                     patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)),
+                    patch.object(distribution_lane_selector, '_publisher_outreach_paused_by_repair_window', return_value=False),
                 ]:
                     stack.enter_context(patcher)
                 decision = distribution_lane_selector.choose_distribution_lane(now)
@@ -6450,6 +6452,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
             with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_manual_review_targets_waiting_for_execution', return_value=['ComputingForGeeks']), \
                  patch.object(distribution_lane_selector, '_primary_repo_flat_manual_review_asset_current', return_value=True):
                 self.assertTrue(
                     distribution_lane_selector._primary_repo_flat_manual_review_asset_suppressed(
@@ -6461,6 +6464,66 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                 assets = distribution_lane_selector._manual_outreach_assets_waiting_for_execution(now)
 
         self.assertEqual(assets, [])
+
+    def test_prepared_only_packet_churn_does_not_hide_distinct_manual_review_asset(self):
+        now = datetime(2026, 5, 27, 23, 40, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            discovery_path = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            asset_path = drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md'
+            asset_path.write_text('# shared manual review asset\n- ComputingForGeeks\n', encoding='utf-8')
+            discovery_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'ComputingForGeeks',
+                        'channels': [
+                            {'type': 'website', 'label': 'Contact', 'value': 'https://computingforgeeks.com/contact'},
+                        ],
+                    }
+                ]
+            }), encoding='utf-8')
+
+            for stamp in ('2026-05-27T20:10:00+02:00', '2026-05-27T21:27:26+02:00'):
+                safe_stamp = stamp.replace(':', '').replace('+0200', '').replace('+02:00', '')
+                (log_dir / f'marketing_{safe_stamp}_packet_prep.json').write_text(
+                    json.dumps({
+                        'timestamp': stamp,
+                        'chosen_action': {
+                            'type': 'primary_repo_flat_contact_handoff_packet_execution',
+                            'draft': str(drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'),
+                        },
+                        'result': {
+                            'status': 'prepared',
+                            'ok': True,
+                            'live_external_action': False,
+                        },
+                    }),
+                    encoding='utf-8',
+                )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_manual_review_targets_waiting_for_execution', return_value=['ComputingForGeeks']), \
+                 patch.object(distribution_lane_selector, '_primary_repo_flat_manual_review_asset_current', return_value=True):
+                self.assertFalse(
+                    distribution_lane_selector._primary_repo_flat_manual_review_asset_suppressed(
+                        now,
+                        primary_repo_flat_targets=[],
+                        manual_review_targets=['ComputingForGeeks'],
+                    )
+                )
+                assets = distribution_lane_selector._manual_outreach_assets_waiting_for_execution(now)
+
+        self.assertEqual(len(assets), 1)
+        self.assertEqual(assets[0]['targets'], ['ComputingForGeeks'])
+        self.assertIn('manual follow-through asset', assets[0]['title'].lower())
 
     def test_repeated_prepared_only_manual_followthrough_yields_to_directory_confirmation(self):
         now = datetime(2026, 5, 27, 23, 42, 0)
@@ -6582,6 +6645,104 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                 decision = distribution_lane_selector.choose_distribution_lane(now)
 
         self.assertEqual(decision.lane, 'directory_confirmation')
+
+    def test_same_family_publisher_overlap_blocks_manual_review_followthrough_reselection(self):
+        now = datetime(2026, 5, 28, 0, 42, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        audit = {
+            "repair_window_status": "measurement_pending",
+            "repair_actions": [
+                {"failure_type": "same_family_publisher_overlap", "repair_state": "pending_measurement"},
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            adoption_path = log_dir / 'adoption.json'
+            audit_path = log_dir / 'audit.json'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            execution_board = drafts_dir / 'marketing_execution_board_latest.md'
+            manual_asset = drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md'
+            discovery_path = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            audit_path.write_text(json.dumps(audit), encoding='utf-8')
+            execution_board.write_text(
+                '# Ralph Workflow Marketing Execution Board\n\n'
+                '## Best executable assets still waiting\n'
+                '### 1. Primary-repo-flat manual follow-through asset\n'
+                '- Targets: ComputingForGeeks\n',
+                encoding='utf-8',
+            )
+            manual_asset.write_text('# manual asset\n- ComputingForGeeks\n', encoding='utf-8')
+            discovery_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'ComputingForGeeks',
+                        'channels': [
+                            {'type': 'website', 'label': 'Contact', 'value': 'https://computingforgeeks.com/contact'},
+                        ],
+                    }
+                ]
+            }), encoding='utf-8')
+
+            with ExitStack() as stack:
+                for patcher in [
+                    patch.object(distribution_lane_selector, 'LOG_DIR', log_dir),
+                    patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir),
+                    patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', execution_board),
+                    patch.object(distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path),
+                    patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path),
+                    patch.object(distribution_lane_selector, 'AUDIT_LATEST_JSON', audit_path),
+                    patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json),
+                    patch.object(distribution_lane_selector, 'LATEST_MD', latest_md),
+                    patch.object(distribution_lane_selector, '_recent_owned_content_posts', return_value=[{'title': 'recent post'}]),
+                    patch.object(distribution_lane_selector, '_working_directory_channels', return_value=[]),
+                    patch.object(distribution_lane_selector, '_already_attempted_channel_names', return_value=set()),
+                    patch.object(distribution_lane_selector, '_shared_findings', return_value=['adoption_metrics_latest.json']),
+                    patch.object(distribution_lane_selector, '_load_recent_monitor_summary', return_value={'provider_degraded': True, 'reddit_blocked': True, 'partial_visibility_only': True}),
+                    patch.object(distribution_lane_selector, '_hn_ceiling_repeated', return_value=True),
+                    patch.object(distribution_lane_selector, '_github_auth_available', return_value=False),
+                    patch.object(distribution_lane_selector, '_apollo_ready', return_value=True),
+                    patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=True),
+                    patch.object(distribution_lane_selector, '_apollo_sequence_measurement_status', return_value={'measurement_pending': True, 'next_review_at': '2026-06-01T23:11:13+02:00'}),
+                    patch.object(distribution_lane_selector, '_live_curator_queue_count', return_value=5),
+                    patch.object(distribution_lane_selector, '_prepared_curator_targets_waiting_for_handoff', return_value=0),
+                    patch.object(distribution_lane_selector, '_prepared_curator_target_names', return_value=[]),
+                    patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=25),
+                    patch.object(distribution_lane_selector, '_contact_discovery_current_for_targets', return_value=False),
+                    patch.object(distribution_lane_selector, '_contact_discovery_has_targets', return_value=True),
+                    patch.object(distribution_lane_selector, '_manual_contact_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_manual_contact_queue_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_curator_contact_handoff_packet_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_primary_repo_flat_manual_review_asset_current', return_value=True),
+                    patch.object(distribution_lane_selector, '_comparison_queue_capacity', return_value=(8, 8)),
+                    patch.object(distribution_lane_selector, '_distribution_reset_targets_ready', return_value=0),
+                    patch.object(distribution_lane_selector, '_recent_live_action_family_count', side_effect=[1, 2]),
+                    patch.object(distribution_lane_selector, '_recent_live_external_action_count', return_value=1),
+                    patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None),
+                    patch.object(distribution_lane_selector, '_stack_overflow_measurement_pending', return_value=True),
+                    patch.object(distribution_lane_selector, '_stack_overflow_rate_limit_cooldown_active', return_value=(False, None)),
+                    patch.object(distribution_lane_selector, '_stack_overflow_handoff_packet_current', return_value=True),
+                    patch.object(distribution_lane_selector, '_stack_overflow_manual_delivery_current', return_value=True),
+                    patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_run_current', return_value=False),
+                    patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=True),
+                    patch.object(distribution_lane_selector, '_recent_executed_action_type', return_value=True),
+                    patch.object(distribution_lane_selector, '_backlink_status_snapshot', return_value={'payload': {'summary': {}}, 'live_listings': 3, 'age_hours': 0.1}),
+                    patch.object(distribution_lane_selector, '_directory_confirmation_due', return_value=False),
+                    patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(True, True)),
+                    patch.object(distribution_lane_selector, '_publisher_outreach_paused_by_repair_window', return_value=True),
+                ]:
+                    stack.enter_context(patcher)
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+        self.assertNotEqual(decision.lane, 'manual_outreach_asset_follow_through')
+        self.assertNotEqual(decision.lane, 'primary_repo_flat_contact_handoff_packet')
 
     def test_reddit_discussion_packet_does_not_count_as_manual_publisher_follow_through(self):
         now = datetime(2026, 5, 25, 17, 27, 0)

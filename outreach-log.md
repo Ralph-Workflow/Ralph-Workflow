@@ -7330,3 +7330,11 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-27 23:35:09
 - **Note:** Momentum watch state: Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 00:09:51
+- **Note:** Momentum watch state: Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T01:57:00.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 00:35:13
+- **Note:** Momentum watch state: Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T00:57:54.536577.

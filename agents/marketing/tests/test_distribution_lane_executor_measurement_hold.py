@@ -66,6 +66,58 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             self.assertIn('ctxt.dev / Signum', board_text)
             self.assertEqual(targets, ['ctxt.dev / Signum'])
 
+    def test_execution_board_keeps_manual_review_asset_visible_despite_packet_churn_threshold(self):
+        now = datetime(2026, 5, 27, 16, 25, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            distribution_lane_latest = log_dir / 'distribution_lane_latest.json'
+            distribution_lane_latest.write_text(json.dumps({}), encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n\n### 1. ComputingForGeeks\n', encoding='utf-8')
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(distribution_lane_executor, 'LOG_DIR', log_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, 'DRAFTS_DIR', drafts_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_stackoverflow_scheduled_run', return_value=''))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_targets_waiting_for_execution', return_value=['ComputingForGeeks']))
+                stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_packet_delivery_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_prepared_only_family_repeat_count', return_value=5))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_prepared_only_family_repeat_count', return_value=5))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_asset_suppressed', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_json', side_effect=lambda path: {}))
+                stack.enter_context(patch.object(distribution_lane_executor, '_recent_local_executed_action_type', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_backlink_status_latest_path', return_value=log_dir / 'backlink_status_latest.json'))
+                stack.enter_context(patch.object(distribution_lane_executor, '_secondary_surface_repair_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_directory_confirmation_packet_is_current', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_directory_secondary_surface_repair_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_comparison_packet_delivery_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_measurement_hold_release_run', return_value=''))
+                stack.enter_context(patch.object(distribution_lane_executor, '_adoption_summary', return_value='Codeberg is still flat.'))
+                stack.enter_context(patch.object(distribution_lane_executor, '_reddit_discussion_asset_waiting_for_execution', return_value=None))
+                stack.enter_context(patch.object(distribution_lane_executor, '_reddit_manual_discussion_blocked', return_value=False))
+
+                board_path, targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+            self.assertIn('Manual publisher outreach asset', board_text)
+            self.assertIn('ComputingForGeeks', board_text)
+            self.assertNotIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+            self.assertEqual(targets, ['ComputingForGeeks'])
+
     def test_distribution_architecture_repair_regenerates_manual_review_asset_when_waiting_target_exists(self):
         now = datetime(2026, 5, 27, 23, 20, 0)
 
