@@ -76,8 +76,8 @@ If you already know you want the deeper docs, use this map instead of scanning t
 Use this rule of thumb:
 
 - **I want this behavior in every repo I run** → edit `~/.config/ralph-workflow.toml`
-- **I only want this behavior in one repo** → edit `.agent/ralph-workflow.toml`
-- **I want to change workflow phases, loopbacks, or phase-owned policy** → edit `.agent/pipeline.toml`
+- **I only want this behavior in one repo** → edit `.agent/ralph-workflow.toml` **unless the change is about workflow shape, phases, or loopbacks**
+- **I want to change workflow phases, loopbacks, counters, or phase-owned policy** → edit `.agent/pipeline.toml`, then read [Advanced Pipeline Configuration](advanced-pipeline-configuration.md)
 - **I want to change MCP servers or web/search access** → edit `~/.config/ralph-workflow-mcp.toml` or `.agent/mcp.toml`
 - **I want to change artifact contracts/history** → edit `.agent/artifacts.toml`
 
