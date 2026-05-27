@@ -1,6 +1,6 @@
 {
-  "lane": "measurement_hold",
-  "reason": "The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.",
+  "lane": "distribution_architecture_repair",
+  "reason": "The same primary-repo-flat publisher packet keeps getting regenerated as prepared-only follow-through without entering a live delivery window; repair the distribution architecture now instead of refreshing that handoff again.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "1 owned-content posts already shipped in the last 36 hours.",
@@ -18,9 +18,11 @@
     "No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.",
     "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
     "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
-    "An active manual publisher handoff already covers (Codivox, ComputingForGeeks, Reddit reddit.com \u203a r/ai_agents \u203a genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents), so those targets should stay out of fresh packet selection until their review window expires.",
-    "The primary-repo-flat publisher contact packet was already manually delivered in the current review window, so another packet refresh right now would be fake progress.",
-    "A refreshed primary-repo-flat packet already has a live review window, so the loop should not re-select that same packet until the window expires or the target set materially changes.",
+    "A channel-ready manual publisher outreach asset already exists (TLDL), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.",
+    "An active manual publisher handoff already covers (Codivox, TIMEWELL, ctxt.dev / Signum), so those targets should stay out of fresh packet selection until their review window expires.",
+    "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
+    "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (TLDL, Requesty, SOTAAZ), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
+    "The same primary-repo-flat publisher packet has already been prepared 2 time(s) in the last 48 hours without a live delivery window, so selecting it again would be fake progress.",
     "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
     "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
     "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
