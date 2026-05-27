@@ -136,7 +136,6 @@ DISTRIBUTION_ARCHITECTURE_REUSE_LANES = {
 DISTRIBUTION_ARCHITECTURE_REUSE_ACTION_TYPE_MAP = {
     "distribution_architecture_repair": {
         "distribution_architecture_repair",
-        "distribution_architecture_churn_guard_repair",
     },
     "distribution_architecture_guard_follow_through": {"distribution_architecture_guard_follow_through"},
     "distribution_architecture_guard_pause": {"distribution_architecture_guard_pause"},
@@ -1152,6 +1151,53 @@ def _measurement_hold_follow_through_is_stale(recent_follow_through: dict[str, A
     return False
 
 
+def _latest_distribution_lane_alias_is_stale(decision: Any, now: datetime) -> bool:
+    latest_json = distribution_lane_selector.LATEST_JSON
+    latest_md = distribution_lane_selector.LATEST_MD
+    expected_artifact = distribution_lane_selector.DRAFTS_DIR / f"{now.strftime('%Y-%m-%d')}_distribution_action_brief.md"
+    expected_lane = str(getattr(decision, 'lane', '') or '').strip()
+    expected_reason = str(getattr(decision, 'reason', '') or '').strip()
+    expected_reasons = list(getattr(decision, 'reasons', []) or [])
+
+    if not latest_json.exists() or not latest_md.exists() or not expected_artifact.exists():
+        return True
+
+    try:
+        payload = json.loads(latest_json.read_text(encoding='utf-8'))
+    except (json.JSONDecodeError, OSError):
+        return True
+
+    if str(payload.get('lane') or '').strip() != expected_lane:
+        return True
+    if str(payload.get('reason') or '').strip() != expected_reason:
+        return True
+    if list(payload.get('reasons') or []) != expected_reasons:
+        return True
+    if Path(str(payload.get('artifact_path') or '')).resolve() != expected_artifact.resolve():
+        return True
+
+    try:
+        latest_text = latest_md.read_text(encoding='utf-8')
+    except OSError:
+        return True
+
+    if f'Generated: {now.strftime("%Y-%m-%d")}' not in latest_text:
+        return True
+    if f'Chosen lane: **{expected_lane}**' not in latest_text:
+        return True
+    return False
+
+
+def _refresh_latest_distribution_lane_alias_if_stale(decision: Any, now: datetime) -> Any:
+    if not _latest_distribution_lane_alias_is_stale(decision, now):
+        return decision
+    return distribution_lane_selector.persist_latest_lane_decision(
+        decision,
+        now,
+        write_action_log=False,
+    )
+
+
 def _distribution_architecture_execution_from_payload(
     *,
     path: Path,
@@ -1378,6 +1424,7 @@ def main() -> int:
         distribution_lane = choose_distribution_lane(now, persist_latest_artifacts=False)
         if pending_repairs:
             distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs, now=now)
+        distribution_lane = _refresh_latest_distribution_lane_alias_if_stale(distribution_lane, now)
         _sync_post_hold_release_run_if_needed(
             now=now,
             distribution_lane=distribution_lane,
@@ -1680,6 +1727,7 @@ def main() -> int:
                 f"[run.py] repair override active — redirecting from {original_lane} to {distribution_lane.lane}",
                 flush=True,
             )
+    distribution_lane = _refresh_latest_distribution_lane_alias_if_stale(distribution_lane, now)
     post_hold_release_schedule = _sync_post_hold_release_run_if_needed(
         now=now,
         distribution_lane=distribution_lane,

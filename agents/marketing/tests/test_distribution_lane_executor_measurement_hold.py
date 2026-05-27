@@ -3295,6 +3295,63 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertNotIn('Remaining publisher-contact discovery is not runtime-sendable here: ctxt.dev / Signum', board_text)
         self.assertIn('Fresh publisher outreach already shipped in the current review window for: AI Saying.', board_text)
 
+    def test_execution_board_hides_current_chat_final_reply_manual_asset(self):
+        now = datetime(2026, 5, 27, 4, 6, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            asset_path = drafts_dir / '2026-05-27_primary_repo_flat_manual_review_asset.md'
+            asset_path.write_text('# TLDL publisher outreach — ready to send\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-27_tldl_channel_ready_outreach.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T03:39:30+02:00',
+                    'chosen_action': {
+                        'type': 'publisher_manual_review_channel_ready_outreach_asset',
+                        'channel': 'manual_contact_asset',
+                        'title': 'Create a Codeberg-first manual publisher outreach asset for TLDL',
+                        'artifact': str(asset_path),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-03T03:39:30+02:00'
+                    },
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-27_034150_manual_publisher_review_asset_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T03:41:50+02:00',
+                    'chosen_action': {
+                        'type': 'manual_publisher_review_asset_delivery',
+                        'channel': 'current_chat_final_reply',
+                        'title': 'Deliver the current Codeberg-first manual publisher outreach asset for TLDL',
+                        'packet': str(asset_path),
+                    },
+                    'result': {
+                        'status': 'delivered',
+                        'ok': True,
+                        'outcome_ready': True,
+                        'delivery_surface': 'current_chat_final_reply',
+                        'packet_path': str(asset_path),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-03T03:41:50+02:00'
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir):
+                assets = distribution_lane_executor._manual_outreach_assets_waiting_for_execution(now)
+
+        self.assertEqual(assets, [])
+
     def test_execution_board_surfaces_repo_proof_asset_after_exhausted_stackoverflow_slot(self):
         now = datetime(2026, 5, 26, 6, 30, 0)
 

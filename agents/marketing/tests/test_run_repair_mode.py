@@ -1529,6 +1529,89 @@ class RunRepairModeTests(unittest.TestCase):
         self.assertEqual(choose_mock.call_args.kwargs.get('write_action_log'), False)
         self.assertEqual(choose_mock.call_args.kwargs.get('persist_latest_artifacts'), False)
 
+    def test_latest_distribution_lane_alias_is_stale_when_latest_truth_regressed(self):
+        now = datetime(2026, 5, 27, 3, 21, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='fresh repair lane',
+            reasons=['board is still empty after the hold cleared'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/stale.md',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            (drafts_dir / '2026-05-27_distribution_action_brief.md').write_text(
+                '# Ralph Workflow Distribution Action Brief\nGenerated: 2026-05-27T02:57:08\nChosen lane: **distribution_architecture_repair**\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'distribution_lane_latest.json').write_text(json.dumps({
+                'lane': 'reddit_execution_check',
+                'reason': 'stale reddit lane',
+                'reasons': ['old state'],
+                'artifact_path': str(drafts_dir / '2026-05-25_distribution_action_brief.md'),
+            }), encoding='utf-8')
+            (log_dir / 'distribution_lane_latest.md').write_text(
+                '# Ralph Workflow Distribution Action Brief\nGenerated: 2026-05-25T18:53:00\nChosen lane: **reddit_execution_check**\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(run.distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(run.distribution_lane_selector, 'LATEST_JSON', log_dir / 'distribution_lane_latest.json'), \
+                 patch.object(run.distribution_lane_selector, 'LATEST_MD', log_dir / 'distribution_lane_latest.md'):
+                self.assertTrue(run._latest_distribution_lane_alias_is_stale(decision, now))
+
+    def test_refresh_latest_distribution_lane_alias_if_stale_rewrites_current_truth(self):
+        now = datetime(2026, 5, 27, 3, 21, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='fresh repair lane',
+            reasons=['board is still empty after the hold cleared'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/stale.md',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            (drafts_dir / '2026-05-27_distribution_action_brief.md').write_text('stale placeholder\n', encoding='utf-8')
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            latest_json.write_text(json.dumps({
+                'lane': 'reddit_execution_check',
+                'reason': 'stale reddit lane',
+                'reasons': ['old state'],
+                'artifact_path': str(drafts_dir / '2026-05-25_distribution_action_brief.md'),
+            }), encoding='utf-8')
+            latest_md.write_text(
+                '# Ralph Workflow Distribution Action Brief\nGenerated: 2026-05-25T18:53:00\nChosen lane: **reddit_execution_check**\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(run.distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(run.distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(run.distribution_lane_selector, 'LATEST_MD', latest_md):
+                refreshed = run._refresh_latest_distribution_lane_alias_if_stale(decision, now)
+
+            payload = json.loads(latest_json.read_text(encoding='utf-8'))
+            self.assertEqual(refreshed.lane, 'distribution_architecture_repair')
+            self.assertEqual(payload['lane'], 'distribution_architecture_repair')
+            self.assertEqual(Path(payload['artifact_path']).name, '2026-05-27_distribution_action_brief.md')
+            latest_text = latest_md.read_text(encoding='utf-8')
+            self.assertIn('Generated: 2026-05-27T03:21:00', latest_text)
+            self.assertIn('Chosen lane: **distribution_architecture_repair**', latest_text)
+
     def test_write_distribution_execution_log_records_short_review_window_release_for_measurement_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR

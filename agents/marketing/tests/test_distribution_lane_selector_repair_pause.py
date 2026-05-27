@@ -5474,6 +5474,73 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
         self.assertEqual(assets, [])
         self.assertTrue(empty)
 
+    def test_current_chat_final_reply_manual_delivery_counts_as_already_delivered(self):
+        now = datetime(2026, 5, 27, 4, 6, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            board_path = drafts_dir / 'marketing_execution_board_latest.md'
+            board_path.write_text(
+                '# Ralph Workflow Marketing Execution Board\n\n'
+                '## Best executable assets still waiting\n'
+                '- No do-now handoff packet is currently truthful in this review window.\n',
+                encoding='utf-8',
+            )
+            asset_path = drafts_dir / '2026-05-27_primary_repo_flat_manual_review_asset.md'
+            asset_path.write_text('# TLDL publisher outreach — ready to send\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-27_tldl_channel_ready_outreach.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T03:39:30+02:00',
+                    'chosen_action': {
+                        'type': 'publisher_manual_review_channel_ready_outreach_asset',
+                        'channel': 'manual_contact_asset',
+                        'title': 'Create a Codeberg-first manual publisher outreach asset for TLDL',
+                        'artifact': str(asset_path),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-03T03:39:30+02:00'
+                    },
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-27_034150_manual_publisher_review_asset_delivery.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-27T03:41:50+02:00',
+                    'chosen_action': {
+                        'type': 'manual_publisher_review_asset_delivery',
+                        'channel': 'current_chat_final_reply',
+                        'title': 'Deliver the current Codeberg-first manual publisher outreach asset for TLDL',
+                        'packet': str(asset_path),
+                    },
+                    'result': {
+                        'status': 'delivered',
+                        'ok': True,
+                        'outcome_ready': True,
+                        'delivery_surface': 'current_chat_final_reply',
+                        'packet_path': str(asset_path),
+                    },
+                    'measurement_window': {
+                        'review_at': '2026-06-03T03:41:50+02:00'
+                    },
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', board_path):
+                assets = distribution_lane_selector._manual_outreach_assets_waiting_for_execution(now)
+                empty = distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now)
+
+        self.assertEqual(assets, [])
+        self.assertTrue(empty)
+
     def test_existing_manual_outreach_asset_beats_measurement_hold(self):
         now = datetime(2026, 5, 25, 5, 20, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}

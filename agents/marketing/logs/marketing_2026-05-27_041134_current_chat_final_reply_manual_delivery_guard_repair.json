@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-05-27T04:11:34+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "current_chat_final_reply_manual_delivery_guard_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Stop re-surfacing current-chat final-reply manual packets as fresh do-now work"
+  },
+  "why_this_action": {
+    "summary": "The TLDL manual publisher packet had already been delivered at 2026-05-27T03:41:50+02:00 via current_chat_final_reply, but the selector/execution-board path still treated it as waiting. That made the loop capable of selecting fake-progress manual follow-through again instead of honoring the live review window.",
+    "shared_findings_used": [
+      "agents/marketing/logs/marketing_2026-05-27_034150_manual_publisher_review_asset_delivery.json",
+      "agents/marketing/outreach-log.md",
+      "drafts/marketing_execution_board_latest.md",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/adoption_metrics_latest.json",
+      "agents/marketing/logs/market_intelligence_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched manual-delivery detection so current_chat_final_reply deliveries suppress reused manual outreach assets on both selector and execution-board paths, then refreshed the board and lane state.",
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/distribution_lane_executor.py",
+      "agents/marketing/tests/test_distribution_lane_selector_repair_pause.py",
+      "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+    ],
+    "verification": {
+      "tests": {
+        "command": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_current_chat_final_reply_manual_delivery_counts_as_already_delivered agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_hides_current_chat_final_reply_manual_asset -q",
+        "result": "passed"
+      },
+      "runtime": {
+        "selector_command": "python3 agents/marketing/distribution_lane_selector.py",
+        "selector_lane": "measurement_hold",
+        "board_refresh_command": "python3 - <<PY ... distribution_lane_executor._write_marketing_execution_board(datetime.now()) ... PY",
+        "board_state": "No do-now handoff packet is currently truthful in this review window."
+      },
+      "known_unrelated_failures": [
+        "agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_distribution_architecture_repair_creates_manual_reddit_discussion_asset_when_monitor_has_live_opportunities -> UnboundLocalError on local variable lines",
+        "agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_load_recent_monitor_summary_clears_reddit_blocked_when_browser_session_is_ready -> expected reddit_blocked False but got True"
+      ]
+    }
+  },
+  "expected_outcome": "The active loop no longer burns a slot re-delivering the already-used TLDL packet and now truthfully stays in measurement_hold until a genuinely executable lane opens or a stronger repair ships.",
+  "measurement_window": {
+    "review_at": "2026-06-03T03:41:50+02:00",
+    "success_metric": "distribution_lane_latest.json stays off the already-delivered manual publisher asset during the current review window and the execution board keeps that packet out of Best executable assets still waiting.",
+    "kill_condition": "If the delivered TLDL packet reappears as do-now work before the 2026-06-03 review checkpoint, escalate into a broader manual-delivery identity/fingerprint repair."
+  }
+}
