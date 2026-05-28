@@ -1750,6 +1750,13 @@ ralph.mcp.tools.exec_overlay
    :members:
    :show-inheritance:
 
+ralph.mcp.tools.exec_sandbox
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.tools.exec_sandbox
+   :members:
+   :show-inheritance:
+
 ralph.mcp.tools.git_read
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

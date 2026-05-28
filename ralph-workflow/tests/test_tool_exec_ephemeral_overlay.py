@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -149,6 +150,45 @@ def test_cleanup_on_exception(tmp_path: Path) -> None:
 
     assert not overlay_path.exists()
 
+
+def test_create_ephemeral_overlay_prunes_stale_dead_owner_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    base = tmp_path / "exec-base"
+    stale_dir = base / "stale-overlay"
+    stale_ws = stale_dir / "ws"
+    stale_ws.mkdir(parents=True)
+    (stale_dir / ".ralph-exec-owner.json").write_text(
+        json.dumps({"pid": -1}), encoding="utf-8"
+    )
+    monkeypatch.setattr(exec_overlay, "_get_private_exec_base", lambda: base)
+
+    with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
+        assert overlay.exists()
+
+    assert not stale_dir.exists(), "dead-owner overlay should be pruned before creating a new one"
+
+
+def test_create_ephemeral_overlay_keeps_live_owner_dir_available(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    base = tmp_path / "exec-base"
+    active_dir = base / "active-overlay"
+    active_ws = active_dir / "ws"
+    active_ws.mkdir(parents=True)
+    (active_dir / ".ralph-exec-owner.json").write_text(
+        json.dumps({"pid": os.getpid()}), encoding="utf-8"
+    )
+    monkeypatch.setattr(exec_overlay, "_get_private_exec_base", lambda: base)
+
+    with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
+        assert overlay.exists()
+        assert active_dir.exists(), "live-owner overlay must remain available to active exec users"
+
 def test_handles_empty_workspace(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -159,16 +199,26 @@ def test_handles_empty_workspace(tmp_path: Path) -> None:
 
 def test_includes_regular_repo_git_directory(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
+    workspace.mkdir()
     git_dir = workspace / ".git"
     git_dir.mkdir(parents=True)
+    (git_dir / "objects").mkdir(parents=True)
     (git_dir / "refs" / "heads").mkdir(parents=True)
     (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
     (git_dir / "config").write_text("[core]\n\trepositoryformatversion = 0\n", encoding="utf-8")
+    (git_dir / "refs" / "heads" / "main").write_text("abcdef\n", encoding="utf-8")
+    (workspace / "tracked.txt").write_text("hello\n", encoding="utf-8")
 
     with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
-        assert (overlay / ".git").is_dir()
-        head = (overlay / ".git" / "HEAD").read_text(encoding="utf-8")
-        assert head == "ref: refs/heads/main\n"
+        overlay_git = overlay / ".git"
+        assert overlay_git.is_file()
+        private_gitdir = Path(overlay_git.read_text(encoding="utf-8").split(":", 1)[1].strip())
+        assert private_gitdir.is_dir()
+        assert (private_gitdir / "HEAD").read_text(encoding="utf-8") == "ref: refs/heads/main\n"
+        refs_main = private_gitdir / "refs" / "heads" / "main"
+        assert refs_main.read_text(encoding="utf-8") == "abcdef\n"
+        alternates = private_gitdir / "objects" / "info" / "alternates"
+        assert alternates.read_text(encoding="utf-8") == f"{git_dir / 'objects'}\n"
 
 def test_worktree_git_file_creates_private_gitdir(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
@@ -278,7 +328,7 @@ def test_overlay_cwd_is_not_in_system_temp_dir(tmp_path: Path) -> None:
     )
 
 @pytest.mark.subprocess_e2e
-def test_overlay_private_dir_is_cleaned_up_after_exec(tmp_path: Path) -> None:
+def test_overlay_worktree_is_cleaned_up_after_exec(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
 
@@ -291,10 +341,10 @@ def test_overlay_private_dir_is_cleaned_up_after_exec(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     overlay_cwd = Path(result.stdout.decode().strip())
-    overlay_tmpdir = overlay_cwd.parent
-    assert not overlay_tmpdir.exists(), (
-        f"Overlay temp dir {overlay_tmpdir!r} still exists after exec returned. "
-        "create_ephemeral_overlay must clean up the per-exec directory on exit."
+    assert not overlay_cwd.exists(), (
+        f"Overlay worktree {overlay_cwd!r} still exists after exec returned. "
+        "The reusable sandbox must clear the worktree on context exit so exec "
+        "output does not persist on disk between runs."
     )
 
 

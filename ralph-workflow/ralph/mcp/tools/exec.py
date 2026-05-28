@@ -1,7 +1,7 @@
 """MCP exec tool handler.
 
 Ports the Rust MCP `exec` tool so agents can execute bounded subprocesses
-inside an ephemeral workspace overlay after capability checks and policy filtering.
+inside a resettable private sandbox slot after capability checks and policy filtering.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import shlex
 import signal
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
@@ -26,7 +26,8 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.mcp.tools.exec_overlay import create_ephemeral_overlay
+from ralph.mcp.tools.exec_overlay import _get_private_exec_base
+from ralph.mcp.tools.exec_sandbox import ExecSandboxManager
 from ralph.process.manager import SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
@@ -494,6 +495,16 @@ def _cleanup_exec_orphans(pgid: int, root_pid: int, psutil_mod: _PsutilModuleLik
         _kill_orphan_tree_windows(root_pid, psutil_mod)
 
 
+class _SandboxManagerCache:
+    instance: ClassVar[ExecSandboxManager | None] = None
+
+
+def _get_sandbox_manager() -> ExecSandboxManager:
+    if _SandboxManagerCache.instance is None:
+        _SandboxManagerCache.instance = ExecSandboxManager(base_dir=_get_private_exec_base())
+    return _SandboxManagerCache.instance
+
+
 def run_command(
     command: str,
     args: list[str],
@@ -501,10 +512,10 @@ def run_command(
     timeout_ms: int,
     deps: ExecRunDeps | None = None,
 ) -> _CompletedProcessAdapter:
-    """Execute a subprocess in a private overlay rooted at the workspace."""
+    """Execute a subprocess in a private resettable sandbox rooted at the workspace."""
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
-    overlay_factory = resolved_deps.overlay_factory or create_ephemeral_overlay
+    overlay_factory = resolved_deps.overlay_factory or _get_sandbox_manager().acquire
     cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
     timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
     with overlay_factory(cwd) as overlay_cwd:
@@ -590,7 +601,7 @@ def handle_exec_command(
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
-    """Execute a bounded subprocess inside an ephemeral workspace overlay."""
+    """Execute a bounded subprocess inside a private resettable workspace sandbox."""
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
     apply_exec_policy(parsed.command, parsed.args)

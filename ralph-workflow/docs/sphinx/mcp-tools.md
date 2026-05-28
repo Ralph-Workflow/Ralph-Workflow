@@ -71,6 +71,17 @@ See `ralph.mcp.tools.names` for the canonical name constants.
 
 Quoted arguments inside string forms are preserved, so values containing spaces stay as a single argument. Ralph Workflow still does **not** emulate a shell: control operators such as `|`, `&&`, `;`, `>`, and `<` are rejected instead of being interpreted. If you need file edits, git operations, or structured reads, prefer the dedicated MCP tools.
 
+`exec` runs inside a private, resettable sandbox pool keyed by the absolute workspace path. The pool keeps the isolation contract strict while avoiding per-run overlay churn:
+
+- each leased sandbox slot is fully reset before the subprocess starts
+- the slot worktree is removed again when the exec call finishes
+- writes and git mutations stay inside the leased sandbox slot, never the real workspace
+- same-workspace concurrent exec calls can run in parallel by leasing different sandbox slots from the pool
+- cross-workspace exec calls remain isolated because each workspace hash gets its own pool namespace
+- Ralph Workflow persists a small learned target slot count per workspace and can grow or shrink the pool over time based on observed contention
+
+This pooling behavior is an internal optimization and concurrency contract, not a public API surface. The observable `exec` semantics stay the same: bounded subprocess execution from the workspace root with strict workspace isolation.
+
 ### read_file response shapes
 
 `read_file` returns different response shapes depending on which parameters are supplied

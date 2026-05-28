@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -10,6 +11,7 @@ import pytest
 
 import ralph.mcp.tools._exec_completed_process as exec_completed_process
 from ralph.mcp.tools import exec as exec_tool
+from ralph.mcp.tools import exec_sandbox
 from ralph.mcp.tools.exec import (
     ExecRunDeps,
     ExecutionError,
@@ -182,3 +184,86 @@ def test_passes_through_unrelated_env_values(
     env = exec_tool._child_process_env(tmp_path / "workspace", tmp_path / "overlay")
 
     assert env["UNRELATED"] == "/etc/hosts"
+
+
+def test_run_command_reuses_stable_sandbox_path(tmp_path: Path) -> None:
+    seen_cwds: list[Path] = []
+
+    def fake_runner(
+        command: list[str], cwd: Path, timeout_seconds: float | None
+    ) -> exec_completed_process._CompletedProcessAdapter:
+        del command, timeout_seconds
+        seen_cwds.append(cwd)
+        (cwd / "dirty.txt").write_text("dirty", encoding="utf-8")
+        return exec_completed_process._CompletedProcessAdapter(
+            stdout=b"", stderr=b"", returncode=0
+        )
+
+    workspace = MockWorkspaceRoot(tmp_path)
+
+    run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner))
+    run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner))
+
+    assert len(seen_cwds) == 2
+    assert seen_cwds[0] == seen_cwds[1]
+    assert not (seen_cwds[1] / "dirty.txt").exists()
+
+
+def test_run_command_uses_distinct_pool_slots_for_same_workspace_concurrent_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
+    )
+    monkeypatch.setattr(exec_tool, "_get_sandbox_manager", lambda: manager)
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    workspace = MockWorkspaceRoot(workspace_root)
+    first_entered = threading.Event()
+    second_entered = threading.Event()
+    release_first = threading.Event()
+    results: list[exec_completed_process._CompletedProcessAdapter] = []
+    errors: list[BaseException] = []
+    seen_cwds: list[Path] = []
+    seen_lock = threading.Lock()
+
+    def fake_runner(
+        command: list[str], cwd: Path, timeout_seconds: float | None
+    ) -> exec_completed_process._CompletedProcessAdapter:
+        del command, timeout_seconds
+        with seen_lock:
+            seen_cwds.append(cwd)
+            call_index = len(seen_cwds)
+        if call_index == 1:
+            first_entered.set()
+            assert release_first.wait(timeout=1)
+        else:
+            second_entered.set()
+        return exec_completed_process._CompletedProcessAdapter(
+            stdout=b"ok", stderr=b"", returncode=0
+        )
+
+    def invoke() -> None:
+        try:
+            results.append(
+                run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner))
+            )
+        except BaseException as exc:  # pragma: no cover - captured for assertion clarity
+            errors.append(exc)
+
+    first = threading.Thread(target=invoke)
+    second = threading.Thread(target=invoke)
+
+    first.start()
+    assert first_entered.wait(timeout=1)
+    second.start()
+    assert second_entered.wait(timeout=0.05)
+    release_first.set()
+    first.join(timeout=1)
+    second.join(timeout=1)
+
+    assert not errors
+    assert second_entered.is_set()
+    assert len(results) == 2
+    assert len(seen_cwds) == 2
+    assert seen_cwds[0] != seen_cwds[1]

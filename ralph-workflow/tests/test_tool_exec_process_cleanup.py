@@ -85,3 +85,12 @@ class TestExecProcessCleanupUnit:
         )
 
         assert grandchild._killed, "Windows BFS must recursively kill grandchildren"
+
+
+def test_reusable_sandbox_does_not_skip_process_cleanup(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    result = run_command("echo", ["ok"], workspace, 1000)
+
+    assert result.returncode == 0
