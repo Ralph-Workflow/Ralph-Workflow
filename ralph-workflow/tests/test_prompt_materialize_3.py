@@ -29,15 +29,12 @@ if TYPE_CHECKING:
     import pytest
 
 
-
 class _ArtifactSubmitSession:
     session_id = "test-session"
     drain = "planning_analysis"
 
     def check_capability(self, capability: str) -> object:
         return capability == "artifact.submit"
-
-
 
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (

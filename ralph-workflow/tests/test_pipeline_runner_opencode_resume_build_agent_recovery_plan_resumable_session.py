@@ -137,5 +137,3 @@ class TestBuildAgentRecoveryPlanResumableSession:
         assert plan is not None, "Expected a recovery plan, got None"
         assert plan.session_id == "sess-from-opencode-text"
         assert plan.prompt_file != "PROMPT.md"
-
-

@@ -274,9 +274,7 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
         def _stage() -> None:
             _ = cast("str", repo.git.add("--all", "--", *files))
 
-        _run_git_operation_with_stale_lock_recovery(
-            "stage_files", _stage
-        )
+        _run_git_operation_with_stale_lock_recovery("stage_files", _stage)
         logger.debug("Staged {} selected paths in {}", len(files), repo_root)
     except Exception as exc:
         raise GitOperationError("stage_files", str(exc)) from exc

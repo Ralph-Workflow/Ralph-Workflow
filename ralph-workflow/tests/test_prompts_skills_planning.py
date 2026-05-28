@@ -10,17 +10,19 @@ from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
-PLANNING_SKILL_NAMES = frozenset({
-    "using-superpowers",
-    "writing-plans",
-    "brainstorming",
-    "executing-plans",
-    "dispatching-parallel-agents",
-    "subagent-driven-development",
-    "coding-standards",
-    "verification-loop",
-    "security-review",
-})
+PLANNING_SKILL_NAMES = frozenset(
+    {
+        "using-superpowers",
+        "writing-plans",
+        "brainstorming",
+        "executing-plans",
+        "dispatching-parallel-agents",
+        "subagent-driven-development",
+        "coding-standards",
+        "verification-loop",
+        "security-review",
+    }
+)
 
 DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY = (
     "arabold/docs-mcp-server",
@@ -44,6 +46,7 @@ def _shared_render_planning(
 ) -> str:
     """Render a planning prompt with optional has_docs_mcp."""
     import tempfile
+
     if tmp_path is None:
         with tempfile.TemporaryDirectory() as td:
             tmp_path = Path(td)
@@ -68,55 +71,41 @@ def _shared_render_planning(
 class TestPlanningTemplatesBaselineSkills:
     """planning.jinja and planning_fallback.jinja must contain BASELINE WORKFLOW SKILLS."""
 
-    def test_planning_jinja_has_baseline_workflow_skills_section(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_jinja_has_baseline_workflow_skills_section(self, tmp_path: Path) -> None:
         prompt = _shared_render_planning(False, tmp_path=tmp_path)
         assert "## BASELINE WORKFLOW SKILLS" in prompt
 
-    def test_planning_jinja_contains_required_planning_skill_names(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_jinja_contains_required_planning_skill_names(self, tmp_path: Path) -> None:
         prompt = _shared_render_planning(False, tmp_path=tmp_path)
         for skill_name in PLANNING_SKILL_NAMES:
             assert f"`{skill_name}`" in prompt, f"Missing skill: {skill_name}"
 
-    def test_planning_jinja_docs_mcp_false_branch_is_visible_text(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_jinja_docs_mcp_false_branch_is_visible_text(self, tmp_path: Path) -> None:
         """When has_docs_mcp=False, the false branch must render visible text."""
         prompt = _shared_render_planning(False, tmp_path=tmp_path)
         for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY:
             assert hint_phrase in prompt, f"Missing false-branch hint: {hint_phrase}"
 
-    def test_planning_jinja_docs_mcp_true_branch_active_when_true(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_jinja_docs_mcp_true_branch_active_when_true(self, tmp_path: Path) -> None:
         """When has_docs_mcp=True, the true branch should be active."""
         prompt = _shared_render_planning(True, tmp_path=tmp_path)
         assert "arabold/docs-mcp-server" in prompt
         assert "localhost:6280" in prompt
 
-    def test_planning_fallback_jinja_has_baseline_workflow_skills(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_fallback_jinja_has_baseline_workflow_skills(self, tmp_path: Path) -> None:
         prompt = _shared_render_planning(
             False, template="planning_fallback.jinja", tmp_path=tmp_path
         )
         assert "## BASELINE WORKFLOW SKILLS" in prompt
 
-    def test_planning_fallback_jinja_contains_required_skill_names(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_fallback_jinja_contains_required_skill_names(self, tmp_path: Path) -> None:
         prompt = _shared_render_planning(
             False, template="planning_fallback.jinja", tmp_path=tmp_path
         )
         for skill_name in PLANNING_SKILL_NAMES:
             assert f"`{skill_name}`" in prompt, f"Missing skill: {skill_name}"
 
-    def test_planning_fallback_jinja_docs_mcp_false_branch_visible(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_fallback_jinja_docs_mcp_false_branch_visible(self, tmp_path: Path) -> None:
         prompt = _shared_render_planning(
             False, template="planning_fallback.jinja", tmp_path=tmp_path
         )

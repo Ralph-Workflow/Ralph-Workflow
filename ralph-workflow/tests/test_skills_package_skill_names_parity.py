@@ -1,4 +1,5 @@
 """Test that packaged skill metadata matches Python BASELINE_SKILL_NAMES."""
+
 from __future__ import annotations
 
 import json

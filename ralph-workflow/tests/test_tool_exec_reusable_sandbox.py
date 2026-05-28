@@ -62,9 +62,7 @@ def test_same_workspace_concurrent_acquire_uses_distinct_pool_slots(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base", lock_timeout_s=0.01)
     first_entered = threading.Event()
     second_entered = threading.Event()
     release_first = threading.Event()
@@ -114,9 +112,7 @@ def test_same_workspace_concurrent_acquire_uses_distinct_pool_slots(
 def test_same_workspace_pool_persists_learned_target_size(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base", lock_timeout_s=0.01)
     release_first = threading.Event()
     first_entered = threading.Event()
     second_entered = threading.Event()
@@ -154,9 +150,7 @@ def test_same_workspace_three_concurrent_acquires_get_three_distinct_slots(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base", lock_timeout_s=0.01)
     entered = [threading.Event(), threading.Event(), threading.Event()]
     release_all = threading.Event()
     seen_paths: list[Path] = []
@@ -194,9 +188,7 @@ def test_same_workspace_concurrent_growth_persists_high_water_target_size(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base", lock_timeout_s=0.01)
     entered = [threading.Event(), threading.Event(), threading.Event()]
     release_all = threading.Event()
     errors: list[BaseException] = []
@@ -234,9 +226,7 @@ def test_reusable_sandbox_prunes_stale_dead_owner_slot_dir(tmp_path: Path) -> No
     pool_root = manager._base_dir / workspace_key
     stale_slot = manager._slot_root(pool_root, workspace_key, 2)
     stale_slot.mkdir(parents=True)
-    (stale_slot / ".ralph-exec-owner.json").write_text(
-        json.dumps({"pid": -1}), encoding="utf-8"
-    )
+    (stale_slot / ".ralph-exec-owner.json").write_text(json.dumps({"pid": -1}), encoding="utf-8")
 
     with manager.acquire(workspace) as sandbox:
         assert sandbox.exists()
@@ -251,9 +241,7 @@ def test_reusable_sandbox_reclaims_stale_pool_lock(tmp_path: Path) -> None:
     workspace_key = exec_sandbox._workspace_key(workspace)
     pool_root = manager._base_dir / workspace_key
     pool_root.mkdir(parents=True, exist_ok=True)
-    manager._pool_lock_path(pool_root).write_text(
-        json.dumps({"pid": -1}), encoding="utf-8"
-    )
+    manager._pool_lock_path(pool_root).write_text(json.dumps({"pid": -1}), encoding="utf-8")
 
     with manager.acquire(workspace) as sandbox:
         assert sandbox.exists()
@@ -276,9 +264,7 @@ def test_reusable_sandbox_reclaims_ownerless_stale_locked_slot(tmp_path: Path) -
 def test_same_workspace_pool_shrinks_idle_extra_slots(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base", lock_timeout_s=0.01)
     pool_root = manager._base_dir / exec_sandbox._workspace_key(workspace)
     pool_root.mkdir(parents=True, exist_ok=True)
     (pool_root / ".ralph-sandbox-pool.json").write_text(
@@ -302,9 +288,7 @@ def test_different_workspaces_can_acquire_independently(tmp_path: Path) -> None:
     workspace_b = tmp_path / "workspace-b"
     workspace_a.mkdir()
     workspace_b.mkdir()
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base", lock_timeout_s=0.01)
 
     with (
         manager.acquire(workspace_a) as sandbox_a,
@@ -321,16 +305,12 @@ def test_reusable_sandbox_uses_fast_reset_when_previous_state_is_valid(
     calls: list[str] = []
 
     class RecordingManager(exec_sandbox.ExecSandboxManager):
-        def _fast_reset(
-            self, workspace_root: Path, sandbox_root: Path, worktree: Path
-        ) -> bool:
+        def _fast_reset(self, workspace_root: Path, sandbox_root: Path, worktree: Path) -> bool:
             del workspace_root, sandbox_root, worktree
             calls.append("fast")
             return True
 
-        def _full_reset(
-            self, workspace_root: Path, sandbox_root: Path, worktree: Path
-        ) -> None:
+        def _full_reset(self, workspace_root: Path, sandbox_root: Path, worktree: Path) -> None:
             calls.append("full")
             super()._full_reset(workspace_root, sandbox_root, worktree)
 

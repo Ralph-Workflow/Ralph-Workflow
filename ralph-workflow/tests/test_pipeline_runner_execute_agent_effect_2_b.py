@@ -159,10 +159,6 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     )
 
 
-
-
-
-
 class TestExecuteAgentEffectB:
     @staticmethod
     def _config(verbosity: int = 2) -> MagicMock:
@@ -415,4 +411,3 @@ class TestExecuteAgentEffectB:
         retry_prompt = Path(seen_prompt_files[1]).read_text(encoding="utf-8")
         assert "inactivity timeout" in retry_prompt
         assert "drafted the fix" in retry_prompt
-

@@ -577,11 +577,16 @@ def test_materialize_prepared_prompt_preserves_transport_tool_prefix_from_agent_
 ) -> None:
     prompt_prep_module = importlib.import_module("ralph.pipeline.prompt_prep")
     captured: dict[str, object] = {}
-    state = PipelineState(phase="development", work_units=(WorkUnit(
-        unit_id="unit-a",
-        description="Implement only unit A",
-        allowed_directories=["src/a"],
-    ),))
+    state = PipelineState(
+        phase="development",
+        work_units=(
+            WorkUnit(
+                unit_id="unit-a",
+                description="Implement only unit A",
+                allowed_directories=["src/a"],
+            ),
+        ),
+    )
 
     class _RegistryAgent:
         transport = AgentTransport.CLAUDE

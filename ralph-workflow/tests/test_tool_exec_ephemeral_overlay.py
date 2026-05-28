@@ -28,6 +28,7 @@ def test_mirrors_workspace_files(tmp_path: Path) -> None:
         assert overlay != workspace
         assert (overlay / "root.txt").read_text(encoding="utf-8") == "root"
 
+
 def test_yields_path_in_isolated_private_dir(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -36,6 +37,7 @@ def test_yields_path_in_isolated_private_dir(tmp_path: Path) -> None:
         assert overlay.is_dir()
         assert overlay != workspace
         assert overlay.parent != workspace.parent
+
 
 def test_create_ephemeral_overlay_yields_unique_temp_roots(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
@@ -52,6 +54,7 @@ def test_create_ephemeral_overlay_yields_unique_temp_roots(tmp_path: Path) -> No
             assert overlay1_path.is_dir()
             assert overlay2_path.is_dir()
 
+
 def test_mirrors_nested_directories(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -61,6 +64,7 @@ def test_mirrors_nested_directories(tmp_path: Path) -> None:
 
     with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
         assert (overlay / "nested" / "inner.txt").read_text(encoding="utf-8") == "inner"
+
 
 def test_dereferences_symlinked_files(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
@@ -79,6 +83,7 @@ def test_dereferences_symlinked_files(tmp_path: Path) -> None:
         assert not copied.is_symlink()
         assert copied.read_text(encoding="utf-8") == "real content"
 
+
 def test_writes_through_copied_symlinks_do_not_escape(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -95,6 +100,7 @@ def test_writes_through_copied_symlinks_do_not_escape(tmp_path: Path) -> None:
 
     assert target.read_text(encoding="utf-8") == "original"
 
+
 def test_isolates_writes_from_real_workspace(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -106,6 +112,7 @@ def test_isolates_writes_from_real_workspace(tmp_path: Path) -> None:
 
     assert (workspace / "file.txt").read_text(encoding="utf-8") == "original"
     assert not (workspace / "new_file.txt").exists()
+
 
 def test_excludes_generated_dirs(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
@@ -128,6 +135,7 @@ def test_excludes_generated_dirs(tmp_path: Path) -> None:
         for directory, filename in exclusions.items():
             assert not (overlay / directory / filename).exists()
 
+
 def test_cleanup_removes_temporary_overlay(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -138,13 +146,13 @@ def test_cleanup_removes_temporary_overlay(tmp_path: Path) -> None:
 
     assert not overlay_path.exists()
 
+
 def test_cleanup_on_exception(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     overlay_path = workspace
 
-    with pytest.raises(RuntimeError), \
-        exec_overlay.create_ephemeral_overlay(workspace) as overlay:
+    with pytest.raises(RuntimeError), exec_overlay.create_ephemeral_overlay(workspace) as overlay:
         overlay_path = overlay
         raise RuntimeError("boom")
 
@@ -160,9 +168,7 @@ def test_create_ephemeral_overlay_prunes_stale_dead_owner_dir(
     stale_dir = base / "stale-overlay"
     stale_ws = stale_dir / "ws"
     stale_ws.mkdir(parents=True)
-    (stale_dir / ".ralph-exec-owner.json").write_text(
-        json.dumps({"pid": -1}), encoding="utf-8"
-    )
+    (stale_dir / ".ralph-exec-owner.json").write_text(json.dumps({"pid": -1}), encoding="utf-8")
     monkeypatch.setattr(exec_overlay, "_get_private_exec_base", lambda: base)
 
     with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
@@ -189,6 +195,7 @@ def test_create_ephemeral_overlay_keeps_live_owner_dir_available(
         assert overlay.exists()
         assert active_dir.exists(), "live-owner overlay must remain available to active exec users"
 
+
 def test_handles_empty_workspace(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -196,6 +203,7 @@ def test_handles_empty_workspace(tmp_path: Path) -> None:
     with exec_overlay.create_ephemeral_overlay(workspace) as overlay:
         assert overlay.is_dir()
         assert overlay != workspace
+
 
 def test_includes_regular_repo_git_directory(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
@@ -219,6 +227,7 @@ def test_includes_regular_repo_git_directory(tmp_path: Path) -> None:
         assert refs_main.read_text(encoding="utf-8") == "abcdef\n"
         alternates = private_gitdir / "objects" / "info" / "alternates"
         assert alternates.read_text(encoding="utf-8") == f"{git_dir / 'objects'}\n"
+
 
 def test_worktree_git_file_creates_private_gitdir(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
@@ -256,6 +265,7 @@ def test_worktree_git_file_creates_private_gitdir(tmp_path: Path) -> None:
         config_text = (private_gitdir / "config").read_text(encoding="utf-8")
         assert f"worktree = {overlay}" in config_text
 
+
 def test_malformed_worktree_git_pointer_falls_back_to_copied_file(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -269,15 +279,15 @@ def test_malformed_worktree_git_pointer_falls_back_to_copied_file(tmp_path: Path
 
 def test_windows_uses_localappdata(tmp_path: Path) -> None:
     local_app = str(tmp_path / "AppData" / "Local")
-    result = exec_overlay._compute_exec_base_str(
-        "nt", local_app, str(tmp_path / "home"), "/tmp"
-    )
+    result = exec_overlay._compute_exec_base_str("nt", local_app, str(tmp_path / "home"), "/tmp")
     assert result == str(Path(local_app) / "ralph" / "exec")
+
 
 def test_windows_falls_back_to_home_when_localappdata_absent(tmp_path: Path) -> None:
     home_str = str(tmp_path / "home" / "user")
     result = exec_overlay._compute_exec_base_str("nt", None, home_str, "/tmp")
     assert result == str(Path(home_str) / "ralph" / "exec")
+
 
 def test_posix_normal_uses_home_cache(tmp_path: Path) -> None:
     fake_home = tmp_path / "home" / "user"
@@ -286,6 +296,7 @@ def test_posix_normal_uses_home_cache(tmp_path: Path) -> None:
     system_tmp.mkdir()
     result = exec_overlay._compute_exec_base_str("posix", None, str(fake_home), str(system_tmp))
     assert result == str(fake_home / ".cache" / "ralph" / "exec")
+
 
 def test_posix_home_cache_in_temp_uses_var_tmp(tmp_path: Path) -> None:
     fake_home = tmp_path / "user"
@@ -304,6 +315,7 @@ def test_overlay_base_dir_has_private_permissions() -> None:
         assert mode == 0o700, f"Expected 0o700, got 0o{mode:03o}"
     else:
         assert base.is_dir()
+
 
 @pytest.mark.subprocess_e2e
 def test_overlay_cwd_is_not_in_system_temp_dir(tmp_path: Path) -> None:
@@ -326,6 +338,7 @@ def test_overlay_cwd_is_not_in_system_temp_dir(tmp_path: Path) -> None:
         "create_ephemeral_overlay must place overlays in a private directory so "
         "scanning the system temp dir finds nothing during exec."
     )
+
 
 @pytest.mark.subprocess_e2e
 def test_overlay_worktree_is_cleaned_up_after_exec(tmp_path: Path) -> None:
@@ -358,9 +371,7 @@ def test_run_command_passes_overlay_cwd_to_runner(tmp_path: Path) -> None:
     ) -> exec_completed_process._CompletedProcessAdapter:
         del command, timeout_seconds
         seen_cwd.append(cwd)
-        return exec_completed_process._CompletedProcessAdapter(
-            stdout=b"", stderr=b"", returncode=0
-        )
+        return exec_completed_process._CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
 
     def fake_overlay(workspace_root: Path) -> AbstractContextManager[Path]:
         del workspace_root
@@ -378,6 +389,7 @@ def test_run_command_passes_overlay_cwd_to_runner(tmp_path: Path) -> None:
     assert len(seen_cwd) == 1
     assert seen_cwd[0] == overlay_dir
 
+
 def test_run_command_uses_real_overlay_by_default(tmp_path: Path) -> None:
     seen_cwd: list[Path] = []
     workspace = MockWorkspaceRoot(tmp_path)
@@ -387,9 +399,7 @@ def test_run_command_uses_real_overlay_by_default(tmp_path: Path) -> None:
     ) -> exec_completed_process._CompletedProcessAdapter:
         del command, timeout_seconds
         seen_cwd.append(cwd)
-        return exec_completed_process._CompletedProcessAdapter(
-            stdout=b"", stderr=b"", returncode=0
-        )
+        return exec_completed_process._CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
 
     run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner))
 
@@ -403,15 +413,13 @@ def test_run_command_writes_only_in_overlay(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     target = workspace / "created.txt"
-    script = (
-        "from pathlib import Path; "
-        "Path('created.txt').write_text('overlay', encoding='utf-8')"
-    )
+    script = "from pathlib import Path; Path('created.txt').write_text('overlay', encoding='utf-8')"
 
     result = run_command("python", ["-c", script], workspace, 5000)
 
     assert result.returncode == 0
     assert not target.exists()
+
 
 @pytest.mark.subprocess_e2e
 def test_git_reset_happens_only_in_overlay(tmp_git_repo: Path) -> None:
@@ -426,22 +434,19 @@ def test_git_reset_happens_only_in_overlay(tmp_git_repo: Path) -> None:
     assert readme.read_text(encoding="utf-8") != original
 
 
-
 @pytest.mark.timeout_seconds(30)
 @pytest.mark.subprocess_e2e
 def test_overlay_keeps_source_workspace_unchanged(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     (workspace / "marker.txt").write_text("source", encoding="utf-8")
-    script = (
-        "from pathlib import Path; "
-        "Path('marker.txt').write_text('overlay', encoding='utf-8')"
-    )
+    script = "from pathlib import Path; Path('marker.txt').write_text('overlay', encoding='utf-8')"
 
     result = run_command("python", ["-c", script], workspace, 5000)
 
     assert result.returncode == 0
     assert (workspace / "marker.txt").read_text(encoding="utf-8") == "source"
+
 
 @pytest.mark.subprocess_e2e
 def test_overlay_can_run_git_status_without_touching_source(tmp_git_repo: Path) -> None:
@@ -451,6 +456,7 @@ def test_overlay_can_run_git_status_without_touching_source(tmp_git_repo: Path) 
 
     assert result.returncode == 0
     assert (tmp_git_repo / "README.md").read_text(encoding="utf-8") == before
+
 
 @pytest.mark.subprocess_e2e
 def test_real_subprocess_rewrites_source_workspace_env_values(
@@ -516,6 +522,7 @@ def test_background_process_is_killed_after_exec_returns(tmp_path: Path) -> None
         )
     except psutil.NoSuchProcess:
         pass
+
 
 @pytest.mark.subprocess_e2e
 def test_new_session_background_process_is_killed_after_exec_returns(tmp_path: Path) -> None:

@@ -77,8 +77,6 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     return bundle
 
 
-
-
 class TestRunnerAnalysisHandoffIntegration:
     """Runner-level integration: _execute_fan_out_sync wires the analysis handoff.
 
@@ -195,4 +193,3 @@ class TestRunnerAnalysisHandoffIntegration:
         content = handoff_path.read_text()
         assert "any_failed: true" in content
         assert "all_succeeded: false" in content
-

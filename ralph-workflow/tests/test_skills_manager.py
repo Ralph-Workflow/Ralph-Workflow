@@ -97,7 +97,10 @@ def test_get_docs_mcp_available_cache_hit_returns_healthy(tmp_path: Path) -> Non
     manager = SkillManager(state_path=state_path)
     with (
         patch("ralph.skills.manager.install_baseline_skills") as mock_install,
-        patch("ralph.skills.manager._find_configured_docs_mcp_url", return_value="http://localhost:6280/mcp"),
+        patch(
+            "ralph.skills.manager._find_configured_docs_mcp_url",
+            return_value="http://localhost:6280/mcp",
+        ),
         patch("ralph.skills.manager._get_ralph_version", return_value="1.0.0"),
         patch("ralph.skills.manager._web_search_is_available", return_value=True),
         patch("ralph.skills.manager._visit_url_is_available", return_value=True),
@@ -123,7 +126,10 @@ def test_get_docs_mcp_available_cache_hit_returns_healthy(tmp_path: Path) -> Non
 def test_get_docs_mcp_available_probe_hit_saves_healthy(tmp_path: Path) -> None:
     manager = SkillManager(state_path=tmp_path / "state.json")
     with (
-        patch("ralph.skills.manager._find_configured_docs_mcp_url", return_value="http://localhost:6280/mcp"),
+        patch(
+            "ralph.skills.manager._find_configured_docs_mcp_url",
+            return_value="http://localhost:6280/mcp",
+        ),
         patch("ralph.skills.manager.probe_docs_mcp", return_value=True),
     ):
         assert manager.get_docs_mcp_available(workspace_root=tmp_path) is True
@@ -172,13 +178,16 @@ def test_check_skills_for_updates_auto_repairs_when_update_found(tmp_path: Path)
         )
         manager.ensure_baseline_capabilities(workspace_root=tmp_path)
 
-    with patch(
-        "ralph.skills.manager.check_skills_update_available",
-        return_value=True,
-    ) as mock_check, patch(
-        "ralph.skills.manager.install_baseline_skills",
-        return_value=(CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY), []),
-    ) as mock_reinstall:
+    with (
+        patch(
+            "ralph.skills.manager.check_skills_update_available",
+            return_value=True,
+        ) as mock_check,
+        patch(
+            "ralph.skills.manager.install_baseline_skills",
+            return_value=(CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY), []),
+        ) as mock_reinstall,
+    ):
         assert manager.check_skills_for_updates() is False
         mock_check.assert_called_once()
         mock_reinstall.assert_called_once()

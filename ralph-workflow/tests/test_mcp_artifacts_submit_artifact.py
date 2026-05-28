@@ -116,4 +116,3 @@ class TestSubmitArtifact:
         stored = json.loads(backend.read_text(artifact_dir / "virtual.json"))
         assert artifact.created_at == "STATIC-TIME"
         assert stored["created_at"] == "STATIC-TIME"
-

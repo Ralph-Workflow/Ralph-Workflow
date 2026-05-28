@@ -68,8 +68,6 @@ def _make_work_unit(uid: str, deps: list[str] | None = None) -> WorkUnit:
     )
 
 
-
-
 class TestPartialFailureHandoffContent:
     """Runner-level tests: DEVELOPMENT_RESULT.md handoff content on partial failure.
 
@@ -225,4 +223,3 @@ class TestPartialFailureHandoffContent:
         assert workers_by_id["unit-b"]["status"] != "succeeded", (
             f"unit-b must not be succeeded, got: {workers_by_id['unit-b']!r}"
         )
-

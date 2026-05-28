@@ -81,8 +81,9 @@ def test_claude_interactive_strategy_classifies_vt_tool_line_as_tool_use() -> No
     assert signal.kind == AgentActivityKind.TOOL_USE
 
 
-def test_claude_interactive_strategy_prioritizes_tool_use_over_later_output_from_same_feed(
-) -> None:
+def test_claude_interactive_strategy_prioritizes_tool_use_over_later_output_from_same_feed() -> (
+    None
+):
     strategy = ClaudeInteractiveExecutionStrategy()
     payload = json.dumps(
         {

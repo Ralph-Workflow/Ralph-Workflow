@@ -15,7 +15,6 @@ def _import_searxng_module() -> object:
         raise AssertionError("ralph.mcp.websearch.backends.searxng should exist") from exc
 
 
-
 class _FakeResponse:
     def __init__(self, payload: object) -> None:
         self._payload = payload
@@ -25,8 +24,6 @@ class _FakeResponse:
 
     def json(self) -> object:
         return self._payload
-
-
 
 
 def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:

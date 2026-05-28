@@ -110,6 +110,7 @@ def test_cleans_snapshot_survivors_and_late_spawns() -> None:
     assert late_spawn._killed is True
     assert second_level._killed is True
 
+
 def test_missing_root_still_returns_output() -> None:
     class MissingRootPsutil(FakePsutil):
         def process_from_pid(self, pid: int) -> FakePsutilProcess:
@@ -124,6 +125,7 @@ def test_missing_root_still_returns_output() -> None:
     assert stdout == b"ok"
     assert stderr == b"err"
     assert handle.record.status == ProcessStatus.EXITED
+
 
 def test_kills_root_late_spawn_descendants() -> None:
     late_spawn = TreeProcess(pid=2001, stubborn=True)
@@ -149,6 +151,7 @@ def test_kills_root_late_spawn_descendants() -> None:
     assert stderr == b""
     assert late_spawn._killed is True
     assert handle.record.status == ProcessStatus.EXITED
+
 
 def test_kills_all_snapshot_descendants() -> None:
     child_one = TreeProcess(pid=1001, stubborn=True)
@@ -177,6 +180,7 @@ def test_kills_all_snapshot_descendants() -> None:
     assert child_two._killed is True
     assert child_three._killed is True
 
+
 def test_kills_descendants_of_snapshot_survivors() -> None:
     child = TreeProcess(pid=1001, stubborn=True)
     grandchild = TreeProcess(pid=2001, stubborn=True)
@@ -201,6 +205,7 @@ def test_kills_descendants_of_snapshot_survivors() -> None:
     assert stderr == b""
     assert child._killed is True
     assert grandchild._killed is True
+
 
 def test_kills_second_level_late_spawn_descendants() -> None:
     child = TreeProcess(pid=1001, stubborn=True)
@@ -235,6 +240,7 @@ def test_kills_second_level_late_spawn_descendants() -> None:
     assert grandchild._killed is True
     assert great_grandchild._killed is True
 
+
 def test_marks_process_as_exited() -> None:
     fake_psutil = FakePsutil()
     handle = _make_handle(fake_psutil=fake_psutil)
@@ -246,6 +252,7 @@ def test_marks_process_as_exited() -> None:
     assert stderr == b""
     assert handle.record.status == ProcessStatus.EXITED
 
+
 def test_handles_no_psutil_gracefully() -> None:
     handle = _make_handle(fake_psutil=None)
     handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
@@ -255,6 +262,7 @@ def test_handles_no_psutil_gracefully() -> None:
     assert stdout == b"ok"
     assert stderr == b""
     assert handle.record.status == ProcessStatus.EXITED
+
 
 def test_already_dead_descendants_are_ignored() -> None:
     live_child = TreeProcess(pid=1001, stubborn=True)
@@ -281,6 +289,7 @@ def test_already_dead_descendants_are_ignored() -> None:
     assert dead_child._killed is False
     assert dead_child._terminated is False
 
+
 def test_timeout_kills_snapshot_descendants() -> None:
     live_child = TreeProcess(pid=1001, stubborn=True)
     root = TreeProcess(
@@ -303,6 +312,7 @@ def test_timeout_kills_snapshot_descendants() -> None:
         "timeout handler, independent of any exec-level orphan sweeper"
     )
 
+
 def test_timeout_still_terminates_root(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_psutil = FakePsutil()
     handle = _make_handle(fake_psutil=fake_psutil)
@@ -320,4 +330,3 @@ def test_timeout_still_terminates_root(monkeypatch: pytest.MonkeyPatch) -> None:
         handle.communicate_and_cleanup(cleanup_grace_period_s=0.25)
 
     assert seen == [0.25]
-

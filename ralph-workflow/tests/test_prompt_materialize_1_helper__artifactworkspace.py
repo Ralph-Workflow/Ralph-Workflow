@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
+
 class _ArtifactWorkspace:
     def __init__(self, root: Path) -> None:
         self.root = root

@@ -14,6 +14,7 @@ _PTY_COLUMNS = 80
 
 _PTY_ROWS = 24
 
+
 class _TimeoutThenKillPtyFactory:
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[str, ...], str | None, dict[str, str] | None]] = []

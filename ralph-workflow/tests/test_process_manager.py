@@ -621,8 +621,9 @@ def test_terminal_history_limit_evicts_oldest_terminal_records_first() -> None:
 # Edge-case tests: EC1-EC21, EC-ASYNC-LIVE, EC-ASYNC-GONE
 # ---------------------------------------------------------------------------
 
+
 # EC1: spawn() pid appears in list_active()
-def test_EC1_spawn_pid_in_list_active() -> None:
+def test_ec1_spawn_pid_in_list_active() -> None:
     """spawn() pid appears in list_active()."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
@@ -633,7 +634,7 @@ def test_EC1_spawn_pid_in_list_active() -> None:
 
 
 # EC2: process exits normally -> status EXITED rc=0
-def test_EC2_process_exits_normally() -> None:
+def test_ec2_process_exits_normally() -> None:
     """Process exits normally -> status EXITED rc=0."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
@@ -645,7 +646,7 @@ def test_EC2_process_exits_normally() -> None:
 
 
 # EC3: stub stubborn=True process -> verify SIGKILL escalation
-def test_EC3_stubborn_process_sigkill_escalation() -> None:
+def test_ec3_stubborn_process_sigkill_escalation() -> None:
     """Stubborn process ignores SIGTERM, escalates to SIGKILL."""
     # returncode=-9 means kill() must be called to terminate
     never_die_factory = make_sync_process_factory(itertools.count(1), returncode=-9)
@@ -658,7 +659,7 @@ def test_EC3_stubborn_process_sigkill_escalation() -> None:
 
 # EC5: spawn_async() result appears in list_active()
 @pytest.mark.asyncio
-async def test_EC5_spawn_async_appears_in_list_active() -> None:
+async def test_ec5_spawn_async_appears_in_list_active() -> None:
     """spawn_async() result appears in list_active()."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(async_factory=async_factory)
@@ -670,9 +671,10 @@ async def test_EC5_spawn_async_appears_in_list_active() -> None:
 
 
 # EC6: SIGTERM sent before psutil.wait_procs timeout
-def test_EC6_sigterm_sent_before_psutil_timeout() -> None:
+def test_ec6_sigterm_sent_before_psutil_timeout() -> None:
     """SIGTERM sent before psutil.wait_procs timeout."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
+
     # Fake psutil that tracks terminate was called
     class _FakePsutilWithTrack(FakePsutil):
         terminate_called = False
@@ -705,7 +707,7 @@ def test_EC6_sigterm_sent_before_psutil_timeout() -> None:
 
 # EC7: spawn_async() then shutdown_all() with psutil escalates correctly
 @pytest.mark.asyncio
-async def test_EC7_async_shutdown_all_with_psutil_escalates() -> None:
+async def test_ec7_async_shutdown_all_with_psutil_escalates() -> None:
     """spawn_async() + shutdown_all() with psutil escalates correctly."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
     # Use FakePsutil to exercise the psutil code path
@@ -738,13 +740,13 @@ async def test_EC7_async_shutdown_all_with_psutil_escalates() -> None:
 
 
 # EC8: concurrent shutdown_all with register_listener event count
-def test_EC8_concurrent_shutdown_all_single_event() -> None:
+def test_ec8_concurrent_shutdown_all_single_event() -> None:
     """Two concurrent shutdown_all() calls produce exactly one terminal event."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory)
 
     terminal_events: list[ProcessEvent] = []
-    pm.register_listener(lambda e: terminal_events.append(e))
+    pm.register_listener(terminal_events.append)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
     spawned_pid = handle.record.pid
@@ -772,14 +774,15 @@ def test_EC8_concurrent_shutdown_all_single_event() -> None:
     assert len(pm.list_active()) == 0
     # (4) Exactly one ProcessEvent with new_status in _TERMINAL_STATUSES for spawned_pid
     terminal_for_pid = [
-        e for e in terminal_events
+        e
+        for e in terminal_events
         if e.new_status in _TERMINAL_STATUSES and e.record.pid == spawned_pid
     ]
     assert len(terminal_for_pid) == 1, f"Expected 1 terminal event, got {len(terminal_for_pid)}"
 
 
 # EC10: ProcessTerminationError raised when kill fails
-def test_EC10_process_termination_error_when_kill_fails() -> None:
+def test_ec10_process_termination_error_when_kill_fails() -> None:
     """ProcessTerminationError raised when kill fails."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
@@ -809,7 +812,7 @@ def test_EC10_process_termination_error_when_kill_fails() -> None:
 
 
 # EC13: shutdown_all_for_label terminates only matching-label processes
-def test_EC13_shutdown_all_for_label_only_matching() -> None:
+def test_ec13_shutdown_all_for_label_only_matching() -> None:
     """shutdown_all_for_label terminates only matching-label processes."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory)
@@ -830,7 +833,7 @@ def test_EC13_shutdown_all_for_label_only_matching() -> None:
 
 
 # EC19: after process exits, list_records contains EXITED record via public API
-def test_EC19_exit_record_accessible_via_public_api() -> None:
+def test_ec19_exit_record_accessible_via_public_api() -> None:
     """After process exits, list_records contains EXITED record via public API."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
@@ -851,7 +854,7 @@ def test_EC19_exit_record_accessible_via_public_api() -> None:
 
 # EC21: shutdown_all() terminates an async process without error
 @pytest.mark.asyncio
-async def test_EC21_shutdown_all_terminates_async_process() -> None:
+async def test_ec21_shutdown_all_terminates_async_process() -> None:
     """shutdown_all() terminates an async process without error."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(async_factory=async_factory, psutil_mod=FakePsutil())
@@ -868,7 +871,7 @@ async def test_EC21_shutdown_all_terminates_async_process() -> None:
 
 # EC-ASYNC-LIVE: async process still alive after kill -> ProcessTerminationError
 @pytest.mark.asyncio
-async def test_EC_ASYNC_LIVE_process_still_alive_after_kill() -> None:
+async def test_ec_async_live_process_still_alive_after_kill() -> None:
     """Process still alive after kill -> ProcessTerminationError raised."""
     # Use psutil=None to go through the no-psutil path
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
@@ -879,8 +882,7 @@ async def test_EC_ASYNC_LIVE_process_still_alive_after_kill() -> None:
         psutil=None,  # No psutil -> uses _escalate_async_in_sync_context
     )
 
-    handle = await pm.spawn_async([sys.executable, "-c", "pass"])
-    spawned_pid = handle.record.pid
+    await pm.spawn_async([sys.executable, "-c", "pass"])
 
     # Monkeypatch os.kill to simulate process still alive after kill
     def fake_kill(pid: int, sig: int) -> None:
@@ -890,14 +892,13 @@ async def test_EC_ASYNC_LIVE_process_still_alive_after_kill() -> None:
         # For actual kill signals, we let it through to raise the real error
         raise ProcessLookupError(pid, 0)
 
-    with patch.object(os, "kill", fake_kill):
-        with pytest.raises(ProcessTerminationError):
-            pm.shutdown_all(grace_period_s=0.1)
+    with patch.object(os, "kill", fake_kill), pytest.raises(ProcessTerminationError):
+        pm.shutdown_all(grace_period_s=0.1)
 
 
 # EC-ASYNC-GONE: async process already gone after kill -> no exception
 @pytest.mark.asyncio
-async def test_EC_ASYNC_GONE_process_already_gone_after_kill() -> None:
+async def test_ec_async_gone_process_already_gone_after_kill() -> None:
     """Process already gone after kill -> no exception, KILLED record."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(
@@ -924,7 +925,7 @@ async def test_EC_ASYNC_GONE_process_already_gone_after_kill() -> None:
 
 
 # CAT-MCP: spawn() with MCP server label tracked and shutdown_all() moves to terminal
-def test_CAT_MCP_spawn_with_mcp_server_label() -> None:
+def test_cat_mcp_spawn_with_mcp_server_label() -> None:
     """MCP server processes tracked and shutdown correctly."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory)
@@ -947,7 +948,7 @@ def test_CAT_MCP_spawn_with_mcp_server_label() -> None:
 
 
 # CAT-EXEC: spawn() with exec label tracked and terminate() works
-def test_CAT_EXEC_spawn_with_exec_label() -> None:
+def test_cat_exec_spawn_with_exec_label() -> None:
     """Exec helper processes tracked and terminated correctly."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory)
@@ -969,7 +970,7 @@ def test_CAT_EXEC_spawn_with_exec_label() -> None:
 
 # CAT-AGENT-PM: spawn_async() with agent label appears in list_active and shutdown_all terminates
 @pytest.mark.asyncio
-async def test_CAT_AGENT_PM_spawn_async_with_agent_label() -> None:
+async def test_cat_agent_pm_spawn_async_with_agent_label() -> None:
     """Agent processes tracked via ProcessManager and shutdown correctly."""
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(async_factory=async_factory, psutil_mod=FakePsutil())
@@ -992,7 +993,7 @@ async def test_CAT_AGENT_PM_spawn_async_with_agent_label() -> None:
 
 
 # EC4: SIGTERM grace period times out -> SIGKILL succeeds (root-only, no psutil)
-def test_EC4_sigterm_timeout_escalates_to_sigkill() -> None:
+def test_ec4_sigterm_timeout_escalates_to_sigkill() -> None:
     """Graceful terminate times out; force kill succeeds via root-only (no psutil) escalation."""
     from ralph.testing.fake_process import FakeStubbornPopen
 
@@ -1019,7 +1020,7 @@ def test_EC4_sigterm_timeout_escalates_to_sigkill() -> None:
 
 # EC9 (root-only, no-psutil): both SIGTERM and SIGKILL time out -> ProcessTerminationError
 # NOTE: EC9 slot used because EC5 is already taken by test_EC5_spawn_async_appears_in_list_active
-def test_EC9_root_only_force_kill_still_alive_raises_error() -> None:
+def test_ec9_root_only_force_kill_still_alive_raises_error() -> None:
     """Force kill also fails in no-psutil path: ProcessTerminationError raised, record is KILLED."""
     from ralph.testing.fake_process import FakeImmortalPopen
 
@@ -1043,4 +1044,3 @@ def test_EC9_root_only_force_kill_still_alive_raises_error() -> None:
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
     assert len(pm.list_active()) == 0
-

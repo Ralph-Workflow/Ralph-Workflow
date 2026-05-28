@@ -76,9 +76,7 @@ def _seed_plan_draft(tmp_path: Path) -> None:
             "risks_mitigations": [
                 {"severity": "medium", "risk": "Risk", "mitigation": "Mitigation"}
             ],
-            "verification_strategy": [
-                {"method": "pytest", "expected_outcome": "passes"}
-            ],
+            "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
         },
     }
     (artifact_dir / ".plan_draft.json").write_text(json.dumps(draft), encoding="utf-8")

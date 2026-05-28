@@ -60,6 +60,7 @@ class TestPromptHelperConversationalIntake:
                 prompt_payloads.append(prompt_file.read_text(encoding="utf-8"))
                 session_ids.append(session_id)
                 if len(prompt_payloads) == 1:
+
                     def _first_turn() -> Iterator[str]:
                         yield "What do you want to build?"
                         raise OpenCodeResumableExitError("claude", session_id="resume-123")

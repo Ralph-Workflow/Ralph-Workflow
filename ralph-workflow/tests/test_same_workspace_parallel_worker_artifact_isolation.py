@@ -27,7 +27,6 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
-
 class TestWorkerArtifactIsolation:
     def test_per_worker_artifact_dirs_are_separate(self, tmp_path: Path) -> None:
         unit_a = _make_unit("unit-a")

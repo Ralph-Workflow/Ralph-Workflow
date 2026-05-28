@@ -186,11 +186,11 @@ class TestMultimodalToolVisibility:
     def test_baseline_text_only_tools_unchanged_when_media_enabled(self, tmp_path: Path) -> None:
         """Text-only tools are identical regardless of media.enabled setting."""
         capabilities = {
-        "WorkspaceRead",
-        "ArtifactSubmit",
-        "ArtifactPlanWrite",
-        "RunReportProgress",
-    }
+            "WorkspaceRead",
+            "ArtifactSubmit",
+            "ArtifactPlanWrite",
+            "RunReportProgress",
+        }
 
         # Without media
         session1 = AgentSession(

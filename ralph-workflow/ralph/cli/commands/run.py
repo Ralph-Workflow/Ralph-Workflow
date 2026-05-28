@@ -117,6 +117,7 @@ _GENERATED_AGENT_STATE_DIRS: tuple[str, ...] = (
     "workers",
 )
 
+
 def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     module = import_module("ralph.pipeline.runner")
     return cast("int", module.validate_custom_mcp_servers(workspace_root))

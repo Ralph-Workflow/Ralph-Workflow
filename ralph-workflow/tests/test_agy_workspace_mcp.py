@@ -92,9 +92,7 @@ def test_agy_workspace_mcp_endpoint_restores_on_exception(tmp_path: Path) -> Non
     config_path.write_text(original_text, encoding="utf-8")
     endpoint = "http://127.0.0.1:9999/mcp"
 
-    with pytest.raises(RuntimeError, match="boom"), agy_workspace_mcp_endpoint(
-        tmp_path, endpoint
-    ):
+    with pytest.raises(RuntimeError, match="boom"), agy_workspace_mcp_endpoint(tmp_path, endpoint):
         raise RuntimeError("boom")
 
     assert config_path.read_text(encoding="utf-8") == original_text

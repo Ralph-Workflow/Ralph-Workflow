@@ -116,9 +116,7 @@ def _prune_stale_exec_dirs(base: Path) -> None:
 
 def _write_overlay_owner_metadata(overlay_dir: Path) -> None:
     payload: dict[str, int] = {"pid": os.getpid()}
-    (overlay_dir / _OVERLAY_OWNER_FILE).write_text(
-        json.dumps(payload), encoding="utf-8"
-    )
+    (overlay_dir / _OVERLAY_OWNER_FILE).write_text(json.dumps(payload), encoding="utf-8")
 
 
 def _mirror_workspace(source_root: Path, overlay_root: Path) -> None:

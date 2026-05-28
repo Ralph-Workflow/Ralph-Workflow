@@ -39,12 +39,6 @@ _RETAINED_DELTA_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 6_000_000
 
 
-
-
-
-
-
-
 def _start_mcp_server(*_args: object, **_kwargs: object) -> _FakeBridge:
     return _FakeBridge()
 

@@ -23,8 +23,6 @@ class _FakeResponse:
         return self._payload
 
 
-
-
 @pytest.fixture(autouse=True)
 def clear_catalog_cache() -> None:
     opencode.fetch_catalog.cache_clear()

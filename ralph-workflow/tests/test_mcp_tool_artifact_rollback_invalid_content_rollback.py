@@ -78,10 +78,6 @@ _INVALID_CONTENT: dict[str, str] = {
 _ALL_ARTIFACT_TYPES = list(_VALID_CONTENT.keys())
 
 
-
-
-
-
 class TestInvalidContentRollback:
     """Invalid content triggers validation error with no artifact left on disk."""
 
@@ -108,4 +104,3 @@ class TestInvalidContentRollback:
         assert not artifact_file.exists(), (
             f"{artifact_type}: no artifact must remain on disk after validation failure"
         )
-

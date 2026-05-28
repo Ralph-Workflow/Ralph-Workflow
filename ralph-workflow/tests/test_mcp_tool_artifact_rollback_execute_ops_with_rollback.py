@@ -70,13 +70,6 @@ _INVALID_CONTENT: dict[str, str] = {
 _ALL_ARTIFACT_TYPES = list(_VALID_CONTENT.keys())
 
 
-
-
-
-
-
-
-
 class TestExecuteOpsWithRollback:
     """Unit tests for the (op, undo) execution helper."""
 

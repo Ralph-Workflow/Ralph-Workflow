@@ -124,7 +124,6 @@ def test_healthy_claude_native_upstreams_and_probes_return_zero(
     assert probe_kwargs == {"workspace_path": tmp_path}
 
 
-
 def test_healthy_upstreams_and_probes_return_zero(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -242,24 +242,18 @@ class TestRegisterRoleHandlers:
                         on_loopback="my_custom_cleanup",
                         on_failure="done",
                     ),
-                    loop_policy=PhaseLoopPolicy(
-                        iteration_state_field="commit_cleanup_iteration"
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
                 ),
                 "done": PhaseDefinition(
                     drain="done",
                     role="terminal",
                     terminal_outcome="success",
-                    transitions=PhaseTransition(
-                        on_success="done", on_loopback="done"
-                    ),
+                    transitions=PhaseTransition(on_success="done", on_loopback="done"),
                 ),
             },
             entry_phase="my_custom_cleanup",
             terminal_phase="done",
-            loop_counters={
-                "commit_cleanup_iteration": LoopCounterConfig(default_max=3)
-            },
+            loop_counters={"commit_cleanup_iteration": LoopCounterConfig(default_max=3)},
         )
         HANDLERS.pop("my_custom_cleanup", None)
         register_role_handlers(policy)

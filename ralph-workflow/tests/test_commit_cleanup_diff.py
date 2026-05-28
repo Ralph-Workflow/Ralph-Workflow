@@ -55,9 +55,7 @@ def test_commit_cleanup_prompt_excludes_untracked_files(tmp_git_repo: Path) -> N
                     on_loopback="development_commit_cleanup",
                     on_failure="failed_terminal",
                 ),
-                loop_policy=PhaseLoopPolicy(
-                    iteration_state_field="commit_cleanup_iteration"
-                ),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
             ),
             "complete": PhaseDefinition(
                 drain="complete",

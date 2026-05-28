@@ -133,9 +133,7 @@ def init_command(
         all_results = global_results + local_results
 
         # Show welcome banner if anything was created/regenerated
-        created_or_regenerated = [
-            r for r in all_results if r.action in {"created", "regenerated"}
-        ]
+        created_or_regenerated = [r for r in all_results if r.action in {"created", "regenerated"}]
         if created_or_regenerated:
             registry = _try_load_registry()
             emit_first_run_welcome(

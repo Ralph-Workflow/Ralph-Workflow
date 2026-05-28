@@ -47,6 +47,7 @@ if TYPE_CHECKING:
             ctx: object,
         ) -> Awaitable[list[object]]: ...
 
+
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
 )
@@ -62,7 +63,6 @@ def _reset_pm() -> object:
     with contextlib.suppress(Exception):
         get_process_manager().shutdown_all(grace_period_s=0)
     reset_process_manager()
-
 
 
 @pytest.mark.asyncio
@@ -119,8 +119,6 @@ class _RecordingDisplay:
 
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
         self.statuses.setdefault(unit_id, []).append(status)
-
-
 
 
 def _make_ctx(module: _CoordinatorModule, same_workspace: object) -> object:

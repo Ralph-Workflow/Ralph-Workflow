@@ -22,7 +22,6 @@ REVIEW_FRESH_SUBMIT_EXAMPLE = (
 )
 
 
-
 class _CapabilitySession:
     session_id = "session-1"
 
@@ -32,8 +31,6 @@ class _CapabilitySession:
     def check_capability(self, capability: str) -> object:
         assert capability == self.expected_capability
         return "approved"
-
-
 
 
 def test_submit_artifact_rejects_missing_content_source_with_actionable_guidance(

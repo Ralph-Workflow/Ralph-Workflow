@@ -76,10 +76,6 @@ _INVALID_CONTENT: dict[str, str] = {
 _ALL_ARTIFACT_TYPES = list(_VALID_CONTENT.keys())
 
 
-
-
-
-
 class TestRollbackSymmetry:
     """Integration tests: on exception after JSON submit, markdown is also rolled back."""
 
@@ -156,4 +152,3 @@ class TestRollbackSymmetry:
 
         artifact_file = artifact_dir / "commit_message.json"
         assert not artifact_file.exists()
-

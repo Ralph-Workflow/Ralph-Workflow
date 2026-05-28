@@ -394,7 +394,6 @@ def test_analysis_feedback_passes_with_exact_text() -> None:
     assert events == [PipelineEvent.AGENT_SUCCESS]
 
 
-
 def test_analysis_feedback_passes_with_case_and_punctuation_variation() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
@@ -405,8 +404,7 @@ def test_analysis_feedback_passes_with_case_and_punctuation_variation() -> None:
         analysis_items=[
             {
                 "how_to_fix_item": (
-                    "edit makefile to remove the contradictory part of verify claim "
-                    "from the doc"
+                    "edit makefile to remove the contradictory part of verify claim from the doc"
                 ),
                 "proof": "Updated the document wording.",
             },
@@ -428,7 +426,6 @@ def test_analysis_feedback_passes_with_case_and_punctuation_variation() -> None:
     events = handle_execution_phase(_invoke(), ctx)
 
     assert events == [PipelineEvent.AGENT_SUCCESS]
-
 
 
 def test_analysis_feedback_passes_with_minor_spelling_variation() -> None:

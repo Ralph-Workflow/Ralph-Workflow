@@ -259,7 +259,6 @@ def test_agy_invoke_skips_mcp_context_when_no_endpoint(
     assert not config_path.exists()
 
 
-
 def test_agy_invoke_uses_run_id_as_expected_session_id(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -274,9 +273,7 @@ def test_agy_invoke_uses_run_id_as_expected_session_id(
         extras: object = None,
     ) -> object:
         del cmd, ctx
-        captured_expected_session_ids.append(
-            getattr(extras, "expected_session_id", None)
-        )
+        captured_expected_session_ids.append(getattr(extras, "expected_session_id", None))
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     def fake_run_subprocess_and_read_lines(*args: object, **kwargs: object) -> object:
@@ -326,8 +323,7 @@ def test_ansi_wrapped_completion_marker_detected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     ansi_line = (
-        "Task decl\x1b[32mare\x1b[0md complete: "
-        "session_id=test, summary=done, timestamp=1\n"
+        "Task decl\x1b[32mare\x1b[0md complete: session_id=test, summary=done, timestamp=1\n"
     )
     captured_completion_seen: list[bool] = []
 

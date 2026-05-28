@@ -207,7 +207,9 @@ def test_build_session_mcp_plan_agy_includes_upstreams(
 ) -> None:
     (isolated_home / ".gemini" / "antigravity-cli").mkdir(parents=True)
     (isolated_home / ".gemini" / "antigravity-cli" / "mcp_config.json").write_text(
-        json.dumps({"mcpServers": {"agy-upstream": {"serverUrl": "http://agy-upstream.example/mcp"}}}),
+        json.dumps(
+            {"mcpServers": {"agy-upstream": {"serverUrl": "http://agy-upstream.example/mcp"}}}
+        ),
         encoding="utf-8",
     )
     agent_dir = tmp_path / ".agent"

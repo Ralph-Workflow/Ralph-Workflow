@@ -166,6 +166,7 @@ else:
     FastMCP = cast("object | None", _fastmcp_module.FastMCP)
     Tool = cast("object | None", _tool_module.Tool)
 
+
 @dataclass(frozen=True)
 class McpServerExtras:
     """Optional DI parameters for building standalone MCP servers."""

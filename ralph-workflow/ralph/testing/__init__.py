@@ -7,8 +7,8 @@ wall-clock budget.
 Main entry points:
 
 - ``FakeAsyncProcess``, ``FakeControllableAsyncProcess``, ``FakePopen``,
-  ``FakeTimeoutPopen`` — in-memory subprocess fakes for testing agent invocation without
-  spawning real processes.
+  ``FakeStubbornPopen``, ``FakeImmortalPopen``, ``FakeTimeoutPopen`` — in-memory subprocess
+  fakes for testing agent invocation without spawning real processes.
 - ``FakePsutil``, ``FakePsutilProcess``, ``make_psutil_factory`` — psutil stubs for
   testing process-liveness logic.
 - ``make_async_process_factory``, ``make_sync_process_factory`` — factory helpers that

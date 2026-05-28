@@ -38,9 +38,7 @@ class TestExecProcessCleanupUnit:
         fake_psutil._processes = {1: root_proc, 1001: live_child}
         pm = ProcessManager(
             policy=_FAST_POLICY,
-            sync_process_factory=make_sync_process_factory(
-                itertools.count(1), returncode=0
-            ),
+            sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=0),
             psutil=fake_psutil,
         )
 
@@ -66,9 +64,7 @@ class TestExecProcessCleanupUnit:
         fake_psutil._processes = {11: child, 12: grandchild}
         pm = ProcessManager(
             policy=_FAST_POLICY,
-            sync_process_factory=make_sync_process_factory(
-                itertools.count(1), returncode=0
-            ),
+            sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=0),
             psutil=fake_psutil,
         )
         monkeypatch.delattr(os, "killpg", raising=False)

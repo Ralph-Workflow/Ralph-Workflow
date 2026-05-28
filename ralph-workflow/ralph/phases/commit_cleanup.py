@@ -40,40 +40,62 @@ if TYPE_CHECKING:
 
 COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.json"
 
-_UNSAFE_EXTENSIONS: frozenset[str] = frozenset({
-    ".py", ".js", ".ts", ".go", ".rs", ".rb", ".java", ".c", ".cpp", ".h",
-    ".md", ".rst", ".txt",
-    ".toml", ".yaml", ".yml", ".json", ".ini", ".cfg",
-})
+_UNSAFE_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".py",
+        ".js",
+        ".ts",
+        ".go",
+        ".rs",
+        ".rb",
+        ".java",
+        ".c",
+        ".cpp",
+        ".h",
+        ".md",
+        ".rst",
+        ".txt",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".ini",
+        ".cfg",
+    }
+)
 
 _UNSAFE_PATH_SEGMENTS: tuple[str, ...] = ("tests/", "test_", "_test.", "docs/", "doc/")
 
-_GENERATED_TEXT_MARKERS: frozenset[str] = frozenset({
-    "artifact",
-    "capture",
-    "debug",
-    "dump",
-    "generated",
-    "log",
-    "output",
-    "report",
-    "temp",
-    "tmp",
-    "trace",
-    "transcript",
-    "verify",
-})
+_GENERATED_TEXT_MARKERS: frozenset[str] = frozenset(
+    {
+        "artifact",
+        "capture",
+        "debug",
+        "dump",
+        "generated",
+        "log",
+        "output",
+        "report",
+        "temp",
+        "tmp",
+        "trace",
+        "transcript",
+        "verify",
+    }
+)
 
-_GENERATED_TEXT_DIRECTORIES: frozenset[str] = frozenset({
-    ".agent",
-    "artifacts",
-    "build",
-    "dist",
-    "out",
-    "reports",
-    "tmp",
-    "temp",
-})
+_GENERATED_TEXT_DIRECTORIES: frozenset[str] = frozenset(
+    {
+        ".agent",
+        "artifacts",
+        "build",
+        "dist",
+        "out",
+        "reports",
+        "tmp",
+        "temp",
+    }
+)
 
 
 def _close_repo(repo: Repo | None) -> None:
@@ -189,9 +211,7 @@ def _load_cleanup_artifact(
         return None
 
     try:
-        raw_artifact = load_phase_artifact(
-            ctx.workspace, COMMIT_CLEANUP_ARTIFACT_PATH
-        )
+        raw_artifact = load_phase_artifact(ctx.workspace, COMMIT_CLEANUP_ARTIFACT_PATH)
         artifact_content = unwrap_phase_artifact_content(
             raw_artifact, expected_type="commit_cleanup"
         )
@@ -236,8 +256,7 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
             PhaseFailureEvent(
                 phase=phase_name,
                 reason=(
-                    f"Missing or invalid commit_cleanup artifact at "
-                    f"{COMMIT_CLEANUP_ARTIFACT_PATH}"
+                    f"Missing or invalid commit_cleanup artifact at {COMMIT_CLEANUP_ARTIFACT_PATH}"
                 ),
                 recoverable=True,
                 retry_in_session=True,

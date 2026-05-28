@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.work_units import WorkUnit
     from ralph.pipeline.worker_state import WorkerStatus
 
+
 class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
     """FakeAgentExecutor that creates artifacts in the worker namespace.
 

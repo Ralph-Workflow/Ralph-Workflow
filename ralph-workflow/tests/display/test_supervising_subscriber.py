@@ -125,10 +125,7 @@ def test_tracker_on_snapshot_view_contains_recent_activity_after_record_activity
 
     assert tracker.view.instance_id == "work-act"
     assert tracker.view.run_id == "run-activity"
-    assert any(
-        "running mypy checks" in activity
-        for activity in tracker.view.recent_activity
-    )
+    assert any("running mypy checks" in activity for activity in tracker.view.recent_activity)
 
 
 def test_tracker_on_snapshot_exception_does_not_propagate_to_notify(tmp_path: Path) -> None:

@@ -53,9 +53,7 @@ def test_prompt_helper_session_exposes_correct_tools() -> None:
     )
     workspace = MemoryWorkspace()
 
-    bridge = build_ralph_tool_registry(
-        session, workspace, upstream_registry=None, mcp_config=None
-    )
+    bridge = build_ralph_tool_registry(session, workspace, upstream_registry=None, mcp_config=None)
     tool_names = {defn.name for defn in bridge.list_definitions()}
 
     missing = _REQUIRED_TOOLS - tool_names
@@ -78,9 +76,7 @@ def test_prompt_helper_session_excludes_forbidden_tools() -> None:
     )
     workspace = MemoryWorkspace()
 
-    bridge = build_ralph_tool_registry(
-        session, workspace, upstream_registry=None, mcp_config=None
-    )
+    bridge = build_ralph_tool_registry(session, workspace, upstream_registry=None, mcp_config=None)
     tool_names = {defn.name for defn in bridge.list_definitions()}
 
     present_forbidden = _FORBIDDEN_TOOLS & tool_names

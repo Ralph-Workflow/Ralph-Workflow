@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
     from tests.test_api_opencode import _FakeResponse
 
+
 class _FakeClient:
     def __init__(self, response_factory: Callable[[], _FakeResponse]) -> None:
         self._response_factory = response_factory

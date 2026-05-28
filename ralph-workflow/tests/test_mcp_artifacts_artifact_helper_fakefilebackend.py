@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
+
 class FakeFileBackend:
     def __init__(self) -> None:
         self.files: dict[Path, str] = {}

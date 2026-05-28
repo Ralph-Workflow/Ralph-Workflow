@@ -1,4 +1,5 @@
 """Test that skills-package/package.json version matches ralph.__version__."""
+
 from __future__ import annotations
 
 import json

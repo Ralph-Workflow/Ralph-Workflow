@@ -144,4 +144,3 @@ def test_happy_path_state_transitions() -> None:
     assert reduced_state.worker_states["unit-A"].status == WorkerStatus.SUCCEEDED
     assert reduced_state.worker_states["unit-B"].status == WorkerStatus.SUCCEEDED
     assert reduced_state.worker_states["unit-C"].status == WorkerStatus.SUCCEEDED
-

@@ -46,6 +46,7 @@ if TYPE_CHECKING:
             options: CompletionSummaryOptions,
         ) -> Group: ...
 
+
 _VERIFICATION_ARTIFACT = ".agent/artifacts/verification.json"
 
 _BADGE_THEME_KEYS: dict[str, str] = {

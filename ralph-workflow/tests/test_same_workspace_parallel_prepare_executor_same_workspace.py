@@ -32,10 +32,6 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
-
-
-
-
 class TestPrepareExecutorSameWorkspace:
     def test_inprocess_uses_injected_mcp_factory(self, tmp_path: Path) -> None:
         unit = _make_unit("unit-a")
@@ -175,7 +171,6 @@ class TestPrepareExecutorSameWorkspace:
             "--parallel-worker-manifest",
             str(manifest_path),
         )
-
 
 
 def _make_same_workspace_context(

@@ -42,6 +42,7 @@ _PORCELAIN_STATUS_PREFIX_LEN = 3
 class _CommitScopeResolution:
     include_paths: tuple[str, ...] | None
 
+
 if TYPE_CHECKING:
 
     class _CreateCommitFn(Protocol):
@@ -132,6 +133,7 @@ def _stage_commit_scope(
     # through its namespace so that test monkeypatching of effect_executor.stage_files
     # is respected.
     import ralph.pipeline.effect_executor as _effect_executor
+
     _effect_executor.stage_files(str(repo_root), include_paths)
 
 

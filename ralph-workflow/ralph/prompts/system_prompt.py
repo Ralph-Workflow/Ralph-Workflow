@@ -10,6 +10,7 @@ from ralph.prompts.template_registry import packaged_template_root
 if TYPE_CHECKING:
     from pathlib import Path
 
+
 def materialize_system_prompt(
     *,
     workspace_root: Path,

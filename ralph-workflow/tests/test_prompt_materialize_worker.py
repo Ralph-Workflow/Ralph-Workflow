@@ -163,7 +163,7 @@ def test_materialize_prompt_for_worker_runtime_uses_unit_specific_prompt_payload
         description="Implement only unit A",
         allowed_directories=["src/a"],
     )
-    worker_prompt = "WORKER-SCOPED PROMPT\nImplement only unit A\n[\n  \"src/a\"\n]"
+    worker_prompt = 'WORKER-SCOPED PROMPT\nImplement only unit A\n[\n  "src/a"\n]'
 
     monkeypatch.setattr(
         "ralph.prompts.materialize._render_prompt_for_phase",

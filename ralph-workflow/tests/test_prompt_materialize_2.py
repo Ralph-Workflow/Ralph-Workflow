@@ -37,8 +37,6 @@ class _ArtifactSubmitSession:
         return capability == "artifact.submit"
 
 
-
-
 PLANNING_EDIT_GET_DRAFT_TEXT = (
     "Use `ralph_get_plan_draft` to inspect the current finalized plan "
     "or staged draft before editing."

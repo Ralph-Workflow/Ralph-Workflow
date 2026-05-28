@@ -21,8 +21,6 @@ class _ArtifactSubmitSession:
         return capability == "artifact.submit"
 
 
-
-
 PLANNING_EDIT_GET_DRAFT_TEXT = (
     "Use `ralph_get_plan_draft` to inspect the current finalized plan "
     "or staged draft before editing."
@@ -100,7 +98,6 @@ PLANNING_ANALYSIS_MCP_REMEDIATION_TEXT = (
 PLANNING_ANALYSIS_SECTION_RESUBMIT_TEXT = (
     "Exact plan sections to resubmit via the MCP plan-edit tools."
 )
-
 
 
 MINIMAL_PLAN_HANDOFF = (

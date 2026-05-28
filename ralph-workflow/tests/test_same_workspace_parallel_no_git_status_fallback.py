@@ -39,7 +39,6 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
-
 class TestNoGitStatusFallback:
     def test_worker_success_requires_worker_local_artifact(self, tmp_path: Path) -> None:
         """Worker success is determined by artifacts, never by git status."""

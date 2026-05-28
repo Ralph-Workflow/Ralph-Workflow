@@ -21,7 +21,6 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
-
 class TestValidateForSameWorkspace:
     def test_two_safe_disjoint_workers_passes(self) -> None:
         plan = WorkUnitsPlan(

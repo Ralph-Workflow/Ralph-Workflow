@@ -297,5 +297,5 @@ def test_agy_json_output_does_not_produce_lifecycle_only_watchdog_evidence() -> 
     watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
     suspected = [e for e in events if e.kind == WaitingStatusKind.SUSPECTED_FROZEN]
     assert len(suspected) == 1
-    evidence = str(suspected[0].diagnostic.get('evidence', ''))
-    assert 'time_and_lifecycle_only' not in evidence
+    evidence = str(suspected[0].diagnostic.get("evidence", ""))
+    assert "time_and_lifecycle_only" not in evidence

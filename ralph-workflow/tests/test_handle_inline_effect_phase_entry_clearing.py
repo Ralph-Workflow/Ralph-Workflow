@@ -52,16 +52,16 @@ class TestHandleInlineEffectPhaseEntryClearing:
         ws = FsWorkspace(root)
 
         # Pre-create all 6 planning, planning_analysis, and development_analysis files
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
         _write_artifact_files(
-            ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md"
-        )
-        _write_artifact_files(
-            ws, "planning_analysis_decision",
+            ws,
+            "planning_analysis_decision",
             ".agent/artifacts/planning_analysis_decision.json",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
-            ws, "development_analysis_decision",
+            ws,
+            "development_analysis_decision",
             ".agent/artifacts/development_analysis_decision.json",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
@@ -94,9 +94,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
         assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
-    def test_planning_to_development_clears_analysis_and_dev(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_to_development_clears_analysis_and_dev(self, tmp_path: Path) -> None:
         """Fresh development entry clears planning_analysis + dev + dev_analysis artifacts."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
@@ -105,24 +103,29 @@ class TestHandleInlineEffectPhaseEntryClearing:
 
         # Pre-create all 6 files
         _write_artifact_files(
-            ws, "planning_analysis_decision",
+            ws,
+            "planning_analysis_decision",
             ".agent/artifacts/planning_analysis_decision.json",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
-            ws, "development_result",
+            ws,
+            "development_result",
             ".agent/artifacts/development_result.json",
             ".agent/DEVELOPMENT_RESULT.md",
         )
         _write_artifact_files(
-            ws, "development_analysis_decision",
+            ws,
+            "development_analysis_decision",
             ".agent/artifacts/development_analysis_decision.json",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
 
         effect = PreparePromptEffect(
-            phase="development", previous_phase="planning_analysis",
-            drain="development", iteration=0
+            phase="development",
+            previous_phase="planning_analysis",
+            drain="development",
+            iteration=0,
         )
         state = PipelineState(
             phase="development", previous_phase="planning_analysis", checkpoint_saved_count=0
@@ -150,9 +153,7 @@ class TestHandleInlineEffectPhaseEntryClearing:
         assert not ws.exists(".agent/artifacts/development_analysis_decision.json")
         assert not ws.exists(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")
 
-    def test_development_commit_clears_dev_and_analysis(
-        self, tmp_path: Path
-    ) -> None:
+    def test_development_commit_clears_dev_and_analysis(self, tmp_path: Path) -> None:
         """Fresh development_commit entry clears development + development_analysis artifacts."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
@@ -160,23 +161,28 @@ class TestHandleInlineEffectPhaseEntryClearing:
         ws = FsWorkspace(root)
 
         _write_artifact_files(
-            ws, "development_result",
+            ws,
+            "development_result",
             ".agent/artifacts/development_result.json",
             ".agent/DEVELOPMENT_RESULT.md",
         )
         _write_artifact_files(
-            ws, "development_analysis_decision",
+            ws,
+            "development_analysis_decision",
             ".agent/artifacts/development_analysis_decision.json",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
 
         effect = PreparePromptEffect(
-            phase="development_commit", previous_phase="development_analysis",
-            drain="development_commit", iteration=0
+            phase="development_commit",
+            previous_phase="development_analysis",
+            drain="development_commit",
+            iteration=0,
         )
         state = PipelineState(
-            phase="development_commit", previous_phase="development_analysis",
-            checkpoint_saved_count=0
+            phase="development_commit",
+            previous_phase="development_analysis",
+            checkpoint_saved_count=0,
         )
 
         original = runner_module.materialize_prepared_prompt
@@ -206,16 +212,12 @@ class TestHandleInlineEffectPhaseEntryClearing:
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        _write_artifact_files(
-            ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md"
-        )
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
 
         effect = PreparePromptEffect(
             phase="planning", previous_phase=None, drain="planning", iteration=0
         )
-        state = PipelineState(
-            phase="planning", previous_phase=None, checkpoint_saved_count=5
-        )
+        state = PipelineState(phase="planning", previous_phase=None, checkpoint_saved_count=5)
 
         original = runner_module.materialize_prepared_prompt
         runner_module.materialize_prepared_prompt = lambda *a, **k: None
@@ -242,13 +244,10 @@ class TestHandleInlineEffectPhaseEntryClearing:
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
-        _write_artifact_files(
-            ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md"
-        )
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
 
         effect = PreparePromptEffect(
-            phase="planning", previous_phase="planning_analysis",
-            drain="planning", iteration=3
+            phase="planning", previous_phase="planning_analysis", drain="planning", iteration=3
         )
         state = PipelineState(
             phase="planning", previous_phase="planning_analysis", checkpoint_saved_count=0
@@ -280,14 +279,14 @@ class TestHandleInlineEffectPhaseEntryClearing:
         ws = FsWorkspace(root)
 
         _write_artifact_files(
-            ws, "development_result",
+            ws,
+            "development_result",
             ".agent/artifacts/development_result.json",
             ".agent/DEVELOPMENT_RESULT.md",
         )
 
         effect = PreparePromptEffect(
-            phase="development", previous_phase="development",
-            drain="development", iteration=2
+            phase="development", previous_phase="development", drain="development", iteration=2
         )
         state = PipelineState(
             phase="development", previous_phase="development", checkpoint_saved_count=0
@@ -311,36 +310,34 @@ class TestHandleInlineEffectPhaseEntryClearing:
         assert ws.exists(".agent/artifacts/development_result.json")
         assert ws.exists(".agent/DEVELOPMENT_RESULT.md")
 
-    def test_development_commit_to_planning_clears_planning(
-        self, tmp_path: Path
-    ) -> None:
+    def test_development_commit_to_planning_clears_planning(self, tmp_path: Path) -> None:
         """Last-commit re-entry (previous_phase='development_commit') clears planning artifacts."""
         pipeline, artifacts_policy = _load_default_policy_bundle()
         root = tmp_path / ".agent"
         root.mkdir(parents=True)
         ws = FsWorkspace(root)
 
+        _write_artifact_files(ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md")
         _write_artifact_files(
-            ws, "plan", ".agent/artifacts/plan.json", ".agent/PLAN.md"
-        )
-        _write_artifact_files(
-            ws, "planning_analysis_decision",
+            ws,
+            "planning_analysis_decision",
             ".agent/artifacts/planning_analysis_decision.json",
             ".agent/PLANNING_ANALYSIS_DECISION.md",
         )
         _write_artifact_files(
-            ws, "development_analysis_decision",
+            ws,
+            "development_analysis_decision",
             ".agent/artifacts/development_analysis_decision.json",
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         )
 
         effect = PreparePromptEffect(
-            phase="planning", previous_phase="development_commit",
-            drain="planning", iteration=0
+            phase="planning", previous_phase="development_commit", drain="planning", iteration=0
         )
         state = PipelineState(
-            phase="planning", previous_phase="development_commit",
-            checkpoint_saved_count=5  # checkpoint exists but previous_phase != None
+            phase="planning",
+            previous_phase="development_commit",
+            checkpoint_saved_count=5,  # checkpoint exists but previous_phase != None
         )
 
         original = runner_module.materialize_prepared_prompt
@@ -373,18 +370,16 @@ class TestHandleInlineEffectPhaseEntryClearing:
         ws = FsWorkspace(root)
 
         _write_artifact_files(
-            ws, "development_result",
+            ws,
+            "development_result",
             ".agent/artifacts/development_result.json",
             ".agent/DEVELOPMENT_RESULT.md",
         )
 
         effect = PreparePromptEffect(
-            phase="development", previous_phase=None,
-            drain="development", iteration=0
+            phase="development", previous_phase=None, drain="development", iteration=0
         )
-        state = PipelineState(
-            phase="development", previous_phase=None, checkpoint_saved_count=5
-        )
+        state = PipelineState(phase="development", previous_phase=None, checkpoint_saved_count=5)
 
         original = runner_module.materialize_prepared_prompt
         runner_module.materialize_prepared_prompt = lambda *a, **k: None

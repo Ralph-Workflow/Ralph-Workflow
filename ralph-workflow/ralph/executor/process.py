@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 # Standard unix timeout exit code
 TIMEOUT_EXIT_CODE = 124
 
+
 class ProcessExecutionError(RuntimeError):
     """Raised when a process cannot be started or exceeds its timeout."""
 

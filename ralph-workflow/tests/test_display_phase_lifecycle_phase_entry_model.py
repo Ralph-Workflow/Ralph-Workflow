@@ -94,9 +94,7 @@ class TestPhaseEntryModel:
                 "development_commit_cleanup": PhaseDefinition(
                     drain="commit",
                     role="commit_cleanup",
-                    loop_policy=PhaseLoopPolicy(
-                        iteration_state_field="commit_cleanup_iteration"
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
                     transitions=PhaseTransition(on_success="development_commit"),
                 ),
                 "development_commit": PhaseDefinition(

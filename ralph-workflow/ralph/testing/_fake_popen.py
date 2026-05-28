@@ -123,3 +123,4 @@ class FakeImmortalPopen:
 
     def kill(self) -> None:
         pass
+

@@ -42,12 +42,6 @@ _check_process_result = check_process_result
 _CompletionCheckOptions = CompletionCheckOptions
 
 
-
-
-
-
-
-
 class TestRunnerSessionContinuation:
     """Runner correctly threads OpenCodeResumableExitError.session_id into the retry attempt."""
 
@@ -154,7 +148,6 @@ class TestRunnerSessionContinuation:
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
-
 
 
 def _opencode_agent_config() -> AgentConfig:

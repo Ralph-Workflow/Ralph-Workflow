@@ -124,9 +124,7 @@ def _agy_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
     """
     workspace_paths: tuple[Path, ...] = ()
     if workspace_path is not None:
-        workspace_paths = (
-            workspace_path / ".agents" / "mcp_config.json",
-        )
+        workspace_paths = (workspace_path / ".agents" / "mcp_config.json",)
     return (
         *workspace_paths,
         Path.home() / ".gemini" / _AGY_HOME_SUBDIR / "mcp_config.json",

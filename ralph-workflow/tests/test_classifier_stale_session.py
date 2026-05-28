@@ -74,9 +74,7 @@ def test_stale_session_detection_reads_agent_invocation_parsed_output() -> None:
         "opencode",
         1,
         "Unexpected server error",
-        [
-            '{"type":"error","error":{"message":"session not found: recovered-from-output"}}'
-        ],
+        ['{"type":"error","error":{"message":"session not found: recovered-from-output"}}'],
     )
 
     failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")

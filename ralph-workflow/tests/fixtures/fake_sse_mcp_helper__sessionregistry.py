@@ -1,4 +1,5 @@
 """Private helper: _SessionRegistry for fake SSE MCP server."""
+
 from __future__ import annotations
 
 import queue

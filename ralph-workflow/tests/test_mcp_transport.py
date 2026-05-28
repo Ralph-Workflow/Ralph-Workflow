@@ -35,7 +35,6 @@ _FAST_POLICY = ProcessManagerPolicy(
 )
 
 
-
 class _FakeProcess:
     def __init__(self) -> None:
         self.stdin: IO[bytes] | None = BytesIO()
@@ -50,8 +49,6 @@ class _FakeProcess:
 
     def kill(self) -> None:
         pass
-
-
 
 
 def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:

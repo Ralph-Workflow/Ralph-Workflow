@@ -322,6 +322,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
         "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
+
     def _save_state(state: PipelineState, *_args: object, **_kwargs: object) -> None:
         saved_states.append(state)
 
@@ -462,6 +463,7 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
         "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
+
     def _save_state(state: PipelineState, *_args: object, **_kwargs: object) -> None:
         saved_states.append(state)
 

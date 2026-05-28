@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.work_units import WorkUnit
 
+
 class SleeperExecutor:
     def __init__(self) -> None:
         self.pids: list[int] = []

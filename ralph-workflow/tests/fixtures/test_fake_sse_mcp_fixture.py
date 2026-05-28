@@ -1,4 +1,5 @@
 """Tests for the fake SSE MCP fixture session registry."""
+
 from __future__ import annotations
 
 import queue

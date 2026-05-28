@@ -62,15 +62,15 @@ def test_init_command_calls_ensure_baseline_capabilities(
 
     called = False
 
-    def fake_ensure(
-        _self_obj: object, *, workspace_root: object
-    ) -> object:
+    def fake_ensure(_self_obj: object, *, workspace_root: object) -> object:
         nonlocal called
         called = True
         from ralph.skills._capability_state import CapabilityState
+
         return CapabilityState()
 
     from ralph.skills import manager as manager_module
+
     monkeypatch.setattr(
         manager_module.SkillManager,
         "ensure_baseline_capabilities",
@@ -93,9 +93,7 @@ def test_init_command_prints_capability_summary(
     from ralph.skills._capability_state import CapabilityState
     from ralph.skills._capability_status import CapabilityStatus
 
-    def fake_ensure(
-        _self_obj: object, *, workspace_root: object
-    ) -> CapabilityState:
+    def fake_ensure(_self_obj: object, *, workspace_root: object) -> CapabilityState:
         return CapabilityState(
             web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
             visit_url=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
@@ -104,6 +102,7 @@ def test_init_command_prints_capability_summary(
         )
 
     from ralph.skills import manager as manager_module
+
     monkeypatch.setattr(
         manager_module.SkillManager,
         "ensure_baseline_capabilities",
@@ -124,12 +123,11 @@ def test_init_command_skill_failure_does_not_block_init(
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
 
-    def fake_ensure_that_raises(
-        *args: object, **kwargs: object
-    ) -> object:
+    def fake_ensure_that_raises(*args: object, **kwargs: object) -> object:
         raise RuntimeError("simulated skill install failure")
 
     from ralph.skills import manager as manager_module
+
     monkeypatch.setattr(
         manager_module.SkillManager,
         "ensure_baseline_capabilities",
@@ -158,15 +156,15 @@ def test_init_command_fallback_path_skips_capability_refresh(
 
     calls = 0
 
-    def fake_ensure(
-        *_args: object, **_kwargs: object
-    ) -> object:
+    def fake_ensure(*_args: object, **_kwargs: object) -> object:
         nonlocal calls
         calls += 1
         from ralph.skills._capability_state import CapabilityState
+
         return CapabilityState()
 
     from ralph.skills import manager as manager_module
+
     monkeypatch.setattr(
         manager_module.SkillManager,
         "ensure_baseline_capabilities",

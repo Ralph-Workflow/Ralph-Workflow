@@ -127,6 +127,7 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     )
 
     invocation_count = 0
+
     def _fake_execute(*args: object, **kwargs: object) -> None:
         nonlocal invocation_count
         invocation_count += 1

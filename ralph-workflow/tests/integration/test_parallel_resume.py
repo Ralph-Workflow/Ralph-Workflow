@@ -88,8 +88,6 @@ def _make_mock_policy_bundle() -> MagicMock:
     return bundle
 
 
-
-
 class TestParallelResume:
     def test_resume_skips_succeeded_workers(
         self,

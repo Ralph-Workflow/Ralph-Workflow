@@ -92,10 +92,6 @@ class _FakeManagedHandle:
         pass
 
 
-
-
-
-
 _MAX_SESSION_SECONDS = 5.0
 _CLOCK_ADVANCE_PER_LINE = 0.5
 _TOTAL_LINES_IN_STDOUT = 10

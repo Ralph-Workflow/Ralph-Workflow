@@ -33,11 +33,7 @@ def _make_state(agents: list[str] | None = None) -> PipelineState:
         agents = ["claude"]
     return PipelineState(
         phase="development",
-        phase_chains={
-            "development": AgentChainState(
-                agents=agents, current_index=0, retries=0
-            )
-        },
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
     )
 
 
@@ -135,9 +131,7 @@ def test_ambiguous_failure_emits_warning_log() -> None:
         assert failure.category == FailureCategory.AMBIGUOUS
         assert failure.counts_against_budget is False
         log_output = sink.getvalue()
-        assert (
-            "flagged_for_review" in log_output.lower() or "ambiguous" in log_output.lower()
-        )
+        assert "flagged_for_review" in log_output.lower() or "ambiguous" in log_output.lower()
     finally:
         logger.remove(handler_id)
 
@@ -259,9 +253,7 @@ def test_enospc_oserror_via_controller_does_not_debit_budget() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_render_plan_markdown_with_prompt_shape_payload_routes_to_artifact_validation() -> (
-    None
-):
+def test_render_plan_markdown_with_prompt_shape_payload_routes_to_artifact_validation() -> None:
     """Drive the malformed-plan shape from the prompt traceback through the real
     materialize-handoff code.
 
@@ -274,9 +266,7 @@ def test_render_plan_markdown_with_prompt_shape_payload_routes_to_artifact_valid
     """
     malformed_payload = {
         "status": "completed",
-        "summary": (
-            "Development pass plan for the verifier/test fixes and final verification."
-        ),
+        "summary": ("Development pass plan for the verifier/test fixes and final verification."),
         "steps": [
             {
                 "title": "Step 1: Fix verification command",
@@ -339,10 +329,7 @@ def test_plan_artifact_validation_error_via_controller_does_not_debit_budget() -
             "PlanArtifactValidationError",
         ),
         (
-            (
-                "ralph.mcp.artifacts.development_result:"
-                "normalize_development_result_content"
-            ),
+            ("ralph.mcp.artifacts.development_result:normalize_development_result_content"),
             {"status": "completed"},
             "DevelopmentResultValidationError",
         ),
@@ -352,10 +339,7 @@ def test_plan_artifact_validation_error_via_controller_does_not_debit_budget() -
             "TypedArtifactValidationError",
         ),
         (
-            (
-                "ralph.mcp.artifacts.smoke_test_result:"
-                "normalize_smoke_test_result_content"
-            ),
+            ("ralph.mcp.artifacts.smoke_test_result:normalize_smoke_test_result_content"),
             {"status": "completed", "summary": "x", "output_file": "x"},
             "SmokeTestResultValidationError",
         ),
@@ -407,23 +391,19 @@ def test_all_typed_artifact_validation_errors_route_to_artifact_validation(
         normalize_fn(malformed_payload)
     raised = exc_info.value
     assert type(raised).__name__ == expected_type_name, (
-        f"Expected {expected_type_name} from {normalize_target} "
-        f"but got {type(raised).__name__}"
+        f"Expected {expected_type_name} from {normalize_target} but got {type(raised).__name__}"
     )
 
     classifier = FailureClassifier()
     failure = classifier.classify(raised, phase="development", agent="claude")
 
     assert failure.category == FailureCategory.ARTIFACT_VALIDATION, (
-        f"{expected_type_name} classified as {failure.category}, "
-        "expected ARTIFACT_VALIDATION"
+        f"{expected_type_name} classified as {failure.category}, expected ARTIFACT_VALIDATION"
     )
     assert failure.counts_against_budget is False
 
 
-def test_development_result_validation_error_constructed_directly_still_routes_correctly() -> (
-    None
-):
+def test_development_result_validation_error_constructed_directly_still_routes_correctly() -> None:
     """Even when a DevelopmentResultValidationError is constructed directly, the
     type-name dispatch still routes it correctly (defense-in-depth).
     """
@@ -437,9 +417,7 @@ def test_development_result_validation_error_constructed_directly_still_routes_c
     assert failure.counts_against_budget is False
 
 
-def test_enospc_oserror_with_filename_arg_from_failed_terminal_is_environmental() -> (
-    None
-):
+def test_enospc_oserror_with_filename_arg_from_failed_terminal_is_environmental() -> None:
     """OSError(ENOSPC) with a filename arg, raised in failed_terminal with agent=None
     (mirrors the prompt's exact traceback), must classify as ENVIRONMENTAL.
     """

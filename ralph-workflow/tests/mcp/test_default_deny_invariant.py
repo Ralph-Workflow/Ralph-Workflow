@@ -30,8 +30,6 @@ class _DenyAllSession:
         return True
 
 
-
-
 def _get_ralph_tool_specs() -> dict[str, ToolSpec]:
     """Return a name→ToolSpec mapping for all tools in ALL_RALPH_TOOLS."""
     all_specs = tool_specs(McpConfig())

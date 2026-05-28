@@ -291,9 +291,11 @@ def test_insert_plan_step_reindexes_all_numbers() -> None:
         },
     )
 
-    assert [
-        step["number"] for step in cast("list[dict[str, object]]", updated["steps"])
-    ] == [1, 2, 3]
+    assert [step["number"] for step in cast("list[dict[str, object]]", updated["steps"])] == [
+        1,
+        2,
+        3,
+    ]
     assert [step["title"] for step in cast("list[dict[str, object]]", updated["steps"])] == [
         "First",
         "Second",

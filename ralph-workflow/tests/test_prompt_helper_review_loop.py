@@ -105,12 +105,14 @@ class TestReviewLoopBehavior:
         presents Prompt.ask choices.
         """
         # Representative streaming output from the agent
-        streaming_output = iter([
-            "Let me help you define this product specification...",
-            "I have a few questions to clarify your requirements.",
-            "Based on your input, I'll structure the specification...",
-            "SUBMITTING ARTIFACT: product_spec",
-        ])
+        streaming_output = iter(
+            [
+                "Let me help you define this product specification...",
+                "I have a few questions to clarify your requirements.",
+                "Based on your input, I'll structure the specification...",
+                "SUBMITTING ARTIFACT: product_spec",
+            ]
+        )
 
         self._setup_base_runtime(monkeypatch, outputs=list(streaming_output))
 

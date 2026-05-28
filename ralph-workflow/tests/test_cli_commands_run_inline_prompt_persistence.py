@@ -76,11 +76,6 @@ def _policy_bundle_for_testing() -> PolicyBundle:
     )
 
 
-
-
-
-
-
 class TestInlinePromptPersistence:
     """Tests for inline prompt persistence and quick-mode preflight bypass."""
 

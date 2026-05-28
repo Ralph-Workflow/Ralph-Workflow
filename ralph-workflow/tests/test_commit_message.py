@@ -150,9 +150,7 @@ def test_normalize_commit_message_content_accepts_excluded_files_payload() -> No
         }
     )
 
-    assert normalized["excluded_files"] == [
-        {"path": "docs/guide.md", "reason": "internal_ignore"}
-    ]
+    assert normalized["excluded_files"] == [{"path": "docs/guide.md", "reason": "internal_ignore"}]
 
 
 @pytest.mark.parametrize(

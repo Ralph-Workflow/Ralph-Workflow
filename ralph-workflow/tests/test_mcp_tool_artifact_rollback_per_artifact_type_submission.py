@@ -81,10 +81,6 @@ _INVALID_CONTENT: dict[str, str] = {
 _ALL_ARTIFACT_TYPES = list(_VALID_CONTENT.keys())
 
 
-
-
-
-
 class TestPerArtifactTypeSubmission:
     """Parametrized per-artifact-type end-to-end submission tests.
 
@@ -216,4 +212,3 @@ class TestPerArtifactTypeSubmission:
         assert artifact_file.exists(), (
             f"{artifact_type}: resubmission after failure must produce JSON artifact"
         )
-

@@ -31,15 +31,12 @@ from tests.test_prompt_materialize_1_helper__artifactworkspace import _ArtifactW
 _TextContent = ToolContent
 
 
-
 class _ArtifactSubmitSession:
     session_id = "test-session"
     drain = "planning_analysis"
 
     def check_capability(self, capability: str) -> object:
         return capability in {"artifact.submit", "artifact.plan_read", "artifact.plan_write"}
-
-
 
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (

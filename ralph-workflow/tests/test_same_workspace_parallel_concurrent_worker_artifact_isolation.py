@@ -28,7 +28,6 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
-
 class TestConcurrentWorkerArtifactIsolation:
     def test_concurrent_workers_write_to_separate_artifact_dirs(self, tmp_path: Path) -> None:
         """Each worker gets its own artifact directory;

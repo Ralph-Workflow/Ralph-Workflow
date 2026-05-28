@@ -14,10 +14,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
+
     class ProjectUrlsModule(Protocol):
         CODEBERG_REPOSITORY_URL: str
         GITHUB_MIRROR_URL: str
         CODEBERG_ISSUES_URL: str
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = REPO_ROOT.parent
@@ -97,9 +99,7 @@ def test_maintained_docs_only_use_canonical_repo_urls() -> None:
 
     for root in _MAINTAINED_DOC_ROOTS:
         paths = (
-            [root]
-            if root.is_file()
-            else sorted(root.rglob("*.md")) + sorted(root.rglob("*.rst"))
+            [root] if root.is_file() else sorted(root.rglob("*.md")) + sorted(root.rglob("*.rst"))
         )
         for path in paths:
             content = path.read_text(encoding="utf-8")

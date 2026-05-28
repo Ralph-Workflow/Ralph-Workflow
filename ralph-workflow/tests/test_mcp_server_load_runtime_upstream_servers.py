@@ -860,9 +860,7 @@ def test_build_standalone_http_server_uses_cached_upstream_tool_catalog_without_
     tmp_path: Path,
 ) -> None:
     config = McpConfig(
-        mcp_servers={
-            "docs": McpServerSpec(name="docs", transport="http", url="http://unused")
-        }
+        mcp_servers={"docs": McpServerSpec(name="docs", transport="http", url="http://unused")}
     )
     monkeypatch.setenv(
         UPSTREAM_MCP_TOOL_CATALOG_ENV,

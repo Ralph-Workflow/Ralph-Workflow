@@ -89,12 +89,8 @@ PLANNING_EDIT_SELF_ANALYSIS_TEXT = (
 PLANNING_EDIT_ISSUE_MAPPING_TEXT = (
     "Every analyzer issue must map to concrete revised sections or an explicit verified reason"
 )
-PLANNING_EDIT_CLOSURE_LEDGER_TEXT = (
-    "Build a closure ledger before finalizing the revised draft"
-)
-PLANNING_EDIT_ADJACENT_ISSUES_TEXT = (
-    "the adjacent or implied issues your own analysis discovered"
-)
+PLANNING_EDIT_CLOSURE_LEDGER_TEXT = "Build a closure ledger before finalizing the revised draft"
+PLANNING_EDIT_ADJACENT_ISSUES_TEXT = "the adjacent or implied issues your own analysis discovered"
 PLANNING_ANALYSIS_CORE_WORKFLOW_TEXT = (
     "Infer the core user-facing workflows and prerequisite actions that must exist"
 )
@@ -125,9 +121,7 @@ PLANNING_FIRST_PASS_RISK_AUDIT_TEXT = (
     "Before finalizing, verify the draft also covers concrete risks, safe parallelization, "
     "and handoff quality"
 )
-PLANNING_ANALYSIS_FORMAT_TEXT = (
-    "Use this exact string format for each `what_came_up_short` entry"
-)
+PLANNING_ANALYSIS_FORMAT_TEXT = "Use this exact string format for each `what_came_up_short` entry"
 PLANNING_EDIT_FALLBACK_HISTORY_TEXT = (
     "Inspect this history to understand what plans have been tried and rejected before"
 )
@@ -160,12 +154,8 @@ DEVELOPER_VERIFICATION_EVIDENCE_TEXT = (
 DEVELOPER_ADD_QUALITY_STACK_TEXT = (
     "A finished change should leave behind a quality gate you would trust"
 )
-DEVELOPER_STRONG_QUALITY_BASELINE_TEXT = (
-    "establish the ecosystem's best-practice baseline yourself"
-)
-DEVELOPER_BYPASS_GUARD_TEXT = (
-    "Make casual bypasses visible in that gate"
-)
+DEVELOPER_STRONG_QUALITY_BASELINE_TEXT = "establish the ecosystem's best-practice baseline yourself"
+DEVELOPER_BYPASS_GUARD_TEXT = "Make casual bypasses visible in that gate"
 DEVELOPER_CLEAR_OVER_CLEVER_TEXT = (
     "Prefer straightforward, maintainable code over clever tricks or premature abstraction"
 )
@@ -409,7 +399,9 @@ def test_planning_edit_fallback_teaches_holistic_replanning_contract(tmp_path: P
             inputs=PlanningPromptInputs(
                 prompt_content="Revise the plan",
                 analysis_feedback_content="The plan needs revisions.",
-                analysis_feedback_path=workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md"),
+                analysis_feedback_path=workspace.absolute_path(
+                    ".agent/PLANNING_ANALYSIS_DECISION.md"
+                ),
                 artifact_history_path=history_path,
                 artifact_history_dir=history_dir,
             ),

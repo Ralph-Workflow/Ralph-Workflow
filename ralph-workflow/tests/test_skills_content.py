@@ -29,10 +29,10 @@ def test_each_skill_has_substantial_content() -> None:
     for name in BASELINE_SKILL_NAMES:
         content = get_skill_content(name)
         expected_internal_name = metadata["skill_sources"].get(name, {}).get("upstream_name", name)
-        assert content.startswith(f"# {name}") or content.startswith(
-            f"---\nname: {name}\n"
-        ) or content.startswith(
-            f"---\nname: {expected_internal_name}\n"
+        assert (
+            content.startswith(f"# {name}")
+            or content.startswith(f"---\nname: {name}\n")
+            or content.startswith(f"---\nname: {expected_internal_name}\n")
         )
         assert len(content.split()) >= 150
 
@@ -54,8 +54,14 @@ def test_skill_metadata_exposes_upstream_provenance() -> None:
     assert tuple(skills) == BASELINE_SKILL_NAMES
     assert metadata["skill_sources"]["security-review"]["repo"] == "https://github.com/affaan-m/ECC"
     assert metadata["bundles"]["open-design--frontend-slides"] == "open-design"
-    assert metadata["skill_sources"]["open-design--frontend-slides"]["catalog_repo"] == "https://github.com/nexu-io/open-design"
-    assert metadata["skill_sources"]["open-design--frontend-slides"]["repo"] == "https://github.com/zarazhangrui/frontend-slides"
+    assert (
+        metadata["skill_sources"]["open-design--frontend-slides"]["catalog_repo"]
+        == "https://github.com/nexu-io/open-design"
+    )
+    assert (
+        metadata["skill_sources"]["open-design--frontend-slides"]["repo"]
+        == "https://github.com/zarazhangrui/frontend-slides"
+    )
 
 
 def test_materialize_skills_to_dir_writes_all_skills(tmp_path: Path) -> None:
@@ -68,8 +74,8 @@ def test_materialize_skills_to_dir_writes_all_skills(tmp_path: Path) -> None:
         path = tmp_path / f"{name}.md"
         content = path.read_text(encoding="utf-8")
         expected_internal_name = metadata["skill_sources"].get(name, {}).get("upstream_name", name)
-        assert content.startswith(f"# {name}") or content.startswith(
-            f"---\nname: {name}\n"
-        ) or content.startswith(
-            f"---\nname: {expected_internal_name}\n"
+        assert (
+            content.startswith(f"# {name}")
+            or content.startswith(f"---\nname: {name}\n")
+            or content.startswith(f"---\nname: {expected_internal_name}\n")
         )

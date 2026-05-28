@@ -17,7 +17,6 @@ TEMPLATES_ROOT = PROMPTS_ROOT / "templates"
 SHARED_ROOT = TEMPLATES_ROOT / "shared"
 
 
-
 class _ApprovedSession:
     session_id = "session-1"
 
@@ -27,8 +26,6 @@ class _ApprovedSession:
     def check_capability(self, capability: str) -> object:
         assert capability == "artifact.submit"
         return "approved"
-
-
 
 
 def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
@@ -267,9 +264,7 @@ PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE = (
 PLANNING_ANALYSIS_PREREQUISITE_CHAIN_GUIDANCE = (
     "Goal → required workflow → prerequisite action/state → plan coverage"
 )
-PLANNING_EDIT_CLOSURE_LEDGER_GUIDANCE = (
-    "Build a closure ledger before finalizing the revised draft"
-)
+PLANNING_EDIT_CLOSURE_LEDGER_GUIDANCE = "Build a closure ledger before finalizing the revised draft"
 PLANNING_EDIT_ADJACENT_ISSUES_GUIDANCE = (
     "the adjacent or implied issues your own analysis discovered"
 )
@@ -299,9 +294,7 @@ PLANNING_EDIT_FALLBACK_HISTORY_GUIDANCE = (
 PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_GUIDANCE = (
     "If the defect scope is `repo_wide`, replace the summary, scope, and early steps"
 )
-DEVELOPER_SMALL_CHANGE_GUIDANCE = (
-    "Make the smallest self-contained change that solves the problem"
-)
+DEVELOPER_SMALL_CHANGE_GUIDANCE = "Make the smallest self-contained change that solves the problem"
 DEVELOPER_NATIVE_CHECKS_GUIDANCE = (
     "Detect and use the repository's native formatter, linter, type checker, test runner, "
     "and build checks"
@@ -330,9 +323,7 @@ DEVELOPER_ADD_QUALITY_STACK_GUIDANCE = (
 DEVELOPER_STRONG_QUALITY_BASELINE_GUIDANCE = (
     "establish the ecosystem's best-practice baseline yourself"
 )
-DEVELOPER_BYPASS_GUARD_GUIDANCE = (
-    "Make casual bypasses visible in that gate"
-)
+DEVELOPER_BYPASS_GUARD_GUIDANCE = "Make casual bypasses visible in that gate"
 DEVELOPER_CLEAR_OVER_CLEVER_GUIDANCE = (
     "Prefer straightforward, maintainable code over clever tricks or premature abstraction"
 )

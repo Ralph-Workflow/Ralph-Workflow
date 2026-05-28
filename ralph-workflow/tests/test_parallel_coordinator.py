@@ -77,8 +77,6 @@ def _seed_artifact(repo_root: Path, unit_id: str) -> None:
     )
 
 
-
-
 class TestPreflightRejection:
     """Coordinator-level preflight rejects unsafe plans before any worker launches."""
 
@@ -176,4 +174,3 @@ class TestPreflightRejection:
         )
         assert "parallel preflight rejected plan:" in preflight_event.error
         assert executor.calls == [], "No executor.run() calls should occur on preflight rejection"
-

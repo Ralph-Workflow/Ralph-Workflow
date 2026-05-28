@@ -136,9 +136,7 @@ def _run_pipeline(
             return commit_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
 
-    def capture_saved_state(
-        state: PipelineState, *_args: object, **_kwargs: object
-    ) -> None:
+    def capture_saved_state(state: PipelineState, *_args: object, **_kwargs: object) -> None:
         saved_states.append(state)
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
@@ -341,7 +339,8 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
         nonlocal planning_analysis_calls
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "planning":
-                _write_artifact(tmp_path,
+                _write_artifact(
+                    tmp_path,
                     ".agent/artifacts/plan.json",
                     {
                         "type": "plan",
@@ -384,7 +383,8 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
                     if planning_analysis_calls <= MAX_PLANNING_ANALYSIS_ITERATIONS
                     else "completed"
                 )
-                _write_artifact(tmp_path,
+                _write_artifact(
+                    tmp_path,
                     ".agent/artifacts/planning_analysis_decision.json",
                     {"type": "planning_analysis_decision", "content": {"status": decision}},
                 )
@@ -394,9 +394,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
             raise AssertionError("Should not reach commit before stopping at development")
         raise AssertionError(f"Unexpected effect type: {type(effect)!r}")
 
-    def capture_saved_state(
-        state: PipelineState, *_args: object, **_kwargs: object
-    ) -> None:
+    def capture_saved_state(state: PipelineState, *_args: object, **_kwargs: object) -> None:
         saved_states.append(state)
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
@@ -568,7 +566,8 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
         nonlocal development_analysis_calls
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "development":
-                _write_artifact(tmp_path,
+                _write_artifact(
+                    tmp_path,
                     ".agent/artifacts/development_result.json",
                     {
                         "type": "development_result",
@@ -593,7 +592,8 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                     if development_analysis_calls <= DEVELOPMENT_CYCLES_THREE
                     else "completed"
                 )
-                _write_artifact(tmp_path,
+                _write_artifact(
+                    tmp_path,
                     ".agent/artifacts/development_analysis_decision.json",
                     {"type": "development_analysis_decision", "content": {"status": decision}},
                 )
@@ -603,7 +603,8 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 "development_final_commit_cleanup",
             }:
                 return (
-                    _write_artifact(tmp_path,
+                    _write_artifact(
+                        tmp_path,
                         ".agent/artifacts/commit_cleanup.json",
                         {"analysis_complete": True, "actions": []},
                     )
@@ -611,7 +612,8 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 )
             if effect.phase == "development_commit":
                 return (
-                    _write_artifact(tmp_path,
+                    _write_artifact(
+                        tmp_path,
                         ".agent/tmp/commit_message.json",
                         {
                             "name": "commit_message",
@@ -634,9 +636,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
             return PipelineEvent.COMMIT_SUCCESS
         raise AssertionError(f"Unexpected effect type: {type(effect)!r}")
 
-    def capture_saved_state(
-        state: PipelineState, *_args: object, **_kwargs: object
-    ) -> None:
+    def capture_saved_state(state: PipelineState, *_args: object, **_kwargs: object) -> None:
         saved_states.append(state)
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))

@@ -7,6 +7,7 @@ from ralph.mcp.artifacts.file_backend import FileBackend
 if TYPE_CHECKING:
     from pathlib import Path
 
+
 class MemoryBackend(FileBackend):
     def __init__(self) -> None:
         self._files: dict[Path, str] = {}

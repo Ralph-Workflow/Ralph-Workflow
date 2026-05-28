@@ -36,9 +36,7 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
     repo_root_path = Path(repo_root).resolve()
     path = PurePath(relative_path)
     if path.is_absolute() or any(part == ".." for part in path.parts):
-        raise ValueError(
-            f"Refusing to delete path outside repository root: {relative_path!r}"
-        )
+        raise ValueError(f"Refusing to delete path outside repository root: {relative_path!r}")
     target = (repo_root_path / path).resolve(strict=False)
     try:
         target.relative_to(repo_root_path)
@@ -48,8 +46,7 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
         ) from exc
     if target.is_symlink():
         raise ValueError(
-            "Refusing to delete symlink path during commit cleanup: "
-            f"{relative_path!r}"
+            f"Refusing to delete symlink path during commit cleanup: {relative_path!r}"
         )
     if not target.exists():
         logger.debug("File {} does not exist, nothing to delete", relative_path)

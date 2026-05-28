@@ -298,9 +298,7 @@ def _validate_mcp_json_and_handshake(
         raise AgentTransportProbeError(f"{label} missing 'mcpServers'")
     raw_entry = cast("dict[str, object]", mcp_servers).get(RALPH_MCP_SERVER_NAME)
     if not isinstance(raw_entry, dict):
-        raise AgentTransportProbeError(
-            f"{label} missing Ralph entry; injected wiring is broken"
-        )
+        raise AgentTransportProbeError(f"{label} missing Ralph entry; injected wiring is broken")
     entry = cast("dict[str, object]", raw_entry)
     ralph_url = entry.get(ralph_url_key)
     if ralph_url != server.url:

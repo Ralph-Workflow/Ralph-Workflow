@@ -25,10 +25,6 @@ class _AllowedSession:
         return "approved"
 
 
-
-
-
-
 _GOOD_RESULTS = [
     SearchResult(title="Result One", url="https://example.com/1", snippet="Snippet one."),
     SearchResult(title="Result Two", url="https://example.com/2", snippet="Snippet two."),

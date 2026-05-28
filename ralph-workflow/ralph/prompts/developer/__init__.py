@@ -138,9 +138,7 @@ def prompt_developer_iteration_xml_with_context(
                 "PLAN_PATH": inputs.plan_path
                 or str(Path(payload_root) / f"{inputs.prompt_name_prefix}_plan.txt"),
                 "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
-                or str(
-                    Path(payload_root) / f"{inputs.prompt_name_prefix}_analysis_feedback.txt"
-                ),
+                or str(Path(payload_root) / f"{inputs.prompt_name_prefix}_analysis_feedback.txt"),
             },
         )
 
@@ -224,8 +222,7 @@ def prompt_planning_xml_with_context(
             "PLANNING_SKILL_REFERENCES": planning_skill_references_text(),
             "DEVELOPMENT_SKILL_REFERENCES": development_skill_references_text(),
             "PROMPT_PATH": current_prompt_path,
-            "PLAN_PATH": inputs.plan_path
-            or str(Path(payload_root) / "planning_plan.txt"),
+            "PLAN_PATH": inputs.plan_path or str(Path(payload_root) / "planning_plan.txt"),
             "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
             or str(
                 Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))

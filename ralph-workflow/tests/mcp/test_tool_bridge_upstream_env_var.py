@@ -95,4 +95,3 @@ class TestUpstreamEnvVar:
 
         assert result == ()
         assert any("invalid JSON" in record.message for record in caplog.records)
-

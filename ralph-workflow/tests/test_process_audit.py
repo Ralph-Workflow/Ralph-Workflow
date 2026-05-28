@@ -50,9 +50,7 @@ _MCP_FIXTURE_FILES = {
 RALPH_PY_FILES = tuple(sorted(RALPH_ROOT.rglob("*.py")))
 TEST_PY_FILES = tuple(
     sorted(
-        py_file
-        for py_file in TESTS_ROOT.rglob("*.py")
-        if not py_file.is_relative_to(RALPH_ROOT)
+        py_file for py_file in TESTS_ROOT.rglob("*.py") if not py_file.is_relative_to(RALPH_ROOT)
     )
 )
 

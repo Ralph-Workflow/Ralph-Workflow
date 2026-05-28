@@ -70,7 +70,6 @@ def _make_config(
     return UnifiedConfig(general=general)
 
 
-
 class FakeBridge:
     """Minimal MCP bridge stub for runner tests."""
 
@@ -79,8 +78,6 @@ class FakeBridge:
 
     def agent_endpoint_uri(self) -> str:
         return "http://127.0.0.1:19999/mcp"
-
-
 
 
 def _registry_factory(agent_config: AgentConfig) -> type:
@@ -603,9 +600,7 @@ def test_runner_opencode_lowercase_stale_message_in_parsed_output_triggers_retry
                 "opencode",
                 1,
                 "Unexpected server error",
-                [
-                    '{"type":"error","error":{"message":"session not found: lower-case-deadbeef"}}'
-                ],
+                ['{"type":"error","error":{"message":"session not found: lower-case-deadbeef"}}'],
             )
         return []
 

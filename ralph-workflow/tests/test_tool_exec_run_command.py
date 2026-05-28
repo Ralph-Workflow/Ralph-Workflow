@@ -41,12 +41,14 @@ def test_posix_replaces_source_root_in_value() -> None:
 
     assert result == "/overlay/main.py"
 
+
 def test_posix_passes_through_unrelated_value() -> None:
     value = "/etc/hosts"
 
     result = exec_tool._rewrite_env_path(value, "/home/user/proj", "/overlay", "posix")
 
     assert result == value
+
 
 def test_windows_replaces_with_different_casing() -> None:
     result = exec_tool._rewrite_env_path(
@@ -58,12 +60,14 @@ def test_windows_replaces_with_different_casing() -> None:
 
     assert result == r"D:\overlay\file.txt"
 
+
 def test_windows_passes_through_when_absent() -> None:
     value = r"C:\Windows\System32"
 
     result = exec_tool._rewrite_env_path(value, r"C:\proj", r"D:\overlay", "nt")
 
     assert result == value
+
 
 def test_source_root_as_substring_is_also_replaced() -> None:
     result = exec_tool._rewrite_env_path(
@@ -81,21 +85,26 @@ def test_successful_command(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert "hello" in result.stdout.decode()
 
+
 def test_failing_command(tmp_path: Path) -> None:
     result = run_command("false", [], tmp_path, 5000)
     assert result.returncode != 0
+
 
 def test_file_not_found_raises_execution_error(tmp_path: Path) -> None:
     with pytest.raises(ExecutionError):
         run_command("nonexistent_command_xyz", [], tmp_path, 5000)
 
+
 def test_zero_timeout_means_no_timeout(tmp_path: Path) -> None:
     result = run_command("echo", ["test"], tmp_path, 0)
     assert result.returncode == 0
 
+
 def test_workspace_with_str_root(tmp_path: Path) -> None:
     result = run_command("echo", ["test"], str(tmp_path), 5000)
     assert result.returncode == 0
+
 
 def test_uses_injected_cwd_provider_when_workspace_has_no_root() -> None:
     seen: dict[str, object] = {}
@@ -122,6 +131,7 @@ def test_uses_injected_cwd_provider_when_workspace_has_no_root() -> None:
     )
 
     assert seen["cwd"] == fallback
+
 
 def test_uses_injected_runner(tmp_path: Path) -> None:
     seen: dict[str, object] = {}
@@ -158,12 +168,14 @@ def test_sets_pwd_to_overlay_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     assert env["PWD"] == str(tmp_path / "overlay")
 
+
 def test_removes_oldpwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OLDPWD", "/old")
 
     env = exec_tool._child_process_env(tmp_path / "workspace", tmp_path / "overlay")
 
     assert "OLDPWD" not in env
+
 
 def test_replaces_source_root_in_env_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -175,6 +187,7 @@ def test_replaces_source_root_in_env_values(
     env = exec_tool._child_process_env(workspace_root, overlay_root)
 
     assert env["SOMEVAR"] == f"{overlay_root}/sub"
+
 
 def test_passes_through_unrelated_env_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -195,9 +208,7 @@ def test_run_command_reuses_stable_sandbox_path(tmp_path: Path) -> None:
         del command, timeout_seconds
         seen_cwds.append(cwd)
         (cwd / "dirty.txt").write_text("dirty", encoding="utf-8")
-        return exec_completed_process._CompletedProcessAdapter(
-            stdout=b"", stderr=b"", returncode=0
-        )
+        return exec_completed_process._CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
 
     workspace = MockWorkspaceRoot(tmp_path)
 
@@ -212,9 +223,7 @@ def test_run_command_reuses_stable_sandbox_path(tmp_path: Path) -> None:
 def test_run_command_uses_distinct_pool_slots_for_same_workspace_concurrent_calls(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base", lock_timeout_s=0.01)
     monkeypatch.setattr(exec_tool, "_get_sandbox_manager", lambda: manager)
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()

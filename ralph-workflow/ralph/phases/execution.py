@@ -356,7 +356,6 @@ def _normalize_analysis_proof_ref(value: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w]+", " ", value.casefold())).strip()
 
 
-
 def _match_analysis_proof_ref(required_refs: frozenset[str], submitted_ref: str) -> str | None:
     normalized_submitted = _normalize_analysis_proof_ref(submitted_ref)
     if not normalized_submitted:
@@ -392,7 +391,6 @@ def _match_analysis_proof_ref(required_refs: frozenset[str], submitted_ref: str)
     if best_score < 0.88 or best_score - second_best_score < 0.03:
         return None
     return best_match
-
 
 
 def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:

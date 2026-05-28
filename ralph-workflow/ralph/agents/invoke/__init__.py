@@ -279,9 +279,7 @@ def invoke_agent(
         registry=registry,
     )
     liveness_probe = DefaultLivenessProbe(registry=registry)
-    monitor = _start_workspace_monitor(
-        opts.workspace_path if opts.show_progress else None
-    )
+    monitor = _start_workspace_monitor(opts.workspace_path if opts.show_progress else None)
     policy = _policy_from_options(opts)
 
     ctx = _AgentRunCtx(
@@ -356,11 +354,7 @@ def resolve_invocation_runtime(
     early_result: ResolvedInvocationRuntime | None = None
     if (
         (transport == AgentTransport.OPENCODE and not endpoint)
-        or (
-            transport == AgentTransport.CODEX
-            and not endpoint
-            and system_prompt_file is None
-        )
+        or (transport == AgentTransport.CODEX and not endpoint and system_prompt_file is None)
         or (transport == AgentTransport.AGY and not endpoint)
         or (
             transport
@@ -383,9 +377,8 @@ def resolve_invocation_runtime(
     if transport == AgentTransport.OPENCODE:
         if endpoint is None:
             raise RuntimeError("endpoint must be set for OPENCODE transport")
-        opencode_config = (
-            runtime_env.get("OPENCODE_CONFIG_CONTENT")
-            or _env.get("OPENCODE_CONFIG_CONTENT")
+        opencode_config = runtime_env.get("OPENCODE_CONFIG_CONTENT") or _env.get(
+            "OPENCODE_CONFIG_CONTENT"
         )
         provider_config, upstreams = build_opencode_provider_config(
             opencode_config,

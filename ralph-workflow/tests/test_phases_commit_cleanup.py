@@ -336,14 +336,17 @@ def test_non_repo_directory_inits_git(tmp_path: Path) -> None:
     assert (non_repo / ".git").exists()
 
 
-@pytest.mark.parametrize("file_path", [
-    "ralph/models.py",     # Python source file
-    "tests/test_foo.py",   # test file in tests/ directory
-    "pyproject.toml",      # TOML configuration file
-    "README.md",           # Markdown documentation file
-    "config.json",         # JSON configuration file
-    "NOTES.txt",           # text documentation file
-])
+@pytest.mark.parametrize(
+    "file_path",
+    [
+        "ralph/models.py",  # Python source file
+        "tests/test_foo.py",  # test file in tests/ directory
+        "pyproject.toml",  # TOML configuration file
+        "README.md",  # Markdown documentation file
+        "config.json",  # JSON configuration file
+        "NOTES.txt",  # text documentation file
+    ],
+)
 def test_delete_unsafe_file_returns_failure_event(
     tmp_git_repo: Path,
     file_path: str,
@@ -358,8 +361,12 @@ def test_delete_unsafe_file_returns_failure_event(
         {"analysis_complete": False, "actions": [{"action": "delete_file", "path": file_path}]},
     )
     ctx = PhaseContext.construct(
-        workspace=workspace, registry=object(), chain_manager=object(),
-        pipeline_policy=object(), artifacts_policy=object(), agents_policy=object(),
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
     )
     effect = InvokeAgentEffect(
         agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
@@ -385,8 +392,12 @@ def test_delete_file_with_parent_traversal_returns_failure_event(
         },
     )
     ctx = PhaseContext.construct(
-        workspace=workspace, registry=object(), chain_manager=object(),
-        pipeline_policy=object(), artifacts_policy=object(), agents_policy=object(),
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
     )
     effect = InvokeAgentEffect(
         agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
@@ -414,8 +425,12 @@ def test_delete_file_with_absolute_path_returns_failure_event(
         },
     )
     ctx = PhaseContext.construct(
-        workspace=workspace, registry=object(), chain_manager=object(),
-        pipeline_policy=object(), artifacts_policy=object(), agents_policy=object(),
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
     )
     effect = InvokeAgentEffect(
         agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"

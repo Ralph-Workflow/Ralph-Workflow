@@ -36,9 +36,7 @@ def _get_ralph_version() -> str:
 def _find_configured_docs_mcp_url(workspace_root: Path | None = None) -> str | None:
     try:
         scope = (
-            resolve_workspace_scope(workspace_root)
-            if workspace_root
-            else resolve_workspace_scope()
+            resolve_workspace_scope(workspace_root) if workspace_root else resolve_workspace_scope()
         )
         mcp_config = load_mcp_config(workspace_scope=scope)
     except (McpConfigError, Exception):

@@ -115,7 +115,6 @@ def _setup_patches(
     )
 
 
-
 class _FakeDisplay:
     def emit(self, unit_id: str | None, line: str) -> None:
         del unit_id, line
@@ -128,12 +127,6 @@ class _FakeDisplay:
 
     def __exit__(self, *args: object) -> None:
         return None
-
-
-
-
-
-
 
 
 def _run_fan_out_sync(

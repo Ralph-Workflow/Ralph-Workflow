@@ -31,8 +31,6 @@ _STUB_TOOL_CALLS = 7
 _STUB_ERRORS = 1
 
 
-
-
 def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:
     """emit_phase_close_from_exit should be called with exit_trigger='completed'."""
     display = _StubDisplay()

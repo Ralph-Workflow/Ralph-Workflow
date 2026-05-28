@@ -70,7 +70,6 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         assert new_state.phase == "development_analysis"
         assert new_state.get_outer_progress("iteration") == state.get_outer_progress("iteration")
-        assert (
-            new_state.get_loop_iteration("development_analysis_iteration")
-            == state.get_loop_iteration("development_analysis_iteration")
-        )
+        assert new_state.get_loop_iteration(
+            "development_analysis_iteration"
+        ) == state.get_loop_iteration("development_analysis_iteration")

@@ -55,7 +55,6 @@ def _make_policy_bundle() -> MagicMock:
     return bundle
 
 
-
 class TestPartialFailureReporting:
     def test_successful_units_report_complete_before_dependent_fails(self) -> None:
         """Units B and C complete successfully before A (which depends on them) fails.

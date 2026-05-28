@@ -20,16 +20,11 @@ from tests.mcp.test_tool_webvisit_helper__stubworkspace import _StubWorkspace
 _HTTP_404 = 404
 
 
-
 class _AllowedSession:
     session_id = "test-session"
 
     def check_capability(self, capability: str) -> object:
         return "approved"
-
-
-
-
 
 
 _GOOD_OUTCOME = FetchOutcome(

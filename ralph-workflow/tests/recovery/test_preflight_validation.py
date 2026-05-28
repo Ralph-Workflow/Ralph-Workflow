@@ -42,10 +42,6 @@ class _FakeAgentRegistry:
         return object() if name in self._known else None
 
 
-
-
-
-
 def test_validate_agent_chains_satisfiable_passes_with_known_agents() -> None:
     """Validation passes when all chain agents exist in the registry."""
     bundle = _FakeBundle(

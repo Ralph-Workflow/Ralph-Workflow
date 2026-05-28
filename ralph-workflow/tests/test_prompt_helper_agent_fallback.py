@@ -32,9 +32,7 @@ class TestAgentFallback:
             def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
                 del exc_type, exc, tb
 
-            def invoke_prompt_file(
-                self, *args: object, **kwargs: object
-            ) -> Iterator[str]:
+            def invoke_prompt_file(self, *args: object, **kwargs: object) -> Iterator[str]:
                 del args, kwargs
                 return iter(())
 

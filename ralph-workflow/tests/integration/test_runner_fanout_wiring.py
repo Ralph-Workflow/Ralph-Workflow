@@ -206,8 +206,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
         str(tmp_path / ".agent" / "workers" / "unit-a" / "worker-manifest.json"),
     )
     assert (
-        ctx.same_workspace.worker_commands["unit-a"]
-        != ctx.same_workspace.worker_commands["unit-b"]
+        ctx.same_workspace.worker_commands["unit-a"] != ctx.same_workspace.worker_commands["unit-b"]
     )
     assert (
         ctx.same_workspace.worker_manifest_paths["unit-a"]

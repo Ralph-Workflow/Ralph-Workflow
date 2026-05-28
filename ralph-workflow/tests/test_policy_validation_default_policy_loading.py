@@ -145,8 +145,7 @@ class TestDefaultPolicyLoading:
         assert pre_analysis_cleanup.transitions.on_success == "development_commit"
         assert development_analysis.transitions.on_success == "development_final_commit_cleanup"
         assert (
-            development_analysis.decisions["completed"].target
-            == "development_final_commit_cleanup"
+            development_analysis.decisions["completed"].target == "development_final_commit_cleanup"
         )
         assert final_cleanup.transitions.on_success == "development_final_commit"
         assert pre_analysis_commit.commit_policy is not None

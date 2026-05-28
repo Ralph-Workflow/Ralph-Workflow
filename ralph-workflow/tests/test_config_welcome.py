@@ -40,15 +40,12 @@ _RAW_MARKUP_TOKENS = (
 )
 
 
-
 class _FakeAgent:
     """Fake agent config for registry testing."""
 
     def __init__(self, cmd: str, display_name: str | None = None) -> None:
         self.cmd = cmd
         self.display_name = display_name
-
-
 
 
 def _make_console() -> tuple[StringIO, Console]:

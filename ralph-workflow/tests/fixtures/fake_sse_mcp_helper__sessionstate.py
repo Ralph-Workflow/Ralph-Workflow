@@ -1,4 +1,5 @@
 """Private helper: _SessionState for fake SSE MCP server."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
