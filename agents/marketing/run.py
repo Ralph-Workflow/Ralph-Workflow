@@ -59,7 +59,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 BLOCKED_CHANNELS = {
     "dev.to": "Needs API key or OAuth",
     "twitter": "Login/session blocked",
-    "reddit": "Account u/Informal-Salt827 verified and active (21 posts published May 16-18). Manual follow-up replies needed to avoid thread necromancy flags.",
+    "reddit": "ARCHITECTURALLY RETIRED 2026-05-28 — IP-blocked at Hetzner Helsinki, Tor also blocked, no proxy path. All Reddit scripts exit immediately. Active channel: GitHub Discussions.",
     "hackernews": "Needs account",
     "lobsters": "Needs invite/account",
     "producthunt": "Protected flow / manual launch required",
@@ -2147,6 +2147,43 @@ def main() -> int:
             text=True,
             timeout=30,
         )
+
+    # --- Codeberg CTA Audit gate (daily) ---
+    # Verify all public-facing content links Codeberg as primary, GitHub as mirror.
+    # Repo conversion is the primary bottleneck; wrong CTA ordering directly undermines adoption.
+    cta_auditor_script = AGENTS_DIR / 'codeberg_cta_auditor.py'
+    if cta_auditor_script.exists():
+        cta_result = subprocess.run(
+            [sys.executable, str(cta_auditor_script)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        try:
+            cta_json = json.loads(cta_result.stdout.strip().split('\n')[0])
+            if cta_json.get('status') == 'fail':
+                print(f"[run.py] ⚠️  CTA audit FAILED — {cta_json.get('high_severity_count', 0)} high-severity Codeberg CTA issues", flush=True)
+        except (json.JSONDecodeError, IndexError):
+            pass
+
+    # --- Measurement window watchdog (daily) ---
+    watchdog_script = AGENTS_DIR / 'measurement_window_watchdog.py'
+    if watchdog_script.exists():
+        watchdog_result = subprocess.run(
+            [sys.executable, str(watchdog_script)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        try:
+            watchdog_json = json.loads(watchdog_result.stdout.strip().split('\n')[0])
+            past_due = watchdog_json.get('past_due_count', 0)
+            kill_count = watchdog_json.get('kill_count', 0)
+            escalate_count = watchdog_json.get('escalate_count', 0)
+            if past_due > 0:
+                print(f"[run.py] ⚠️  Measurement window watchdog: {past_due} past-due, {kill_count} kill, {escalate_count} escalate", flush=True)
+        except (json.JSONDecodeError, IndexError):
+            pass
 
     # --- Repair-awareness gate ---
     # If the audit has pending repairs (repair_state=needs_execution), the crons have

@@ -45,7 +45,14 @@
           "label": "GitHub issue"
         }
       ],
-      "recommended_next_step": "Telegram consulting contact path is explicitly confirmed"
+      "recommended_next_step": "Telegram consulting contact path is explicitly confirmed",
+      "status": "outreach_prepared",
+      "last_contact_at": "2026-05-28T16:56:39.007493+00:00",
+      "last_contact_path": "telegram:https://t.me/ctxtdev",
+      "outreach_email_artifact": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_ctxtdev_publisher_outreach_email.txt",
+      "outreach_email_subject": "Ralph Workflow for your next contract-first agent workflow roundup",
+      "outreach_email_recipient": "Telegram: t.me/ctxtdev",
+      "contact_method": "telegram"
     },
     {
       "target": "TIMEWELL",
@@ -86,7 +93,14 @@
           "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "email/contact send path is now identified"
+      "recommended_next_step": "email/contact send path is now identified",
+      "status": "outreach_prepared",
+      "last_contact_at": "2026-05-28T16:56:39.007493+00:00",
+      "last_contact_path": "email:timewell@timewell.jp",
+      "outreach_email_artifact": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_timewell_publisher_outreach_email.txt",
+      "outreach_email_subject": "Ralph Workflow for your next AI coding tools benchmark update",
+      "outreach_email_recipient": "timewell@timewell.jp",
+      "contact_method": "email"
     },
     {
       "target": "TLDL",
@@ -122,7 +136,10 @@
           "label": "X/Twitter"
         }
       ],
-      "recommended_next_step": "GitHub issue/PR path is now identified"
+      "recommended_next_step": "GitHub issue/PR path is now identified",
+      "status": "contact_prepared_no_sendable_channel",
+      "last_contact_at": "2026-05-28T16:58:24.693485+00:00",
+      "note": "Only GitHub issue, X/Twitter, website channels \u2014 no email found. Marked as prepared but not sendable from this runtime."
     },
     {
       "target": "ComputingForGeeks",
@@ -163,7 +180,10 @@
           "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "public website contact path is now identified"
+      "recommended_next_step": "public website contact path is now identified",
+      "status": "contact_prepared_website_form_only",
+      "last_contact_at": "2026-05-28T16:58:24.693485+00:00",
+      "note": "Has /contact page but no email address found. X/LinkedIn available. Runtime-sendable email path not discovered."
     },
     {
       "target": "SitePoint",
@@ -229,7 +249,12 @@
           "label": "X/Twitter"
         }
       ],
-      "recommended_next_step": "email/contact send path is now identified"
+      "recommended_next_step": "email/contact send path is now identified",
+      "status": "sent_via_email",
+      "last_contact_at": "2026-05-24T08:46:12.039160+00:00",
+      "last_contact_path": "email:support@sitepoint.com",
+      "contact_method": "email",
+      "outreach_email_artifact": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_sitepoint_publisher_outreach_email.md"
     }
   ],
   "omitted_recent_targets": [
@@ -247,5 +272,7 @@
     "ToolChase",
     "Toolradar",
     "WyeWorks"
-  ]
+  ],
+  "updated_at": "2026-05-28T16:58:24.693485+00:00",
+  "summary": "Truth-model repair: SitePoint was sent 2026-05-24 (not never). ctxt.dev & TIMEWELL drafts created. TLDL & ComputingForGeeks lack runtime-sendable email channels."
 }

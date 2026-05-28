@@ -2127,3 +2127,11 @@
 [2026-05-28 18:35:11] Codeberg is 1 commits ahead of GitHub, GitHub is 0 commits ahead
 [2026-05-28 18:35:11] Pushing 1 new commits to GitHub (HEAD=12f55e769dbbc46ecef21094d55ca76c582a9f7c)
 [2026-05-28 18:35:13] Sync complete
+[2026-05-28 19:49:21] Starting Codeberg -> GitHub sync
+[2026-05-28 19:49:21] Creating dedicated sync clone in /tmp/ralph-github-sync
+[2026-05-28 19:49:31] Codeberg is 1 commits ahead of GitHub, GitHub is 0 commits ahead
+[2026-05-28 19:49:31] Pushing 1 new commits to GitHub (HEAD=faef9511ad000df73a9fbaefbd8e6d10466678e9)
+[2026-05-28 19:49:33] Sync complete
+[2026-05-28 21:09:22] Starting Codeberg -> GitHub sync
+[2026-05-28 21:09:22] Updating existing sync clone
+[2026-05-28 21:09:27] Already up to date (HEAD=faef9511ad000df73a9fbaefbd8e6d10466678e9)

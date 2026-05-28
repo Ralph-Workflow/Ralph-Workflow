@@ -47,7 +47,7 @@
 ## Why Choose Ralph Workflow Over Conductor OSS
 
 Conductor OSS focuses on Enterprise-grade workflow orchestration for AI agents.
-Ralph Workflow's focus is **multi-agent phase routing with cost arbitrage and policy-defined orchestration**.
+Ralph Workflow's focus is **multi-agent phase routing with Cost arbitrage and policy-defined orchestration**.
 
 Ralph Workflow's key differentiator is the ability to compose multiple agents (Claude, Codex,
 OpenCode) into a single unattended pipeline where each phase uses the most cost-effective model.

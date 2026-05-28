@@ -27,6 +27,13 @@ Generated: 2026-05-23T21:46:39
 - Do not rerun contact discovery for the same prepared target set unless the prepared set changes.
 - Refresh this packet when discovered channels or the top prepared targets change, not on every audit loop.
 
+## Codeberg-primary CTA (required for every contact)
+
+**Primary Repo**: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+**Mirror (not primary)**: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Every outreach must link Codeberg first, GitHub second (if at all). The PyPI→Codeberg conversion is the bottleneck this packet exists to fix.
+
 ## Measurement contract
 - Expected outcome: at least one real maintainer/curator contact attempt using the discovered non-GitHub channel set
 - Review window: 7 days for contact attempt, 14 days for response, 30 days for live backlink/listing evidence

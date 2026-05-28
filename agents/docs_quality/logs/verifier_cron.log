@@ -10938,3 +10938,223 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Clean, intentional docs system. Every surface owns one job, positioning is consistent, IA is coherent, and the README\u2192START_HERE\u2192docs/README journey flows without drift. The docs show explicit evidence of past drift having been pruned and disciplined.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "RalphWithReviewer/README.md",
+      "reason": "Intentionally narrow; explicitly redirects to canonical route; no page-role collapse."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Perfect example of result-first evaluation framing with good/bad task differentiation."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Clean switchboard with secondary positioning and explicit proof-is-secondary section."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md",
+      "reason": "Proof page that self-declares as secondary and leads with working behavior before logs."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs journey is structurally sound: README \u2192 START_HERE \u2192 docs/README flows clearly, each page knows its narrow role, internal plumbing stays off top-level surfaces, and the promoted next-click pages all reinforce the same positioning story instead of fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with Codeberg-primary framing and operating-system tagline; install/operator scope is cleanly separated from product pitch."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Result-first design ('judge the outcome by what the software does now and what checks ran') instead of leading with artifacts or logs."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Explicitly says 'Keep proof secondary' and routes proof pages below product story pages \u2014 correct information hierarchy."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Self-declared as secondary/supporting, opens with 'what the software does now,' puts logs last \u2014 avoids the one page most likely to leak internal framing."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independent verifier failed signoff
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_FAIL
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:23: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [repo-hierarchy-gap] Surface mentions GitHub without clearly anchoring Codeberg as primary.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [heading-sprawl] Too many second-level headings (9). Max 8.
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Clean downstream implementation. The README \u2192 START_HERE \u2192 docs/README journey is coherent, every top-level surface leads with the simple-core / composable / strong-default framing, internal plumbing language is absent from promoted surfaces, and the secondary pages (reviewable-output.md included) are correctly scoped as deep reference, not primary story. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'operating system for autonomous coding' and 'AI agent orchestrator'; frames simple-loop \u2192 composable \u2192 strong-default in the first paragraph; comparison table is sharp and user-facing; 'who it's for / not for' is exactly right; engineering-practice requirements section anchors the honesty promise; Codeberg-primary framing correct."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Opens with mirror disclaimer; 'simple Ralph-loop core \u2192 composable workflow \u2192 strong default' in first paragraph; result-oriented success criteria ('real repo change', 'meaningful checks', 'not reconstructing the whole run'); clean gatekeeping on task selection."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Repeats the core framing, then cleanly routes into operator manual / contributor docs / product-framing pages; includes explicit 'Keep proof secondary' section \u2014 a structural mirror of the positioning doc's content boundary rule."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Pitches the 'useful question' framing and lands on 'simple at the center, stronger in composition, useful before customization' \u2014 the most concise encapsulation of the positioning doc's core promise."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Potentially the riskiest page name (artifact-adjacent), but opens with explicit scoping: 'This page is supporting proof... not the main product pitch. Use this page after you already understand the workflow.' Its evidence-order (working behavior \u2192 real checks \u2192 written scope \u2192 supporting artifacts) exactly matches the positioning doc's evaluation hierarchy."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independent verifier failed signoff
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_FAIL
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:23: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [repo-hierarchy-gap] Surface mentions GitHub without clearly anchoring Codeberg as primary.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [heading-sprawl] Too many second-level headings (9). Max 8.
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README journey is coherent, all promoted pages reinforce the same story, no hard failures present. Minor artifact-language residue in feature bullets but not in lead content.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "README comparison table and 'Built-in capabilities' use 'repo-native artifacts' and 'Artifact handoff' \u2014 minor internal-plumbing leak in an otherwise product-forward README",
+    "Every page opens with the same formulaic 'Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core...' \u2014 should vary openings by page role"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md (github-mirror)",
+      "reason": "Clean positioning lead, audience fit/non-fit section, strong comparison table, Codeberg-primary note, engineering-practice dependency section, result-first evaluation framing"
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Explicitly self-declares as secondary proof page, orders evaluation criteria correctly (working behavior first, logs last), reinforces rather than fights product story"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clear role-based routing, 'Keep proof secondary' section enforces information hierarchy, does not try to be the product pitch"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independent verifier failed signoff
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_FAIL
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:23: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [repo-hierarchy-gap] Surface mentions GitHub without clearly anchoring Codeberg as primary.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [heading-sprawl] Too many second-level headings (9). Max 8.
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Coherent, well-structured docs system with clear page roles, consistent positioning, and no internal leakage on top-level surfaces. The README \u2192 START_HERE \u2192 docs/README journey is clean and the promoted next-click pages reinforce rather than fight the core story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Strong product pitch that leads with 'the operating system for autonomous coding', simple-core framing, who-it's-for/not-for sections, result-first evaluation, and engineering-practice dependency \u2014 all aligned with the positioning document."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run with clear success criteria (what the software does, what checks ran), good/bad first-task guidance, and Codeberg-primary awareness \u2014 no internal plumbing or artifact language."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean switchboard with four user-intent routes, explicit 'keep proof secondary' section, and next-click pages that all lead with the same simple-core/composition/default-workflow framing."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Correctly frames itself as secondary proof on line 3, leads with 'what the software does now' over logs/transcripts, and explicitly says 'Logs and transcripts can be useful. They just should not be the main promise.' \u2014 directly follows positioning doc guidance."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

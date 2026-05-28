@@ -1,0 +1,50 @@
+{
+  "status": "ready",
+  "generated_at": "2026-05-28T17:36:04.148300+00:00",
+  "targets_count": 8,
+  "ready_targets": [
+    "hermes-agent",
+    "aider",
+    "continue",
+    "conductor-oss",
+    "cursor",
+    "copilot",
+    "conductor-teams",
+    "claude-code"
+  ],
+  "total_packets": 56,
+  "channels_used": [
+    "comparison_page",
+    "curated_list_pr",
+    "hackernews",
+    "lobsters",
+    "stackoverflow_answer",
+    "indie_hackers",
+    "huggingface_discuss"
+  ],
+  "packets_by_channel": {
+    "comparison_page": 8,
+    "curated_list_pr": 8,
+    "hackernews": 8,
+    "lobsters": 8,
+    "stackoverflow_answer": 8,
+    "indie_hackers": 8,
+    "huggingface_discuss": 8
+  },
+  "validation": {
+    "validated_count": 8,
+    "ready_count": 8,
+    "ready_slugs": [
+      "hermes-agent",
+      "aider",
+      "continue",
+      "conductor-oss",
+      "cursor",
+      "copilot",
+      "conductor-teams",
+      "claude-code"
+    ],
+    "issues": [],
+    "all_ready": true
+  }
+}

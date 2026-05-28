@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-05-28T15:24:11.321968",
+  "timestamp": "2026-05-28T20:23:30.028650",
   "metrics": [
     {
       "platform": "Codeberg",
-      "stars": 11,
+      "stars": 12,
       "watchers": 2,
       "forks": 2,
       "open_issues": 4,
@@ -29,7 +29,7 @@
   ],
   "deltas": {
     "Codeberg": {
-      "stars_delta": 0,
+      "stars_delta": 1,
       "watchers_delta": 0,
       "forks_delta": 0
     },
@@ -47,12 +47,12 @@
   "recent_window": {
     "Codeberg": {
       "samples": 9,
-      "stars_delta_window": 0,
+      "stars_delta_window": 1,
       "watchers_delta_window": 0,
       "forks_delta_window": 0
     },
     "PyPI": {
-      "samples": 7,
+      "samples": 8,
       "stars_delta_window": 0,
       "watchers_delta_window": 0,
       "forks_delta_window": 0
@@ -66,16 +66,13 @@
   },
   "evaluation": {
     "findings": [
-      "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
       "PyPI has 1498 downloads/month (10/day) — real usage signal that repo metrics don't capture."
     ],
-    "failing_signals": [
-      "primary_repo_flat"
-    ],
+    "failing_signals": [],
     "next_focus": [
-      "Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta."
+      "Keep measuring adoption deltas and replace any tactic that stays flat across the window."
     ]
   }
 }

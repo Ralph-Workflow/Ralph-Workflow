@@ -1,0 +1,18 @@
+Subject: Ralph Workflow for your next AI coding tools benchmark update
+
+Hi TIMEWELL team,
+
+I read your "AI Coding Tools Complete Benchmark 2026" and was impressed by the depth — especially the focus on agent-style development and review discipline.
+
+I'm the creator of Ralph Workflow (https://ralphworkflow.com), an open-source CLI that wraps AI coding agents (Claude Code, Codex, Cursor, Copilot) with structured task contracts, evidence capture, and merge-only-on-green review gates.
+
+The reason this might be relevant for your benchmark: most AI coding tool comparisons focus on code-generation speed or accuracy. Ralph Workflow operates at the process layer — how teams turn natural-language task descriptions into verifiable, reviewable deliverables. It's the missing piece between "the agent generated some code" and "the task is provably complete."
+
+I'd love to see it considered in your next benchmark update. The tool is PyPI-installable and works with any underlying AI coding agent:
+- PyPI: https://pypi.org/project/ralph-workflow/
+- Codeberg: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+Happy to provide any additional benchmarks or integration details you'd need.
+
+Best,
+— Ralph Workflow

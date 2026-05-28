@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-28T18:19:03.245018",
-  "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
+  "generated_at": "2026-05-28T21:27:33.571767",
+  "current_bottleneck": "conversion_to_free_use",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
   "repeated_openings": [
@@ -9,7 +9,7 @@
   "adoption_metrics": [
     {
       "platform": "Codeberg",
-      "stars": 11,
+      "stars": 12,
       "watchers": 2,
       "forks": 2,
       "open_issues": 4,
@@ -36,12 +36,12 @@
   "recent_window": {
     "Codeberg": {
       "samples": 9,
-      "stars_delta_window": 0,
+      "stars_delta_window": 1,
       "watchers_delta_window": 0,
       "forks_delta_window": 0
     },
     "PyPI": {
-      "samples": 7,
+      "samples": 8,
       "stars_delta_window": 0,
       "watchers_delta_window": 0,
       "forks_delta_window": 0
@@ -55,53 +55,38 @@
   },
   "adoption_evaluation": {
     "findings": [
-      "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
       "PyPI has 1498 downloads/month (10/day) — real usage signal that repo metrics don't capture."
     ],
-    "failing_signals": [
-      "primary_repo_flat"
-    ],
+    "failing_signals": [],
     "next_focus": [
-      "Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta."
+      "Keep measuring adoption deltas and replace any tactic that stays flat across the window."
     ]
   },
   "failing_tactics": [
-    "primary_repo_flat_window",
     "mirror_repo_flat_window"
   ],
-  "worked": [],
+  "worked": [
+    "Execution path produced a live external action with non-flat outcome context: new_blog_comparison_article_deployed. Stars delta: +1"
+  ],
   "not_worked": [
-    "Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.",
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
     "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
-    "Recent live external action exists (devto_lane_bootstrap), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
   ],
   "should_change_now": [
-    "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
     "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
   "dormant_risks": [
     "reddit_style_repetition_suspended_while_channel_blocked"
   ],
   "repair_actions": [
-    {
-      "target_tactic": "content_distribution",
-      "failure_type": "primary_repo_flat",
-      "repair_kind": "tactic",
-      "action": "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
-      "kill_condition": "Still no Codeberg delta after 7 days of new approach",
-      "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
-      "priority": 1,
-      "repair_state": "pending_measurement"
-    },
     {
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
@@ -115,18 +100,16 @@
   ],
   "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
-    "primary_repo_flat",
     "mirror_repo_flat"
   ],
   "has_failing_tactics": true,
   "reasons": [
     "Owned content and outreach exist, but repo/public adoption signals are still low.",
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
-    "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was distribution_architecture_repair_and_concrete_distribution, but the latest meaningful external/replacement execution remains devto_lane_bootstrap; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (devto_lane_bootstrap), so the system is still shipping output even though outcome movement is not visible yet.",
+    "The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains new_blog_comparison_article_deployed; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (new_blog_comparison_article_deployed), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (manual_outreach_asset_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
@@ -161,10 +144,10 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_172200_concrete_repair_and_distribution.json",
-    "type": "distribution_architecture_repair_and_concrete_distribution",
-    "title": "distribution architecture repair and concrete distribution",
-    "status": "executed",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_distribution_architecture_guard_pause.json",
+    "type": "distribution_lane_switch",
+    "title": "Distribution lane decision: distribution_architecture_guard_pause",
+    "status": "prepared",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
@@ -172,9 +155,9 @@
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_175148_devto_bootstrap.json",
-    "type": "devto_lane_bootstrap",
-    "title": "devto lane bootstrap",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_1656_new_blog_comparison_deployed.json",
+    "type": "new_blog_comparison_article_deployed",
+    "title": "new blog comparison article deployed",
     "status": "executed",
     "ok": true,
     "live_external_action": true,

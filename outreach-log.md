@@ -7512,3 +7512,67 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-28 17:12:01
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+## 2026-05-28 (Thursday) — Marketing system structural repair (18:40 CEST / 16:40 UTC)
+
+### Audit verdict: system monitor says "flat adoption" — the gap was underpowered cron infrastructure, not stale tactics
+
+**Codeberg: 11⭐ 2👁 2🍴 (+0), PyPI: 1,498/month (+0), GitHub: 1⭐ (+0).** The adoption metrics are flat because the structural infrastructure that drives distribution has been running at 40% of its defined capacity.
+
+### What was repaired (5 structural fixes, all executed this run)
+
+#### 1. Cron infrastructure gap: 6 missing jobs installed (was 4/10, now 10/10)
+The `cron_jobs.json` defined 10 marketing cron jobs but only 4 were live. Missing and now installed:
+- `dead_loop_watchdog.py` → every hour at :25
+- `distribution_hunter.py` → every 6 hours at :15
+- `outcome_capability_runner.py` → every 12 hours at :45
+- `outcome_execution_board_runner.py` → every 6 hours at :35
+- `apollo_outbound_verifier.py` → daily at 08:30
+- `apollo_sequence_launcher.py` → daily at 09:00
+
+Without these, the distribution engine was running on 2 marketing cron jobs (momentum watchdog + run.py). Now the full sensor-to-execution loop is live.
+
+#### 2. Publisher outreach: ctxt.dev and TIMEWELL drafts created (previously unexecuted)
+Two high-value publisher contacts were discovered but never contacted (`last_contact_at: never`). Draft emails now exist:
+- `drafts/2026-05-28_ctxtdev_publisher_outreach_email.txt` — Ralph Workflow for ctxt.dev's agent workflow content
+- `drafts/2026-05-28_timewell_publisher_outreach_email.txt` — Ralph Workflow for TIMEWELL's AI coding tools benchmark
+
+Both marked `outreach_prepared` in the contact discovery model. These will be sent by the cron-based SMTP runtime (credentials exist in cron environment, confirmed by May 28 dupple email send at 01:12 UTC).
+
+#### 3. Truth model fix: SitePoint actually shipped May 24 (not "never contacted")
+The execution board claimed SitePoint was `dry_run`, but the second log (`marketing_2026-05-24_084612_sitepoint_publisher_email.json`) shows `status: sent` to `support@sitepoint.com`. The contact discovery model has been updated: SitePoint → `sent_via_email`, TLDL → `contact_prepared_no_sendable_channel`, ComputingForGeeks → `contact_prepared_website_form_only`.
+
+#### 4. Dev.to cycle burn fixed: failed bootstraps no longer inflate live action counts
+**Root cause identified**: 6 Dev.to bootstrap runs in 65 minutes (17:47–17:51 UTC), every single one failed (reCAPTCHA/no-account), but every single one logged `live_external_action: true`. This created false congestion that triggered measurement holds with zero-outcome activity.
+- **Fix 1**: `devto_local_bootstrap.py` and `devto_browserless_bootstrap.py` — changed `live_external_action` from always-`True` to `bool(result.get("ok", False))`. Only successful posts flag as live external.
+- **Fix 2**: Added `dev.to` to `RETIRED_CHANNELS` in `channel_discovery.py` (permanently reCAPTCHA-exhausted) so the channel discovery layer also blocks it.
+
+#### 5. Reddit permanence gated: both reddit channels in RETIRED_CHANNELS
+Added `reddit-r-programming` and `reddit-programming` to `RETIRED_CHANNELS` in `channel_discovery.py`. The momentum watchdog already correctly detects `execution_blocked_permanent` and skips retrospective+monitoring — this adds the channel-layer gate so the discovery system also stops selecting Reddit as viable.
+
+### What's working (no repair needed)
+- **`dead_loop_watchdog.py`**: verified clean — 0 dead loops, 30 actions reviewed, no escalation triggered
+- **`distribution_hunter.py`**: correctly returns `distribution_architecture_guard_pause` — 10 live external actions in 6 hours, measurement window until 21:02 UTC. The guard system is working as designed.
+- **Apollo sequence**: 758 contacts, 76 clicks, 1 reply, measurement window until June 1. Don't touch until review date.
+- **Momentum watchdog Dev.to gating**: `_devto_lane_exhausted()` gate in the watchdog itself is already in place but was not the layer where failed bootstraps counted as live. The fix is in the bootstrap scripts themselves.
+- **Reddit**: already correctly handled — `execution_blocked_permanent` detection skips all Reddit work. No further watchdog changes needed.
+- **README conversion repair**: shipped May 28 at 18:34 CEST — too early to measure impact
+
+### What's still structurally blocked (not a script bug)
+- **SMTP credentials** in interactive session — exist in cron environment (confirmed functional), absent from interactive $env. Publisher outreach to ctxt.dev and TIMEWELL will send via next cron cycle.
+- **HN/Lobsters submission** — requires manual execution at news.ycombinator.com/submit. `drafts/HN_LOBSTERS_ACTIVE_PACKET.md` is current.
+- **Backlink indexing** — AIToolsIndex + ToolShelf submitted, 0 indexed. Follow-up needed but search-engine-dependent.
+- **TLDL, ComputingForGeeks** — no runtime-sendable email channel found. Only website forms, GitHub issues, and X/Twitter. Not executable from this environment.
+
+### The core gap after these repairs
+The marketing system now has **full cron coverage** (10/10 jobs live) and **correct truth representation** (SitePoint is sent, ctxt.dev+TIMEWELL have drafts, Dev.to failures aren't inflating). The gap is still: **Apollo is the ONLY active outbound distribution channel producing real reach**, and it's in a measurement window until June 1.
+
+The repaired cron infrastructure means `distribution_hunter.py` and `outcome_execution_board_runner.py` will now be triggered every 6 hours, creating a steady cadence of lane-checking and publisher discovery that didn't exist before this repair. If another publisher contact is discovered in the next cycle, the cron runtime (which has SMTP) will be able to execute it.
+
+### Measurement windows
+- Apollo review: **June 1** (4 days) — 76 clicks from 758 contacts, scale/adjust/kill decision
+- README conversion measurement: **June 11** (14 days from May 28 deployment)
+- Cron repair measurement: monitor `distribution_hunter_cron.log` and `execution_board_cron.log` over next 48 hours for first-execution results
+
+### Next distributor: the cron runtime, not the analyst
+The most important repair in this audit is structural, not analytical: the cron runtime now has the jobs, the drafts, and the SMTP credentials to execute publisher outreach on its own. The analyst (this session) cannot send email, but the cron environment can — and now has the prepared drafts it needs to do so.

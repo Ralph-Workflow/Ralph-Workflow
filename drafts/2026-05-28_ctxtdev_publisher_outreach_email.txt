@@ -1,0 +1,18 @@
+Subject: Ralph Workflow for your next contract-first agent workflow roundup
+
+Hi ctxt.dev team,
+
+I came across your post "Tasks Are Not Goals" (May 22, 2026) and it resonated deeply — the distinction between task-completion and goal-achievement is exactly what we've been wrestling with in the AI agent coding space.
+
+I built Ralph Workflow (https://ralphworkflow.com), an open-source CLI that turns natural-language task descriptions into structured contracts with explicit acceptance criteria, evidence requirements, and merge-only-on-green review gates — for Claude Code, Codex, Cursor, and other AI coding tools.
+
+The reason I'm reaching out: your audience clearly cares about the layer above "can the agent write code" — the process-and-evidence layer where teams define what "done" actually means. Ralph Workflow is a concrete implementation of that idea for AI-assisted development.
+
+I'd love for you to take a look — and if it fits, consider including it in a future roundup or workflow post:
+- Codeberg: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+- PyPI: https://pypi.org/project/ralph-workflow/
+
+Open to any format that works for you — guest post, mention in a workflow roundup, or just a quick look.
+
+Thanks for your time,
+— Ralph Workflow

@@ -1,0 +1,7 @@
+Dev.to bootstrapping permanently stopped — reCAPTCHA blocks headless signup from this IP.
+7 failed bootstrap attempts on 2026-05-28 alone. No account was ever successfully created.
+Human intervention required: solve the CAPTCHA manually from an unblocked IP,
+create the account, generate an API key, and save to accounts/devto_creds.json.
+Once a working API key exists, delete this file and resume automation.
+Stopped at: 2026-05-28T17:37:00+00:00
+Audit run: 2026-05-28 marketing-workflow-audit

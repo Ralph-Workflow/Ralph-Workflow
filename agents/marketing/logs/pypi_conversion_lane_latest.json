@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-05-28T18:43:15.807017+00:00",
+  "pypi": {
+    "status": "ok",
+    "version": "0.8.7",
+    "last_release_upload": "2026-05-21T22:11:12",
+    "total_releases": 16
+  },
+  "codeberg": {
+    "status": "ok",
+    "stars": 12,
+    "watchers": 2,
+    "forks": 2,
+    "open_issues": 4,
+    "updated_at": "2026-05-28T19:49:21+02:00"
+  },
+  "downloads": {
+    "status": "ok",
+    "total_downloads": 11984,
+    "last_30_days": 1498,
+    "last_7_days": 166
+  },
+  "conversion": {
+    "status": "ok",
+    "conversion_ratio": 0.001,
+    "conversion_pct": "0.10%",
+    "total_downloads": 11984,
+    "stars": 12,
+    "downloads_per_star": 998,
+    "health": "critical"
+  },
+  "thresholds": {
+    "critical": 0.005,
+    "warning": 0.01,
+    "healthy": 0.02
+  },
+  "readme_cta_deploy_date": "2026-05-21T00:00:00+00:00",
+  "days_since_readme_cta": 7,
+  "needs_additional_cta": false,
+  "recommendations": [
+    "PyPI\u2192Codeberg conversion at 0.10% is CRITICAL. Consider: 1) post-install message directing to Codeberg, 2) in-app star nudge on first successful run, 3) README copy A/B test with stronger CTA"
+  ]
+}

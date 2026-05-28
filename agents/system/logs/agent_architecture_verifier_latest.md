@@ -1,13 +1,12 @@
 # Agent Architecture Independent Verification
 
-- Checked: 2026-05-28T18:37:20.873206+02:00
+- Checked: 2026-05-28T21:20:42.562948
 - Status: independently verified fail
 - Independent artifact: `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`
-- Summary: Architecture-owned gates are coherent. Independent verifier returns fail because the independent verification artifact recorded verdict=fail (stale marketing evidence). Architecture-owned live topology is clean: 23/23/0 enabled, 1 live error (blocked-channel-recovery), 12 running jobs.
+- Independent check time: 2026-05-28T21:17:31.257070+02:00
+- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
+- Qualified external blockers: docs verifier did not show independent pass, latest docs verifier verdict is not pass: 'fail', marketing independent verification is not pass: 'fail'
 
 ## Verification result
 
-- architecture verifier correctly fails closed on non-passing independent verification
-- external blocker: marketing independent verification verdict=fail (stale artifact, primary repo adoption measurement-pending)
-- architecture-owned checks: ownership boundaries ok, no hidden self-certification, no stale topology leakage, shared market-intelligence reuse verified and fresh
-- loop integrity: ralph-docs-watchdog=ok, agent-architecture-watchdog=ok
+- independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh

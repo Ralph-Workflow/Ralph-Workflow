@@ -1,73 +1,63 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-28T18:19:03.245018
-- Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
+- Generated: 2026-05-28T21:27:33.571767
+- Current bottleneck: **conversion_to_free_use**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
 
 ## Why this is the bottleneck
 - Owned content and outreach exist, but repo/public adoption signals are still low.
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
-- Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was distribution_architecture_repair_and_concrete_distribution, but the latest meaningful external/replacement execution remains devto_lane_bootstrap; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (devto_lane_bootstrap), so the system is still shipping output even though outcome movement is not visible yet.
+- The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains new_blog_comparison_article_deployed; do not confuse follow-through with fresh outcome-bearing distribution.
+- The active loop did execute a live marketing action recently (new_blog_comparison_article_deployed), so the system is still shipping output even though outcome movement is not visible yet.
 - A fresh outcome-capability runtime is now logged (manual_outreach_asset_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint.
 
 ## What actually worked
-- No meaningful tactic produced a trustworthy win in this window.
+- Execution path produced a live external action with non-flat outcome context: new_blog_comparison_article_deployed. Stars delta: +1
 
 ## What did not work
-- Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.
 - Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface.
 
 ## What is repetitive
 - Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.
 
 ## What is low-signal
-- Recent live external action exists (devto_lane_bootstrap), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 - Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template.
 
 ## What should change now
-- REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
 - Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
 ## Observed risks
 - Repetition risk in outreach opening: "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
-- Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
 - Dormant risk parked for now: reddit_style_repetition_suspended_while_channel_blocked
 
 ## Outcome evaluation
-- Codeberg: samples=9, stars +0, watchers +0, forks +0
-- PyPI: samples=7, stars +0, watchers +0, forks +0
+- Codeberg: samples=9, stars +1, watchers +0, forks +0
+- PyPI: samples=8, stars +0, watchers +0, forks +0
 - GitHub: samples=9, stars +0, watchers +0, forks +0
-- Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
 - GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
 - PyPI has 1498 downloads/month (10/day) — real usage signal that repo metrics don't capture.
 
 ## Repair actions (execute in this run)
-- **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
-  - Repair state: pending_measurement
-  - Kill condition: Still no Codeberg delta after 7 days of new approach
-  - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
 - **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
   - Repair state: pending_measurement
   - Kill condition: N/A (mirror, not primary)
   - Success metric: GitHub mirror shows any adoption delta
 - No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
-- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
+- Measurement-pending reasons: mirror_repo_flat
 
 ## Latest executed marketing action
-- Type: devto_lane_bootstrap
-- Title: devto lane bootstrap
+- Type: new_blog_comparison_article_deployed
+- Title: new blog comparison article deployed
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_175148_devto_bootstrap.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_1656_new_blog_comparison_deployed.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

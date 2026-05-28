@@ -1,13 +1,9 @@
 {
-  "generated_at": "2026-05-28T12:25:00+02:00",
-  "status": "execution_blocked_permanent",
+  "generated_at": "2026-05-28T20:36:42.609707",
+  "status": "permanently_blocked",
   "ok": false,
-  "blocking_reason": "Reddit is IP-blocked at Hetzner Helsinki (95.216.6.222). Tor also blocked — exit node 192.42.116.102 is on Reddit's Tor blocklist. No proxy path exists from this runtime.",
-  "notes": "Reddit is architecturally retired as a distribution channel from this runtime. Tor does not bypass the block. No VPN tools available. See REPAIR_RFC_2026-05-25_reddit_blocked.md.",
-  "repair_status": "closed_no_repair_available_from_this_runtime",
-  "alternative_channel": "GitHub Discussions (available, unblocked)",
-  "raw_request_probe": {
-    "direct_hetzner_ip": {"url": "https://www.reddit.com/login/", "status_code": 403},
-    "tor_exit_node": {"url": "https://www.reddit.com/login/", "exit_ip": "192.42.116.102", "status": "blocked_tor_exit_node"}
-  }
+  "blocking_reason": "Reddit is IP-blocked at Hetzner Helsinki. ARCHITECTURALLY RETIRED 2026-05-28.",
+  "notes": "Reddit pipeline retired per marketing-workflow-audit. See REDDIT_RETIRED.md or the audit run log for details.",
+  "repair_status": "retired_no_further_attempts",
+  "alternative_channel": "GitHub Discussions (available, unblocked, live outbound enabled 2026-05-28)"
 }

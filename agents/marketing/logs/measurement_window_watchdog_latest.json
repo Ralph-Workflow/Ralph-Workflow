@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-05-28T17:26:06.006665",
+  "past_due_count": 0,
+  "kill_count": 0,
+  "escalate_count": 0,
+  "rewrite_count": 0,
+  "wait_count": 0,
+  "stuck_repair_count": 0,
+  "kill_list": [],
+  "escalate_list": [],
+  "rewrite_list": [],
+  "wait_list": [],
+  "stuck_repairs": [],
+  "apollo_blocked": false,
+  "total_active_windows": 1
+}
