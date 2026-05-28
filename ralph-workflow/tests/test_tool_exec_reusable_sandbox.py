@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from typing import TYPE_CHECKING
 
@@ -568,6 +569,103 @@ def test_reusable_sandbox_bounds_idle_workspace_pools_across_workspaces(
     assert len(pool_dirs) <= 2
     retained_keys = {pool_dir.name for pool_dir in pool_dirs}
     assert exec_sandbox._workspace_key(workspaces[-1]) in retained_keys
+
+
+def test_cleanup_base_prunes_expired_current_workspace_idle_slot(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_idle_slot_age_s=1.0,
+    )
+    workspace_key = exec_sandbox._workspace_key(workspace)
+    pool_root = manager._base_dir / workspace_key
+    stale_slot = manager._slot_root(pool_root, workspace_key, 2)
+    stale_slot_ws = stale_slot / "ws"
+    stale_slot_ws.mkdir(parents=True)
+    (stale_slot / ".ralph-sandbox-ready").write_text('{"ready": true}', encoding="utf-8")
+    pid, started_at = exec_sandbox._current_process_identity()
+    payload: dict[str, int | float] = {"pid": pid}
+    if started_at is not None:
+        payload["started_at"] = started_at
+    (stale_slot / ".ralph-exec-owner.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+    (stale_slot_ws / "payload.bin").write_bytes(b"stale")
+    expired_at = 1.0
+    os.utime(stale_slot, (expired_at, expired_at))
+    os.utime(stale_slot_ws, (expired_at, expired_at))
+
+    with manager.acquire(workspace) as sandbox:
+        assert sandbox.exists()
+
+    assert not stale_slot.exists()
+
+
+def test_cleanup_base_enforces_total_byte_budget_across_idle_slots(
+    tmp_path: Path,
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_total_bytes=100,
+        max_pool_bytes=1_024,
+        max_idle_slot_age_s=60.0,
+        max_idle_pool_age_s=60.0,
+    )
+    workspace_a = tmp_path / "workspace-a"
+    workspace_b = tmp_path / "workspace-b"
+    workspace_a.mkdir()
+    workspace_b.mkdir()
+
+    def seed_idle_slot(workspace: Path, slot_index: int, size: int, mtime: float) -> Path:
+        workspace_key = exec_sandbox._workspace_key(workspace)
+        pool_root = manager._base_dir / workspace_key
+        slot_root = manager._slot_root(pool_root, workspace_key, slot_index)
+        ws_root = slot_root / "ws"
+        ws_root.mkdir(parents=True)
+        (slot_root / ".ralph-sandbox-ready").write_text('{"ready": true}', encoding="utf-8")
+        pid, started_at = exec_sandbox._current_process_identity()
+        payload: dict[str, int | float] = {"pid": pid}
+        if started_at is not None:
+            payload["started_at"] = started_at
+        (slot_root / ".ralph-exec-owner.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+        (ws_root / "payload.bin").write_bytes(b"x" * size)
+        os.utime(slot_root, (mtime, mtime))
+        os.utime(ws_root, (mtime, mtime))
+        return slot_root
+
+    now = tmp_path.stat().st_mtime
+    oldest = seed_idle_slot(workspace_a, 1, 32, now - 2.0)
+    newest = seed_idle_slot(workspace_b, 1, 32, now - 1.0)
+
+    summary = manager.cleanup_base()
+
+    assert summary.remaining_bytes <= 100
+    assert not oldest.exists()
+    assert newest.exists()
+
+
+def test_reusable_sandbox_rejects_workspace_copy_over_hard_byte_cap(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "large.bin").write_bytes(b"0123456789")
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_workspace_bytes=4,
+    )
+
+    with pytest.raises(OSError, match="sandbox workspace exceeds safety limit"), manager.acquire(
+        workspace
+    ):
+        pass
+
+    assert not any(manager._base_dir.rglob("slot-*"))
 
 
 def test_same_workspace_acquire_does_not_fail_while_stale_slot_cleanup_is_running(

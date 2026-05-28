@@ -30,6 +30,7 @@ from ralph.mcp.tools.coordination import (
 from ralph.mcp.tools.exec_overlay import _get_private_exec_base
 from ralph.mcp.tools.exec_sandbox import ExecSandboxManager
 from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager._managed_process import ManagedProcessOutputLimitExceededError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
 
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
 DEFAULT_TIMEOUT_MS = 30_000
+_MAX_OUTPUT_BYTES = 1 * 1024 * 1024
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
 _KILL_SIGNAL_ARG_COUNT = 2
 _ARCHIVE_EXTENSIONS = (".tar", ".zip", ".gz", ".bz2", ".xz")
@@ -568,10 +570,21 @@ def _run_subprocess(
     stdout: bytes | None = b""
     stderr: bytes | None = b""
     try:
-        stdout, stderr = handle.communicate_and_cleanup(timeout=timeout_seconds)
+        stdout, stderr = handle.communicate_and_cleanup(
+            timeout=timeout_seconds,
+            output_limit_bytes=_MAX_OUTPUT_BYTES,
+        )
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
         raise
+    except ManagedProcessOutputLimitExceededError as exc:
+        stdout_text = exc.stdout.decode("utf-8", errors="replace")
+        stderr_text = exc.stderr.decode("utf-8", errors="replace")
+        raise ExecutionError(
+            f"Failed to execute '{command[0]}': killed after output exceeded "
+            f"{exc.output_limit_bytes} bytes.\n\n"
+            f"Last stdout:\n{stdout_text}\n\nLast stderr:\n{stderr_text}"
+        ) from exc
     finally:
         _cleanup_exec_orphans(handle.record.pgid, handle.record.pid, effective_pm._psutil)
     return _CompletedProcessAdapter(

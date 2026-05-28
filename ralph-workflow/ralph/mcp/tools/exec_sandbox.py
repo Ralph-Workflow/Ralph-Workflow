@@ -15,12 +15,15 @@ import os
 import shutil
 import time
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.tools._exec_sandbox_busy_error import ExecSandboxBusyError
 from ralph.mcp.tools.exec_overlay import (
+    _GENERATED_DIR_NAMES,
     _current_process_identity,
     _ensure_git_isolation,
+    _ignored_workspace_relative_paths,
     _mirror_workspace,
     _overlay_owner_metadata,
     _process_identity_matches,
@@ -42,6 +45,11 @@ _KEY_LENGTH = 16
 _MIN_SLOTS = 1
 _DEFAULT_MAX_SLOTS = 8
 _DEFAULT_MAX_WORKSPACE_POOLS = 8
+_DEFAULT_MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
+_DEFAULT_MAX_POOL_BYTES = 512 * 1024 * 1024
+_DEFAULT_MAX_WORKSPACE_BYTES = 2 * 1024 * 1024 * 1024
+_DEFAULT_MAX_IDLE_SLOT_AGE_S = 10 * 60.0
+_DEFAULT_MAX_IDLE_POOL_AGE_S = 30 * 60.0
 _INITIAL_AVERAGE_SLOTS = 1.0
 _SLOT_PREFIX = "slot-"
 _BASE_LOCK_FILE = ".ralph-exec-base.lock"
@@ -54,6 +62,29 @@ def _workspace_key(workspace_root: Path) -> str:
     return digest[:_KEY_LENGTH]
 
 
+@dataclass(frozen=True)
+class ExecCacheCleanupSummary:
+    removed_paths: int
+    removed_bytes: int
+    remaining_bytes: int
+
+
+@dataclass(frozen=True)
+class _IdleSlotCandidate:
+    slot_root: Path
+    pool_root: Path
+    last_used_at: float
+    size_bytes: int
+
+
+def _idle_slot_last_used_desc(candidate: _IdleSlotCandidate) -> float:
+    return candidate.last_used_at
+
+
+def _idle_slot_last_used_asc(candidate: _IdleSlotCandidate) -> float:
+    return candidate.last_used_at
+
+
 class ExecSandboxManager:
     """Manage reusable per-workspace exec sandboxes with reset-before-run semantics."""
 
@@ -64,11 +95,21 @@ class ExecSandboxManager:
         lock_timeout_s: float = _DEFAULT_LOCK_TIMEOUT_S,
         max_slots: int = _DEFAULT_MAX_SLOTS,
         max_workspace_pools: int = _DEFAULT_MAX_WORKSPACE_POOLS,
+        max_total_bytes: int = _DEFAULT_MAX_TOTAL_BYTES,
+        max_pool_bytes: int = _DEFAULT_MAX_POOL_BYTES,
+        max_workspace_bytes: int = _DEFAULT_MAX_WORKSPACE_BYTES,
+        max_idle_slot_age_s: float = _DEFAULT_MAX_IDLE_SLOT_AGE_S,
+        max_idle_pool_age_s: float = _DEFAULT_MAX_IDLE_POOL_AGE_S,
     ) -> None:
         self._base_dir = base_dir
         self._lock_timeout_s = lock_timeout_s
         self._max_slots = max(_MIN_SLOTS, max_slots)
         self._max_workspace_pools = max(_MIN_SLOTS, max_workspace_pools)
+        self._max_total_bytes = max(0, max_total_bytes)
+        self._max_pool_bytes = max(0, max_pool_bytes)
+        self._max_workspace_bytes = max(0, max_workspace_bytes)
+        self._max_idle_slot_age_s = max(0.0, max_idle_slot_age_s)
+        self._max_idle_pool_age_s = max(0.0, max_idle_pool_age_s)
         self._last_base_prune_monotonic = 0.0
         self._managed_workspace_keys: set[str] = set()
 
@@ -76,6 +117,13 @@ class ExecSandboxManager:
     def acquire(self, workspace_root: Path) -> Iterator[Path]:
         """Yield a freshly reset sandbox worktree for the given workspace."""
         self._base_dir.mkdir(parents=True, exist_ok=True)
+        self.cleanup_base()
+        workspace_bytes = self._workspace_size_bytes(workspace_root)
+        if workspace_bytes > self._max_workspace_bytes:
+            raise OSError(
+                "sandbox workspace exceeds safety limit "
+                f"({workspace_bytes} bytes > {self._max_workspace_bytes} bytes)"
+            )
         workspace_key = _workspace_key(workspace_root)
         pool_root = self._base_dir / workspace_key
         force_prune = (
@@ -110,6 +158,19 @@ class ExecSandboxManager:
             self._release_lock(sandbox_root)
 
             self._shrink_idle_slots(pool_root, workspace_key)
+            self.cleanup_base()
+
+    def cleanup_base(self) -> ExecCacheCleanupSummary:
+        self._base_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            with self._base_lock():
+                return self._cleanup_base_locked()
+        except ExecSandboxBusyError:
+            return ExecCacheCleanupSummary(
+                removed_paths=0,
+                removed_bytes=0,
+                remaining_bytes=self._path_size_bytes(self._base_dir),
+            )
 
     def _reset(self, workspace_root: Path, sandbox_root: Path, worktree: Path) -> None:
         if not self._is_ready(sandbox_root):
@@ -337,6 +398,190 @@ class ExecSandboxManager:
         if not slot_dirs:
             return True
         return all(not self._slot_is_live(slot_root) for slot_root in slot_dirs)
+
+    def _slot_last_used_at(self, slot_root: Path) -> float:
+        candidates = [slot_root, self._ready_path(slot_root), slot_root / "ws"]
+        latest = 0.0
+        for candidate in candidates:
+            try:
+                if candidate.exists():
+                    latest = max(latest, candidate.stat().st_mtime)
+            except OSError:
+                continue
+        return latest
+
+    def _path_size_bytes(self, path: Path) -> int:
+        if not path.exists():
+            return 0
+        if path.is_file():
+            try:
+                if path.name in {_LOCK_FILE, _POOL_LOCK_FILE, _BASE_LOCK_FILE}:
+                    return 0
+                return path.stat().st_size
+            except OSError:
+                return 0
+        total = 0
+        for child in path.rglob("*"):
+            try:
+                if child.is_file():
+                    if child.name in {_LOCK_FILE, _POOL_LOCK_FILE, _BASE_LOCK_FILE}:
+                        continue
+                    total += child.stat().st_size
+            except OSError:
+                continue
+        return total
+
+    def _workspace_size_bytes(self, workspace_root: Path) -> int:
+        total = 0
+        ignored_relative_paths = _ignored_workspace_relative_paths(workspace_root)
+        for child in workspace_root.rglob("*"):
+            relative_path = child.relative_to(workspace_root)
+            relative_parts = relative_path.parts
+            if any(part in _GENERATED_DIR_NAMES for part in relative_parts):
+                continue
+            if any(
+                relative_path == ignored_path or relative_path.is_relative_to(ignored_path)
+                for ignored_path in ignored_relative_paths
+            ):
+                continue
+            try:
+                if child.is_file():
+                    total += child.stat().st_size
+            except OSError:
+                continue
+        return total
+
+    def _slot_owner_is_collectible(self, slot_root: Path) -> bool:
+        marker = slot_root / ".ralph-exec-owner.json"
+        owner_pid, owner_started_at = _overlay_owner_metadata(slot_root)
+        if not marker.exists() or owner_pid is None:
+            return True
+        return not _process_identity_matches(owner_pid, owner_started_at)
+
+    def _slot_is_collectible(self, slot_root: Path, current_time: float) -> bool:
+        if self._slot_is_locked_by_live_process(slot_root):
+            return False
+        if not self._ready_path(slot_root).is_file():
+            return True
+        age_s = current_time - self._slot_last_used_at(slot_root)
+        if age_s >= self._max_idle_slot_age_s:
+            return True
+        return self._slot_owner_is_collectible(slot_root)
+
+    def _prune_expired_and_broken_slots_locked(
+        self, pool_root: Path, current_time: float
+    ) -> tuple[list[_IdleSlotCandidate], int, int]:
+        idle_candidates: list[_IdleSlotCandidate] = []
+        removed_paths = 0
+        removed_bytes = 0
+        for slot_root in self._all_slot_dirs(pool_root):
+            if self._slot_is_collectible(slot_root, current_time):
+                removed_bytes += self._path_size_bytes(slot_root)
+                shutil.rmtree(slot_root, ignore_errors=True)
+                removed_paths += 1
+                continue
+            if self._slot_is_locked_by_live_process(slot_root):
+                continue
+            idle_candidates.append(
+                _IdleSlotCandidate(
+                    slot_root=slot_root,
+                    pool_root=pool_root,
+                    last_used_at=self._slot_last_used_at(slot_root),
+                    size_bytes=self._path_size_bytes(slot_root),
+                )
+            )
+        return idle_candidates, removed_paths, removed_bytes
+
+    def _enforce_pool_byte_budget_locked(
+        self, idle_candidates: list[_IdleSlotCandidate]
+    ) -> tuple[list[_IdleSlotCandidate], int, int]:
+        removed_paths = 0
+        removed_bytes = 0
+        kept = sorted(idle_candidates, key=_idle_slot_last_used_desc, reverse=True)
+        retained: list[_IdleSlotCandidate] = []
+        retained_bytes = 0
+        for candidate in kept:
+            if retained_bytes + candidate.size_bytes <= self._max_pool_bytes or not retained:
+                retained.append(candidate)
+                retained_bytes += candidate.size_bytes
+                continue
+            removed_bytes += candidate.size_bytes
+            shutil.rmtree(candidate.slot_root, ignore_errors=True)
+            removed_paths += 1
+        return retained, removed_paths, removed_bytes
+
+    def _delete_expired_pool_locked(self, pool_root: Path, current_time: float) -> tuple[int, int]:
+        if self._pool_has_live_leases(pool_root) or self._pool_lock_is_live(pool_root):
+            return 0, 0
+        last_used_at = self._pool_last_used_at(pool_root)
+        if current_time - last_used_at < self._max_idle_pool_age_s:
+            return 0, 0
+        removed_bytes = self._path_size_bytes(pool_root)
+        shutil.rmtree(pool_root, ignore_errors=True)
+        return 1, removed_bytes
+
+    def _cleanup_base_locked(self) -> ExecCacheCleanupSummary:
+        current_time = time.time()
+        removed_paths = 0
+        removed_bytes = 0
+
+        for child in list(self._base_dir.iterdir()):
+            if child.name.startswith(_TRASH_PREFIX):
+                removed_bytes += self._path_size_bytes(child)
+                shutil.rmtree(child, ignore_errors=True)
+                removed_paths += 1
+
+        global_idle_candidates: list[_IdleSlotCandidate] = []
+        for pool_root in list(self._base_dir.iterdir()):
+            if not pool_root.is_dir() or pool_root.name.startswith(_TRASH_PREFIX):
+                continue
+            idle_candidates, pool_removed_paths, pool_removed_bytes = (
+                self._prune_expired_and_broken_slots_locked(pool_root, current_time)
+            )
+            removed_paths += pool_removed_paths
+            removed_bytes += pool_removed_bytes
+            idle_candidates, budget_removed_paths, budget_removed_bytes = (
+                self._enforce_pool_byte_budget_locked(idle_candidates)
+            )
+            removed_paths += budget_removed_paths
+            removed_bytes += budget_removed_bytes
+            if not any(self._all_slot_dirs(pool_root)):
+                removed = self._delete_expired_pool_locked(pool_root, current_time)
+                removed_paths += removed[0]
+                removed_bytes += removed[1]
+                continue
+            global_idle_candidates.extend(idle_candidates)
+
+        current_total_bytes = self._path_size_bytes(self._base_dir)
+        if self._max_total_bytes > 0 and current_total_bytes > self._max_total_bytes:
+            for candidate in sorted(global_idle_candidates, key=_idle_slot_last_used_asc):
+                if current_total_bytes <= self._max_total_bytes:
+                    break
+                if not candidate.slot_root.exists() or self._slot_is_locked_by_live_process(
+                    candidate.slot_root
+                ):
+                    continue
+                candidate_size = self._path_size_bytes(candidate.slot_root)
+                shutil.rmtree(candidate.slot_root, ignore_errors=True)
+                removed_paths += 1
+                removed_bytes += candidate_size
+                current_total_bytes = max(0, current_total_bytes - candidate_size)
+                pool_is_empty = (
+                    candidate.pool_root.exists()
+                    and not any(self._all_slot_dirs(candidate.pool_root))
+                )
+                if pool_is_empty:
+                    removed = self._delete_expired_pool_locked(candidate.pool_root, current_time)
+                    removed_paths += removed[0]
+                    removed_bytes += removed[1]
+                    current_total_bytes = max(0, current_total_bytes - removed[1])
+
+        remaining_bytes = self._path_size_bytes(self._base_dir)
+        return ExecCacheCleanupSummary(
+            removed_paths=removed_paths,
+            removed_bytes=removed_bytes,
+            remaining_bytes=remaining_bytes,
+        )
 
     def _stage_dir_for_deletion(self, path: Path) -> Path | None:
         if not path.exists():
@@ -588,4 +833,4 @@ class ExecSandboxManager:
         return True
 
 
-__all__ = ["ExecSandboxBusyError", "ExecSandboxManager"]
+__all__ = ["ExecCacheCleanupSummary", "ExecSandboxBusyError", "ExecSandboxManager"]
