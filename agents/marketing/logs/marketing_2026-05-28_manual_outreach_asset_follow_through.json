@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-28T00:50:39.141348",
+  "timestamp": "2026-05-28T01:20:55.514122",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -28,6 +28,7 @@
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
       "A channel-ready manual publisher outreach asset already exists (ComputingForGeeks), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.",
+      "The publisher-overlap repair still blocks a net-new same-family burst, but the execution board explicitly surfaces the manual publisher follow-through asset as do-now, so reuse that asset instead of collapsing back to a fake-empty hold.",
       "An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",

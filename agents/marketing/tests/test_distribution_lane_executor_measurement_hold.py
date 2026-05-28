@@ -118,6 +118,70 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             self.assertNotIn('No do-now handoff packet is currently truthful in this review window.', board_text)
             self.assertEqual(targets, ['ComputingForGeeks'])
 
+    def test_execution_board_hides_non_runtime_manual_review_asset_during_publisher_overlap_pause(self):
+        now = datetime(2026, 5, 28, 0, 42, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            distribution_lane_latest = log_dir / 'distribution_lane_latest.json'
+            distribution_lane_latest.write_text(json.dumps({}), encoding='utf-8')
+            discovery_path = log_dir / 'primary_repo_flat_contact_discovery_latest.json'
+            discovery_path.write_text(json.dumps({
+                'targets': [
+                    {
+                        'target': 'ComputingForGeeks',
+                        'channels': [
+                            {'type': 'website', 'value': 'https://computingforgeeks.com/contact/', 'label': 'contact page'},
+                        ],
+                    }
+                ]
+            }), encoding='utf-8')
+            (drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md').write_text('# manual asset\n\n### 1. ComputingForGeeks\n', encoding='utf-8')
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(distribution_lane_executor, 'LOG_DIR', log_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, 'PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH', discovery_path))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_stackoverflow_scheduled_run', return_value=''))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_targets_waiting_for_execution', return_value=['ComputingForGeeks']))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_primary_repo_flat_manual_review_asset_suppressed', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_packet_delivery_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_prepared_only_family_repeat_count', return_value=0))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_json', side_effect=lambda path: {}))
+                stack.enter_context(patch.object(distribution_lane_executor, '_recent_local_executed_action_type', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_backlink_status_latest_path', return_value=log_dir / 'backlink_status_latest.json'))
+                stack.enter_context(patch.object(distribution_lane_executor, '_secondary_surface_repair_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_directory_confirmation_packet_is_current', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_directory_secondary_surface_repair_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_comparison_packet_delivery_still_active', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_measurement_hold_release_run', return_value=''))
+                stack.enter_context(patch.object(distribution_lane_executor, '_adoption_summary', return_value='Codeberg is still flat.'))
+                stack.enter_context(patch.object(distribution_lane_executor, '_reddit_discussion_asset_waiting_for_execution', return_value=None))
+                stack.enter_context(patch.object(distribution_lane_executor, '_reddit_manual_discussion_blocked', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_executor.distribution_lane_selector, '_publisher_outreach_paused_by_repair_window', return_value=True))
+
+                board_path, targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+            self.assertNotIn('### 1. Manual publisher outreach asset', board_text)
+            self.assertIn('manual-only primary-repo-flat follow-through asset exists for ComputingForGeeks', board_text)
+            self.assertIn('No do-now handoff packet is currently truthful in this review window.', board_text)
+            self.assertEqual(targets, [])
+
     def test_distribution_architecture_repair_regenerates_manual_review_asset_when_waiting_target_exists(self):
         now = datetime(2026, 5, 27, 23, 20, 0)
 
@@ -257,7 +321,7 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
             }), encoding='utf-8')
 
             manual_asset = drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md'
-            manual_asset.write_text('# manual asset\n', encoding='utf-8')
+            manual_asset.write_text('# manual asset\n\n### 1. ctxt.dev / Signum\n', encoding='utf-8')
 
             with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
                  patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \

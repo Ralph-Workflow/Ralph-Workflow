@@ -1,5 +1,5 @@
 # Ralph Workflow Primary-Repo-Flat Publisher Contact Packet
-Generated: 2026-05-28T00:12:52
+Generated: 2026-05-28T02:03:01
 
 ## Why this exists now
 - The previously sendable publisher-contact packet drifted out of date during the current review window.

@@ -6676,6 +6676,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                 '# Ralph Workflow Marketing Execution Board\n\n'
                 '## Best executable assets still waiting\n'
                 '### 1. Primary-repo-flat manual follow-through asset\n'
+                '- When: Do now\n'
                 '- Targets: ComputingForGeeks\n',
                 encoding='utf-8',
             )
@@ -6741,8 +6742,15 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                     stack.enter_context(patcher)
                 decision = distribution_lane_selector.choose_distribution_lane(now)
 
-        self.assertNotEqual(decision.lane, 'manual_outreach_asset_follow_through')
-        self.assertNotEqual(decision.lane, 'primary_repo_flat_contact_handoff_packet')
+        self.assertEqual(decision.lane, 'measurement_hold')
+        self.assertTrue(any(
+            'manual-only primary-repo-flat publisher follow-through asset exists' in reason.lower()
+            for reason in decision.reasons
+        ))
+        self.assertFalse(any(
+            'execution board explicitly surfaces the manual publisher follow-through asset as do-now' in reason
+            for reason in decision.reasons
+        ))
 
     def test_reddit_discussion_packet_does_not_count_as_manual_publisher_follow_through(self):
         now = datetime(2026, 5, 25, 17, 27, 0)

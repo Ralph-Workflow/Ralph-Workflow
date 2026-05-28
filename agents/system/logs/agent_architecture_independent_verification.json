@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-28T01:03:08.290478+02:00",
+  "checked_at": "2026-05-28T02:05:20.421464+02:00",
   "verdict": "pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
