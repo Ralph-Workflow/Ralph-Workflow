@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-28T07:34:26.601546",
+  "timestamp": "2026-05-28T09:12:00.475166",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6628,
+      "word_count": 6639,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -30,7 +30,7 @@
     },
     "sitemap": {
       "status": 200,
-      "url_count": 80,
+      "url_count": 81,
       "urls": [
         "https://ralphworkflow.com/",
         "https://ralphworkflow.com/privacy",

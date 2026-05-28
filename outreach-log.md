@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-28 (Thursday) — Overnight refactoring walkthrough tutorial created and deployed (08:04 CEST / 06:04 UTC)
+- **What I executed:** Created and deployed a concrete tutorial blog post to ralphworkflow.com — "Overnight Refactoring with Ralph Workflow: A Walkthrough". The post walks through a real refactoring task (splitting an 800-line Python module) from spec through run through morning-after merge decision, including planning-phase edge-case detection, build-loop auto-fix, and tested artifacts. Committed to Ralph-Site (`8df1f65` / `bb96fda` on main) and successfully deployed via Capistrano to production.
+- **Verification:** Live URL `https://ralphworkflow.com/blog/real-task-walkthrough-overnight-refactoring` returns HTTP 200 with correct content. Blog index at `https://ralphworkflow.com/blog` shows the post at the top (May 28, 2026, tagged `tutorial workflow autonomous-coding unattended refactoring`).
+- **Why this action (Option B from the execution brief):** This was the highest-leverage executable action available — all outbound channels are saturated or in measurement hold, Apollo is in its active window until 2026-06-01, Reddit/IP-blocked remains fail-closed, and the execution board shows no truthful do-now outbound lane. The largest gap in the existing content set was a concrete walkthrough showing what *actually happens* in a real run, which addresses the #1 bottleneck: conversion from interest to free use.
+- **Shared findings reused:** `ADOPTION_FUNNEL_NEXT.md`, `MARKETING_SELF_IMPROVEMENT.md`, `marketing_execution_board_latest.md`, and the existing blog post repository schema (markdown + YAML front matter in `content/blog/`).
+- **Expected outcome:** A new conversion asset that shows prospective evaluators exactly what to expect from a real overnight run, reducing the imagination gap between "interesting concept" and "I would actually try this."
+- **Type:** **EXECUTED / CONTENT_DEPLOY**
+
+## 2026-05-28 (Thursday) — Homepage linked to new walkthrough blog post + deployed (08:18 CEST / 06:18 UTC)
+- **What I executed:** Added a "Read the full walkthrough →" link from the homepage terminal-theater section directly to the new overnight refactoring blog post. Committed (`4afcac4`) and deployed to production via Capistrano.
+- **Verification:** `curl -s https://ralphworkflow.com | grep -o 'walkthrough'` confirms the link is live in the served HTML.
+- **Expected outcome:** Visitors who land on the homepage can now click through to a concrete walkthrough of what a real output looks like, reducing the imagination gap between "concept" and "try it."
+- **Type:** **EXECUTED / CONVERSION_REPAIR**
+
 ## 2026-05-28 (Thursday) — Measurement-hold StackOverflow delivery guard repair (01:59 UTC / 03:59 CEST)
 - **What I executed:** patched `agents/marketing/distribution_lane_executor.py` so measurement-hold follow-through no longer re-surfaces the StackOverflow packet after it was already manually delivered in the same review window, and also suppresses it when a current-window post-cooldown rerun is already logged.
 - **Why this action:** the latest audit is still pointing at flat Codeberg adoption and same-family publisher overlap, but the hold executor could still overstate the next do-now lane by reviving an already-used StackOverflow packet. That is fake-green queue truth, not fresh distribution.
@@ -7436,3 +7450,39 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-28 07:39:33
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 08:14:11
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 08:16:17
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 08:19:11
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 08:25:49
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 08:27:49
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 08:44:31
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 08:46:35
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 09:12:00
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 09:14:54
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-31T00:00:00.

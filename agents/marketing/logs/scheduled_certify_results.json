@@ -1,0 +1,16 @@
+{
+  "scheduled_run_at": "2026-05-28T09:12:15+02:00",
+  "completed_at": "2026-05-28T09:15:30.198208+02:00",
+  "verdict": "fail",
+  "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
+  "blockers": [
+    "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
+  ],
+  "watchpoints": [
+    "reddit monitoring is degraded, but a fresh healthy fallback report still exists inside the grace window",
+    "primary repo adoption remains measurement-pending after shipped repairs",
+    "measurement hold is active, and the current manual/external follow-through queue is consolidated in fresh execution-board artifacts",
+    "Apollo outbound is externally blocked (cloudflare_auth_blocked) with fresh telemetry"
+  ],
+  "verify_exit_code": 1
+}

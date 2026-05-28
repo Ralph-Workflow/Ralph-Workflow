@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-28T05:39:41.461717+00:00",
+  "updated_at": "2026-05-28T07:35:18.314736+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 164,
+      "repeat_count": 169,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -597,7 +597,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T04:38:58.087235+00:00",
+      "last_seen": "2026-05-28T07:35:18.314709+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
@@ -608,7 +608,7 @@
       "name": "marketing_independent_verification",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-22T23:28:25.701171+00:00",
-      "repeat_count": 576,
+      "repeat_count": 585,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2571,7 +2571,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-28T05:39:41.461695+00:00",
+      "last_seen": "2026-05-28T07:35:18.314716+00:00",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -2581,7 +2581,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 333,
+      "repeat_count": 339,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4145,8 +4145,8 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T05:38:17.224664+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T07:20:56.399397+02:00\"\n}",
+      "last_seen": "2026-05-28T07:35:18.314722+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T08:25:30.092808+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
       "closed_at": "2026-05-28T05:38:21.370952+00:00"
@@ -10245,7 +10245,7 @@
       "name": "docs_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-23T15:57:16.529082+00:00",
-      "repeat_count": 70,
+      "repeat_count": 75,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -10357,7 +10357,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-25T23:03:36.781355+00:00",
+      "last_seen": "2026-05-28T07:35:18.314713+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
@@ -10447,7 +10447,7 @@
       "name": "docs_verifier_stability",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T15:57:16.529187+00:00",
-      "repeat_count": 76,
+      "repeat_count": 81,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -10601,9 +10601,9 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-25T23:36:12.958729+00:00",
-      "last_error": "docs verifier repeat-failure window is still open: 23 failed runs in the last 24h, only 1 consecutive pass(es) since the last fail",
-      "likely_cause": "docs verifier repeat-failure window is still open: 23 failed runs in the last 24h, only 1 consecutive pass(es) since the last fail",
+      "last_seen": "2026-05-28T07:35:18.314720+00:00",
+      "last_error": "latest docs verifier verdict is not pass: 'fail'",
+      "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
       "closed_at": "2026-05-25T23:37:06.759196+00:00"
     },
@@ -13185,6 +13185,48 @@
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Nearly every sub-page opens with the same paragraph verbatim. Fine for standalone browsing but starts to feel templated if read sequentially. Each promoted page could earn its own opening instead of cloning the same three sentences.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
       "closed_at": "2026-05-28T04:39:59.512382+00:00"
+    },
+    "marketing-workflow-audit::live_error": {
+      "key": "marketing-workflow-audit::live_error",
+      "name": "marketing-workflow-audit",
+      "category": "live_error",
+      "first_seen": "2026-05-28T06:16:07.362295+00:00",
+      "repeat_count": 9,
+      "owner_domain": "marketing",
+      "escalation_level": "critical",
+      "owner_actions": [
+        {
+          "at": "2026-05-28T06:20:47.553278+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779949247509:4\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.::Incident escalation level=owner: marketing-workflow-audit:live_error repeat_count=3"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-28T07:35:18.314701+00:00",
+      "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+      "likely_cause": "CONTEXT_OVERFLOW: prompt/runtime context exceeded safe model limit; reduce prompt size or split work",
+      "path": null,
+      "closed_at": "2026-05-28T06:20:47.553299+00:00"
+    },
+    "marketing-active-loop::timeout_risk": {
+      "key": "marketing-active-loop::timeout_risk",
+      "name": "marketing-active-loop",
+      "category": "timeout_risk",
+      "first_seen": "2026-05-28T07:34:26.647530+00:00",
+      "repeat_count": 5,
+      "owner_domain": "marketing",
+      "escalation_level": "critical",
+      "owner_actions": [],
+      "status": "open",
+      "blocked_by": [],
+      "last_seen": "2026-05-28T07:35:18.314669+00:00",
+      "last_error": "",
+      "likely_cause": "PRE_TIMEOUT_RISK: script at 4277541ms / 3600s limit - duration exceeds 90%",
+      "path": null
     }
   }
 }

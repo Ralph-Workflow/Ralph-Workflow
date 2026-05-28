@@ -1,0 +1,13 @@
+{
+  "strikes": [
+    {
+      "level": 1,
+      "timestamp": "2026-05-28T08:05:16.772494",
+      "reason": "measurement_hold rate 4.2/hr (limit 2/hr)"
+    }
+  ],
+  "paused_crons": [],
+  "emergency_declared": false,
+  "last_check": null,
+  "history": []
+}

@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-05-28T00:51:04+00:00
+Generated: 2026-05-28T07:12:13+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -12,7 +12,7 @@ Generated: 2026-05-28T00:51:04+00:00
 - market_intelligence_latest.json → comparison/positioning truth reused for outreach framing
 
 ## Contact-ready targets
-- Omitted because live publisher outreach already shipped in the active 7-day review window: AI Saying, AXME Code, Beam, Bollwerk / Werkstatt, Codersera, Codivox, Morph, NxCode, Requesty, SOTAAZ, ToolChase, Toolradar, WyeWorks
+- Omitted because live publisher outreach already shipped in the active 7-day review window: AI Saying, AXME Code, Beam, Bollwerk / Werkstatt, Codersera, Codivox, Dupple, Morph, NxCode, Requesty, SOTAAZ, ToolChase, Toolradar, WyeWorks
 
 ### 1. ctxt.dev / Signum
 - Hook: Tasks Are Not Goals (2026-05-22)
@@ -83,19 +83,3 @@ Generated: 2026-05-28T00:51:04+00:00
   - X/Twitter: https://twitter.com/pageaffairs
   - X/Twitter: https://twitter.com/sitepointdotcom
   - X/Twitter: https://twitter.com/spiky_simon
-
-### 6. Dupple
-- Hook: Claude Code vs Cursor in 2026: Which AI Coding Tool Should You Use?
-- Article/root: https://dupple.com/learn/claude-code-vs-cursor / https://dupple.com/
-- Recommended next step: email/contact send path is now identified
-- Suggested subject: Ralph Workflow for your next AI coding workflow comparison refresh
-- Discovered channels:
-  - email: louis@dupple.com
-  - email: techpresso@dupple.com
-  - work with me page: https://dupple.com/work-with-us
-  - about page: https://dupple.com/about
-  - advertise page: https://dupple.com/advertise
-  - X/Twitter: https://x.com/dupple_com
-  - X/Twitter: https://x.com/louiscorneloup
-  - LinkedIn: https://www.linkedin.com/company/dupple
-  - LinkedIn: https://www.linkedin.com/in/louis-corneloup-0036b5138

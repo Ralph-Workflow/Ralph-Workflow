@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-28T07:35:27.908194",
+  "generated_at": "2026-05-28T10:16:13.822056",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -8,30 +8,45 @@
   ],
   "adoption_metrics": [
     {
-      "platform": "GitHub",
-      "stars": 1,
-      "watchers": 2,
-      "forks": 0,
-      "open_issues": 0,
-      "html_url": "https://github.com/Ralph-Workflow/Ralph-Workflow"
-    },
-    {
       "platform": "Codeberg",
       "stars": 11,
       "watchers": 2,
       "forks": 2,
       "open_issues": 4,
       "html_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+    },
+    {
+      "platform": "PyPI",
+      "downloads_month": 1498,
+      "downloads_week": 166,
+      "downloads_day": 10,
+      "total_downloads": null,
+      "version": "0.8.7",
+      "html_url": "https://pypi.org/project/ralph-workflow/"
+    },
+    {
+      "platform": "GitHub",
+      "stars": 1,
+      "watchers": 2,
+      "forks": 0,
+      "open_issues": 0,
+      "html_url": "https://github.com/Ralph-Workflow/Ralph-Workflow"
     }
   ],
   "recent_window": {
-    "GitHub": {
+    "Codeberg": {
       "samples": 9,
-      "stars_delta_window": 1,
+      "stars_delta_window": 0,
       "watchers_delta_window": 0,
       "forks_delta_window": 0
     },
-    "Codeberg": {
+    "PyPI": {
+      "samples": 4,
+      "stars_delta_window": 0,
+      "watchers_delta_window": 0,
+      "forks_delta_window": 0
+    },
+    "GitHub": {
       "samples": 9,
       "stars_delta_window": 0,
       "watchers_delta_window": 0,
@@ -41,7 +56,9 @@
   "adoption_evaluation": {
     "findings": [
       "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
-      "Codeberg remains the stronger adoption surface and should stay the primary evaluation target."
+      "GitHub mirror adoption is also flat across the recent measurement window.",
+      "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
+      "PyPI has 1498 downloads/month (10/day) — real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [
       "primary_repo_flat"
@@ -52,19 +69,19 @@
   },
   "failing_tactics": [
     "primary_repo_flat_window",
-    "same_family_publisher_overlap"
+    "mirror_repo_flat_window"
   ],
   "worked": [],
   "not_worked": [
-    "Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window."
+    "Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.",
+    "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
     "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.",
-    "5 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.",
     "The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 2 times inside the last 48 hours."
   ],
   "low_signal": [
-    "Recent live external action exists (publisher_email_outreach), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
+    "Recent live external action exists (content_conversion_asset), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution.",
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
@@ -72,7 +89,7 @@
   "should_change_now": [
     "Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.",
     "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
-    "HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review."
+    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
   "dormant_risks": [
     "reddit_style_repetition_suspended_while_channel_blocked"
@@ -89,31 +106,30 @@
       "repair_state": "pending_measurement"
     },
     {
-      "target_tactic": "publisher_outreach_burst",
-      "failure_type": "same_family_publisher_overlap",
+      "target_tactic": "github_mirror_outreach",
+      "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
-      "action": "HOLD another same-day publisher-contact burst. Let the existing Codeberg-first publisher reply windows breathe, and spend the next active cycle on a different family such as directory confirmation, comparison/backlink reuse, StackOverflow demand capture, or due follow-up review.",
-      "kill_condition": "Another audit adds more same-family publisher outreach before the current reply/review windows have materially aged or produced evidence",
-      "success_metric": "Next execution lane is not another same-day publisher-contact burst and produces a cleaner measurement path toward Codeberg movement",
-      "priority": 2,
-      "repair_state": "pending_measurement",
-      "repair_acknowledged_at": "2026-05-27T10:20:34.343589"
+      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
+      "kill_condition": "N/A (mirror, not primary)",
+      "success_metric": "GitHub mirror shows any adoption delta",
+      "priority": 3,
+      "repair_state": "pending_measurement"
     }
   ],
   "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
     "primary_repo_flat",
-    "same_family_publisher_overlap"
+    "mirror_repo_flat"
   ],
   "has_failing_tactics": true,
   "reasons": [
     "Owned content and outreach exist, but repo/public adoption signals are still low.",
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
+    "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "5 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
-    "The most recent runtime activity was distribution_architecture_churn_guard_repair, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.",
+    "The most recent runtime activity was distribution_architecture_churn_guard_repair, but the latest meaningful external/replacement execution remains content_conversion_asset; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (content_conversion_asset), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
@@ -148,7 +164,7 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_distribution_architecture_repair_execution.json",
     "type": "distribution_architecture_churn_guard_repair",
     "title": "Distribution lane execution: distribution_architecture_repair",
     "status": "executed",
@@ -156,12 +172,12 @@
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_063800_distribution_architecture_repair.md"
+    "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_dupple_publisher_outreach.json",
-    "type": "publisher_email_outreach",
-    "title": "publisher email outreach",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_0948_start_here_guide.json",
+    "type": "content_conversion_asset",
+    "title": "content conversion asset",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
@@ -197,9 +213,11 @@
   },
   "shared_artifact_sync": {
     "status": "synced",
-    "selected_lane": "distribution_architecture_repair",
+    "selected_lane": "measurement_hold",
     "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_marketing_execution_board.md",
-    "execution_board_targets": [],
+    "execution_board_targets": [
+      "ComputingForGeeks"
+    ],
     "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json"
   }
 }

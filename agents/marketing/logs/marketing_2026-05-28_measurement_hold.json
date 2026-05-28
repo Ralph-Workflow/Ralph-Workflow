@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-28T06:04:57.730246",
+  "timestamp": "2026-05-28T10:19:29.648063",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -12,24 +12,22 @@
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
       "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
-      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
-    "reasoning": "A manual-only primary-repo-flat publisher follow-through asset exists, but same-family publisher outreach is still paused and no runtime-sendable path is open; preserve the hold instead of surfacing fake follow-through or escalating into another architecture churn cycle.",
+    "reasoning": "The primary-repo-flat publisher lane is stuck in prepared-only packet churn, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
-      "1 live external marketing action(s) already shipped in the last 6 hours.",
-      "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
+      "2 live external marketing action(s) already shipped in the last 6 hours.",
+      "If no new outcome lands first, this short-window congestion clears at 2026-05-28T15:28:00. Before then, another live outbound action would mostly blur measurement.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
-      "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
       "Apollo already has an active measurement window until 2026-06-01T23:11:13.732870+02:00, so do not spend this run repackaging the same outbound lane.",
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
-      "A manual-only primary-repo-flat publisher follow-through asset exists, but the active same-family publisher-overlap repair window says not to resurface that prepared-only asset again until another family advances or the current reply window materially changes.",
+      "A channel-ready manual publisher outreach asset already exists (ComputingForGeeks), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.",
       "An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
@@ -43,9 +41,7 @@
       "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
-      "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "4 prior distribution-architecture repair run(s) already hit this same empty-board window.",
-      "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint."
+      "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
     ]
   },
   "result": {

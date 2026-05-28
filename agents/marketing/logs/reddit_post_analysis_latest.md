@@ -1,6 +1,6 @@
 # Reddit Post Analysis
 
-- Generated: 2026-05-28T07:39:33.242255
+- Generated: 2026-05-28T09:14:54.863054
 - Logged posts analyzed: 28 total / 3 recent-window posts
 - Recent window max age: 96h
 - Filtered 60 cadence/structural records

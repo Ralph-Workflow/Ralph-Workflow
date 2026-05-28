@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
+SCRIPT_NAME = Path(__file__).name
 WORKSPACE = Path("/home/mistlight/.openclaw/workspace")
 SYNC_PATH_SPECS: tuple[str, ...] = (
     ".gitignore",
@@ -192,6 +193,45 @@ def main() -> int:
     result = execute_sync(Path(args.workspace), SYNC_PATH_SPECS, dry_run=args.dry_run)
     print(json.dumps(result, indent=2))
     return 0 if result.get("ok") else 1
+
+
+# ── Self-improvement ──────────────────────────────────────────────────────────
+
+SELF_IMPROVEMENT_MANDATE = {
+    "owner": "marketing_system",
+    "goal": "improve real marketing outcomes, not just technical health",
+    "default_decision_rule": "it is up to the system to decide and proceed",
+    "required_when_outcomes_flat": [
+        "create_new_agents",
+        "repair_existing_agents",
+        "rewrite_prompts",
+        "change_cron_jobs",
+        "patch_marketing_scripts",
+        "add_or_tighten_tests",
+        "retire_stale_paths",
+        "generate_new_distribution_assets",
+    ],
+    "technical_repairs_alone_are_insufficient": True,
+}
+
+# Note: sync_research.py is a git sync reporter, not a direct loop driver.
+# Self-improvement for reporters means: if outcomes are flat, the system should
+# expand what research findings are synced or improve the sync process.
+
+def flat_outcome_count(script_name: str, max_runs: int = 3) -> int:
+    log_path = Path('/home/mistlight/.openclaw/workspace/outreach-log.md')
+    if not log_path.exists():
+        return 0
+    text = log_path.read_text()
+    import re
+    entries = re.findall(rf'###\s+.*?{re.escape(script_name)}.*?(?=\n###|\Z)', text, re.DOTALL)
+    flat_count = sum(1 for e in entries if 'no measurable outcome' in e.lower() or 'flat' in e.lower())
+    return min(flat_count, max_runs)
+
+
+def should_self_improve() -> bool:
+    """Return True if this loop has had flat outcomes for 3+ consecutive runs."""
+    return flat_outcome_count(SCRIPT_NAME.replace('.py','')) >= 3
 
 
 if __name__ == "__main__":
