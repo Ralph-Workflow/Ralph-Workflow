@@ -1,18 +1,18 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-28T14:26:41.126173+02:00
+- Checked: 2026-05-28T18:37:16.153931+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
 - Most urgent fix: Do not certify green until the external owner loop clears its live residue and independent signoff stays current.
 - Verifier status: performed
-- Verifier verdict: qualified_pass
+- Verifier verdict: fail
 
 ## Live topology
 
-- Live Gateway jobs: 26 total / 26 enabled / 0 disabled
-- Live running jobs now: Push research findings to git repo, agent-architecture-watchdog, reddit-pipeline-watchdog, repo-adoption-tracker, system-health-monitor
-- Live last-error residue: blocked-channel-recovery, marketing-churn-watchdog, marketing-workflow-audit, reddit-monitor
-- Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-measurement-hold-release, marketing-reflection, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
+- Live Gateway jobs: 23 total / 23 enabled / 0 disabled
+- Live running jobs now: Push research findings to git repo, agent-architecture-watchdog, apollo-channel-monitor, backlink-tracker, codeberg-github-mirror-sync, marketing-daily, marketing-research-daily, ralph-docs-supervisor-precheck, ralph-site-owner-loop, reddit-pipeline-watchdog, repo-adoption-tracker, system-health-monitor
+- Live last-error residue: blocked-channel-recovery
+- Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-momentum-watchdog, marketing-reflection, marketing-workflow-audit-precheck, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
 - User crontab ownership: ok
 
 ## Severity-ranked findings
@@ -22,7 +22,7 @@
    - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green.
 
 2. **Medium — Live Gateway topology matches the current runtime state**
-   - Mechanism: Direct live cron inspection shows 26 enabled/total-visible jobs, 0 disabled jobs, 5 running jobs, and 4 live last-error jobs.
+   - Mechanism: Direct live cron inspection shows 23 enabled/total-visible jobs, 0 disabled jobs, 12 running jobs, and 1 live last-error jobs.
    - Recommended fix: Keep direct cron inspection as the source of truth on each watchdog run and avoid conflating persisted disabled history with live runtime topology.
 
 3. **Medium — Architecture verifier path is green on freshness and ownership gates**
@@ -35,9 +35,10 @@
 
 ## Repaired this run
 
-- **refreshed_live_topology** — Refreshed the audit against the current live view: 26 enabled jobs, 0 disabled jobs, 5 running jobs, and 4 live last-error jobs.
+- **refreshed_live_topology** — Refreshed the audit against the current live view: 23 enabled jobs, 0 disabled jobs, 12 running jobs, and 1 live last-error jobs.
 - **relocalized_runtime_drift** — Removed stale topology mismatch as an architecture-owned blocker so any remaining red stays localized to the external owner loop.
 - **revalidated_shared_findings_consumption** — Reconfirmed that code-backed marketing consumers still expose machine-verifiable shared market-intelligence consumption.
+- **widened_marketing_audit_timeout** — Raised marketing-workflow-audit timeout to 3600s after observing a 1556216ms last runtime; live residue remains until one clean rerun clears the old timeout error.
 
 ## Still red
 
@@ -48,8 +49,8 @@
 ## Independent verification
 
 - Performed: yes
-- Verdict: qualified_pass
-- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
+- Verdict: fail
+- Summary: Independent verification found architecture blockers that prevent a healthy verifier pass.
 
 ## Small gate passed
 

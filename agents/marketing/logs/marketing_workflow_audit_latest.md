@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-28T14:55:29.001118
+- Generated: 2026-05-28T18:19:03.245018
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -11,8 +11,8 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was distribution_architecture_guard_pause, but the latest meaningful external/replacement execution remains computingforgeeks_contact_form_submission; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (computingforgeeks_contact_form_submission), so the system is still shipping output even though outcome movement is not visible yet.
+- The most recent runtime activity was distribution_architecture_repair_and_concrete_distribution, but the latest meaningful external/replacement execution remains devto_lane_bootstrap; do not confuse follow-through with fresh outcome-bearing distribution.
+- The active loop did execute a live marketing action recently (devto_lane_bootstrap), so the system is still shipping output even though outcome movement is not visible yet.
 - A fresh outcome-capability runtime is now logged (manual_outreach_asset_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint.
 
@@ -27,7 +27,7 @@
 - Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.
 
 ## What is low-signal
-- Recent live external action exists (computingforgeeks_contact_form_submission), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Recent live external action exists (devto_lane_bootstrap), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 - Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template.
 
@@ -43,7 +43,7 @@
 
 ## Outcome evaluation
 - Codeberg: samples=9, stars +0, watchers +0, forks +0
-- PyPI: samples=6, stars +0, watchers +0, forks +0
+- PyPI: samples=7, stars +0, watchers +0, forks +0
 - GitHub: samples=9, stars +0, watchers +0, forks +0
 - Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
 - GitHub mirror adoption is also flat across the recent measurement window.
@@ -63,11 +63,11 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
 
 ## Latest executed marketing action
-- Type: computingforgeeks_contact_form_submission
-- Title: computingforgeeks contact form submission
+- Type: devto_lane_bootstrap
+- Title: devto lane bootstrap
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_1138_cfg_contact_live.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_175148_devto_bootstrap.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.
@@ -94,6 +94,6 @@
 
 ## Shared findings artifact sync
 - Status: synced
-- Refreshed distribution lane: measurement_hold
+- Refreshed distribution lane: distribution_architecture_guard_pause
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-28_marketing_execution_board.md
 - Outcome status: /home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json

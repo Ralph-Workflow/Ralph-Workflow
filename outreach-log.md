@@ -1,5 +1,15 @@
 # Outreach Log
 
+## 2026-05-28 (Thursday) — Conversion-optimized README deployed to Codeberg + GitHub mirror (18:34 CEST / 16:34 UTC)
+- **What I executed:** Rewrote the Codeberg README from a 44-line "not the main product pitch" placeholder into a 108-line conversion surface that answers the four marketing questions above the fold. Committed (`12f55e76`) and pushed to Codeberg main; GitHub mirror synced via `sync_to_github.sh`.
+- **Verification:** Live on Codeberg at `https://codeberg.org/RalphWorkflow/Ralph-Workflow` (108 lines), live on GitHub mirror at `https://github.com/Ralph-Workflow/Ralph-Workflow` (confirmed via `raw.githubusercontent.com`). Codeberg stars: 11, PyPI downloads/month: 1,498 — unchanged as expected (measurement-pending).
+- **Why this action:** The #1 bottleneck is the 1,498 → 11 conversion gap. Every PyPI installer lands on the README. The old README (44 lines) said "not the main product pitch" and directed installers to ralphworkflow.com instead of converting on the spot. No distribution channel is currently unblocked (Reddit IP-blocked, dev.to reCAPTCHA, Apollo Cloudflare, gh CLI not authed), so the only truthful action available was fixing the primary conversion surface itself.
+- **Changes made:** Lead with what/why/who (four questions answered above the fold), comparison table vs. chat-session tools, concrete "what you wake up to" section with terminal output, 4-step quick start from install to finished artifacts, dual star CTAs (top + bottom), built-in capabilities list, documentation table, engineering-practice requirements section. Removed the "not the main product pitch" disclaimer.
+- **Messaging grounded in:** `FOUR_MARKETING_QUESTIONS.md`, `RALPH_WORKFLOW_POSITIONING.md`, `market_intelligence_latest.json` (competitor language comparison).
+- **Note:** PyPI still shows the old 2,840-char README from release 0.8.7 — the new README will appear on PyPI after the next release upload.
+- **Expected outcome:** Higher Codeberg star rate from PyPI installer traffic. This is a conversion-surface fix, not a traffic fix — the 10 downloads/day already exist; the README just failed to convert them.
+- **Type:** **EXECUTED / CONVERSION_SURFACE_REPAIR**
+
 ## 2026-05-28 (Thursday) — Overnight refactoring walkthrough tutorial created and deployed (08:04 CEST / 06:04 UTC)
 - **What I executed:** Created and deployed a concrete tutorial blog post to ralphworkflow.com — "Overnight Refactoring with Ralph Workflow: A Walkthrough". The post walks through a real refactoring task (splitting an 800-line Python module) from spec through run through morning-after merge decision, including planning-phase edge-case detection, build-loop auto-fix, and tested artifacts. Committed to Ralph-Site (`8df1f65` / `bb96fda` on main) and successfully deployed via Capistrano to production.
 - **Verification:** Live URL `https://ralphworkflow.com/blog/real-task-walkthrough-overnight-refactoring` returns HTTP 200 with correct content. Blog index at `https://ralphworkflow.com/blog` shows the post at the top (May 28, 2026, tagged `tutorial workflow autonomous-coding unattended refactoring`).
@@ -7497,4 +7507,8 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-28 15:42:01
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 17:12:01
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

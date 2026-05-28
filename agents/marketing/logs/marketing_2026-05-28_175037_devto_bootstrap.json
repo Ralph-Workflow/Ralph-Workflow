@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-05-28T17:50:37.176218",
+  "action_type": "devto_lane_bootstrap",
+  "status": "executed",
+  "ok": false,
+  "live_external_action": true,
+  "article_url": null,
+  "error": "login_failed",
+  "api_key_stored": false,
+  "codeberg_cta": true,
+  "github_cta": true
+}

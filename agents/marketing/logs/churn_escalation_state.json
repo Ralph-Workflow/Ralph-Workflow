@@ -4,9 +4,37 @@
       "level": 1,
       "timestamp": "2026-05-28T08:05:16.772494",
       "reason": "measurement_hold rate 4.2/hr (limit 2/hr)"
+    },
+    {
+      "level": 1,
+      "timestamp": "2026-05-28T17:17:27.144980",
+      "reason": "churn ratio danger (distribution=2, churn=3)"
+    },
+    {
+      "level": 1,
+      "timestamp": "2026-05-28T17:18:59.910164",
+      "reason": "churn ratio danger (distribution=2, churn=3)"
+    },
+    {
+      "level": 2,
+      "timestamp": "2026-05-28T17:21:42.879482",
+      "reason": "churn ratio danger with 3 prior strikes"
+    },
+    {
+      "level": 2,
+      "timestamp": "2026-05-28T17:22:10.849798",
+      "reason": "churn ratio danger with 4 prior strikes"
+    },
+    {
+      "level": 2,
+      "timestamp": "2026-05-28T17:22:48.902130",
+      "reason": "churn ratio danger with 5 prior strikes"
     }
   ],
-  "paused_crons": [],
+  "paused_crons": [
+    "5e8746f2-2311-48f6-a113-4ac6880b2376",
+    "ce3f9db8-bb49-4f97-9ee3-d4786314c204"
+  ],
   "emergency_declared": false,
   "last_check": null,
   "history": []

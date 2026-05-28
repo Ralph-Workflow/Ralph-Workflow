@@ -77,9 +77,10 @@ STRUCTURAL_REPLACEMENT_ACTION_TYPES = {
     "apollo_outreach_execution",
 }
 
-SYSTEM_DESIGN_REPAIR_ACTION_TYPES = {
+SYSTEM_DESIGN_REPAIR_ACTION_TYPES: set[str] = {
     "distribution_architecture_repair",
     "distribution_architecture_churn_guard_repair",
+    "distribution_architecture_guard_pause",
     "measurement_hold_churn_guard_repair",
     "measurement_hold_release_reschedule_repair",
     "post_hold_release_prompt_guard_repair",
@@ -88,7 +89,80 @@ SYSTEM_DESIGN_REPAIR_ACTION_TYPES = {
     "apollo_cloudflare_truthfulness_repair",
     "apollo_runtime_truth_repair",
     "apollo_followup_truth_repair",
+    # Extended coverage from May 28 repair-spike analysis:
+    "primary_repo_flat_contact_discovery_repair",
+    "primary_repo_flat_status_churn_guard_repair",
+    "primary_repo_flat_delivery_guard_repair",
+    "measurement_hold_stackoverflow_delivery_guard_repair",
+    "measurement_hold_release_payload_guard_repair",
+    "measurement_hold_truth_fingerprint_repair",
+    "stackoverflow_lane_runtime_repair",
+    "guard_pause_release_boundary_repair",
+    "truth_snapshot_alias_self_heal_repair",
+    "distribution_architecture_guard_pause_truth_repair",
+    "distribution_architecture_conversion_repair",
+    "distribution_lane_latest_truth_repair",
+    "readme_repo_conversion_repair",
+    "reddit_latest_truth_repair",
+    "process_repair_and_new_asset",
 }
+
+# Also catch any repair action not explicitly listed.
+# Every *_repair, *_guard_pause, *_churn_guard_*, and *_truth_repair suffix counts.
+_REPAIR_ACTION_SUFFIXES = (
+    "_repair",
+    "_guard_pause",
+    "_churn_guard",
+    "_truth_repair",
+)
+
+
+def _is_self_repair_action(action_type: str) -> bool:
+    """Return True for any action that looks like a system-design repair."""
+    action_type = str(action_type).strip()
+    if not action_type:
+        return False
+    if action_type in SYSTEM_DESIGN_REPAIR_ACTION_TYPES:
+        return True
+    return any(action_type.endswith(suffix) for suffix in _REPAIR_ACTION_SUFFIXES) or \
+        "_churn_guard_" in action_type
+
+MAX_SYSTEM_DESIGN_REPAIRS_PER_24H = 5
+
+
+def _count_system_design_repairs_in_window(now: datetime, hours: float = 24) -> int:
+    """Count how many system-design repair actions ran in the past N hours.
+
+    This prevents the self-repair death spiral where the system repairs itself
+    more often than it ships distribution.
+    """
+    cutoff = now - timedelta(hours=hours)
+    count = 0
+    try:
+        for entry in sorted(LOG_DIR.glob("marketing_2026-*_*.json"), reverse=True):
+            try:
+                data = json.loads(entry.read_text(encoding="utf-8"))
+                action_type = str(data.get("chosen_action", {}).get("type") or data.get("action_type") or "")
+                ts_str = data.get("timestamp", "")
+                ts = parse_iso_date(ts_str)
+                if ts is None or not _is_self_repair_action(action_type):
+                    continue
+                if ts >= cutoff:
+                    count += 1
+                else:
+                    break
+            except (json.JSONDecodeError, OSError):
+                continue
+    except OSError:
+        pass
+    return count
+
+
+def _self_repair_throttle_active(now: datetime) -> bool:
+    """Return True when the system-design self-repair throttle is engaged."""
+    count = _count_system_design_repairs_in_window(now)
+    return count >= MAX_SYSTEM_DESIGN_REPAIRS_PER_24H
+
 
 DIRECTORY_LANE_ACTION_TYPES = {
     "directory_submission_execution",
@@ -1750,6 +1824,18 @@ def _distribution_architecture_guard_execution_is_stale(
 
 def main() -> int:
     now = datetime.now()
+
+    # Material-change gate: skip daily run if nothing changed since last check
+    # Avoids duplicating work already done by the 4-hourly momentum watchdog
+    try:
+        from agents.marketing.material_change_gate import should_run
+        ok, reason = should_run()
+        if not ok:
+            print(json.dumps({'ok': True, 'gate_skip': True, 'reason': reason, 'timestamp': now.isoformat()}), flush=True)
+            return 0
+    except ImportError:
+        pass  # fail-open
+
     weekday = now.weekday()
     is_monday = weekday == 0
 
@@ -1782,6 +1868,18 @@ def main() -> int:
         if discovery_refresh_log is not None:
             print(f"[run.py] Refreshed stale primary-repo-flat contact discovery: {discovery_refresh_log}", flush=True)
         distribution_lane = choose_distribution_lane(now, persist_latest_artifacts=False)
+        if (
+            getattr(distribution_lane, 'lane', '') in DISTRIBUTION_ARCHITECTURE_REUSE_LANES
+            and _self_repair_throttle_active(now)
+            and not getattr(distribution_lane, 'lane', '') == 'distribution_architecture_guard_follow_through'
+        ):
+            count_24h = _count_system_design_repairs_in_window(now)
+            distribution_lane = replace(
+                distribution_lane,
+                lane='measurement_hold',
+                reason=f'Self-repair throttle engaged ({count_24h} system-design repairs in 24h, max {MAX_SYSTEM_DESIGN_REPAIRS_PER_24H}); hold until measurement clears or new lane surfaces.',
+                reasons=[f'Self-repair throttle: {count_24h}/{MAX_SYSTEM_DESIGN_REPAIRS_PER_24H} system-design repairs used in 24h'],
+            )
         if pending_repairs:
             distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs, now=now)
         distribution_lane = _collapse_non_truthful_hold_lane_to_measurement_hold(
