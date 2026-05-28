@@ -1,6 +1,12 @@
 {
   "jobs": [
     {
+      "name": "marketing-dead-loop-watchdog",
+      "description": "Detects >=3 consecutive dead-loop actions (measurement_hold, distribution_architecture_repair) without a live external action. Escalates by patching the distribution lane to dead_loop_escalation.",
+      "schedule_hint": "Every hour, run before the marketing-active-loop cron",
+      "command": "python3 agents/marketing/dead_loop_watchdog.py"
+    },
+    {
       "name": "marketing-distribution-hunter",
       "description": "Runs the distribution hunter so system-design repairs create fresh execution artifacts instead of stopping at monitoring.",
       "schedule_hint": "Every 6 hours",
