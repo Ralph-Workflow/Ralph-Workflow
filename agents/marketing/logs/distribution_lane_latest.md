@@ -1,11 +1,11 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-28T21:36:01
+Generated: 2026-05-28T23:38:19
 Chosen lane: **distribution_architecture_guard_pause**
 
 ## Why this lane
 - The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; a newer concrete repair already ran after the current guard pause started, so pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.
-- 9 live external marketing action(s) already shipped in the last 6 hours.
-- If no new outcome lands first, this short-window congestion clears at 2026-05-28T21:47:51. Before then, another live outbound action would mostly blur measurement.
+- 6 live external marketing action(s) already shipped in the last 6 hours.
+- If no new outcome lands first, this short-window congestion clears at 2026-05-28T23:44:49. Before then, another live outbound action would mostly blur measurement.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo already has an active measurement window until 2026-06-01T23:11:13.732870+02:00, so do not spend this run repackaging the same outbound lane.
@@ -26,7 +26,7 @@ Chosen lane: **distribution_architecture_guard_pause**
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
-- 47 prior distribution-architecture repair run(s) already hit this same empty-board window.
+- 1 prior distribution-architecture repair run(s) already hit this same empty-board window.
 - A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
 
 ## Shared findings reused

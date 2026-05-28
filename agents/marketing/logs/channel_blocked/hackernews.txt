@@ -1,0 +1,4 @@
+CHANNEL PERMANENTLY BLOCKED: hackernews
+Reason: Human-gated posting. Show HN packet created but unposted across 9+ audit cycles (structural ceiling rule triggered at 3). Packet generation must stop. Requires human to post.
+Blocked at: 2026-05-28T20:14:00+00:00
+To unblock: delete this file, then have a human post the Show HN packet.

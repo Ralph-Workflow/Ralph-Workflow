@@ -1,11 +1,13 @@
 {
-  "timestamp": "2026-05-28 12:27 UTC",
+  "timestamp": "2026-05-28 20:58 UTC",
   "results": [
     {
       "name": "ralph-docs-watchdog",
       "repairs": [],
-      "errors": [],
-      "status": "ok",
+      "errors": [
+        "verifier artifact missing required pass phrase"
+      ],
+      "status": "error",
       "checkerResult": "DOCS_QUALITY_OK"
     },
     {

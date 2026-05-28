@@ -1,5 +1,33 @@
 # Outreach Log
 
+## 2026-05-28 (Thursday) — Marketing workflow audit #9: spidering guard, post-commit verification, critical-path blockers (22:15 CEST / 20:15 UTC)
+- **Audit context:** 80+ log files generated on May 28 alone, 62 have no `type` field (unknown). 3 lanes permanently blocked (dev.to, reddit, smtp). PyPI: 1,498 monthly downloads → only 12 stars (0.10% rate). Apollo: 19% spam rate, 193 spam-blocked. System at autonomous execution ceiling.
+- **Repairs executed in this run:**
+  - ✅ `agents/marketing/channel_spidering_guard.py` — NEW. Permanent stop-files for dev.to, reddit, smtp-outreach. Cooldown enforcement for all channels. Auto-spidering detection (3+ rapid hits → permablock). Auto-failure block (10 consecutive failures → permablock). Integrated as pre-dispatch check in `distribution_lane_executor.py`.
+  - ✅ `agents/marketing/post_commit_verification.py` — NEW. Scans marketing logs for `live_external_action: true` claims, verifies associated git commits exist in repo. Records fake-green detections to `fake_green_detected.json`.
+  - ✅ `agents/marketing/material_change_gate.py` — strengthened: now includes channel spidering guard state in fingerprint to prevent churn from blocked-channel loops.
+  - ✅ `agents/marketing/distribution_lane_executor.py` — integrated: spidering guard check added at top of `execute_distribution_lane()`. Maps lane names to guard channels (devto_bootstrap→dev.to, reddit_monitor→reddit). Returns `spidering_blocked` status when guard rejects.
+  - ✅ `agents/marketing/run.py` — added channel_spidering_guard import.
+  - ✅ `agents/marketing/logs/audit_critical_path_blockers_2026-05-28.md` — NEW. Documents all critical-path blockers with human handoff instructions.
+- **Blocker: PyPI credentials still missing.** 10/day installers see old 0.8.7 README. New conversion-optimized README (with Codeberg-primary CTA, comparison table) exists on Codeberg/GitHub but never released to PyPI. This is the single highest-ROI action the system cannot do autonomously. Handoff documented in `audit_critical_path_blockers_2026-05-28.md`.
+- **Blocker: Apollo body still burning sender reputation.** 19% spam rate, 94.1h left in window, A/B variant drafted at `drafts/2026-05-28_apollo_ab_variant_packet.md` but Cloudflare blocks portal access. Review decision on June 1.
+- **Satisfied: CTA fix already deployed.** Prior audit's fake-green concern (CTA fixes only in stash) was resolved by another agent — remote HEAD already had the CTA fix (`2bca6fe`) and SEO blog post.
+- **System reached measurement saturation.** All external distribution requires human credentials. Autonomous ceiling: blog content + git push, GitHub Discussions search, metrics monitoring, SEO tracking, self-audit.
+- **What changed from prior run:** The system now has programmatic spidering guards, post-commit verification, and documented critical-path blockers with explicit human handoff instructions. The 80-log/day churn rate should drop to ~6/day via material-change gate + spidering guard.
+
+## 2026-05-28 (Thursday) — Marketing workflow audit #8: structural repairs, Apollo A/B variant, Show HN pivot, publisher outreach queued (21:50 CEST / 19:50 UTC)
+- **Audit context:** Full re-analysis of marketing loop against adoption goals. Codeberg 12⭐ (+1), PyPI 10/day, Apollo 0.14% reply + 193 spam-blocked, HN/Lobsters stalemated 8 cycles, Reddit IP-blocked fail-closed, publisher discovery now production-quality.
+- **Changes executed:**
+  1. **Apollo A/B anti-spam variant** (`drafts/2026-05-28_apollo_ab_variant_packet.md`) — 0.14% reply rate + 19% spam rate means current body is actively destroying sender reputation. New variant: personal-question opener, explicit opt-out, 8 lines (down from 12), no bullets. Expected: 1%+ reply rate, <10% spam rate.
+  2. **Show HN packet** (`drafts/2026-05-28_show_hn_packet.md`) — breaks 8-cycle stalemate by switching from comparison-essay HN/Lobsters framing to Show HN category. Personal voice, concrete outcome, 3-step quick-start, Codeberg-primary link. If unposted next window, mark HN lane structurally blocked.
+  3. **Publisher outreach queued** (`drafts/2026-05-28_publisher_outreach_packet.md`) — 3 targeted emails (GetStream.io, OpenAgents.org, AppIntent.com), all comparison articles citing competitors, zero prior contact. SMTP unavailable from this env → queued for manual send.
+  4. **Publisher discovery bug fixed** — DDG redirect URL parsing repaired (was returning DDG redirect URLs instead of real article URLs) and NoneType crash in domain extraction patched in `publisher_discovery_lane.py`.
+  5. **Structural findings codified** in `MARKETING_SELF_IMPROVEMENT.md` — Apollo message failure rule, Show HN pivot rule, SMTP gate rule, packet inflation rule, blocked-vs-autonomous lane inventory.
+- **Shared findings reused:** `marketing_workflow_audit_latest.json`, `adoption_metrics_latest.md`, `market_intelligence_latest.json`, `outreach-log.md`, `reddit_post_analysis.md`, publisher discovery queue.
+- **Current truthful status:** Codeberg moving glacially (+1⭐ this window), PyPI conversion surface deployed but measurement-pending, Apollo body failing on spam classification (not targeting), Apollo measurement window until June 1, HN/Lobsters still human-gated, all autonomous distribution lanes blocked by auth/SMTP gates. Highest remaining leverage is autonomous content creation and conversion surface optimization.
+- **Next truthful checkpoint:** Apollo measurement window review at June 1; if body not updated in Apollo by then, mark sequence as failing with body failure as primary cause rather than targeting failure.
+- **Type:** **AUDIT / STRUCTURAL_REPAIRS / PACKETS_QUEUED**
+
 ## 2026-05-28 (Thursday) — Conversion-optimized README deployed to Codeberg + GitHub mirror (18:34 CEST / 16:34 UTC)
 - **What I executed:** Rewrote the Codeberg README from a 44-line "not the main product pitch" placeholder into a 108-line conversion surface that answers the four marketing questions above the fold. Committed (`12f55e76`) and pushed to Codeberg main; GitHub mirror synced via `sync_to_github.sh`.
 - **Verification:** Live on Codeberg at `https://codeberg.org/RalphWorkflow/Ralph-Workflow` (108 lines), live on GitHub mirror at `https://github.com/Ralph-Workflow/Ralph-Workflow` (confirmed via `raw.githubusercontent.com`). Codeberg stars: 11, PyPI downloads/month: 1,498 — unchanged as expected (measurement-pending).

@@ -30,6 +30,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from agents.marketing import distribution_lane_selector, outcome_execution_board_runner
+from agents.marketing.channel_spidering_guard import (
+    guard_check,
+    guard_record,
+    guard_block,
+)
 from agents.marketing.distribution_lane_executor import (
     execute_distribution_lane,
     _schedule_measurement_hold_release_run,

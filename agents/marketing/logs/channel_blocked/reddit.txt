@@ -1,0 +1,4 @@
+CHANNEL PERMANENTLY BLOCKED: reddit
+Reason: IP-blocked at Hetzner Helsinki. Tor also blocked. No proxy path available. ARCHITECTURALLY RETIRED 2026-05-28.
+Blocked at: 2026-05-28T20:09:33.050184+00:00
+To unblock: delete this file AND fix the underlying issue.

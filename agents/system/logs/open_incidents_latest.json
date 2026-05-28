@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-28T19:20:42.571174+00:00",
+  "updated_at": "2026-05-28T19:54:45.773507+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 195,
+      "repeat_count": 198,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -709,7 +709,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T19:17:33.219734+00:00",
+      "last_seen": "2026-05-28T19:54:45.773440+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
@@ -720,7 +720,7 @@
       "name": "marketing_independent_verification",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-22T23:28:25.701171+00:00",
-      "repeat_count": 621,
+      "repeat_count": 625,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2683,7 +2683,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-28T19:20:42.571127+00:00",
+      "last_seen": "2026-05-28T19:54:45.773452+00:00",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -2693,7 +2693,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 372,
+      "repeat_count": 376,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4401,8 +4401,8 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T19:20:42.571157+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T21:17:31.257070+02:00\"\n}",
+      "last_seen": "2026-05-28T19:54:45.773483+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T21:40:14.599148+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
       "closed_at": "2026-05-28T17:07:35.489586+00:00"
@@ -5461,7 +5461,7 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T00:07:36.250195+00:00",
-      "repeat_count": 369,
+      "repeat_count": 373,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -7775,7 +7775,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-28T19:20:42.571133+00:00",
+      "last_seen": "2026-05-28T19:54:45.773463+00:00",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -7802,7 +7802,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T05:06:09.078715+00:00",
-      "repeat_count": 55,
+      "repeat_count": 59,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -7970,9 +7970,9 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T19:20:42.571136+00:00",
+      "last_seen": "2026-05-28T19:54:45.773467+00:00",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Well-aligned docs system. README \u2192 START_HERE \u2192 docs/README journey is coherent, the 'simple at the center, powerful in composition' framing is consistent across all surfaces, and next-click pages reinforce the same story rather than fighting it. Minor internal-language residue in the feature list does not derail the top-level narrative.",
+      "likely_cause": "Docs system is healthy and well-aligned. Simple-core \u2192 composable framing is consistent across all surfaces. README \u2192 START_HERE \u2192 docs/README journey is coherent and each page has a clear role. Promoted next-click pages reinforce the same positioning without drift.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
       "closed_at": "2026-05-28T12:06:30.207064+00:00"
     },
@@ -10517,7 +10517,7 @@
       "name": "docs_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-23T15:57:16.529082+00:00",
-      "repeat_count": 89,
+      "repeat_count": 93,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -10685,7 +10685,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T19:20:42.571123+00:00",
+      "last_seen": "2026-05-28T19:54:45.773446+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
@@ -10696,7 +10696,7 @@
       "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T15:57:16.529121+00:00",
-      "repeat_count": 17,
+      "repeat_count": 21,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -10773,7 +10773,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-28T19:20:42.571130+00:00",
+      "last_seen": "2026-05-28T19:54:45.773458+00:00",
       "last_error": "Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -10783,7 +10783,7 @@
       "name": "docs_verifier_stability",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T15:57:16.529187+00:00",
-      "repeat_count": 95,
+      "repeat_count": 99,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -10993,7 +10993,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T19:20:42.571154+00:00",
+      "last_seen": "2026-05-28T19:54:45.773478+00:00",
       "last_error": "latest docs verifier verdict is not pass: 'fail'",
       "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
@@ -13834,13 +13834,13 @@
       "name": "marketing-research-daily",
       "category": "timeout_risk",
       "first_seen": "2026-05-28T08:42:21.064310+00:00",
-      "repeat_count": 2,
+      "repeat_count": 6,
       "owner_domain": "marketing",
-      "escalation_level": "owner",
+      "escalation_level": "critical",
       "owner_actions": [],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T19:20:42.571104+00:00",
+      "last_seen": "2026-05-28T19:54:45.773388+00:00",
       "last_error": "",
       "likely_cause": "UNKNOWN: no error details",
       "path": null,
@@ -13851,13 +13851,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 40,
+      "repeat_count": 44,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-05-28T19:20:42.571119+00:00",
+      "last_seen": "2026-05-28T19:54:45.773430+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null
@@ -13914,12 +13914,13 @@
       "owner_domain": "docs",
       "escalation_level": "none",
       "owner_actions": [],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
       "last_seen": "2026-05-28T19:20:42.571145+00:00",
       "last_error": "Rename 'Artifact handoff' in the Built-in capabilities list to avoid surfacing 'artifacts' as a featured concept per positioning guardrails \u2014 e.g., 'Cross-agent handoff' or similar",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Rename 'Artifact handoff' in the Built-in capabilities list to avoid surfacing 'artifacts' as a featured concept per positioning guardrails \u2014 e.g., 'Cross-agent handoff' or similar",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-28T19:54:05.926940+00:00"
     },
     "docs_agentic_review_mustFix_comparison-table-row-agents-hand-off-work-throug::review_followup_required": {
       "key": "docs_agentic_review_mustFix_comparison-table-row-agents-hand-off-work-throug::review_followup_required",
@@ -13930,11 +13931,28 @@
       "owner_domain": "docs",
       "escalation_level": "none",
       "owner_actions": [],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
       "last_seen": "2026-05-28T19:20:42.571151+00:00",
       "last_error": "Comparison table row 'Agents hand off work through repo-native artifacts' uses 'repo-native artifacts' where simpler language would do",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Comparison table row 'Agents hand off work through repo-native artifacts' uses 'repo-native artifacts' where simpler language would do",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-28T19:54:05.926942+00:00"
+    },
+    "docs_agentic_review_mustFix_github-mirror-readme-built-in-capabilities-still::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_github-mirror-readme-built-in-capabilities-still::review_followup_required",
+      "name": "docs_agentic_review_mustFix_github-mirror-readme-built-in-capabilities-still",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-28T19:54:05.926915+00:00",
+      "repeat_count": 4,
+      "owner_domain": "docs",
+      "escalation_level": "owner",
+      "owner_actions": [],
+      "status": "open",
+      "blocked_by": [],
+      "last_seen": "2026-05-28T19:54:45.773473+00:00",
+      "last_error": "GitHub mirror README 'Built-in capabilities' still has 'Artifact handoff' as a featured bullet \u2014 borderline internal leakage for a top-level surface. Could be softened or moved under the 'Why it's different' comparison table where it already appears in a more acceptable form.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: GitHub mirror README 'Built-in capabilities' still has 'Artifact handoff' as a featured bullet \u2014 borderline internal leakage for a top-level surface. Could be softened or moved under the 'Why it's different' comparison table where it already appears in a more acceptable form.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
     }
   }

@@ -1,9 +1,9 @@
 # Adoption Metrics
 
-- Timestamp: 2026-05-28T20:23:30.028650
+- Timestamp: 2026-05-28T23:02:35.026449
 
 ## Codeberg (primary)
-- Stars: 12 (+1)
+- Stars: 12 (+0)
 - Watchers: 2 (+0)
 - Forks: 2 (+0)
 - Open issues: 4

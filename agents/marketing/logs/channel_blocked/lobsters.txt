@@ -1,0 +1,4 @@
+CHANNEL PERMANENTLY BLOCKED: lobsters
+Reason: Human-gated invite-wall. 9+ cycles stalemated, no invitation obtained. Packet generation must stop. Requires human to obtain invite and post.
+Blocked at: 2026-05-28T20:14:00+00:00
+To unblock: delete this file, then have a human obtain a Lobsters invitation and post.
