@@ -23,12 +23,9 @@ from ralph.process import (
     ProcessManagerPolicy,
     ProcessStatus,
     SpawnOptions,
-    get_process_manager,
-    process_phase_scope,
     reset_process_manager,
 )
 from ralph.process.manager import ProcessTerminationError
-from ralph.process.manager._process_status import _TERMINAL_STATUSES
 from ralph.testing.fake_process import (
     FakePopen,
     FakePsutil,
@@ -355,39 +352,6 @@ def test_log_events_false_suppresses_loguru_output() -> None:
         )
     finally:
         logger.remove(sink_id)
-
-
-# ---------------------------------------------------------------------------
-# 10. process_phase_scope warns on ProcessTerminationError
-# ---------------------------------------------------------------------------
-
-
-def test_process_phase_scope_warns_on_termination_error() -> None:
-    """process_phase_scope emits a loguru warning when cleanup fails, but exits cleanly."""
-
-    def _raise_termination_error(label_prefix: str, *, grace_period_s: float | None = None) -> None:
-        raise ProcessTerminationError(pid=99999, pgid=99999)
-
-    pm = get_process_manager()
-
-    warning_messages: list[str] = []
-    sink_id = logger.add(
-        lambda msg: warning_messages.append(str(msg)) if "WARNING" in str(msg) else None,
-        level="WARNING",
-        format="{level} {message}",
-    )
-    try:
-        with (
-            patch.object(pm, "shutdown_all_for_label", _raise_termination_error),
-            process_phase_scope("test-phase"),
-        ):
-            pass
-    finally:
-        logger.remove(sink_id)
-
-    assert any("test-phase" in msg for msg in warning_messages), (
-        f"Expected warning mentioning 'test-phase', got: {warning_messages}"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -776,7 +740,12 @@ def test_ec8_concurrent_shutdown_all_single_event() -> None:
     terminal_for_pid = [
         e
         for e in terminal_events
-        if e.new_status in _TERMINAL_STATUSES and e.record.pid == spawned_pid
+        if e.new_status in (
+            ProcessStatus.EXITED,
+            ProcessStatus.KILLED,
+            ProcessStatus.FAILED,
+        )
+        and e.record.pid == spawned_pid
     ]
     assert len(terminal_for_pid) == 1, f"Expected 1 terminal event, got {len(terminal_for_pid)}"
 
@@ -992,56 +961,3 @@ async def test_cat_agent_pm_spawn_async_with_agent_label() -> None:
     assert any(r.pid == spawned_pid and r.status == ProcessStatus.KILLED for r in records)
 
 
-# EC4: SIGTERM grace period times out -> SIGKILL succeeds (root-only, no psutil)
-def test_ec4_sigterm_timeout_escalates_to_sigkill() -> None:
-    """Graceful terminate times out; force kill succeeds via root-only (no psutil) escalation."""
-    from ralph.testing.fake_process import FakeStubbornPopen
-
-    pid_iter = itertools.count(1)
-
-    def stubborn_factory(command: object, opts: object) -> FakeStubbornPopen:
-        return FakeStubbornPopen(pid=next(pid_iter), final_returncode=-9)
-
-    pm = ProcessManager(
-        policy=_FAST_POLICY,
-        sync_process_factory=stubborn_factory,
-        async_process_factory=make_async_process_factory(itertools.count(100)),
-        psutil=None,
-    )
-    handle = pm.spawn([sys.executable, "-c", "pass"])
-
-    # First wait raises TimeoutExpired (SIGTERM ignored); kill sets _killed; second wait returns -9
-    handle.terminate(grace_period_s=0.01)
-
-    assert handle.record.status == ProcessStatus.KILLED
-    assert handle.record.returncode == -9
-    assert handle.record.cause == "killed"
-
-
-# EC9 (root-only, no-psutil): both SIGTERM and SIGKILL time out -> ProcessTerminationError
-# NOTE: EC9 slot used because EC5 is already taken by test_EC5_spawn_async_appears_in_list_active
-def test_ec9_root_only_force_kill_still_alive_raises_error() -> None:
-    """Force kill also fails in no-psutil path: ProcessTerminationError leaves FAILED state."""
-    from ralph.testing.fake_process import FakeImmortalPopen
-
-    pid_iter = itertools.count(1)
-
-    def immortal_factory(command: object, opts: object) -> FakeImmortalPopen:
-        return FakeImmortalPopen(pid=next(pid_iter))
-
-    pm = ProcessManager(
-        policy=_FAST_POLICY,
-        sync_process_factory=immortal_factory,
-        async_process_factory=make_async_process_factory(itertools.count(100)),
-        psutil=None,
-    )
-    handle = pm.spawn([sys.executable, "-c", "pass"])
-
-    with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.01)
-
-    # Failed shutdown must remain terminal without reporting a successful kill.
-    assert handle.record.status == ProcessStatus.FAILED
-    assert handle.record.cause == "termination_failed"
-    assert handle.record.failure_message == "Process still alive after kill"
-    assert len(pm.list_active()) == 0

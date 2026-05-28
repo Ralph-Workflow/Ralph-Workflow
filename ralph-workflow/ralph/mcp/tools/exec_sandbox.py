@@ -247,6 +247,9 @@ class ExecSandboxManager:
 
     def _shrink_idle_slots(self, pool_root: Path, workspace_key: str) -> None:
         with self._pool_lock(pool_root):
+            if self._has_active_slot_locks(pool_root, workspace_key):
+                return
+
             state = self._load_pool_state(pool_root)
             target_slots = int(state["target_slots"])
             average_slots = float(state["average_slots"])
@@ -268,6 +271,13 @@ class ExecSandboxManager:
                 if self._lock_path(slot_root).exists():
                     continue
                 shutil.rmtree(slot_root, ignore_errors=True)
+
+    def _has_active_slot_locks(self, pool_root: Path, workspace_key: str) -> bool:
+        for slot_index in self._slot_indices(pool_root, workspace_key):
+            slot_root = self._slot_root(pool_root, workspace_key, slot_index)
+            if self._lock_path(slot_root).exists():
+                return True
+        return False
 
     def _prune_stale_slot_dirs(self, pool_root: Path) -> None:
         for child in pool_root.iterdir():

@@ -440,9 +440,11 @@ class ProcessManager:
         try:
             root = psutil_mod.process_from_pid(record.pid)
             children = root.children(recursive=True)
-        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+        except psutil_mod.NoSuchProcess:
             self._mark_killed(record)
             return
+        except psutil_mod.AccessDenied:
+            self._raise_access_denied_termination(record)
 
         all_procs = [root, *children]
         for proc in all_procs:
@@ -478,9 +480,11 @@ class ProcessManager:
         try:
             root = psutil_mod.process_from_pid(record.pid)
             children = root.children(recursive=True)
-        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+        except psutil_mod.NoSuchProcess:
             self._mark_killed(record, proc.poll())
             return
+        except psutil_mod.AccessDenied:
+            self._raise_access_denied_termination(record, proc.poll())
 
         all_procs = [root, *children]
         for p in all_procs:
@@ -535,8 +539,10 @@ class ProcessManager:
             try:
                 root = psutil_mod.process_from_pid(pid)
                 children = root.children(recursive=True)
-            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+            except psutil_mod.NoSuchProcess:
                 return False
+            except psutil_mod.AccessDenied as exc:
+                raise PermissionError from exc
             all_procs = [root, *children]
             for p in all_procs:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
@@ -549,7 +555,10 @@ class ProcessManager:
             return bool(still_alive)
 
         loop = asyncio.get_running_loop()
-        still_alive = await loop.run_in_executor(None, _do_terminate)
+        try:
+            still_alive = await loop.run_in_executor(None, _do_terminate)
+        except PermissionError:
+            self._raise_access_denied_termination(record, proc.returncode)
         rc = proc.returncode
         if still_alive:
             self._mark_termination_failed(record, rc)
@@ -570,9 +579,11 @@ class ProcessManager:
             try:
                 root = psutil_mod.process_from_pid(record.pid)
                 children = root.children(recursive=True)
-            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+            except psutil_mod.NoSuchProcess:
                 self._mark_killed(record, proc.returncode)
                 return
+            except psutil_mod.AccessDenied:
+                self._raise_access_denied_termination(record, proc.returncode)
             all_procs = [root, *children]
             for p in all_procs:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
@@ -607,6 +618,17 @@ class ProcessManager:
             pass
         # If we get here, process is still alive
         self._mark_termination_failed(record, None)
+        raise ProcessTerminationError(record.pid, record.pgid)
+
+    def _raise_access_denied_termination(
+        self, record: ProcessRecord, returncode: int | None = None
+    ) -> None:
+        self._mark_termination_failed(
+            record,
+            returncode,
+            reason="Access denied while terminating process",
+        )
+        logger.error("Access denied while terminating process {}", record.pid)
         raise ProcessTerminationError(record.pid, record.pgid)
 
     def _record_terminal_state(self, record: ProcessRecord) -> None:

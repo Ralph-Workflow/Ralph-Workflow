@@ -61,12 +61,12 @@ def process_phase_scope(phase_name: str) -> Generator[None, None, None]:
     try:
         yield
     finally:
+        pm = get_process_manager()
         try:
-            get_process_manager().shutdown_all_for_label(
+            pm.shutdown_all_for_label(
                 f"phase:{phase_name}",
-                grace_period_s=get_process_manager().policy.default_grace_period_s,
+                grace_period_s=pm.policy.default_grace_period_s,
             )
-        except ProcessTerminationError as exc:
-            logger.warning(
-                "phase:{} cleanup could not terminate all processes: {}", phase_name, exc
-            )
+        except ProcessTerminationError:
+            logger.error("phase:{} cleanup failed", phase_name)
+            raise
