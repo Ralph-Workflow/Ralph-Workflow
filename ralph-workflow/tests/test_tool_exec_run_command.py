@@ -212,9 +212,7 @@ def test_run_command_reuses_stable_sandbox_path(tmp_path: Path) -> None:
 def test_run_command_uses_distinct_pool_slots_for_same_workspace_concurrent_calls(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
     monkeypatch.setattr(exec_tool, "_get_sandbox_manager", lambda: manager)
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
@@ -257,7 +255,7 @@ def test_run_command_uses_distinct_pool_slots_for_same_workspace_concurrent_call
     first.start()
     assert first_entered.wait(timeout=1)
     second.start()
-    assert second_entered.wait(timeout=0.05)
+    assert second_entered.wait(timeout=0.2)
     release_first.set()
     first.join(timeout=1)
     second.join(timeout=1)

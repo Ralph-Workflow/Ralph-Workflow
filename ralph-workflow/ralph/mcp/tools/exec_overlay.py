@@ -11,6 +11,8 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.process.manager._process_manager_runtime import load_psutil_module
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -27,6 +29,9 @@ _GENERATED_DIR_NAMES = (
 
 _OVERLAY_OWNER_FILE = ".ralph-exec-owner.json"
 _LEGACY_PRUNE_MAX_AGE_SECONDS = 60 * 60 * 24
+_START_TIME_TOLERANCE_S = 1e-6
+_PSUTIL = load_psutil_module()
+_CURRENT_PROCESS_IDENTITY: list[tuple[int, float | None]] = []
 
 
 def _compute_exec_base_str(
@@ -81,19 +86,66 @@ def _pid_is_running(pid: int) -> bool:
     return True
 
 
-def _overlay_owner_pid(overlay_dir: Path) -> int | None:
-    marker = overlay_dir / _OVERLAY_OWNER_FILE
-    if not marker.is_file():
+def _current_process_start_time(pid: int) -> float | None:
+    if _CURRENT_PROCESS_IDENTITY and _CURRENT_PROCESS_IDENTITY[0][0] == pid:
+        return _CURRENT_PROCESS_IDENTITY[0][1]
+    if _PSUTIL is None or pid <= 0:
         return None
+    try:
+        process = _PSUTIL.process_from_pid(pid)
+        return float(process.create_time())
+    except Exception:
+        return None
+
+
+def _current_process_identity() -> tuple[int, float | None]:
+    pid = os.getpid()
+    if not _CURRENT_PROCESS_IDENTITY or _CURRENT_PROCESS_IDENTITY[0][0] != pid:
+        _CURRENT_PROCESS_IDENTITY[:] = [(pid, _current_process_start_time(pid))]
+    return _CURRENT_PROCESS_IDENTITY[0]
+
+
+def _process_identity_matches(pid: int, started_at: float | None) -> bool:
+    current_pid, current_started_at = _current_process_identity()
+    if pid == current_pid:
+        if started_at is None:
+            return True
+        if current_started_at is not None:
+            return abs(current_started_at - started_at) <= _START_TIME_TOLERANCE_S
+        return _pid_is_running(pid)
+
+    is_running = _pid_is_running(pid)
+    matches = False
+    if is_running:
+        if started_at is None:
+            matches = True
+        else:
+            live_started_at = _current_process_start_time(pid)
+            matches = live_started_at is None or abs(
+                live_started_at - started_at
+            ) <= _START_TIME_TOLERANCE_S
+    return matches
+
+
+def _read_owner_metadata(marker: Path) -> tuple[int | None, float | None]:
+    if not marker.is_file():
+        return None, None
     try:
         raw_payload = cast("object", json.loads(marker.read_text(encoding="utf-8")))
     except Exception:
-        return None
+        return None, None
     if not isinstance(raw_payload, dict):
-        return None
+        return None, None
     payload = cast("dict[str, object]", raw_payload)
     pid = payload.get("pid")
-    return pid if isinstance(pid, int) else None
+    started_at = payload.get("started_at")
+    normalized_pid = pid if isinstance(pid, int) else None
+    normalized_started_at = float(started_at) if isinstance(started_at, (int, float)) else None
+    return normalized_pid, normalized_started_at
+
+
+def _overlay_owner_metadata(overlay_dir: Path) -> tuple[int | None, float | None]:
+    return _read_owner_metadata(overlay_dir / _OVERLAY_OWNER_FILE)
 
 
 def _prune_stale_exec_dirs(base: Path) -> None:
@@ -101,9 +153,9 @@ def _prune_stale_exec_dirs(base: Path) -> None:
     for child in base.iterdir():
         if not child.is_dir():
             continue
-        owner_pid = _overlay_owner_pid(child)
+        owner_pid, owner_started_at = _overlay_owner_metadata(child)
         if owner_pid is not None:
-            if _pid_is_running(owner_pid):
+            if _process_identity_matches(owner_pid, owner_started_at):
                 continue
             with suppress(Exception):
                 shutil.rmtree(child, ignore_errors=True)
@@ -115,7 +167,10 @@ def _prune_stale_exec_dirs(base: Path) -> None:
 
 
 def _write_overlay_owner_metadata(overlay_dir: Path) -> None:
-    payload: dict[str, int] = {"pid": os.getpid()}
+    pid, started_at = _current_process_identity()
+    payload: dict[str, int | float] = {"pid": pid}
+    if started_at is not None:
+        payload["started_at"] = started_at
     (overlay_dir / _OVERLAY_OWNER_FILE).write_text(
         json.dumps(payload), encoding="utf-8"
     )
