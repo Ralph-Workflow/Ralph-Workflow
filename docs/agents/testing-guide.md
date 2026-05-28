@@ -75,7 +75,7 @@ If changing the implementation (without changing behavior) would break a test, *
 | Unit | `tests/` root, `tests/unit/` | Usually no | yes | `make test-unit` |
 | Integration | `tests/integration/` | Usually no | yes | `make test-integration` |
 | Full suite | all tests | mixed | yes | `make test` |
-| Verification | lint + typecheck + covered suite | mixed | yes | `make verify` |
+| Verification | lint + typecheck + `make test` (unit + integration, 30 s combined budget) | mixed | yes | `make verify` |
 
 ---
 
