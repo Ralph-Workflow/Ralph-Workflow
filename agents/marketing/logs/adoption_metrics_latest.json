@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-28T13:51:12.333476",
+  "timestamp": "2026-05-28T15:24:11.321968",
   "metrics": [
     {
       "platform": "Codeberg",
@@ -52,7 +52,7 @@
       "forks_delta_window": 0
     },
     "PyPI": {
-      "samples": 6,
+      "samples": 7,
       "stars_delta_window": 0,
       "watchers_delta_window": 0,
       "forks_delta_window": 0

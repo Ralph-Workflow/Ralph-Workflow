@@ -21519,3 +21519,91 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Clean, coherent docs system. Every surface knows its role, defers to the canonical route, and delivers the positioning story without internal leakage. README \u2192 START_HERE \u2192 docs/README forms a single coherent journey.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with correct tagline, cleanly separates source README from public journey, routes definitively to Codeberg \u2192 START_HERE \u2192 docs/README."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Mirror-disclaimer first, core positioning intact, result-first success criteria, good task framing, purposeful next-page selection."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Switchboard page that reinforces core story, routes to distinct user intents, keeps proof secondary, surfaces product-framing pages that amplify rather than fight the main story."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md",
+      "reason": "Supporting page that correctly claims secondary status, orders evidence as behavior \u2192 checks \u2192 scope \u2192 artifacts (internal leakage in last position, not the headline)."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Consistently clear, well-positioned docs that respect the simple-core/complex-composition framing. No internal leakage on top-level surfaces. Journey from README through START_HERE to docs/README is coherent and low-anxiety. Promoted next-click pages reinforce rather than fight the product story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Cleanly delegates without competing \u2014 says what it is and is not, routes to Codeberg + START_HERE + docs/README in order"
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Short honest first run with correct task-fit framing; mirrors the positioning's good-task/bad-task distinction exactly"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Curated switchboard with role separation; explicitly tells proof pages to stay secondary; routes match the document hierarchy"
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces 'simple center, powerful composition, strong default' without drifting into internal plumbing"
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Correctly subordinated as supporting proof; leads with working software and real checks, not logs or artifacts"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.

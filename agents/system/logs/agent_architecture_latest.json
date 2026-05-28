@@ -169,7 +169,7 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-28T14:27:06.686566+02:00",
+    "checked_at": "2026-05-28T15:03:10.233070+02:00",
     "verdict": "qualified_pass",
     "previous_artifact_checked_at": "2026-05-28T14:24:49.296311+02:00",
     "previous_artifact_verdict": "qualified_pass",
@@ -191,7 +191,7 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-05-28T14:27:06.686566+02:00",
+    "architecture_verifier_checked_at": "2026-05-28T15:03:10.233070+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"

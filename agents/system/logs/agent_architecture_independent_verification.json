@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-28T14:27:06.686566+02:00",
+  "checked_at": "2026-05-28T15:03:10.233070+02:00",
   "verdict": "qualified_pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
@@ -31,17 +31,17 @@
     {
       "claim": "health monitor shows no architecture-owned live system issues while the architecture verifier is being independently checked",
       "status": "verified",
-      "details": "health_monitor_latest.json records jobs_checked=25 and architecture-owned blockers are clear."
+      "details": "health_monitor_latest.json records jobs_checked=26 and architecture-owned blockers are clear."
     },
     {
       "claim": "architecture verification isolates external domain blockers as watchpoints instead of manufacturing new architecture incidents",
       "status": "verified",
-      "details": "External blockers present: marketing-workflow-audit:live_error, blocked-channel-recovery:timeout, marketing_independent_verification:loop_verification_fail"
+      "details": "External blockers present: reddit-monitor:timeout, marketing-workflow-audit:timeout, blocked-channel-recovery:timeout, marketing_independent_verification:stale_artifact"
     },
     {
       "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
       "status": "verified",
-      "details": "recent_failures=21, consecutive_passes_since_last_fail=18"
+      "details": "recent_failures=21, consecutive_passes_since_last_fail=19"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -81,7 +81,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Health monitor reports jobs_checked=25 and issues_found=9."
+      "summary": "Health monitor reports jobs_checked=26 and issues_found=7."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",

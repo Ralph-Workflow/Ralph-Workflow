@@ -1,25 +1,25 @@
 {
-  "generated_at": "2026-05-28T12:24:23.727250+02:00",
+  "generated_at": "2026-05-28T15:12:01.762029+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 1.03,
+  "report_age_hours": 3.82,
   "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "latest_healthy_report_age_hours": 1.03,
-  "latest_post_age_hours": 43.61,
+  "latest_healthy_report_age_hours": 3.82,
+  "latest_post_age_hours": 46.4,
   "reddit_monitor_runtime": {
     "status": "fresh_report_reused",
-    "age_hours": 3.16
+    "age_hours": 5.95
   },
   "reddit_execution_status": {
-    "status": "execution_blocked",
-    "age_hours": 31.32,
-    "blocking_reason": "Reddit is serving a \"blocked by network security\" page even through the Chromium session. IP-level block is in effect."
+    "status": "execution_blocked_permanent",
+    "age_hours": 2.78,
+    "blocking_reason": "Reddit is IP-blocked at Hetzner Helsinki (95.216.6.222). Tor also blocked \u2014 exit node 192.42.116.102 is on Reddit's Tor blocklist. No proxy path exists from this runtime."
   },
   "adoption_flat": true,
   "pending_repairs": [],
   "blocked_distribution_channels": [],
   "apollo": {
     "status": "cloudflare_auth_blocked",
-    "age_hours": 2.58,
+    "age_hours": 1.0,
     "cloudflare_blocked": true
   },
   "measurement_hold": {
