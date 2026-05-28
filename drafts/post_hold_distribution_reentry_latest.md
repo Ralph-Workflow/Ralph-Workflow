@@ -1,6 +1,6 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-05-28T09:12:00
-- Hold release at: 2026-05-28T09:12:15
+Generated: 2026-05-28T14:25:25
+- Hold release at: 2026-05-28T15:28:00
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-28_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot
@@ -9,8 +9,7 @@ Generated: 2026-05-28T09:12:00
 - Keep Codeberg as the canonical CTA and GitHub as mirror-only support.
 
 ## Current blocked-lane truth to preserve
-- ComputingForGeeks is runtime-automatable via Playwright → /contact form (verified 2026-05-28). Lane reclassified from manual-only to runtime-automatable.
-- Remaining publisher discovery still non-runtime-checked: ctxt.dev / Signum, TLDL.
+- Remaining publisher discovery is still non-runtime-sendable here and requires public-path/Telegram follow-through: ctxt.dev / Signum, TLDL, ComputingForGeeks.
 - No fresh manual-executable primary-repo-flat publisher targets are currently available.
 - StackOverflow is exhausted for this review window; do not spend the re-entry slot refreshing that packet.
 - Curator/comparison/manual-contact packets that were already delivered in the current review window remain reference artifacts, not fresh actions.

@@ -1,9 +1,9 @@
 # Outcome Capability Runner
 
-- Generated: `2026-05-28T00:12:33.263806`
-- Lane executed: `comparison_backlink_outreach`
-- Action type: `comparison_backlink_follow_through`
-- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-28_comparison_backlink_follow_through.md`
+- Generated: `2026-05-28T14:21:05.265991`
+- Lane executed: `manual_outreach_asset_follow_through`
+- Action type: `manual_outreach_asset_follow_through`
+- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-28_manual_outreach_asset_follow_through.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
 - Prepared comparison/backlink targets in queue: `8`
 
@@ -13,4 +13,4 @@
 - The generated lane artifact becomes the next real execution surface the main loop can reuse.
 
 ## Summary
-Detected that the comparison queue only yielded follow-through and blocked the run from counting prepared-only comparison churn as fresh execution. Reused the already-current comparison handoff packet because live PR submission is blocked here and that packet is still inside its active review window.
+Reused the existing channel-ready manual publisher outreach asset as the active follow-through surface instead of burying it under another measurement-hold cycle. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.

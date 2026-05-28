@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-28T10:16:13.822056",
+  "generated_at": "2026-05-28T14:04:03.970022",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -41,7 +41,7 @@
       "forks_delta_window": 0
     },
     "PyPI": {
-      "samples": 4,
+      "samples": 6,
       "stars_delta_window": 0,
       "watchers_delta_window": 0,
       "forks_delta_window": 0
@@ -81,7 +81,7 @@
     "The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 2 times inside the last 48 hours."
   ],
   "low_signal": [
-    "Recent live external action exists (content_conversion_asset), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
+    "Recent live external action exists (computingforgeeks_contact_form_submission), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution.",
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
@@ -128,8 +128,7 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was distribution_architecture_churn_guard_repair, but the latest meaningful external/replacement execution remains content_conversion_asset; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (content_conversion_asset), so the system is still shipping output even though outcome movement is not visible yet.",
+    "The active loop did execute a live marketing action recently (computingforgeeks_contact_form_submission), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
@@ -164,20 +163,20 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_distribution_architecture_repair_execution.json",
-    "type": "distribution_architecture_churn_guard_repair",
-    "title": "Distribution lane execution: distribution_architecture_repair",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_1138_cfg_contact_live.json",
+    "type": "computingforgeeks_contact_form_submission",
+    "title": "computingforgeeks contact form submission",
     "status": "executed",
     "ok": true,
-    "live_external_action": false,
-    "outcome_ready": false,
+    "live_external_action": true,
+    "outcome_ready": true,
     "warning": null,
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_0948_start_here_guide.json",
-    "type": "content_conversion_asset",
-    "title": "content conversion asset",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_1138_cfg_contact_live.json",
+    "type": "computingforgeeks_contact_form_submission",
+    "title": "computingforgeeks contact form submission",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
