@@ -3,11 +3,12 @@
 > **The operating system for autonomous coding.**
 
 [![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-> **GitHub is the mirror. Codeberg is the primary repo.**
-> Inspect, star, watch, fork, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> **⭐ Star on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> GitHub is the mirror. Codeberg is the primary repo where you should inspect, star, watch, fork, and open issues.
 
 Ralph Workflow is a free and open-source **AI agent orchestrator** for substantial, well-specified software engineering on your own machine.
 
