@@ -1,5 +1,5 @@
 # Ralph Workflow StackOverflow Answer Handoff Packet
-Generated: 2026-05-24T15:58:44.812641
+Generated: 2026-05-28T02:45:58.153648
 
 ## Why this is still the live answer lane
 - The same high-intent question is still the strongest qualified StackOverflow target in the current window.
@@ -7,34 +7,37 @@ Generated: 2026-05-24T15:58:44.812641
 - Codeberg remains the primary repo CTA.
 
 ## Target
-- **Question:** How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?
-- **URL:** https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability
-- **Current score:** 3.85
-- **Current answers:** 0
-- **Reused draft:** `/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-should-i-structure-autonomous-ai-agent-workflo.md`
+- **Question:** Autonomous mode / wrapper for Claude Code?
+- **URL:** https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code
+- **Current score:** 4.2
+- **Current answers:** 2
+- **Reused draft:** `/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-28_autonomous-mode-wrapper-for-claude-code.md`
 
 ## Final answer text
 ```md
-For a TypeScript/Next.js fintech workflow, I would avoid agent-to-agent freeform handoffs and make the system event-driven with explicit contracts.
+If the goal is "give it a high-level task and let it keep going until there is something real to review," I would stop looking for a single Claude Code flag and put it inside an outer workflow instead.
 
-A practical production shape is:
+The pattern that tends to work is:
 
-1. **One orchestrator, many workers.** Keep planning/routing in one service, but execute work through queue-backed workers so retries and back-pressure are controlled instead of cascading.
-2. **Per-step idempotency keys.** Every webhook, tool call, and downstream write should carry an idempotency key so retries are safe.
-3. **State machine per job.** Persist states like `planned -> executing -> verifying -> awaiting-review -> done/failed` in the database instead of inferring state from logs or chat history.
-4. **Outbox + audit trail.** Write domain changes and emitted events atomically, then fan out from the outbox. That prevents "business write succeeded but event publish failed" drift.
-5. **Separate verification from execution.** The worker that changes code or data should not be the only thing deciding the result is correct. Run tests, schema checks, policy checks, and risk checks as a distinct phase.
-6. **Human-readable review packet.** The terminal artifact should be a diff/change summary, checks that ran, failed retries, and any operator decisions still needed.
+1. **Bound the task first.** Give it one repo-scoped objective with explicit acceptance criteria and non-goals.
+2. **Run in phases, not one endless session.** Planning -> implementation -> verification -> review packet.
+3. **Auto-continue only between phases.** Let the wrapper continue when the next step is mechanical, but stop if verification fails or the task leaves scope.
+4. **Persist artifacts between loops.** Keep the spec, diff, test output, and finish state on disk so a timeout or interruption does not throw away the run.
+5. **Treat "should I continue?" as a control-plane problem.** The model is surfacing uncertainty; the wrapper should decide whether the next move is safe based on the phase and evidence, not just blindly say yes forever.
 
-For your specific concerns:
+So I would not optimize for "maximum uninterrupted runtime." I would optimize for "can it keep making bounded progress and end in something reviewable?"
 
-- **Prevent cascading failures:** isolate agents behind queues and timeouts; never let one agent call another synchronously in a chain for critical paths.
-- **Agent communication:** pass structured job payloads and artifacts, not conversational state.
-- **Retries/idempotency:** retry transport failures automatically, but require explicit compensating actions for side-effecting fintech operations.
-- **Observability:** log one correlation ID across webhook receipt, orchestration, tool execution, and verification.
-- **Safe rollout:** ship prompt/workflow changes behind versioned configs and canary them on a small traffic slice before promoting.
+Concretely, the useful ingredients are:
 
-If you want a concrete open-source reference for the `spec -> execution -> verification -> reviewable finish state` part of this pattern, Ralph Workflow is a useful example: [Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow).
+- a budget for retries / loop count
+- a persisted task spec
+- a verification gate (tests, build, lint, or whatever matches the task)
+- a finish contract that produces a diff + check results instead of only a summary
+- resume/checkpoint support so a long run can recover cleanly
+
+That is basically the difference between an agent session and an unattended coding workflow.
+
+If you want an open-source example of the outer-wrapper approach, Ralph Workflow is built around exactly that shape: explicit loops, checkpoints, verification, and a reviewable finish state rather than one monolithic chat run. Primary repo: [Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow).
 ```
 
 ## Outcome contract

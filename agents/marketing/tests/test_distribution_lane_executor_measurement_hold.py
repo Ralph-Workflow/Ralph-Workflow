@@ -1175,6 +1175,88 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertNotIn('Short review-window congestion clears at: 2026-05-25T23:07:41', board_text)
 
+    def test_execution_board_drops_future_short_window_release_marker_without_live_external_backing(self):
+        now = datetime(2026, 5, 28, 2, 56, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'lane': 'measurement_hold', 'short_review_window_release_at': '2026-05-28T03:03:00'}),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-28_021557_repo_conversion_proof_asset.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-28T02:15:57.959334+02:00',
+                    'chosen_action': {'type': 'repo_conversion_proof_asset'},
+                    'result': {'status': 'executed', 'live_external_action': False},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('Short review-window congestion clears at: 2026-05-28T03:03:00', board_text)
+
+    def test_execution_board_hides_stackoverflow_packet_after_current_window_manual_delivery(self):
+        now = datetime(2026, 5, 28, 2, 56, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            stackoverflow_latest = log_dir / 'stackoverflow_answer_lane_latest.json'
+            stackoverflow_latest.write_text(
+                json.dumps({
+                    'drafts': [
+                        {
+                            'question_title': 'Autonomous mode / wrapper for Claude Code?',
+                            'question_url': 'https://stackoverflow.com/questions/123/example',
+                        }
+                    ],
+                    'cooldown_active': True,
+                    'next_retry_at': '2026-05-28T03:03:00+02:00',
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md').write_text(
+                '**Question:** Autonomous mode / wrapper for Claude Code?\n**URL:** https://stackoverflow.com/questions/123/example\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'lane': 'distribution_reset', 'short_review_window_release_at': None}),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'STACKOVERFLOW_LATEST_PATH', stackoverflow_latest), \
+                 patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_manual_delivery_current', return_value=True), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_run_current', return_value=False), \
+                 patch.object(distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False), \
+                 patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)), \
+                 patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=0):
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            board_text = board_path.read_text(encoding='utf-8')
+
+        self.assertNotIn('### 1. StackOverflow demand-capture packet', board_text)
+        self.assertIn('StackOverflow demand-capture packet was already delivered for manual placement in the current review window', board_text)
+
     def test_non_live_lane_rewrites_execution_board_after_post_hold_rerun_schedule_updates(self):
         now = datetime(2026, 5, 26, 9, 46, 0)
         decision = LaneDecision(

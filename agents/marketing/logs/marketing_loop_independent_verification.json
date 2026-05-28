@@ -1,19 +1,19 @@
 {
-  "checked_at": "2026-05-27T22:06:06.410714+02:00",
-  "verdict": "pass",
-  "summary": "Independent verifier found the marketing owner loop healthy enough to certify while keeping active watchpoints open.",
+  "checked_at": "2026-05-28T02:35:22.933457+02:00",
+  "verdict": "fail",
+  "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-27T22:06:06.387463"
+      "summary": "runner ok=True generated_at=2026-05-28T02:35:22.912981"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_monitor_degraded']"
+      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_monitor_degraded', 'primary_repo_adoption_flat', 'measurement_hold_active']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "repair_window_status=measurement_pending; failing_tactics=['mirror_repo_flat_window', 'same_family_publisher_overlap']; measurement_pending_reasons=['mirror_repo_flat', 'same_family_publisher_overlap']"
+      "summary": "repair_window_status=measurement_pending; failing_tactics=['primary_repo_flat_window', 'same_family_publisher_overlap']; measurement_pending_reasons=['primary_repo_flat', 'same_family_publisher_overlap']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
@@ -25,7 +25,11 @@
     }
   ],
   "watchpoints": [
-    "reddit monitoring is degraded, but a fresh healthy fallback report still exists inside the grace window"
+    "primary repo adoption remains measurement-pending after shipped repairs",
+    "measurement hold is active, and the current manual/external follow-through queue is consolidated in fresh execution-board artifacts"
   ],
-  "blockers": []
+  "blockers": [
+    "Reddit monitor is degraded without a fresh healthy fallback report inside the grace window.",
+    "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
+  ]
 }

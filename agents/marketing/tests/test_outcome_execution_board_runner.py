@@ -121,16 +121,6 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
             artifact_path='/tmp/selected.md',
             short_review_window_release_at=None,
         )
-        refreshed = LaneDecision(
-            lane='measurement_hold',
-            reason='hold truth is current',
-            reasons=['no truthful do-now packet exists in the review window'],
-            owned_content_posts_last_36h=1,
-            unsubmitted_directory_channels=[],
-            shared_findings_used=['distribution_lane_latest.json'],
-            artifact_path='/tmp/refreshed.md',
-            short_review_window_release_at=None,
-        )
         execution = SimpleNamespace(
             lane='measurement_hold',
             action_type='measurement_hold_follow_through',
@@ -143,8 +133,8 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
             blocking_factors=[],
         )
 
-        with patch.object(outcome_execution_board_runner, 'choose_distribution_lane', return_value=refreshed), \
-             patch.object(outcome_execution_board_runner.distribution_lane_selector, 'persist_latest_lane_decision'), \
+        with patch.object(outcome_execution_board_runner, 'choose_distribution_lane') as choose_mock, \
+             patch.object(outcome_execution_board_runner.distribution_lane_selector, 'persist_latest_lane_decision') as persist_mock, \
              patch.object(outcome_execution_board_runner, '_write_marketing_execution_board', return_value=(Path('/tmp/refreshed-board.md'), ['fresh-target'])), \
              patch.object(outcome_execution_board_runner, '_write_status'):
             payload = outcome_execution_board_runner.sync_from_execution(
@@ -156,6 +146,9 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
                 execution=execution,
             )
 
+        choose_mock.assert_not_called()
+        persisted_lane = persist_mock.call_args.args[0]
+        self.assertEqual(persisted_lane.lane, 'measurement_hold')
         self.assertEqual(payload['execution_board_path'], '/tmp/refreshed-board.md')
         self.assertEqual(payload['execution_board_targets'], ['fresh-target'])
 

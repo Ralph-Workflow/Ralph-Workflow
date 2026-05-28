@@ -1,16 +1,15 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-26T23:16:00
+Generated: 2026-05-26T11:10:06
 
 ## Why this board exists
-- Codeberg is still flat in the active window (9 samples; stars +1, watchers +0, forks +0).
+- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
 - Multiple live lanes already exist, so this board consolidates the best executable assets instead of letting them stay siloed across separate packet files.
 - Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
 ## Active review windows
 - Apollo next review: 2026-06-01T23:11:13.732870+02:00
 - Apollo launch review: 2026-06-01T23:11:13.732870+02:00
-- Short review-window congestion clears at: 2026-05-27T18:35:08
-- Post-hold marketer rerun scheduled: 2026-05-27T18:35:08
+- Short review-window congestion clears at: 2026-05-26T12:30:22
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
@@ -19,6 +18,7 @@ Generated: 2026-05-26T23:16:00
 - No do-now handoff packet is currently truthful in this review window.
 - Fresh publisher outreach already shipped in the current review window for: SitePoint.
 - The current primary-repo-flat publisher contact packet was already prepared 8 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
+- A manual-only primary-repo-flat follow-through asset exists for ComputingForGeeks, but same-family publisher outreach is paused and those targets still lack a runtime-sendable channel; do not surface that asset as a do-now lane yet.
 - Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
 - Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.
 - Comparison backlink packet exists, but it was already manually delivered in the current review window.

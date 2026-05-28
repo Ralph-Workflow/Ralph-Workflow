@@ -412,6 +412,9 @@ def _latest_lane_to_persist_after_execution(selected_lane: Any, refreshed_lane: 
     refreshed_name = str(getattr(refreshed_lane, 'lane', '') or '').strip()
     execution_action_type = str(getattr(execution, 'action_type', '') or '').strip()
 
+    if execution_action_type in {'measurement_hold_execution', 'measurement_hold_follow_through'}:
+        return selected_lane
+
     if (
         selected_release
         and selected_name in DISTRIBUTION_ARCHITECTURE_REUSE_LANES

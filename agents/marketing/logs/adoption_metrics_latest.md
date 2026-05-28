@@ -1,6 +1,6 @@
 # Adoption Metrics
 
-- Timestamp: 2026-05-28T01:10:43.756504
+- Timestamp: 2026-05-28T02:10:09.817565
 
 ## GitHub (mirror)
 - Stars: 1 (+0)
@@ -17,11 +17,13 @@
 - Forks: 2 (+0)
 - Open issues: 4
 - Recent window samples: 9
-- Window deltas: stars +1, watchers +0, forks +0
+- Window deltas: stars +0, watchers +0, forks +0
 - URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 
 ## Evaluation
+- Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
+- Failing signal: primary_repo_flat
 
 ## Next focus
-- Keep measuring adoption deltas and replace any tactic that stays flat across the window.
+- Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta.

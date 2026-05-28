@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-05-28T02:56:00+02:00",
+  "status": "delivered_to_current_chat",
+  "ok": true,
+  "chosen_action": {
+    "type": "primary_repo_flat_manual_delivery",
+    "lane": "primary_repo_flat_manual_review_asset",
+    "target": "Dupple",
+    "channel": "current_chat",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md"
+  },
+  "runtime_repair_applied": {
+    "type": "distribution_architecture_repair",
+    "files_changed": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+    ],
+    "summary": [
+      "Stopped the execution board from trusting stale future short-review release markers with no live external backing.",
+      "Stopped the execution board from resurfacing the StackOverflow handoff packet after a current-window manual delivery or post-cooldown scheduled rerun.",
+      "Refreshed marketing_execution_board_latest.md so Dupple is the only truthful do-now packet."
+    ],
+    "verification": {
+      "command": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_falls_back_to_live_short_window_release_when_latest_lane_json_omits_it agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_drops_expired_short_window_release_marker agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_drops_future_short_window_release_marker_without_live_external_backing agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_hides_stackoverflow_packet_after_current_window_manual_delivery -v",
+      "result": "passed"
+    }
+  },
+  "shared_findings_used": [
+    "market_intelligence_latest.json",
+    "marketing_workflow_audit_latest.json",
+    "distribution_lane_latest.json",
+    "marketing_execution_board_latest.md",
+    "primary_repo_flat_contact_discovery_latest.json",
+    "adoption_metrics_latest.json",
+    "stackoverflow_answer_lane_latest.json",
+    "marketing_2026-05-28_stackoverflow_manual_delivery.json"
+  ],
+  "result": {
+    "ok": true,
+    "status": "delivered_to_current_chat",
+    "live_external_action": false,
+    "notes": [
+      "Manual handoff delivery packet for Dupple was surfaced to the current chat.",
+      "Execution-board truth now suppresses already-delivered StackOverflow assets in this review window."
+    ]
+  }
+}

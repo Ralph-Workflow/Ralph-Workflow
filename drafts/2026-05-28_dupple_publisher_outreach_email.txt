@@ -1,0 +1,19 @@
+Hi Louis,
+
+I liked your Claude Code vs Cursor in 2026 comparison. It covers the tool choice well, but a lot of teams hit the next problem right after that: the agent can keep running, yet someone still has to babysit the workflow because the run does not end in a trustworthy review handoff.
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for developers doing work that is too big to babysit and too risky to trust blindly. It runs the coding agents people already use on their own machine, then pushes the work through a plan → build → verify loop so the morning-after result is something reviewable instead of another confident transcript.
+
+I thought it could fit Dupple's audience because you already cover real AI coding workflow tradeoffs, not just model branding. If you refresh this comparison, add a workflow-layer follow-up, or keep a related tools/directory surface, the canonical repo is:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+Mirror only:
+https://github.com/Ralph-Workflow/Ralph-Workflow
+
+There are already a few public third-party proof points live as well:
+- https://toolwise.ai/tools/ralph-workflow
+- https://saashub.com/ralph-workflow
+- https://claude-code-alternatives.com/cli-agents/ralph-workflow/
+
+Thanks,
+Ralph Workflow

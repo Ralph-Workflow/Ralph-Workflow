@@ -140,6 +140,7 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         self.assertTrue(discovery._looks_placeholder_email('john.doe@acme.com'))
         self.assertTrue(discovery._looks_placeholder_email('you@work.com'))
         self.assertTrue(discovery._looks_placeholder_email('you@company.com'))
+        self.assertTrue(discovery._looks_placeholder_email('email@domain.com'))
         self.assertTrue(discovery._looks_placeholder_email('example@gmail.com'))
         self.assertFalse(discovery._looks_placeholder_email('test@proton.me'))
         self.assertFalse(discovery._looks_placeholder_email('info@digitalapplied.com'))
@@ -231,6 +232,53 @@ class PrimaryRepoFlatContactDiscoveryTests(unittest.TestCase):
         )
         self.assertNotIn(
             {'type': 'email', 'value': 'you@example.com', 'label': 'email'},
+            enriched['channels'],
+        )
+
+    def test_enrich_target_keeps_explicit_dupple_emails_for_high_reach_publisher(self):
+        target = discovery.Target(
+            name='Dupple',
+            article_url='https://dupple.com/learn/claude-code-vs-cursor',
+            root_url='https://dupple.com/',
+            hook='Hook',
+            reason='Fit',
+            outreach_subject='Subject',
+            contact_urls=(
+                'https://dupple.com/about',
+                'https://dupple.com/dupple-x',
+            ),
+            explicit_emails=(
+                'louis@dupple.com',
+                'techpresso@dupple.com',
+            ),
+        )
+
+        def fake_get(url: str, timeout: int = 20) -> str:
+            normalized = url.rstrip('/')
+            if normalized == 'https://dupple.com/learn/claude-code-vs-cursor':
+                return '<a href="/about">About</a>'
+            if normalized == 'https://dupple.com':
+                return '<a href="/top-tools">Top tools</a>'
+            if normalized == 'https://dupple.com/about':
+                return '<p>Work with us.</p>'
+            if normalized == 'https://dupple.com/dupple-x':
+                return '<p>Priority member support.</p>'
+            return ''
+
+        original = discovery.http_get
+        discovery.http_get = fake_get
+        try:
+            enriched = discovery.enrich_target(target)
+        finally:
+            discovery.http_get = original
+
+        self.assertEqual(enriched['recommended_next_step'], 'email/contact send path is now identified')
+        self.assertIn(
+            {'type': 'email', 'value': 'louis@dupple.com', 'label': 'email'},
+            enriched['channels'],
+        )
+        self.assertIn(
+            {'type': 'email', 'value': 'techpresso@dupple.com', 'label': 'email'},
             enriched['channels'],
         )
 

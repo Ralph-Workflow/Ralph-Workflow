@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-27T19:24:09.624830+00:00",
+  "generated_at": "2026-05-28T00:51:04.686881+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -227,6 +227,62 @@
           "type": "x",
           "value": "https://twitter.com/spiky_simon",
           "label": "X/Twitter"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "Dupple",
+      "article_url": "https://dupple.com/learn/claude-code-vs-cursor",
+      "root_url": "https://dupple.com/",
+      "hook": "Claude Code vs Cursor in 2026: Which AI Coding Tool Should You Use?",
+      "reason": "High-reach developer and AI-tools audience already evaluating coding workflows, with a strong newsletter-plus-directory surface that can route qualified evaluators to Codeberg-first workflow comparisons.",
+      "outreach_subject": "Ralph Workflow for your next AI coding workflow comparison refresh",
+      "channels": [
+        {
+          "type": "email",
+          "value": "louis@dupple.com",
+          "label": "email"
+        },
+        {
+          "type": "email",
+          "value": "techpresso@dupple.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://dupple.com/work-with-us",
+          "label": "work with me page"
+        },
+        {
+          "type": "website",
+          "value": "https://dupple.com/about",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://dupple.com/advertise",
+          "label": "advertise page"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/dupple_com",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/louiscorneloup",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/dupple",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/in/louis-corneloup-0036b5138",
+          "label": "LinkedIn"
         }
       ],
       "recommended_next_step": "email/contact send path is now identified"

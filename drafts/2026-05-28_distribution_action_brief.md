@@ -1,9 +1,10 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-28T02:03:01
-Chosen lane: **measurement_hold**
+Generated: 2026-05-28T02:56:00
+Chosen lane: **distribution_reset**
 
 ## Why this lane
-- No unpublished repo-native guide remains for owned-content publication, so do not let the selector drift into an owned-content noop; hold for the next truthful execution window instead.
+- The proof-asset lane already shipped recently and the current external lanes are still saturated or in-flight; create fresh reset targets instead of looping on the same docs and StackOverflow handoff surfaces.
+- Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
@@ -12,22 +13,22 @@ Chosen lane: **measurement_hold**
 - Apollo already has an active measurement window until 2026-06-01T23:11:13.732870+02:00, so do not spend this run repackaging the same outbound lane.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
+- No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.
 - Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.
-- A manual-only primary-repo-flat publisher follow-through asset exists, but the active same-family publisher-overlap repair window says not to resurface that prepared-only asset again until another family advances or the current reply window materially changes.
 - An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.
 - Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.
-- All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.
-- The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, so another packet refresh would be fake progress even if the exact target list drifted.
+- The primary-repo-flat publisher contact packet was already manually delivered in the current review window, so another packet refresh right now would be fake progress.
+- A refreshed primary-repo-flat packet already has a live review window, so the loop should not re-select that same packet until the window expires or the target set materially changes.
 - The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
 - A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.
 - The live secondary-surface repair already has an active review window until 2026-05-31T00:00:00, so selecting directory confirmation again before then would be fake progress.
-- The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
+- A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
+- The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
-- The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
 
 ## Shared findings reused
@@ -40,8 +41,8 @@ Chosen lane: **measurement_hold**
 ## Recent owned-content already shipped
 - Distribution lane execution: owned_content (owned_content)
 
-## Immediate measurement-hold work
-- Do not ship another fresh outreach/reset action in this short review window
-- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
-- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
-- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map
+## Immediate queue-reset work
+- Do not count curator or comparison queue follow-through alone as a fresh repair
+- Reuse `market_intelligence_latest.json` and current queue logs to define the next untouched target classes
+- Add genuinely new third-party citation/backlink targets before the next outreach-prep execution
+- Keep Codeberg as the only primary CTA while expanding the target universe

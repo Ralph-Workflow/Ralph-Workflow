@@ -85,6 +85,120 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
         self.assertTrue(stackoverflow_answer_lane.is_draft_worthy(question))
         self.assertGreaterEqual(question["score"], 2.4)
 
+    def test_claude_code_autonomous_wrapper_question_is_draft_worthy(self):
+        question = {
+            "title": "Autonomous mode / wrapper for Claude Code?",
+            "body_snippet": "I want Claude Code to continue on a high-level goal longer, using subagents, and ideally test, reflect, and iterate without my intervention.",
+            "answers": 2,
+            "accepted_answer": "",
+            "tags": ["testing", "artificial-intelligence", "claude-code"],
+        }
+        question["pain_family"] = stackoverflow_answer_lane.classify_pain_family(question, question)
+        question["score"] = stackoverflow_answer_lane.score_question(question, question)
+
+        self.assertEqual(question["pain_family"], "workflow-orchestration")
+        self.assertTrue(stackoverflow_answer_lane.is_draft_worthy(question))
+        self.assertGreaterEqual(question["score"], 3.4)
+
+    def test_claude_code_autonomous_wrapper_answer_is_specific(self):
+        question = {
+            "title": "Autonomous mode / wrapper for Claude Code?",
+            "body_snippet": "I want Claude Code to continue, test, reflect, iterate, and use subagents without my intervention.",
+        }
+        answer = stackoverflow_answer_lane.draft_answer(question, question)
+
+        self.assertIn("phases", answer)
+        self.assertIn("Persist artifacts", answer)
+        self.assertIn("Codeberg", answer)
+
+    def test_fetch_question_detail_only_marks_accepted_when_accepted_answer_exists(self):
+        payload = {
+            "items": [
+                {
+                    "body": "<p>body</p>",
+                    "score": 2,
+                    "answer_count": 2,
+                    "is_answered": True,
+                    "tags": ["claude-code"],
+                }
+            ]
+        }
+        with patch.object(stackoverflow_answer_lane, "_stackexchange_get", return_value=payload):
+            detail = stackoverflow_answer_lane.fetch_question_detail(
+                "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code"
+            )
+
+        self.assertEqual(detail["accepted_answer"], "")
+
+    def test_so_search_site_passes_rich_query_to_advanced_search(self):
+        spec = {
+            "label": "workflow",
+            "title": "agent workflow",
+            "q": "agent workflow verification review",
+            "tagged": "artificial-intelligence",
+        }
+
+        with patch.object(stackoverflow_answer_lane, "_stackexchange_get", return_value={"items": []}) as mocked_get, \
+             patch.object(stackoverflow_answer_lane, "_search_excerpts", return_value=[]):
+            stackoverflow_answer_lane.so_search_site(spec)
+
+        self.assertEqual(mocked_get.call_args.args[0], "/search/advanced")
+        self.assertEqual(mocked_get.call_args.args[1]["q"], spec["q"])
+
+    def test_so_search_site_merges_excerpt_fallback_when_primary_results_are_low_fit(self):
+        primary_item = {
+            "title": "Claude Code doesn't respect settings.json deny block",
+            "link": "https://stackoverflow.com/questions/79747164/example",
+            "tags": ["claude-code"],
+            "answer_count": 2,
+            "excerpt": "settings json deny block issue",
+        }
+        primary_detail = {
+            "title": primary_item["title"],
+            "url": primary_item["link"],
+            "tags": ["claude-code"],
+            "answers": 2,
+            "body_snippet": "settings json deny block issue",
+        }
+        fallback = {
+            "title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+            "url": "https://stackoverflow.com/questions/79942291/example",
+            "tags": ["openai-api"],
+            "answers": 0,
+            "body_snippet": "Need checkpoints, verification, and reviewable unattended runs.",
+        }
+
+        with patch.object(stackoverflow_answer_lane, "_stackexchange_get", return_value={"items": [primary_item]}), \
+             patch.object(stackoverflow_answer_lane, "fetch_question_detail", side_effect=[primary_detail]), \
+             patch.object(stackoverflow_answer_lane, "_search_excerpts", return_value=[fallback]):
+            results = stackoverflow_answer_lane.so_search_site({"label": "workflow", "title": "workflow"})
+
+        self.assertEqual([result["url"] for result in results], [primary_detail["url"], fallback["url"]])
+
+    def test_so_search_site_skips_excerpt_fallback_when_primary_results_already_include_live_candidate(self):
+        primary_item = {
+            "title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+            "link": "https://stackoverflow.com/questions/79942291/example",
+            "tags": ["openai-api"],
+            "answer_count": 0,
+            "excerpt": "Need checkpoints, verification, and reviewable unattended runs.",
+        }
+        primary_detail = {
+            "title": primary_item["title"],
+            "url": primary_item["link"],
+            "tags": ["openai-api"],
+            "answers": 0,
+            "body_snippet": "Need checkpoints, verification, and reviewable unattended runs.",
+        }
+
+        with patch.object(stackoverflow_answer_lane, "_stackexchange_get", return_value={"items": [primary_item]}), \
+             patch.object(stackoverflow_answer_lane, "fetch_question_detail", return_value=primary_detail), \
+             patch.object(stackoverflow_answer_lane, "_search_excerpts") as mocked_fallback:
+            results = stackoverflow_answer_lane.so_search_site({"label": "workflow", "title": "workflow"})
+
+        mocked_fallback.assert_not_called()
+        self.assertEqual([result["url"] for result in results], [primary_detail["url"]])
+
     def test_load_recent_drafted_question_urls_reads_recent_drafts(self):
         with tempfile.TemporaryDirectory() as tmp:
             draft_dir = Path(tmp)
