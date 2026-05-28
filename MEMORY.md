@@ -84,3 +84,30 @@ Skill-call routing defaults:
 
 Use `find-skills` first when available to confirm/install the right skill, then call `foundry` or the routed skill.
 <!-- FOUNDRY_BUNDLE:END -->
+
+## Critical product knowledge (learned 2026-05-28)
+
+### Ralph Workflow CLI — CORRECT USAGE (from `ralph --help` + canonical START_HERE.md):
+```
+pipx install ralph-workflow
+cd /path/to/your/project
+ralph --init
+ralph --diagnose
+$EDITOR PROMPT.md      # write your task spec
+ralph                   # run the loop — NOTHING ELSE
+```
+- There is NO subcommand called "run" — using the "run" form always fails
+- There is NO `--spec` flag
+- There is NO `--output` flag
+- There is NO `--agent` flag (the `-a` / `--developer-agent` flag exists but takes configured agent names from the config file, not bare agent names from the command line)
+- No "done" output directory — the project uses git commits, not artifact directories
+- The correct workflow is: write PROMPT.md → run `ralph`
+
+### Ralph =/= Rust-ralph
+- Python Ralph Workflow: `ralph` (this project) — orchestrates agents, no `run` subcommand
+- Rust Ralph (different project): uses a `run` subcommand with different flags — do not conflate with Python Ralph Workflow
+
+### Process rule that caused this lesson
+- NEVER write about Ralph CLI syntax without running `ralph --help` first
+- The pre-commit hook `.git/hooks/pre-commit-check-cli-syntax` catches bad patterns
+- AGENTS.md has this as a zero-tolerance Red Line
