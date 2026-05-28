@@ -95,6 +95,7 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
                 stack.enter_context(patch.object(marketing_workflow_audit, 'RETRO', retro))
                 stack.enter_context(patch.object(marketing_workflow_audit, 'APOLLO_SEQUENCE_STATUS', apollo))
                 stack.enter_context(patch.object(marketing_workflow_audit, 'REDDIT_MONITOR_LATEST', reddit_monitor))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'sync_shared_findings_artifacts', return_value={'status': 'synced'}))
                 rc = marketing_workflow_audit.main()
 
             self.assertEqual(rc, 0)
@@ -118,6 +119,60 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertIn('## What is repetitive', text)
             self.assertIn('## What is low-signal', text)
             self.assertIn('## What should change now', text)
+
+    def test_main_refreshes_shared_findings_artifacts_after_writing_audit(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            logs = tmp / 'logs'
+            logs.mkdir()
+            outreach = tmp / 'outreach-log.md'
+            outreach.write_text('# Outreach Log\n', encoding='utf-8')
+            adoption = logs / 'adoption_metrics_latest.json'
+            adoption.write_text(json.dumps({
+                'metrics': [
+                    {'platform': 'Codeberg', 'stars': 11, 'watchers': 2, 'forks': 2, 'open_issues': 4, 'html_url': 'https://codeberg.org/RalphWorkflow/Ralph-Workflow'},
+                    {'platform': 'GitHub', 'stars': 1, 'watchers': 2, 'forks': 0, 'open_issues': 0, 'html_url': 'https://github.com/Ralph-Workflow/Ralph-Workflow'},
+                ],
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                    'GitHub': {'samples': 9, 'stars_delta_window': 1, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                },
+                'evaluation': {'findings': ['Codeberg is flat.'], 'failing_signals': ['primary_repo_flat']},
+            }), encoding='utf-8')
+            retro = logs / 'reddit_post_analysis.json'
+            retro.write_text(json.dumps({'recent_posts': [], 'repeated_openings': []}), encoding='utf-8')
+            apollo = logs / 'apollo_sequence_status_latest.json'
+            apollo.write_text(json.dumps({'measurement_pending': True}), encoding='utf-8')
+            prior_audit = logs / 'marketing_workflow_audit_latest.json'
+            prior_audit.write_text(json.dumps({'repair_actions': []}), encoding='utf-8')
+
+            sync_result = {
+                'status': 'synced',
+                'selected_lane': 'comparison_backlink_outreach',
+                'execution_board_path': '/tmp/board.md',
+                'outcome_status_path': '/tmp/outcome.json',
+            }
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(marketing_workflow_audit, 'OUT_DIR', logs))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'AUDIT_MD', logs / 'marketing_workflow_audit_latest.md'))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'AUDIT_JSON', prior_audit))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'OUTREACH', outreach))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'ADOPTION', adoption))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'RETRO', retro))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'APOLLO_SEQUENCE_STATUS', apollo))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'REDDIT_MONITOR_LATEST', tmp / 'reddit_monitor_latest.md'))
+                sync_mock = stack.enter_context(patch.object(marketing_workflow_audit, 'sync_shared_findings_artifacts', return_value=sync_result))
+                rc = marketing_workflow_audit.main()
+
+            self.assertEqual(rc, 0)
+            sync_mock.assert_called_once()
+            payload = json.loads(prior_audit.read_text(encoding='utf-8'))
+            self.assertEqual(payload['shared_artifact_sync']['status'], 'synced')
+            self.assertEqual(payload['shared_artifact_sync']['selected_lane'], 'comparison_backlink_outreach')
+            text = (logs / 'marketing_workflow_audit_latest.md').read_text(encoding='utf-8')
+            self.assertIn('## Shared findings artifact sync', text)
+            self.assertIn('comparison_backlink_outreach', text)
 
     def test_repeated_prepared_only_primary_repo_flat_packets_are_called_repetitive_low_signal(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -163,6 +218,7 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
                 stack.enter_context(patch.object(marketing_workflow_audit, 'RETRO', retro))
                 stack.enter_context(patch.object(marketing_workflow_audit, 'APOLLO_SEQUENCE_STATUS', apollo))
                 stack.enter_context(patch.object(marketing_workflow_audit, 'REDDIT_MONITOR_LATEST', tmp / 'reddit_monitor_latest.md'))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'sync_shared_findings_artifacts', return_value={'status': 'synced'}))
                 rc = marketing_workflow_audit.main()
 
             self.assertEqual(rc, 0)
@@ -225,6 +281,7 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
                 stack.enter_context(patch.object(marketing_workflow_audit, 'APOLLO_STATUS', apollo_runtime))
                 stack.enter_context(patch.object(marketing_workflow_audit, 'OUTCOME_CAPABILITY_STATUS', outcome_capability))
                 stack.enter_context(patch.object(marketing_workflow_audit, 'REDDIT_MONITOR_LATEST', reddit_monitor))
+                stack.enter_context(patch.object(marketing_workflow_audit, 'sync_shared_findings_artifacts', return_value={'status': 'synced'}))
                 rc = marketing_workflow_audit.main()
 
             self.assertEqual(rc, 0)

@@ -20217,3 +20217,83 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean, consistent, and durably aligned with positioning. No internal leakage, good hierarchy, coherent journey, clear page roles. The loop is self-correcting \u2014 README even names the past agent-drift problem explicitly.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with tagline, names orchestrator + simple core + composability + strong default in one paragraph, explicitly narrows its own role, and routes cleanly to START_HERE \u2192 docs/README \u2192 manual."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Leads with result-first evaluation, clear good/bad tasks, install/run steps that prove the default workflow works, and routes onward without competing with README."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Curated switchboard with audience-based routing, keeps proof secondary, echoes core framing, and promotes next-click pages that all reinforce rather than fight the main story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, faithful to positioning, and structurally sound. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/README.md",
+      "reason": "Opens with tagline, clear AI orchestrator framing, simple core / composition contrast, strong default workflow, as-is-first/extend-later, Codeberg-as-primary banner, result-oriented install guidance. No internal leakage."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run with correct task-scope guardrails (good vs bad first tasks), result-first success criteria ('what the software does now and what checks ran'), clean link curation, no internal plumbing."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Intent-based routing by reader goal, explicit 'keep proof secondary' guard, Curated link set with low anxiety, all promoted next-click pages reinforce core positioning."
+    },
+    {
+      "path": "RalphWithReviewer/README.md",
+      "reason": "Source-tree README explicitly narrow, defers entirely to canonical public route, documents the intentional design choice against docs drift."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.

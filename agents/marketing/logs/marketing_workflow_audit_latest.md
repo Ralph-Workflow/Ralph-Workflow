@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-28T06:48:35.711196
+- Generated: 2026-05-28T07:35:27.908194
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -91,3 +91,9 @@
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md`
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/FOUR_MARKETING_QUESTIONS.md`
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_SELF_IMPROVEMENT.md`
+
+## Shared findings artifact sync
+- Status: synced
+- Refreshed distribution lane: distribution_architecture_repair
+- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-28_marketing_execution_board.md
+- Outcome status: /home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json

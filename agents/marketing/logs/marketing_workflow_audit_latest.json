@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-28T06:48:35.711196",
+  "generated_at": "2026-05-28T07:35:27.908194",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -194,5 +194,12 @@
       "Observed downstream activity on the live sequence: 76 clicks, 1 replies, 193 spam-blocked."
     ],
     "needs_live_verification": false
+  },
+  "shared_artifact_sync": {
+    "status": "synced",
+    "selected_lane": "distribution_architecture_repair",
+    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_marketing_execution_board.md",
+    "execution_board_targets": [],
+    "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json"
   }
 }

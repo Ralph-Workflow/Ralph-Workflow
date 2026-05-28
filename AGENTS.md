@@ -134,30 +134,40 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 
 ## Model Selection
 
-Default to **`minimax/MiniMax-M2.7`**.
+Default to **`openrouter/deepseek/deepseek-v4-flash`**.
 
-Use **`minimax/MiniMax-M2.7-highspeed`** when the task is clearly:
+Use **`openrouter/deepseek/deepseek-v4-pro`** for expensive tasks: deeper strategy, ambiguous high-context ownership loops, major audits, architecture decisions, and long-form judgment-heavy work.
+
+Use **`minimax/MiniMax-M2.7-highspeed`** for clearly simple tasks:
 - straightforward
 - low-risk
 - low-judgment
 - easy to verify
 - not sensitive to nuance or strategic mistakes
 
-If you're unsure which model to use, choose **MiniMax-M2.7**.
+If you're unsure which model to use, choose **`openrouter/deepseek/deepseek-v4-flash`**.
 
 Good MiniMax highspeed candidates:
-- routine research sweeps
 - simple monitoring/reporting
-- straightforward posting/publishing chores
+- deterministic prechecks/watchdogs
 - mechanical repo or file maintenance
+- short sync/status runs
 - clearly-scoped content transforms where quality is easy to inspect
 
-Use MiniMax-M2.7 for:
+Use DeepSeek v4 Flash for the broad middle:
+- normal research
+- standard agent loops
+- most drafting and analysis
+- medium-complexity runtime work
+- tasks that need decent judgment without paying the full expensive-task cost
+
+Use DeepSeek v4 Pro for:
 - strategy
-- judgment calls
+- major judgment calls
 - ambiguous or high-context tasks
-- anything user-facing where tone, persuasion, or nuance matters
-- planning, synthesis, prioritization, or decisions with real downside if wrong
+- architecture/process redesign
+- independent verification or audit authority
+- anything user-facing where a bad decision has real downside
 
 When creating new agents, cron jobs, or automations, preserve this bias unless the human explicitly says otherwise.
 

@@ -92,9 +92,10 @@ Add whatever helps you do your job. This is your cheat sheet.
 
 ## Model Quick Policy
 
-- Default: `minimax/MiniMax-M2.7`
+- Default: `openrouter/deepseek/deepseek-v4-flash`
+- Use `openrouter/deepseek/deepseek-v4-pro` for expensive/high-judgment tasks
 - Use `minimax/MiniMax-M2.7-highspeed` for clearly straightforward, low-judgment, easy-to-verify tasks
-- If unsure, use `minimax/MiniMax-M2.7`
+- If unsure, use `openrouter/deepseek/deepseek-v4-flash`
 
 ## Related
 
