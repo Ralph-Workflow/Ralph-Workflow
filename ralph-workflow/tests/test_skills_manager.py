@@ -22,6 +22,8 @@ def test_ensure_baseline_capabilities_marks_skills_needs_repair_on_failure(
         patch("ralph.skills.manager.install_baseline_skills") as mock_install,
         patch("ralph.skills.manager._find_configured_docs_mcp_url", return_value=None),
         patch("ralph.skills.manager._get_ralph_version", return_value="1.0.0"),
+        patch("ralph.skills.manager._web_search_is_available", return_value=True),
+        patch("ralph.skills.manager._visit_url_is_available", return_value=True),
     ):
         mock_install.return_value = (
             CapabilityEntry(status=CapabilityStatus.NEEDS_REPAIR),
@@ -38,6 +40,8 @@ def test_check_baseline_health_returns_keyed_status_map(tmp_path: Path) -> None:
         patch("ralph.skills.manager.install_baseline_skills") as mock_install,
         patch("ralph.skills.manager._find_configured_docs_mcp_url", return_value=None),
         patch("ralph.skills.manager._get_ralph_version", return_value="1.0.0"),
+        patch("ralph.skills.manager._web_search_is_available", return_value=True),
+        patch("ralph.skills.manager._visit_url_is_available", return_value=True),
     ):
         mock_install.return_value = (
             CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
@@ -165,6 +169,8 @@ def test_check_skills_for_updates_auto_repairs_when_update_found(tmp_path: Path)
         patch("ralph.skills.manager.install_baseline_skills") as mock_install,
         patch("ralph.skills.manager._find_configured_docs_mcp_url", return_value=None),
         patch("ralph.skills.manager._get_ralph_version", return_value="1.0.0"),
+        patch("ralph.skills.manager._web_search_is_available", return_value=True),
+        patch("ralph.skills.manager._visit_url_is_available", return_value=True),
     ):
         mock_install.return_value = (
             CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),

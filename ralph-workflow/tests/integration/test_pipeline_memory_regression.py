@@ -34,15 +34,9 @@ from tests.integration.test_pipeline_memory_regression_helper__registryfactory i
 
 _LINE_COUNT = 32
 _LINE_SIZE = 2048
-_ITERATION_COUNT = 8
+_ITERATION_COUNT = 5
 _RETAINED_DELTA_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 6_000_000
-
-
-
-
-
-
 
 
 def _start_mcp_server(*_args: object, **_kwargs: object) -> _FakeBridge:

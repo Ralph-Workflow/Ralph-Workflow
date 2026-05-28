@@ -16,21 +16,28 @@ make verify
 2. `make typecheck` (`mypy --strict`)
 3. pytest (parallel, excludes `subprocess_e2e`)
 
-### Total test budget — 30 seconds, immutable
+### Total test budget — 30 seconds, ABSOLUTE and IMMUTABLE
+
+**THE 30-SECOND COMBINED TOTAL TEST BUDGET IS ABSOLUTE AND IMMUTABLE.**
+It cannot be changed, overridden, or circumvented.
 
 `make verify` runs `make test`, which executes one maintained parallel pytest invocation over `tests/` with `-m "not subprocess_e2e"`.
 
 Budget enforcement:
-- **Per-suite cap** (applies to `make test`, `make test-unit`, and `make test-integration`): each `python -m ralph.verify_timeout --suite-timeout 30` call is killed after 30 s.
-- **Combined-total cap** (enforced by `make verify` only): `ralph.verify` wraps `make test` with `timeout=_TOTAL_TEST_BUDGET_SECONDS` (30 s). If the full verification test command exceeds 30 s, `make verify` fails with `(budget exhausted)`.
+- **Per-suite cap** (applies to `make test`, `make test-unit`, and `make test-integration`): each `python -m ralph.verify_timeout --suite-timeout 30` call is killed after 30 s. This cap is defined in `ralph/verify_timeout.py:DEFAULT_SUITE_TIMEOUT_SECONDS`. Per-suite caps are SECONDARY only — raising them does not increase the combined budget.
+- **Combined-total cap** (enforced by `make verify` only): `ralph.verify` tracks cumulative wall-clock time via `time.monotonic()` across ALL test steps in `_BUDGET_TRACKED_STEPS`. The combined total must not exceed `_TOTAL_TEST_BUDGET_SECONDS` (30 s), defined at `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`. Adding suites, splitting tests, or creating new test targets does NOT reset or extend the budget — the cumulative tracker sums time across ALL tracked steps. If cumulative test time exceeds 30 s, `make verify` fails with `(budget exhausted — cumulative test time exceeded)`.
 
-This combined limit is **immutable** regardless of:
-- How many focused test targets exist
-- What order focused suites run in
-- Whether tests are moved between targets
+This combined limit is **IMMUTABLE** — the following do **NOT** circumvent it:
+- Adding more test suites or shards
+- Renaming test targets
+- Moving tests between targets or suites
+- Setting environment variables (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS, etc.)
+- Changing Makefile variables (PYTEST_SUITE_TIMEOUT_SECONDS)
+- Modifying DEFAULT_SUITE_TIMEOUT_SECONDS or DEFAULT_TEST_TIMEOUT_SECONDS
 
-Do **not** raise `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS`
-to mask a slow test. Fix the test instead (remove I/O, use `MemoryWorkspace`).
+**Example:** splitting your test suite into 3 separate test steps does NOT give you 3 × 30 s = 90 s of total budget. The cumulative tracker sums the elapsed time of every budget-tracked step, so all 3 suites together must still finish within the single 30 s combined cap.
+
+A timeout failure is a test design defect. Fix the production coupling — never adjust the budget. Remove I/O, use `MemoryWorkspace`, inject fake clocks. Do **not** raise `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS` to mask a slow test.
 
 Verification passes only when all checks complete with **no ERROR/WARNING diagnostics**. If any step fails, fix the issue immediately and rerun. `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and `CLAUDE.md`.
 

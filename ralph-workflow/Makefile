@@ -1,8 +1,14 @@
 .PHONY: help install dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs packaging-smoke
 
-PYTEST_WORKERS ?= 5
+PYTEST_WORKERS ?= 10
 export PYTHONPATH := $(shell realpath .)
+# NOTE: PYTEST_SUITE_TIMEOUT_SECONDS is a PER-SUITE timeout only.
+# The combined total test budget (30 s, ABSOLUTE and IMMUTABLE) for
+# `make verify` is enforced in ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS,
+# not here. Do NOT raise this to work around slow tests — fix the test
+# design instead.
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 30
+RUN_PYTHON = $(if $(VIRTUAL_ENV),python,uv run python)
 
 help:
 	@echo "Ralph Workflow - Makefile commands"
@@ -54,7 +60,7 @@ install-dev: dev
 
 # Testing
 test:
-	uv run python -m ralph.test_suites
+	$(RUN_PYTHON) -m ralph.test_suites
 
 test-unit:
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal --ignore=tests/integration -m "not subprocess_e2e"
@@ -144,6 +150,7 @@ dist-homebrew: build-wheel
 		echo "Note: Homebrew bottle creation requires macOS and Homebrew environment"
 
 # Distribution targets
+# Combined 30s test budget enforced by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS (IMMUTABLE).
 verify:
 	@uv run python -m ralph.verify
 

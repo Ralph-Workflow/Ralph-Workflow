@@ -174,7 +174,7 @@ uv run pytest tests/test_orchestrator.py -v
 uv run pytest -k "policy" -v
 ```
 
-Raw repo-local `pytest` runs are hard-capped at 30 seconds by the auto-loaded `ralph.testing.pytest_timeout_plugin` declared in `pytest.ini`. The Makefile keeps the outer `python -m ralph.verify_timeout` wrapper as a second guardrail for sharded verification commands.
+Raw repo-local `pytest` runs are hard-capped at 30 seconds by the auto-loaded `ralph.testing.pytest_timeout_plugin` declared in `pytest.ini`. The Makefile keeps the outer `python -m ralph.verify_timeout` wrapper as a second guardrail for maintained verification commands, and `make test` itself delegates to `python -m ralph.test_suites` through the repo's managed Python environment.
 
 ### Coverage Requirements
 
@@ -272,9 +272,9 @@ make verify
 This executes:
 1. `make lint` — ruff check (zero violations required)
 2. `make typecheck` — mypy strict mode (zero type errors required)
-3. `make test` — `test-unit` (single parallel pytest invocation over all of `tests/` excluding `tests/integration/`, wrapped in 30-second suite timeout) and `test-integration` (single parallel pytest invocation over `tests/integration/`, wrapped in 30-second suite timeout). Combined total is capped at 30 s when `make verify` calls `make test` via `ralph.verify`.
+3. `make test` — `python -m ralph.test_suites` through the managed project environment, which runs one maintained parallel pytest invocation over `tests/` with `-m "not subprocess_e2e"` under the 30-second suite timeout. `ralph.verify` also caps the full `make test` step at 30 s via `_TOTAL_TEST_BUDGET_SECONDS`.
 
-`make test-cov` and `make test-subprocess-e2e` are separate make targets available for deeper analysis but are **not** part of `make verify`.
+`make test-unit`, `make test-integration`, `make test-cov`, and `make test-subprocess-e2e` remain available as focused commands, but they are **not** part of `make verify`.
 
 **Type Checking Requirements:**
 - All public functions and exported APIs must be typed

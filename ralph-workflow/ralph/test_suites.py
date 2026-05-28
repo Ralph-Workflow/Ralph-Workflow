@@ -1,4 +1,13 @@
-"""Run the maintained pytest verification suite under the current interpreter."""
+"""Run the maintained pytest verification suite under the current interpreter.
+
+.. note::
+
+    The 30-second ABSOLUTE and IMMUTABLE combined test budget is enforced
+    UPSTREAM by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`` via cumulative
+    ``time.monotonic()`` tracking, not by this module. This module provides
+    per-suite timeout wrapping only. Splitting tests into more suites or
+    adding new test targets does NOT increase the combined budget.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +42,7 @@ if TYPE_CHECKING:
         ) -> ProcessResult: ...
 
 
-_DEFAULT_PYTEST_WORKERS = "5"
+_DEFAULT_PYTEST_WORKERS = "10"
 
 
 def _pytest_workers() -> str:

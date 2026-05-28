@@ -75,6 +75,8 @@ This 30-second combined budget is **absolute** and cannot be circumvented by:
 - Moving slow tests to a different target
 - Raising `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS`
 
+The combined budget is enforced at the verify runner level (`ralph/verify.py`). Per-suite timeouts are secondary caps only. The total elapsed time of every test suite running sequentially under `make verify` must not exceed 30 s. Splitting tests across N suites does NOT give N × 30 s.
+
 A slow test is a design defect. Fix the production coupling (extract I/O behind `MemoryWorkspace`, use `FakeAgentExecutor`). See `docs/agents/testing-guide.md` for the full no-I/O test policy.
 
 The dead-code audit is available separately while the existing dead-code backlog is still being cleaned up:

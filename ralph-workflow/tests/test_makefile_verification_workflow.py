@@ -42,7 +42,7 @@ def test_verify_target_delegates_to_wrapper_module() -> None:
 def test_test_target_uses_maintained_suite_runner() -> None:
     test_body = _target_body("test")
 
-    assert test_body == ["uv run python -m ralph.test_suites"]
+    assert test_body == ["$(RUN_PYTHON) -m ralph.test_suites"]
 
 
 def test_docs_target_builds_html_into_single_canonical_output_tree() -> None:

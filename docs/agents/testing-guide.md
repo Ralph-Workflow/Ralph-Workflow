@@ -49,7 +49,7 @@ If changing the implementation (without changing behavior) would break a test, *
 ### Agent checklist
 
 - [ ] Every test in the affected area finishes in < 1 s individually
-- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 30 s total (enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS`)
+- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 30 s total (enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS` via cumulative `time.monotonic()` tracking)
 - [ ] No test calls `time.sleep(N)` with `N > 0` or polls real wall-clock time
 - [ ] No test reaches through a boundary into real I/O (filesystem, subprocess, network)
 - [ ] Every test asserts on observable behavior, not internal state
@@ -75,7 +75,7 @@ If changing the implementation (without changing behavior) would break a test, *
 | Unit | `tests/` root, `tests/unit/` | Usually no | yes | `make test-unit` |
 | Integration | `tests/integration/` | Usually no | yes | `make test-integration` |
 | Full suite | all tests | mixed | yes | `make test` |
-| Verification | lint + typecheck + `make test` (unit + integration, 30 s combined budget) | mixed | yes | `make verify` |
+| Verification | lint + typecheck + `make test` (via `ralph.test_suites`, 30 s combined budget) | mixed | yes | `make verify` |
 
 ---
 

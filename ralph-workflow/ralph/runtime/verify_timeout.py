@@ -3,6 +3,14 @@
 This module makes ``ralph.runtime.verify_timeout`` a stable documented surface
 for callers that import through the ``ralph.runtime`` namespace. All public
 symbols are re-exported from ``ralph.verify_timeout`` unchanged.
+
+.. important::
+
+    The 30-second ABSOLUTE and IMMUTABLE combined test budget for ``make verify``
+    is enforced by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`` via cumulative
+    ``time.monotonic()`` tracking across ALL test steps. Per-suite timeouts in
+    this module are SECONDARY caps only — raising them does not increase the
+    combined budget. Splitting tests across N suites does NOT give N × 30 s.
 """
 
 from ralph.verify_timeout import (
