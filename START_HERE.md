@@ -6,7 +6,9 @@
 Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
 It runs the coding agents you already use on your own machine, turns that simple loop structure into a stronger composable workflow for substantial, well-specified software engineering work, and gives you a strong default workflow before you customize anything.
 
-Start with one real, ambitious, well-specified engineering task and judge the outcome by what the software does now and what checks ran.
+This page gives the shortest honest first run.
+Start with one real, well-specified backlog task and judge the outcome by what the software does now and what checks ran.
+Bring your existing coding agents, keep your existing setup, and keep your keys to yourself.
 
 ## Before you start
 
@@ -21,54 +23,19 @@ Have these ready:
 
 Good first tasks:
 
-- a serious application slice with clear acceptance criteria
-- a major product milestone that is already well specified
-- a substantial engineering chunk with real finish-line checks
-- the side project you actually want built, as long as the spec is concrete
+- a substantial feature slice with clear acceptance criteria
+- a refactor with tests and clear acceptance criteria
+- a verification or test-coverage pass on behavior you already rely on
+- a cleanup task with a real finish line
 
 Bad first tasks:
 
 - tiny edits where setup dominates the work
-- narrow chores a single agent could finish quickly
 - vague exploration
 - risky production surgery
 - work that depends on constant mid-run steering
 
 If you are unsure, use [docs/first-task-guide.md](./docs/first-task-guide.md).
-
-## Copy this into `PROMPT.md`
-
-Use a one-paragraph contract instead of a loose wish list:
-
-```md
-Change:
-[what should change]
-
-Keep unchanged:
-[what must stay stable]
-
-Done means:
-[observable outcome]
-
-Checks:
-[tests, lint, build, screenshots, or other verification]
-```
-
-Fast example:
-
-```md
-Change:
-Add CSV export to the billing history page.
-
-Keep unchanged:
-Do not change invoice creation, billing calculations, or existing filters.
-
-Done means:
-Users can export the currently filtered billing-history rows to CSV from the page.
-
-Checks:
-Relevant billing tests pass, any new billing-history tests pass, and the app build succeeds.
-```
 
 ## Install and run
 
@@ -81,38 +48,22 @@ $EDITOR PROMPT.md
 ralph
 ```
 
+Use `ralph --init` first to set up or repair the baseline bundle, then run `ralph --diagnose` to confirm capability health before your first task.
+
+- `ralph --init` provisions the default local work surface, web helpers, and shipped baseline skills for a first run that is ready to use.
+- `ralph --diagnose` is the pre-flight check; it shows which baseline helpers are healthy, missing, unreachable, degraded, or need repair.
+
 ## What success looks like
 
-A good first run should leave you with:
+After a good first run, you should be able to point to:
 
-- a real repo change that matches the task you wrote down
-- explicit verification output you can inspect without reading a giant transcript
-- a clear sense of whether Ralph Workflow helped on a task ambitious enough to justify orchestration
-- an obvious next decision: keep iterating, adjust the prompt, or choose a better-scoped task
-
-If the run only gives you activity or narration without a convincing repo outcome, treat that as a miss and tighten the task before trying again.
-
-If you want to see the expected handoff shape before you run, read [content/examples/review_bundle_example.md](./content/examples/review_bundle_example.md).
-If you want a fast pass/fail checklist for the next morning, use [content/examples/tomorrow_morning_scorecard.md](./content/examples/tomorrow_morning_scorecard.md).
-
-## Tomorrow-morning review card
-
-Ignore how confident the agent sounded and ask only:
-
-- does the diff match the task?
-- did the promised checks actually run?
-- is the output small enough to review in one sitting?
-- are open risks called out clearly?
-- **would I merge this?**
-
-If the answer is yes, follow the project on **Codeberg** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- a real repo change that matches the written task
+- meaningful checks that ran and reported clear outcomes
+- a result you can review without reconstructing the whole run
+- a clear sense of whether the default workflow helped enough to keep using
 
 ## Next pages only if you need them
 
 - task selection — [docs/first-task-guide.md](./docs/first-task-guide.md)
-- tomorrow-morning scorecard — [content/examples/tomorrow_morning_scorecard.md](./content/examples/tomorrow_morning_scorecard.md)
-- morning-after review bundle example — [content/examples/review_bundle_example.md](./content/examples/review_bundle_example.md)
-- choosing Ralph Workflow vs another chat/editor loop — [docs/when-to-use-ralph-workflow.md](./docs/when-to-use-ralph-workflow.md)
-- workflow composition walkthrough — [content/examples/workflow_composition_example.md](./content/examples/workflow_composition_example.md)
 - docs switchboard — [docs/README.md](./docs/README.md)
-- [Workflow composition example](./content/examples/workflow_composition_example.md)
+- operator manual — [ralph-workflow/docs/sphinx/index.rst](./ralph-workflow/docs/sphinx/index.rst)

@@ -33,12 +33,14 @@ These are the features that separate real orchestration from prompt wrapping:
 ### Spec-first task definition
 
 ```
+$ pipx install ralph-workflow
 $ ralph --init
-$ # edit PROMPT.md with your task
-$ ralph -a claude
+$ ralph --diagnose
+$ $EDITOR PROMPT.md
+$ ralph
 ```
 
-The CLI requires a written spec before it starts building — not a prompt dump, but a real specification with constraints and acceptance criteria stored in `PROMPT.md`.
+Ralph reads `PROMPT.md` in your project root — you write the spec, it runs the loop.
 
 ### Agent-agnostic routing
 
@@ -111,10 +113,10 @@ It is a workflow tool that makes your existing agents more reliable for unattend
 
 The fastest path:
 
-1. Install: `pip install ralph-workflow`
-2. Run `ralph --init` to scaffold a `PROMPT.md`
+1. Install: `pipx install ralph-workflow`
+2. `ralph --init` then `ralph --diagnose` to confirm healthy helpers
 3. Write your task in `PROMPT.md`
-4. Run: `ralph -a claude` (or any configured agent)
+4. Run `ralph`
 5. Come back and check the diff
 
 If the result is something you would merge, the loop is working. If not, the spec needs sharpening.
