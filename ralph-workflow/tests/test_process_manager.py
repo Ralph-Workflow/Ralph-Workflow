@@ -1021,7 +1021,7 @@ def test_ec4_sigterm_timeout_escalates_to_sigkill() -> None:
 # EC9 (root-only, no-psutil): both SIGTERM and SIGKILL time out -> ProcessTerminationError
 # NOTE: EC9 slot used because EC5 is already taken by test_EC5_spawn_async_appears_in_list_active
 def test_ec9_root_only_force_kill_still_alive_raises_error() -> None:
-    """Force kill also fails in no-psutil path: ProcessTerminationError raised, record is KILLED."""
+    """Force kill also fails in no-psutil path: ProcessTerminationError leaves FAILED state."""
     from ralph.testing.fake_process import FakeImmortalPopen
 
     pid_iter = itertools.count(1)
@@ -1040,7 +1040,8 @@ def test_ec9_root_only_force_kill_still_alive_raises_error() -> None:
     with pytest.raises(ProcessTerminationError):
         handle.terminate(grace_period_s=0.01)
 
-    # _terminate_root_only_sync calls _mark_killed before raising, so record is terminal
-    assert handle.record.status == ProcessStatus.KILLED
-    assert handle.record.cause == "killed"
+    # Failed shutdown must remain terminal without reporting a successful kill.
+    assert handle.record.status == ProcessStatus.FAILED
+    assert handle.record.cause == "termination_failed"
+    assert handle.record.failure_message == "Process still alive after kill"
     assert len(pm.list_active()) == 0

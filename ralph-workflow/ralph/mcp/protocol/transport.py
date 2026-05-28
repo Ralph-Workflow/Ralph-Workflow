@@ -183,13 +183,17 @@ class StdioTransport:
             proc = self._process
             self._process = None
             if isinstance(proc, ManagedProcess):
-                with contextlib.suppress(ProcessTerminationError):
+                try:
                     proc.terminate(grace_period_s=5.0)
-                for attr in ("stdin", "stdout", "stderr"):
-                    pipe: IO[bytes] | None = getattr(proc, attr, None)
-                    if pipe is not None:
-                        with contextlib.suppress(Exception):
-                            pipe.close()
+                except ProcessTerminationError:
+                    logger.exception("Failed to close stdio transport")
+                    raise
+                finally:
+                    for attr in ("stdin", "stdout", "stderr"):
+                        pipe: IO[bytes] | None = getattr(proc, attr, None)
+                        if pipe is not None:
+                            with contextlib.suppress(Exception):
+                                pipe.close()
             else:
                 proc.terminate()
                 proc.wait()

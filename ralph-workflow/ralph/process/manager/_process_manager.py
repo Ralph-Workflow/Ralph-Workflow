@@ -404,7 +404,7 @@ class ProcessManager:
             try:
                 rc = proc.wait(timeout=self.policy.kill_followup_timeout_s)
             except (subprocess.TimeoutExpired, TimeoutError):
-                self._mark_killed(record, proc.poll())
+                self._mark_termination_failed(record, proc.poll())
                 logger.error("Process {} still alive after kill", record.pid)
                 raise ProcessTerminationError(record.pid, record.pgid) from None
         self._mark_killed(record, rc)
@@ -427,7 +427,7 @@ class ProcessManager:
                     proc.wait(), timeout=self.policy.kill_followup_timeout_s
                 )
             except TimeoutError:
-                self._mark_killed(record, proc.returncode)
+                self._mark_termination_failed(record, proc.returncode)
                 logger.error("Process {} still alive after kill", record.pid)
                 raise ProcessTerminationError(record.pid, record.pgid) from None
         self._mark_killed(record, rc)
@@ -455,10 +455,11 @@ class ProcessManager:
                 proc.kill()
 
         _, still_alive = psutil_mod.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
-        self._mark_killed(record)
         if still_alive:
+            self._mark_termination_failed(record)
             logger.error("Process {} still alive after kill", record.pid)
             raise ProcessTerminationError(record.pid, record.pgid)
+        self._mark_killed(record)
 
     def _escalate_termination_sync(
         self,
@@ -493,10 +494,11 @@ class ProcessManager:
 
         _, still_alive = psutil_mod.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
         rc = proc.poll()
-        self._mark_killed(record, rc)
         if still_alive:
+            self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", record.pid)
             raise ProcessTerminationError(record.pid, record.pgid)
+        self._mark_killed(record, rc)
 
     def _escalate_termination_pty(
         self,
@@ -549,10 +551,11 @@ class ProcessManager:
         loop = asyncio.get_running_loop()
         still_alive = await loop.run_in_executor(None, _do_terminate)
         rc = proc.returncode
-        self._mark_killed(record, rc)
         if still_alive:
+            self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", pid)
             raise ProcessTerminationError(record.pid, record.pgid)
+        self._mark_killed(record, rc)
 
     def _escalate_async_in_sync_context(
         self,
@@ -581,10 +584,11 @@ class ProcessManager:
             _, still_alive = psutil_mod.wait_procs(
                 alive, timeout=self.policy.kill_followup_timeout_s
             )
-            self._mark_killed(record, proc.returncode)
             if still_alive:
+                self._mark_termination_failed(record, proc.returncode)
                 logger.error("Process {} still alive after kill", record.pid)
                 raise ProcessTerminationError(record.pid, record.pgid)
+            self._mark_killed(record, proc.returncode)
             return
         # No psutil: use os.kill directly
         with contextlib.suppress(ProcessLookupError, OSError):
@@ -602,7 +606,7 @@ class ProcessManager:
             # Process exists but can't signal it - still alive
             pass
         # If we get here, process is still alive
-        self._mark_killed(record, None)
+        self._mark_termination_failed(record, None)
         raise ProcessTerminationError(record.pid, record.pgid)
 
     def _record_terminal_state(self, record: ProcessRecord) -> None:
@@ -625,6 +629,7 @@ class ProcessManager:
             record.returncode = returncode
             record.ended_at = datetime.now(tz=UTC)
             record.cause = "exited"
+            record.failure_message = None
             self._sync_procs.pop(record.pid, None)
             self._pty_procs.pop(record.pid, None)
             self._async_procs.pop(record.pid, None)
@@ -640,11 +645,34 @@ class ProcessManager:
             record.returncode = returncode
             record.ended_at = datetime.now(tz=UTC)
             record.cause = "killed"
+            record.failure_message = None
             self._sync_procs.pop(record.pid, None)
             self._pty_procs.pop(record.pid, None)
             self._async_procs.pop(record.pid, None)
             self._record_terminal_state(record)
         self._emit(record, prev, ProcessStatus.KILLED)
+
+    def _mark_termination_failed(
+        self,
+        record: ProcessRecord,
+        returncode: int | None = None,
+        *,
+        reason: str = "Process still alive after kill",
+    ) -> None:
+        with self._status_lock:
+            if record.status in _TERMINAL_STATUSES:
+                return
+            prev = record.status
+            record.status = ProcessStatus.FAILED
+            record.returncode = returncode
+            record.ended_at = datetime.now(tz=UTC)
+            record.cause = "termination_failed"
+            record.failure_message = reason
+            self._sync_procs.pop(record.pid, None)
+            self._pty_procs.pop(record.pid, None)
+            self._async_procs.pop(record.pid, None)
+            self._record_terminal_state(record)
+        self._emit(record, prev, ProcessStatus.FAILED)
 
     def _emit(
         self,
