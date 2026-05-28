@@ -14,16 +14,22 @@ OUT_MD = OUT_DIR / 'adoption_metrics_latest.md'
 
 TARGETS = [
     {
-        'name': 'GitHub',
-        'url': 'https://api.github.com/repos/Ralph-Workflow/Ralph-Workflow',
-        'kind': 'github',
-        'role': 'mirror',
-    },
-    {
         'name': 'Codeberg',
         'url': 'https://codeberg.org/api/v1/repos/RalphWorkflow/Ralph-Workflow',
         'kind': 'codeberg',
         'role': 'primary',
+    },
+    {
+        'name': 'PyPI',
+        'url': 'https://pypi.org/pypi/ralph-workflow/json',
+        'kind': 'pypi',
+        'role': 'package',
+    },
+    {
+        'name': 'GitHub',
+        'url': 'https://api.github.com/repos/Ralph-Workflow/Ralph-Workflow',
+        'kind': 'github',
+        'role': 'mirror',
     },
 ]
 
@@ -33,8 +39,75 @@ def fetch_json(url: str) -> dict:
         return json.loads(r.read().decode('utf-8'))
 
 
+def fetch_pypi_stats(payload: dict, package: str = 'ralph-workflow') -> dict:
+    """Fetch PyPI download statistics from pypistats.org."""
+    stats: dict = {
+        'recent_downloads_month': None,
+        'recent_downloads_week': None,
+        'recent_downloads_day': None,
+        'total_downloads': None,
+        'version': None,
+        'package_info': {},
+    }
+    # Extract package info from the payload (already fetched)
+    info = payload.get('info', {}) if isinstance(payload, dict) else {}
+    if info:
+        stats['version'] = info.get('version')
+        stats['package_info'] = {
+            'summary': (info.get('summary') or '')[:200],
+            'keywords': info.get('keywords', ''),
+            'classifiers': info.get('classifiers', [])[:5],
+            'requires_python': info.get('requires_python', ''),
+            'home_page': info.get('home_page', ''),
+            'project_url_homepage': (info.get('project_urls') or {}).get('Homepage', ''),
+        }
+    # Fetch recent downloads from pypistats (cached for short windows to avoid rate limits)
+    import time as _time
+    cache_path = OUT_DIR / 'pypi_stats_cache.json'
+    cached = None
+    if cache_path.exists():
+        try:
+            cached = json.loads(cache_path.read_text())
+            cache_age = _time.time() - cached.get('_fetched_at', 0)
+            if cache_age < 3600:
+                stats.update(cached.get('stats', {}))
+                return stats
+        except Exception:
+            pass
+    try:
+        req = Request(
+            f'https://pypistats.org/api/packages/{package}/recent',
+            headers={'User-Agent': 'RalphWorkflow-Marketing-Agent/1.0'}
+        )
+        with urlopen(req, timeout=20) as r:
+            raw = json.loads(r.read().decode('utf-8'))
+        data = raw.get('data', {})
+        stats['recent_downloads_month'] = data.get('last_month')
+        stats['recent_downloads_week'] = data.get('last_week')
+        stats['recent_downloads_day'] = data.get('last_day')
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps({'_fetched_at': _time.time(), 'stats': dict(stats)}))
+    except Exception:
+        if cached:
+            stats.update(cached.get('stats', {}))  # fallback to stale cache
+        else:
+            pass
+    return stats
+
+
 def normalize(target: dict, payload: dict) -> dict:
     kind = target['kind']
+    if kind == 'pypi':
+        stats = fetch_pypi_stats(payload)
+        return {
+            'platform': target['name'],
+            'downloads_month': stats.get('recent_downloads_month'),
+            'downloads_week': stats.get('recent_downloads_week'),
+            'downloads_day': stats.get('recent_downloads_day'),
+            'total_downloads': stats.get('total_downloads'),
+            'version': stats.get('version'),
+            'html_url': 'https://pypi.org/project/ralph-workflow/',
+        }
     if kind == 'github':
         return {
             'platform': target['name'],
@@ -101,6 +174,7 @@ def evaluate_adoption_state(metrics: list[dict], recent_window: dict[str, dict])
     by_platform = {m['platform']: m for m in metrics}
     codeberg = by_platform.get('Codeberg', {})
     github = by_platform.get('GitHub', {})
+    pypi = by_platform.get('PyPI', {})
     codeberg_window = recent_window.get('Codeberg', {})
     github_window = recent_window.get('GitHub', {})
 
@@ -118,6 +192,11 @@ def evaluate_adoption_state(metrics: list[dict], recent_window: dict[str, dict])
 
     if (codeberg.get('stars') or 0) >= (github.get('stars') or 0):
         findings.append('Codeberg remains the stronger adoption surface and should stay the primary evaluation target.')
+
+    pypi_monthly = pypi.get('downloads_month', 0) or 0
+    pypi_daily = pypi.get('downloads_day', 0) or 0
+    if pypi_monthly > 0:
+        findings.append(f'PyPI has {pypi_monthly} downloads/month ({pypi_daily}/day) — real usage signal that repo metrics don\'t capture.')
 
     if not next_focus:
         next_focus.append('Keep measuring adoption deltas and replace any tactic that stays flat across the window.')
@@ -167,17 +246,29 @@ def main() -> int:
         d = deltas.get(m['platform'], {})
         role = next((t.get('role') for t in TARGETS if t['name'] == m['platform']), None)
         recent = recent_window.get(m['platform'], {})
-        md.extend([
-            f"## {m['platform']}" + (f" ({role})" if role else ''),
-            f"- Stars: {m.get('stars')}" + (f" ({d.get('stars_delta', 0):+d})" if d else ''),
-            f"- Watchers: {m.get('watchers')}" + (f" ({d.get('watchers_delta', 0):+d})" if d else ''),
-            f"- Forks: {m.get('forks')}" + (f" ({d.get('forks_delta', 0):+d})" if d else ''),
-            f"- Open issues: {m.get('open_issues')}",
-            f"- Recent window samples: {recent.get('samples', 0)}",
-            f"- Window deltas: stars {recent.get('stars_delta_window', 0):+d}, watchers {recent.get('watchers_delta_window', 0):+d}, forks {recent.get('forks_delta_window', 0):+d}",
-            f"- URL: {m.get('html_url')}",
-            '',
-        ])
+        if m['platform'] == 'PyPI':
+            md.extend([
+                f"## {m['platform']}" + (f" ({role})" if role else ''),
+                f"- Version: {m.get('version')}",
+                f"- Downloads (last month): {m.get('downloads_month')}",
+                f"- Downloads (last week): {m.get('downloads_week')}",
+                f"- Downloads (last day): {m.get('downloads_day')}",
+                f"- Total downloads: {m.get('total_downloads')}",
+                f"- URL: {m.get('html_url')}",
+                '',
+            ])
+        else:
+            md.extend([
+                f"## {m['platform']}" + (f" ({role})" if role else ''),
+                f"- Stars: {m.get('stars')}" + (f" ({d.get('stars_delta', 0):+d})" if d else ''),
+                f"- Watchers: {m.get('watchers')}" + (f" ({d.get('watchers_delta', 0):+d})" if d else ''),
+                f"- Forks: {m.get('forks')}" + (f" ({d.get('forks_delta', 0):+d})" if d else ''),
+                f"- Open issues: {m.get('open_issues')}",
+                f"- Recent window samples: {recent.get('samples', 0)}",
+                f"- Window deltas: stars {recent.get('stars_delta_window', 0):+d}, watchers {recent.get('watchers_delta_window', 0):+d}, forks {recent.get('forks_delta_window', 0):+d}",
+                f"- URL: {m.get('html_url')}",
+                '',
+            ])
     md.extend(['## Evaluation'])
     md.extend([f"- {line}" for line in evaluation.get('findings', [])])
     if evaluation.get('failing_signals'):

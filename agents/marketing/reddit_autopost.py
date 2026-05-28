@@ -63,8 +63,10 @@ RETRO_JSON = ROOT / "agents/marketing/logs/reddit_post_analysis.json"
 AUDIT_JSON = ROOT / "agents/marketing/logs/marketing_workflow_audit_latest.json"
 RETRO_SCRIPT = ROOT / "agents/marketing/reddit_retrospective.py"
 POST_LOG_JSONL = ROOT / "agents/marketing/logs/reddit_posts.jsonl"
+MARKETING_LOG_DIR = ROOT / "agents/marketing/logs"
 # Primary adoption surface is Codeberg (9 stars, 2 forks). GitHub is a secondary mirror (0 stars).
 CODEBERG_PRIMARY_URL = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+CODEBERG_REVIEW_PROOF_URL = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md"
 GITHUB_MIRROR_URL = "https://github.com/Ralph-Workflow/Ralph-Workflow"
 
 BANNED_OPENING_PREFIXES = (
@@ -187,6 +189,113 @@ def load_json_file(path: Path) -> dict:
         return {}
 
 
+def _normalize_logged_reddit_url(url: str) -> str:
+    value = (url or "").strip().strip("<>").replace("https://www.reddit.com/", "https://old.reddit.com/")
+    if value and not value.endswith("/"):
+        value += "/"
+    return value
+
+
+def _refresh_shared_marketing_state() -> None:
+    return None
+
+
+def _load_report_opportunity_map(report_path: str) -> dict[str, Opportunity]:
+    path = Path(report_path)
+    if not report_path or not path.exists():
+        return {}
+    try:
+        opps = parse_opportunities(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return {_normalize_logged_reddit_url(opp.url): opp for opp in opps}
+
+
+def _existing_reddit_comment_urls() -> set[str]:
+    urls: set[str] = set()
+    if not MARKETING_LOG_DIR.exists():
+        return urls
+    for path in MARKETING_LOG_DIR.glob("marketing_*_reddit_comment_published.json"):
+        payload = load_json_file(path)
+        for candidate in (
+            ((payload.get("chosen_action") or {}).get("url")),
+            ((payload.get("chosen_action") or {}).get("thread_url")),
+            ((payload.get("result") or {}).get("comment_url")),
+            ((payload.get("result") or {}).get("thread_url")),
+        ):
+            if candidate:
+                urls.add(_normalize_logged_reddit_url(str(candidate)))
+    return urls
+
+
+def sync_latest_reddit_post_into_marketing_logs() -> Path | None:
+    if not POST_LOG_JSONL.exists():
+        return None
+    existing_urls = _existing_reddit_comment_urls()
+    rows: list[dict] = []
+    for line in POST_LOG_JSONL.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rows.append(json.loads(line))
+        except Exception:
+            continue
+    if not rows:
+        return None
+    rows.sort(key=lambda row: str(row.get("timestamp") or ""), reverse=True)
+    for row in rows:
+        thread_url = _normalize_logged_reddit_url(str(row.get("thread_url") or ""))
+        comment_url = _normalize_logged_reddit_url(str(row.get("comment_url") or ""))
+        if thread_url in existing_urls or comment_url in existing_urls:
+            continue
+        metadata = dict(row.get("metadata") or {})
+        report_map = _load_report_opportunity_map(str(metadata.get("report") or ""))
+        report_match = report_map.get(thread_url)
+        if report_match is not None:
+            metadata.setdefault("title", report_match.title)
+            metadata.setdefault("community", report_match.community)
+            metadata.setdefault("angle", report_match.angle)
+            metadata.setdefault("mention_fit", report_match.mention_fit)
+            metadata.setdefault("direct_reply_fit", report_match.direct_reply_fit)
+        title = str(metadata.get("title") or row.get("note") or "Reddit thread")
+        community = str(metadata.get("community") or "")
+        angle = str(metadata.get("angle") or "")
+        mention_fit = str(metadata.get("mention_fit") or "")
+        timestamp = str(row.get("timestamp") or datetime.now().isoformat())
+        safe_stamp = re.sub(r"[^0-9]", "", timestamp)[:15] or datetime.now().strftime("%Y%m%d%H%M%S")
+        MARKETING_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        path = MARKETING_LOG_DIR / f"marketing_{safe_stamp}_reddit_comment_published.json"
+        payload = {
+            "timestamp": timestamp,
+            "chosen_action": {
+                "type": "reddit_comment_published",
+                "title": f"Reddit comment published: {title}",
+                "url": comment_url or thread_url,
+                "thread_url": thread_url,
+            },
+            "why_this_action": {
+                "summary": "Backfilled published Reddit comment into marketing logs.",
+                "supporting_reasons": [
+                    f"community: {community}" if community else "community: unknown",
+                    f"mention_fit: {mention_fit}" if mention_fit else "mention_fit: unknown",
+                    f"angle: {angle}" if angle else "angle: unknown",
+                ],
+            },
+            "result": {
+                "status": "published",
+                "live_external_action": True,
+                "thread_url": thread_url,
+                "comment_url": comment_url or thread_url,
+                "body": row.get("body"),
+            },
+        }
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        _refresh_shared_marketing_state()
+        return path
+    return None
+
+
 def recent_body_hashes(limit: int = 8) -> set[str]:
     """Return SHA1 prefixes of bodies posted in the last BODY_CACHE_TTL_HOURS."""
     cache = load_body_cache()
@@ -220,6 +329,7 @@ class Opportunity:
     angle: str
     freshness: str
     mention_fit: str = ""
+    direct_reply_fit: str = ""
 
 
 def latest_report() -> Path:
@@ -262,6 +372,7 @@ def parse_opportunities(report_text: str) -> list[Opportunity]:
         community = extract(r"^- Community:\s*(.+)$")
         freshness = extract(r"^- Freshness:\s*(.+)$")
         mention_fit = extract(r"^- Mention fit:\s*(.+)$")
+        direct_reply_fit = extract(r"^- Direct reply fit:\s*(.+)$")
 
         angle = ""
         inline_angle = extract(r"^- (?:Best RalphWorkflow angle|Recommended angle):\s*(.+)$")
@@ -298,6 +409,7 @@ def parse_opportunities(report_text: str) -> list[Opportunity]:
                 angle,
                 " ".join(freshness.split()),
                 " ".join(mention_fit.split()),
+                " ".join(direct_reply_fit.split()),
             )
         )
 
@@ -409,6 +521,18 @@ def finish_surface_score(opp: Opportunity) -> int:
     return 0
 
 
+def report_posting_guard(report_text: str, opps: list[Opportunity]) -> list[str]:
+    reasons: list[str] = []
+    lowered = report_text.lower()
+    if "important telemetry note" in lowered:
+        reasons.append("report_coverage_unhealthy")
+    if "partial coverage" in lowered or "reddit_ip_blocked=" in lowered:
+        reasons.append("report_partial_coverage")
+    if opps and max((mention_fit_score(opp.mention_fit) for opp in opps), default=0) < 2:
+        reasons.append("mention_fit_below_medium")
+    return reasons
+
+
 def choose_opportunity(opps: list[Opportunity]) -> tuple[Opportunity | None, str]:
     now = datetime.now()
     recent_posts = load_recent_post_records(hours=24)
@@ -452,13 +576,14 @@ def choose_opportunity(opps: list[Opportunity]) -> tuple[Opportunity | None, str
     if fresh_but_rate_limited:
         return None, "fresh_rate_limited"
 
-    arguable_unused = unused_with_min_score(4, respect_community_cooldown=True, min_fit=1)
-    if arguable_unused:
-        return rank_candidates(arguable_unused)[0], "fresh"
-
-    arguable_rate_limited = unused_with_min_score(4, respect_community_cooldown=False, min_fit=1)
-    if arguable_rate_limited:
-        return None, "fresh_rate_limited"
+    medium_low_unused = [
+        opp for opp in opps
+        if not already_used(opp.url)
+        and freshness_score(opp.freshness) >= 4
+        and mention_fit_score(opp.mention_fit) == 1
+    ]
+    if medium_low_unused:
+        return None, "weak_fit_only"
 
     weak_fit_unused = [opp for opp in opps if not already_used(opp.url) and mention_fit_score(opp.mention_fit) == 0]
     if weak_fit_unused:
@@ -931,6 +1056,10 @@ def one_paragraph_candidates(opp: Opportunity) -> list[str]:
     angle = " ".join((opp.angle or "").split())
     category = detect_category(opp.title)
     if not should_add_github_link(opp):
+        if mention_fit_score(opp.mention_fit) == 1 and (opp.direct_reply_fit or "").strip().strip("*").lower() in {"high", "medium-high"}:
+            return [
+                f"What stands out to me here is {angle or 'the finish-state problem'}; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed. If you want one concrete proof surface for that finish line instead of a pitch, this is the doc I keep pointing people to: {CODEBERG_REVIEW_PROOF_URL}"
+            ]
         if angle:
             return [
                 f"What stands out to me here is {angle}; the useful bar is still simple: no babysitting, finished code, tested code, ready to review, and a clear answer to what changed."
@@ -1857,12 +1986,29 @@ def main() -> int:
             return 0
         text = report.read_text(encoding="utf-8")
         opps = parse_opportunities(text)
+        report_guard_reasons = report_posting_guard(text, opps)
         if state.get("last_report") == str(report) and last_status in {"posted", "already_consumed", "already_logged"}:
             print(json.dumps({"ok": True, "status": "already_consumed", "report": str(report), "last_comment_url": state.get("last_comment_url")}, indent=2))
             return 0
         if state.get("last_report") == str(report) and last_status == "no_unused_opportunity" and not opps:
             print(json.dumps({"ok": True, "status": "already_consumed", "report": str(report), "last_comment_url": state.get("last_comment_url")}, indent=2))
             return 0
+        if report_guard_reasons and "mention_fit_below_medium" in report_guard_reasons:
+            save_state({
+                "last_attempt_at": __import__("datetime").datetime.now().isoformat(),
+                "last_report": str(report),
+                "last_attempt_status": "weak_fit_only_skip",
+                "last_detail": "; ".join(report_guard_reasons),
+            })
+            print(json.dumps({
+                "ok": True,
+                "status": "weak_fit_only_skip",
+                "report": str(report),
+                "detail": report_guard_reasons,
+                "opportunities": len(opps),
+            }, indent=2))
+            return 0
+
         chosen, opportunity_state = choose_opportunity(opps)
         if not chosen:
             status_map = {

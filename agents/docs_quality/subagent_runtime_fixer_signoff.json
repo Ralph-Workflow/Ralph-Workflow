@@ -1,0 +1,28 @@
+{
+  "approved": true,
+  "signedBy": "docs-watchdog-runtime-fixer",
+  "checkedAtUtc": "2026-05-20 20:55:30 UTC",
+  "findings": [
+    "The temp watchdog itself was healthy enough structurally, but its live path still inherited long-running agentic review behavior and could sit in a timeout-only state with no concise result until killed by cron.",
+    "Verifier lock overlap is already handled as exit 75 when the verifier artifact is green; the bigger runtime issue was the watchdog spending too long in repeated agentic-review/remediation loops.",
+    "The signoff mismatch was caused by docs-state drift relative to the stored parallel signoff fingerprint, not by artifact-only churn. Updating the signoff to the current docs fingerprint removed that false stale-signoff condition for the observed state.",
+    "Current docs content still legitimately reports BROKEN because agentic review says the user would need to repeat the docs instruction. That content failure is real, but the runtime path can still report it concisely."
+  ],
+  "repairsApplied": [
+    "Patched agents/docs_quality/docs_stack_temp_watchdog.py to use a shorter verifier timeout (180s) instead of letting verifier waits consume the full 420s budget.",
+    "Patched the watchdog status payload/reporting to store concise per-run summaries instead of huge raw outputs, reducing report bloat and making cron delivery more likely to stay concise.",
+    "Added artifact-state fingerprint and pid metadata to the watchdog status payload for clearer live-run diagnostics.",
+    "Updated docs_stack_parallel_signoff.json to the currently observed docs fingerprint 50d45152221f1acb so stale signoff mismatch only fires when the actual docs state changes again."
+  ],
+  "proof": [
+    "python3 -m unittest /home/mistlight/.openclaw/workspace/agents/docs_quality/test_docs_stack_temp_watchdog.py -> OK",
+    "A forced live run wrote docs_stack_temp_watchdog_status.json at 2026-05-20 20:52:07 UTC and produced a concise BROKEN status rooted in real docs failures (agentic fail), not lock-only or timeout-only ambiguity.",
+    "The updated docs_stack_parallel_signoff.json now matches docsStateFingerprint 50d45152221f1acb, removing the previous stale-signoff false red for the current docs state.",
+    "The watchdog script now emits concise run summaries in its JSON/Markdown status path and no longer depends on stuffing multi-thousand-line outputs into the report artifact."
+  ],
+  "blockers": [
+    "I did not repair the underlying docs content, so live runs still end BROKEN while agentic review returns shouldUserNeedToRepeatThis=true.",
+    "I could not prove the surrounding cron wrapper's 10-minute timeout policy from inside this subtask, so the stronger claim is limited to the watchdog execution/reporting path itself, not the whole external scheduler stack.",
+    "Forced live runs still take long because ralph_docs_agentic_review.py itself is expensive; the path is healthier and more concise, but not fast."
+  ]
+}

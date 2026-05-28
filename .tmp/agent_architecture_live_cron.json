@@ -1,0 +1,1259 @@
+{
+  "jobs": [
+    {
+      "id": "a49ec2cc-8343-45bf-a52e-eff8b0975585",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "ralph-site-owner-loop",
+      "enabled": true,
+      "createdAtMs": 1778963163602,
+      "schedule": {
+        "kind": "cron",
+        "expr": "15 */4 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai-codex/gpt-5.4",
+        "timeoutSeconds": 3600,
+        "message": "You are the runtime-owned Ralph-Site owner loop.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use a skill if one clearly applies\n- if you need a capability/pattern and no current skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md and check for a better skill-first path before inventing a custom approach\n- if docs content, docs structure, or docs UX is in scope, read ~/.agents/skills/documentation/SKILL.md and use it as the primary docs-writing/docs-evaluation skill\n- for public frontend design direction, hierarchy, scanability, and polish, read ~/.agents/skills/frontend-design-direction/SKILL.md every run\n- for reusable UI patterns/components and consistency, read ~/.agents/skills/design-system/SKILL.md every run\n- for implementation-level frontend behavior/layout patterns, read ~/.agents/skills/frontend-patterns/SKILL.md every run\n- for accessibility/usability review on public surfaces, read ~/.agents/skills/accessibility-review/SKILL.md every run\n- if documenting governance/process flow is in scope, also read ~/.agents/skills/process-doc/SKILL.md when clearly relevant\n\nMission:\n- keep /home/mistlight/.openclaw/workspace/Ralph-Site current\n- keep https://ralphworkflow.com current\n- push safe site changes upstream and make them live regularly\n- repair the loop itself when its assumptions drift\n\nBefore acting, read and follow:\n1. /home/mistlight/.openclaw/workspace/Ralph-Site/AGENTS.md\n2. /home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md\n3. /home/mistlight/.openclaw/workspace/agents/marketing/SEO_OWNERSHIP_POLICY.md\n4. /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json\n5. ~/.agents/skills/continuous-agent-loop/SKILL.md\n6. ~/.agents/skills/continuous-learning-v2/SKILL.md\n7. ~/.agents/skills/frontend-design-direction/SKILL.md\n8. ~/.agents/skills/design-system/SKILL.md\n9. ~/.agents/skills/frontend-patterns/SKILL.md\n10. ~/.agents/skills/accessibility-review/SKILL.md\n11. If fixing sitemap/robots/canonicals/indexing, read ~/.agents/skills/seo/SKILL.md\n12. If touching admin/security-sensitive surfaces, read ~/.agents/skills/security-review/SKILL.md\n\nReality checks:\n- live deploy tree: /home/mistlight/ralph_site\n- live release: /home/mistlight/ralph_site/current\n- live app service: systemctl --user status ralph_site_puma_production.service\n- runtime reality beats stale docs\n- Ralph-Site docs must not fall back to stale vendored Ralph Workflow docs when fresher workspace docs exist\n- docs home must preserve the manual-based structure\n- if /home/mistlight/.openclaw/workspace/Ralph-Site is dirty or behind, do not pull, reset, or deploy from it; verify against a clean remote clone under /home/mistlight/.openclaw/workspace/tmp and keep the dirty workspace untouched unless you are explicitly repairing it\n\nOwnership:\n- SEO belongs only in Ralph-Site\n- Ralph Workflow owns docs content/manual structure\n- Ralph-Site owns public rendering, wrappers, titles, canonicals, sitemap, robots, indexability, search presentation, and frontend design quality\n- if a safe internal fix exists, apply it instead of stopping at diagnosis\n- competitor and market learnings are not complete unless this loop checks the shared market intelligence artifact and acts on relevant findings\n\nRequired run flow:\n1. Inspect live runtime/deploy reality:\n   - /home/mistlight/ralph_site/current\n   - /home/mistlight/ralph_site/repo\n   - /home/mistlight/ralph_site/releases\n   - systemctl --user status ralph_site_puma_production.service\n   - https://ralphworkflow.com\n   - https://ralphworkflow.com/docs/\n   - https://ralphworkflow.com/robots.txt\n   - https://ralphworkflow.com/sitemap.xml\n2. Inspect /home/mistlight/.openclaw/workspace/Ralph-Site as source-of-truth workspace.\n3. Read the shared market intelligence artifact and explicitly note whether any competitor/positioning/reddit learnings should change Ralph-Site now.\n4. Evaluate not only docs correctness but the frontend design direction, visual hierarchy, component consistency, interaction patterns, and accessibility of the public surfaces.\n5. When docs are in scope or suspicious, run:\n   - python3 scripts/verify_docs_source_freshness.py\n   - python3 scripts/verify_docs_manual_structure.py\n   Treat failures as real bugs.\n6. If the Ralph-Site workspace is dirty or branch state is suspicious, verify remote reality with `git ls-remote origin HEAD refs/heads/main` and use a clean remote clone under `/home/mistlight/.openclaw/workspace/tmp` for any build/verification work that must not inherit local drift.\n7. Identify the highest-leverage safe repair needed now.\n8. Apply the strongest safe local repair.\n9. Verify the changed surface.\n10. If changes are worth keeping, commit and push.\n11. Publish using the real local deployment path. If Capistrano is healthy, use it. If Capistrano is blocked but a safe local deploy path exists here, repair and use it.\n12. Re-check live production after publish.\n13. If the loop definition itself is stale, repair it too.\n\nFinal report must separate:\n- Runtime reality checked\n- Skill(s) used and why\n- Shared market intelligence consumed / not consumed and why\n- Repair applied\n- Verification proof\n- Push proof\n- Live publish proof\n- Top remaining blocker (or none)\n- Next loop hardening fix",
+        "thinking": "low",
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779891300000,
+        "lastRunAtMs": 1779879115141,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 700665,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "runningAtMs": 1779894000820
+      },
+      "updatedAtMs": 1779879815806,
+      "status": "running"
+    },
+    {
+      "id": "0372271b-8c4e-4986-ad27-31e50d3fb54c",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "apollo-channel-monitor",
+      "enabled": true,
+      "createdAtMs": 1779150431797,
+      "schedule": {
+        "kind": "cron",
+        "expr": "25 */4 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "timeoutSeconds": 2400,
+        "message": "Monitor Apollo.io as a managed outbound channel and refresh its blocker state.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom auth/recovery path\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. xvfb-run -a python3 /home/mistlight/.openclaw/workspace/agents/marketing/apollo_monitor.py\n\nRules:\n- Apollo is a managed channel, not a forgotten credential.\n- Refresh machine-readable status in agents/marketing/logs/apollo_status.json and the markdown summary.\n- Stay truthful: record the real blocker state from the working real-browser path.\n- If Cloudflare/auth protection blocks login, say so clearly.\n- If mailbox verification is still required, record that clearly instead of pretending Apollo is actionable.\n- If Apollo login succeeds, reflect that in downstream-ready status artifacts.",
+        "thinking": "low"
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779891900000,
+        "lastRunAtMs": 1779884044071,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 300153,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "runningAtMs": 1779894000820
+      },
+      "updatedAtMs": 1779884344224,
+      "status": "running"
+    },
+    {
+      "id": "0251da77-feaa-40ee-837e-7bc10895dc87",
+      "name": "backlink-tracker",
+      "description": "Track and report on RalphWorkflow backlink indexing status",
+      "enabled": true,
+      "createdAtMs": 1779403838340,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 10,16 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the backlink status tracker for RalphWorkflow.\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 agents/marketing/backlink_status.py\n\nThis checks directory indexing status, Google site: search results, and backlink counts.\nReview agents/marketing/logs/backlink_status_latest.json after running.\nIf new directories are found unindexed, add them to the tracking list.\nLog findings to agents/marketing/logs/backlink_indexing_log.jsonl.\nIf any high-value directory is live but not indexed, flag it for manual follow-up.",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "timeoutSeconds": 1200
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "matrix",
+        "accountId": "default"
+      },
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "state": {
+        "nextRunAtMs": 1779892200000,
+        "lastRunAtMs": 1779874168620,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 601741,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "runningAtMs": 1779894000820
+      },
+      "updatedAtMs": 1779874770361,
+      "status": "running"
+    },
+    {
+      "id": "ba650cdc-c443-476f-a03e-749be36fde91",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "marketing-research-daily",
+      "enabled": true,
+      "createdAtMs": 1778300482915,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 8,16 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the daily RalphWorkflow marketing research pass.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if you need a better capability or workflow and no current skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md and prefer a skill-first path over inventing a custom one\n- if doing search-heavy work, explicitly use search-first reasoning before building your own research flow\n\nGoals:\n1. Find fresh keyword and topic opportunities around RalphWorkflow, unattended coding, AI coding workflow automation, Claude Code/Codex workflows, agent orchestration, and related Reddit discussions.\n2. Monitor Reddit and adjacent communities for sentiment, repeated pain points, usefulness of current discussions, and places where RalphWorkflow would be a genuinely helpful fit.\n3. Browse more widely, not narrowly:\n   - inspect at least 25 candidate posts/threads/discussions across Reddit and adjacent communities when possible\n   - shortlist the best 5-10\n   - report how many candidates were scanned, shortlisted, and rejected\n4. Identify concrete actions worth taking next, including content ideas, comment/reply opportunities, and non-spam promotional angles.\n5. Use the current landing page at https://ralphworkflow.com as messaging ground truth.\n6. Reuse /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json as shared context when relevant.\n\nIf provider/search coverage is degraded, say so clearly and fail closed instead of pretending there were no opportunities.",
+        "model": "openai-codex/gpt-5.4",
+        "timeoutSeconds": 1800
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "matrix"
+      },
+      "description": "Restored as the real daily research job for RalphWorkflow. Runs web research + saves a fresh report instead of relying only on the scripted evaluator.",
+      "state": {
+        "lastRunAtMs": 1779863648380,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 313593,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "nextRunAtMs": 1779892200000,
+        "lastDelivered": true,
+        "runningAtMs": 1779894000820
+      },
+      "updatedAtMs": 1779863961973,
+      "status": "running"
+    },
+    {
+      "id": "1c0ad179-185c-4067-ba16-d41702524ee0",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "system-health-monitor",
+      "enabled": true,
+      "createdAtMs": 1778885586438,
+      "schedule": {
+        "kind": "cron",
+        "expr": "*/15 * * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the system health monitor deterministically.\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 /home/mistlight/.openclaw/workspace/agents/system/health_monitor.py\n3. Read /home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json\n4. If and only if issues_found == 0, run:\n   - python3 /home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py\n   - python3 /home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py\n\nOutput contract:\n- Never emit the blocked denial wording that triggers the cron classifier.\n- For any conditional non-execution, emit the literal token NOT_RUN.\n- Return short plain sections only:\n  Repaired with proof\n  Still broken with exact blocker\n  Independent verification status\n  Highest-risk unresolved issue\n  System verdict\n- Be concise and factual.\n- If a step is skipped by condition, write NOT_RUN and the condition.\n- Do not quote or restate the blocked denial wording.",
+        "timeoutSeconds": 3600,
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "thinking": "low",
+        "toolsAllow": [
+          "exec",
+          "read",
+          "message"
+        ],
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "none",
+        "channel": "matrix",
+        "to": "@mistlight_oriroris:matrix.org",
+        "accountId": "default",
+        "bestEffort": true
+      },
+      "failureAlert": {
+        "after": 1,
+        "channel": "matrix",
+        "cooldownMs": 1800000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779893100000,
+        "lastRunAtMs": 1779892018371,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 538903,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "runningAtMs": 1779894000820
+      },
+      "updatedAtMs": 1779892557274,
+      "status": "running"
+    },
+    {
+      "id": "e90fa8d1-b086-49f8-893c-1c57d38eb1b3",
+      "agentId": "main",
+      "name": "reddit-pipeline-watchdog",
+      "enabled": true,
+      "createdAtMs": 1778955129299,
+      "schedule": {
+        "kind": "cron",
+        "expr": "7,27,47 * * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "timeoutSeconds": 3600,
+        "message": "Run the silent Reddit pipeline watchdog.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom diagnosis path\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 /home/mistlight/.openclaw/workspace/agents/marketing/reddit_watchdog.py\n\nRules:\n- Treat the Python script output as source of truth.\n- If the script returns ok=true with status no_report, stale_report, already_handled, or autopost_attempted, report that result briefly and do not add extra analysis.\n- If the script returns ok=false or surfaces a real pipeline break, state the exact blocker and strongest proof.\n- Keep the final reply under 6 lines.",
+        "thinking": "low",
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779893220000,
+        "lastRunAtMs": 1779892557274,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 209275,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "runningAtMs": 1779894000820
+      },
+      "updatedAtMs": 1779892766549,
+      "status": "running"
+    },
+    {
+      "id": "ff783799-2d21-45f7-bb06-eed9c46b95a6",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "ralph-docs-supervisor-precheck",
+      "description": "MiniMax precheck for the Ralph docs supervisor. Run the deterministic checker and process-state guard, and only wake the GPT docs supervisor when real drift or stale verification exists.",
+      "enabled": true,
+      "createdAtMs": 1779840845334,
+      "schedule": {
+        "kind": "cron",
+        "expr": "10,30,50 * * * *",
+        "tz": "Europe/Berlin",
+        "staggerMs": 120000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the docs supervisor precheck.\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_supervisor_precheck.py\n\nRules:\n- Treat the script output as source of truth.\n- Do not add extra analysis.\n- If status is skip_healthy or skip_cooldown, report that briefly.\n- If status is triggered or trigger_failed, report the exact reasons and trigger result.\n- Keep the reply under 8 lines.",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "thinking": "low",
+        "timeoutSeconds": 900,
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779893430541,
+        "lastRunAtMs": 1779893075260,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 69761,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "runningAtMs": 1779894000820
+      },
+      "updatedAtMs": 1779893145021,
+      "status": "running"
+    },
+    {
+      "id": "b7d74fa6-ab9b-4f66-9d03-a77c0ad7a56c",
+      "name": "codeberg-github-mirror-sync",
+      "description": "Gateway-owned Codeberg→GitHub mirror sync. Replaces the legacy OS-cron sync entry so scheduler ownership stays auditable in one place.",
+      "enabled": true,
+      "createdAtMs": 1779339384368,
+      "schedule": {
+        "kind": "cron",
+        "expr": "*/30 * * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the Codeberg→GitHub mirror sync.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill if the sync/debug path expands beyond the normal script\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom recovery path\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. bash /home/mistlight/.openclaw/workspace/agents/marketing/sync_to_github.sh\n\nRules:\n- Preserve current behavior; this is a scheduler migration, not a workflow redesign.\n- Codeberg is the source of truth; GitHub is the mirror.\n- If the script reports no changes, do not narrate extra analysis; return one concise final line such as \"No changes — mirror already in sync.\"\n- If it pushes or force-syncs, return one concise final line with the exact outcome.\n- If it fails, return one concise final line with the exact blocker from the script/log output.\n- Never return an empty final response; the job must always emit a final line even when nothing changed.",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "thinking": "low",
+        "timeoutSeconds": 3600,
+        "lightContext": true,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ]
+      },
+      "delivery": {
+        "mode": "none",
+        "channel": "last"
+      },
+      "state": {
+        "nextRunAtMs": 1779894000000,
+        "lastRunAtMs": 1779892931430,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 143830,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "runningAtMs": 1779894000820
+      },
+      "updatedAtMs": 1779893075260,
+      "status": "running"
+    },
+    {
+      "id": "fe8f8f62-cb85-4d49-9181-fc5f6c958950",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "marketing-daily",
+      "enabled": true,
+      "createdAtMs": 1778315390058,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9,17 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the RalphWorkflow marketing evaluator as a self-improving loop.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md and check for a stronger skill-first path before inventing custom analysis\n\nRequired context before doing anything:\n1. Read /home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_SELF_IMPROVEMENT.md\n2. Read /home/mistlight/.openclaw/workspace/agents/marketing/REDDIT_LEARNINGS.md\n3. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_posts.jsonl\n4. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md\n5. Review the latest daily research report in /home/mistlight/.openclaw/workspace/seo-reports/.\n6. Review recent Reddit monitoring reports matching /home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_*.md.\n7. Review prior Reddit activity and outreach history in /home/mistlight/.openclaw/workspace/outreach-log.md and any recent Reddit posts/comments tracked there.\n8. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json and reuse it when making decisions.\n9. Use https://ralphworkflow.com as messaging ground truth.\n\nRules:\n- turn learnings into runtime-enforced behavior, not report-only notes\n- prefer repairs and improved next actions over commentary\n- if a safe local fix exists in the marketing loop, apply it in the same run\n- own marketing outcomes, not just technical repairs\n- if outcomes are weak, you are explicitly allowed to create new agents, patch existing agents, rewrite prompts, change cron jobs, add tests, and redesign development processes in the same run\n- if there is any question about whether you should decide for yourself, the default answer is: it is up to you",
+        "timeoutSeconds": 3600,
+        "model": "openai-codex/gpt-5.4"
+      },
+      "delivery": {
+        "mode": "announce",
+        "to": "room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+        "channel": "matrix",
+        "accountId": "default"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779894000000,
+        "lastRunAtMs": 1779865560037,
+        "lastRunStatus": "error",
+        "lastStatus": "error",
+        "lastDurationMs": 849518,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 1,
+        "consecutiveSkipped": 0,
+        "lastDelivered": true,
+        "lastDiagnostics": {
+          "summary": "cron classifier: denial token \"could not run\" detected in summary",
+          "entries": [
+            {
+              "ts": 1779866409555,
+              "source": "agent-run",
+              "severity": "error",
+              "message": "cron classifier: denial token \"could not run\" detected in summary"
+            }
+          ]
+        },
+        "lastDiagnosticSummary": "cron classifier: denial token \"could not run\" detected in summary",
+        "runningAtMs": 1779894000820
+      },
+      "updatedAtMs": 1779866409555,
+      "status": "running"
+    },
+    {
+      "id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "Push research findings to git repo",
+      "enabled": true,
+      "createdAtMs": 1778432912726,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 * * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the tested sync script for the Research-Findings repo.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom sync/debug path\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 -m unittest agents.marketing.tests.test_sync_research agents.marketing.tests.test_marketing_system agents.unblocker.tests.test_unblocker -v\n3. python3 /home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py\n\nCoverage and proof rules:\n- Do not claim sync success from intent alone.\n- Coverage is incomplete until the required sync scope is confirmed synced with proof or marked excluded/blocked with the exact reason.\n- Name the tests that passed.\n- Name the exact sync command run.\n- State the strongest proof that the repo is up to date.\n- If a test or sync step fails, investigate, fix the cause when safe, rerun, and only then summarize what changed and what synced.",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "thinking": "low"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "matrix"
+      },
+      "state": {
+        "nextRunAtMs": 1779894260690,
+        "lastRunAtMs": 1779891241510,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 776861,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "lastDelivered": true
+      },
+      "updatedAtMs": 1779892018371,
+      "status": "ok"
+    },
+    {
+      "id": "ce3f9db8-bb49-4f97-9ee3-d4786314c204",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "marketing-momentum-watchdog",
+      "enabled": true,
+      "createdAtMs": 1778963210946,
+      "schedule": {
+        "kind": "cron",
+        "expr": "5,35 * * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "timeoutSeconds": 3600,
+        "message": "Check that RalphWorkflow marketing momentum has not stalled.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom guardrail path\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 /home/mistlight/.openclaw/workspace/agents/marketing/marketing_momentum_watchdog.py\n\nRules:\n- RalphWorkflow marketing is always-on.\n- If research/reporting/posting momentum is stale, say exactly what is stale.\n- If the architecture/process is what is stale, say that explicitly instead of only naming content artifacts.\n- If outcomes are weak because the current marketing system is underpowered, trigger stronger same-run repair expectations: new agents, prompt rewrites, cron changes, code fixes, tests, or process redesign.\n- This is a guardrail to ensure continuous marketing work, retrospection, follow-through, and repair-oriented escalation.\n- if there is any question about whether the system should decide for itself, the default answer is: it is up to you"
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "description": "check",
+      "state": {
+        "nextRunAtMs": 1779894300000,
+        "lastRunAtMs": 1779892766549,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 164881,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "updatedAtMs": 1779892931430,
+      "status": "ok"
+    },
+    {
+      "id": "126471f7-1226-4aee-a2fe-e7ff17a28d6d",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "repo-adoption-tracker",
+      "enabled": true,
+      "createdAtMs": 1778963683944,
+      "schedule": {
+        "kind": "cron",
+        "expr": "10 * * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "timeoutSeconds": 3600,
+        "message": "Track RalphWorkflow adoption signals from public repos.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom tracking path\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 /home/mistlight/.openclaw/workspace/agents/marketing/adoption_tracker.py\n\nRules:\n- Track GitHub and Codeberg stars/watchers/forks as a lightweight adoption signal.\n- If there is a meaningful positive or negative change, append a concise note to outreach-log.md.\n- If there is no meaningful change, stay quiet.\n- This supports the always-on marketing loop by tying activity to adoption outcomes."
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779894600000,
+        "lastRunAtMs": 1779889078120,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 2161310,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "updatedAtMs": 1779891239430,
+      "status": "ok"
+    },
+    {
+      "id": "5e8746f2-2311-48f6-a113-4ac6880b2376",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "marketing-workflow-audit-precheck",
+      "description": "MiniMax precheck for the GPT marketing audit. Only wake the expensive audit when the audit is stale, in repair state, or its key inputs moved.",
+      "enabled": true,
+      "createdAtMs": 1779840845386,
+      "schedule": {
+        "kind": "cron",
+        "expr": "10,40 * * * *",
+        "tz": "Europe/Berlin",
+        "staggerMs": 120000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the marketing workflow audit precheck.\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 /home/mistlight/.openclaw/workspace/agents/marketing/marketing_workflow_audit_precheck.py\n\nRules:\n- Treat the script output as source of truth.\n- Do not add extra analysis.\n- If status is skip_healthy or skip_cooldown, report that briefly.\n- If status is triggered or trigger_failed, report the exact reasons and trigger result.\n- Keep the reply under 8 lines.",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "thinking": "low",
+        "timeoutSeconds": 900,
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779894714489,
+        "lastRunAtMs": 1779893145021,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 853706,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "updatedAtMs": 1779893998727,
+      "status": "ok"
+    },
+    {
+      "id": "b3d15455-99b6-4a06-8f11-47f1ab07073d",
+      "name": "marketing-distribution-hunter",
+      "description": "Run marketing distribution hunter every 6 hours",
+      "enabled": true,
+      "createdAtMs": 1779750754765,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 */6 * * *",
+        "tz": "Europe/Berlin",
+        "staggerMs": 300000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run: python3 agents/marketing/distribution_hunter.py",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "thinking": "low"
+      },
+      "delivery": {
+        "mode": "none",
+        "channel": "last"
+      },
+      "state": {
+        "nextRunAtMs": 1779897876159,
+        "lastRunAtMs": 1779885390043,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 330730,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "updatedAtMs": 1779885720773,
+      "status": "ok"
+    },
+    {
+      "id": "6a9e1bbe-a907-4e13-bc94-e44bc31170ea",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "reddit-monitor",
+      "description": "Monitor Reddit multiple times daily for RalphWorkflow-relevant keywords, sentiment, discussion usefulness, and credible promotional opportunities.",
+      "enabled": true,
+      "createdAtMs": 1778901885796,
+      "schedule": {
+        "kind": "cron",
+        "expr": "15 9,12,15,18,21 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the Reddit monitor for RalphWorkflow as a self-improving research pass.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- read ~/.agents/skills/search-first/SKILL.md for the research/search workflow\n- if a stronger discovery or browser/research skill may help and no current skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md before inventing a custom retrieval path\n\nBefore starting:\n1. Read /home/mistlight/.openclaw/workspace/agents/marketing/REDDIT_LEARNINGS.md\n2. Read /home/mistlight/.openclaw/workspace/outreach-log.md\n3. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_posts.jsonl\n4. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md\n5. Review recent /home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_*.md reports\n6. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json and reuse it when ranking opportunities\n7. Use https://ralphworkflow.com as messaging ground truth\n\nTasks:\n- search content-first across Reddit and adjacent communities\n- treat subreddit names only as weak hints, not hard boundaries\n- fail closed if retrieval/search coverage is degraded instead of pretending there are no opportunities",
+        "model": "openai-codex/gpt-5.4",
+        "timeoutSeconds": 3600
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "matrix",
+        "accountId": "default"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779898500000,
+        "lastRunAtMs": 1779878261973,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 609222,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "lastDelivered": true
+      },
+      "updatedAtMs": 1779878871195,
+      "status": "ok"
+    },
+    {
+      "id": "50578fdf-ea83-46bd-8580-36d2bae7ba54",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "marketing-workflow-audit",
+      "enabled": true,
+      "createdAtMs": 1778966679523,
+      "schedule": {
+        "kind": "cron",
+        "expr": "20 */6 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai-codex/gpt-5.4",
+        "timeoutSeconds": 3600,
+        "message": "Re-analyze the RalphWorkflow marketing loop against adoption goals and proven marketing principles.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom audit path\n- explicitly reuse shared findings artifacts instead of producing siloed recommendations\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 /home/mistlight/.openclaw/workspace/agents/marketing/marketing_workflow_audit.py\n3. Review:\n   - /home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_SELF_IMPROVEMENT.md\n   - /home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md\n   - /home/mistlight/.openclaw/workspace/agents/marketing/FOUR_MARKETING_QUESTIONS.md\n   - /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json\n   - /home/mistlight/.openclaw/workspace/outreach-log.md\n   - /home/mistlight/.openclaw/workspace/agents/marketing/logs/adoption_metrics_latest.md\n   - /home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md\n   - latest marketing research / reddit monitor outputs\n\nRules:\n- decide what actually worked, what did not, what is repetitive, what is low-signal, and what should change now\n- preserve repair_actions when measurement is pending\n- prefer runtime changes and next actions over report-only commentary\n- if the current marketing architecture is too weak to improve outcomes, create or repair agents, prompts, cron jobs, scripts, tests, and process rules in the same run\n- never stop at technical hygiene if it does not improve the odds of real Codeberg adoption\n- if there is any question about whether to decide for yourself, the default answer is: it is up to you"
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779898800000,
+        "lastRunAtMs": 1779880165975,
+        "lastRunStatus": "error",
+        "lastStatus": "error",
+        "lastDurationMs": 3878096,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 1,
+        "consecutiveSkipped": 0,
+        "lastError": "cron: job execution timed out",
+        "lastDiagnostics": {
+          "summary": "cron: job execution timed out",
+          "entries": [
+            {
+              "ts": 1779884044070,
+              "source": "cron-setup",
+              "severity": "error",
+              "message": "cron: job execution timed out"
+            }
+          ]
+        },
+        "lastDiagnosticSummary": "cron: job execution timed out",
+        "lastErrorReason": "timeout"
+      },
+      "updatedAtMs": 1779884044071,
+      "status": "error"
+    },
+    {
+      "id": "841fc1af-7ebc-44eb-a5e9-5fd53a10990f",
+      "agentId": "main",
+      "name": "marketing-measurement-hold-release",
+      "enabled": true,
+      "deleteAfterRun": true,
+      "createdAtMs": 1779889008547,
+      "schedule": {
+        "kind": "at",
+        "at": "2026-05-27T16:35:08.000Z"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Act as the always-on RalphWorkflow marketer.\n\nThis is the post-measurement-hold re-entry run. Before acting, verify from the latest distribution-lane and execution-board artifacts that the short review window has actually cleared; if it has not, treat the wake as an early-release scheduling failure, repair/reschedule the release path, and do not pretend the slot is already open.\n\nIf the short review window has cleared, choose the single highest-leverage marketing action you can actually do right now, execute it, and log the result.\n\nMandatory rules:\n- read and reuse the latest market_intelligence, adoption, distribution-lane, audit, and execution-board artifacts first\n- read /home/mistlight/.openclaw/workspace/drafts/post_hold_distribution_reentry_latest.md first; it contains the current blocked-lane truth and the post-hold re-entry contract\n- prefer Codeberg traffic/adoption first and GitHub second\n- do the action, not just recommend it\n- avoid fake progress, duplicate packet delivery, and repeated cooldown-lane churn\n- do not select another measurement_hold just because Apollo/comparison/review windows are still open after the short hold cleared\n- if no truthful external/manual lane remains, spend this run on a concrete runtime/process repair that improves the next executable slot\n- if a safe runtime repair still blocks truthful execution, fix it in the same run",
+        "model": "openai-codex/gpt-5.4",
+        "thinking": "medium",
+        "timeoutSeconds": 1800,
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "matrix",
+        "to": "@mistlight_oriroris:matrix.org"
+      },
+      "state": {
+        "nextRunAtMs": 1779899708000
+      },
+      "updatedAtMs": 1779889008547,
+      "status": "idle"
+    },
+    {
+      "id": "dc190b5f-f215-458b-bdce-ba36be178c80",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "agent-architecture-watchdog",
+      "description": "Periodic whole-system architecture watchdog for agent loops, self-improvement behavior, loop ownership, hidden repair layers, and cross-loop drift.",
+      "enabled": true,
+      "createdAtMs": 1779331282708,
+      "schedule": {
+        "kind": "cron",
+        "expr": "45 */6 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai-codex/gpt-5.4",
+        "thinking": "medium",
+        "timeoutSeconds": 3600,
+        "toolsAllow": [
+          "read",
+          "write",
+          "edit",
+          "apply_patch",
+          "exec",
+          "process",
+          "cron",
+          "sessions_spawn",
+          "subagents",
+          "update_plan",
+          "memory_search",
+          "memory_get"
+        ],
+        "message": "Run the agent architecture watchdog.\n\nRequired work:\n1. cd /home/mistlight/.openclaw/workspace\n2. Refresh the current architecture audit/checker/verifier stack.\n3. Update:\n   - /home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json\n   - /home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md\n4. Independently verify the current live state before declaring green.\n5. Keep focus on real blocker localization, not narrative.\n\nOutput contract:\n- Never emit the blocked denial wording that triggers the cron classifier.\n- For any conditional non-execution, emit the literal token NOT_RUN.\n- Keep the summary compact.\n- Include:\n  - current verdict\n  - what was repaired this run\n  - what is still red\n  - independent verification status\n  - small gate passed\n- Do not quote or restate the blocked denial wording."
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "failureAlert": {
+        "after": 1,
+        "channel": "matrix",
+        "accountId": "default",
+        "mode": "announce",
+        "cooldownMs": 21600000
+      },
+      "state": {
+        "nextRunAtMs": 1779900300000,
+        "lastRunAtMs": 1779894835788,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 121193,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "runningAtMs": 1779894957018
+      },
+      "updatedAtMs": 1779894956981,
+      "status": "running"
+    },
+    {
+      "id": "fef7edfb-2339-432b-bf35-e2694e90ed27",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "competitor-analysis",
+      "enabled": true,
+      "createdAtMs": 1778565963963,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 8,20 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the RalphWorkflow competitor analysis.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom research path\n- reuse shared findings artifacts instead of re-deriving siloed conclusions when possible\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 /home/mistlight/.openclaw/workspace/agents/marketing/competitor_analysis.py\n\nReport:\n- Which competitors are up/down\n- GitHub star counts for each competitor\n- How many comparison pages were generated\n- Any new competitors discovered\n- Top 3 Ralph Workflow advantages to emphasize\n- Whether market_intelligence_latest.json was refreshed and reused downstream-ready",
+        "timeoutSeconds": 900,
+        "model": "minimax/MiniMax-M2.7-highspeed"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "matrix",
+        "to": "room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+        "accountId": "default"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779904800000,
+        "lastRunAtMs": 1779862124128,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 109837,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "lastDelivered": true
+      },
+      "updatedAtMs": 1779862233965,
+      "status": "ok"
+    },
+    {
+      "id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "marketing-active-loop",
+      "enabled": true,
+      "createdAtMs": 1778980383086,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 */4 * * *",
+        "tz": "Europe/Berlin",
+        "staggerMs": 300000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai-codex/gpt-5.4",
+        "timeoutSeconds": 3600,
+        "message": "Act as the always-on RalphWorkflow marketer.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom action path\n- explicitly reuse shared findings artifacts and act on them instead of producing siloed recommendations\n\nGoal: drive qualified traffic to Codeberg first and GitHub second by choosing the single highest-leverage marketing action you can actually do right now, doing it, and logging the result.\n\nRequired context before acting:\n1. Read /home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_SELF_IMPROVEMENT.md\n2. Read /home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md\n3. Read /home/mistlight/.openclaw/workspace/agents/marketing/FOUR_MARKETING_QUESTIONS.md\n4. Read /home/mistlight/.openclaw/workspace/agents/marketing/ADOPTION_FUNNEL_NEXT.md\n5. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json\n6. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json\n7. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.md\n8. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_lane_latest.json\n9. Read /home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_lane_latest.md\n10. Read /home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md\n11. Read the freshest Reddit/competitor/adoption artifacts before acting.\n\nRules:\n- do the action, not just recommend it\n- if blocked, exhaust the strongest legitimate local path first\n- if a safe runtime fix exists in the marketing loop, apply it in the same run\n- you are explicitly allowed to create new marketing agents, patch existing agents, rewrite prompts, change cron jobs, add tests, and redesign the development process when that increases the chance of real marketing outcomes\n- do not ask whether you are allowed to make internal marketing decisions; the default answer is: it is up to you\n- before choosing a handoff/manual-delivery action, verify from the latest logs and execution board that the same packet has not already been delivered in the current review window\n- if StackOverflow is in cooldown, the StackOverflow handoff packet is current, and either a manual delivery or a post-cooldown one-shot already exists in the current review window, treat another StackOverflow packet refresh or manual re-delivery as fake progress and choose a different lane or a measurement-hold/follow-through repair instead\n- if a lane is already scheduled to run after a cooldown, do not burn the current slot repeating pre-cooldown analysis; spend it on a different executable lane or a process repair that improves the odds of the scheduled lane succeeding\n- if the execution board says there is no truthful do-now packet, do not regenerate one of the already-current packets just to fill the slot\n- if the execution board is still empty after one of the listed blockers clears, do not log another idle measurement hold; choose a different executable lane or perform a concrete distribution_architecture_repair in the same run\n- when a scheduled post-hold rerun exists, improving that rerun's odds of producing a real lane is a valid same-run action during the hold window\n- if the current hold window already contains both an active_loop_prompt_repair and a post_hold_reentry_contract_repair, do not spend another slot on more rerun/prompt tweaks; reuse the existing hold-window truth or make a different concrete runtime/process repair with code/test changes"
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779904971064,
+        "lastRunAtMs": 1779891883507,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 648635,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "lastDelivered": true
+      },
+      "updatedAtMs": 1779892532142,
+      "status": "ok"
+    },
+    {
+      "id": "6571aec7-c6bd-4e1c-99e5-0f0b7efaabee",
+      "name": "marketing-outcome-capability-runner",
+      "description": "Run marketing outcome capability runner every 12 hours",
+      "enabled": true,
+      "createdAtMs": 1779750754736,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 */12 * * *",
+        "tz": "Europe/Berlin",
+        "staggerMs": 300000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run: python3 agents/marketing/outcome_capability_runner.py",
+        "model": "minimax/MiniMax-M2.7-highspeed",
+        "thinking": "low",
+        "timeoutSeconds": 1200
+      },
+      "delivery": {
+        "mode": "none",
+        "channel": "last"
+      },
+      "state": {
+        "nextRunAtMs": 1779919468676,
+        "lastRunAtMs": 1779885025620,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 364423,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "updatedAtMs": 1779885390043,
+      "status": "ok"
+    },
+    {
+      "id": "49041897-5970-4473-9732-7e69d74b0e5a",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "ralph-workflow-docs-verifier-supervisor",
+      "description": "Independent verifier/supervisor for the Ralph Workflow docs-quality loop. Must verify the real public docs system, force remediation on any drift, and never self-certify shallow fixes.",
+      "enabled": true,
+      "createdAtMs": 1779226250120,
+      "schedule": {
+        "kind": "cron",
+        "expr": "6 */12 * * *",
+        "tz": "Europe/Berlin",
+        "staggerMs": 300000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Own the Ralph docs quality process end to end. This is a repair loop, not a one-pass audit.\n\nMandatory standing rule:\n- Do not stop because the docs merely look green.\n- Do not stop because one checker passes.\n- Keep repairing/escalating until `agents/docs_quality/ralph_docs_verify.py` finishes with `Status: independently verified pass` AND `agents/docs_quality/ralph_process_state.json` shows the incident is closed.\n- If the verifier reaches a candidate pass but the incident remains open pending independent stop approval, spawn an isolated independent verifier subagent, have it inspect the live artifacts, write `agents/docs_quality/ralph_independent_stop_approval.json`, then rerun the verifier immediately.\n- Three consecutive verifier failures are automatic framework escalation. Treat that as all-hands process repair, not a surface-docs issue.\n\nRun discipline every time:\n1. Read `agents/docs_quality/README.md` and `agents/docs_quality/REPEAT_FAILURE_RESPONSE_FRAMEWORK.md`.\n2. Read the live artifacts: `ralph_process_state.json` (if present), `ralph_verifier_latest.json`, `ralph_editorial_latest.md`, `ralph_agentic_latest.json`, `ralph_latest.md`.\n3. If stray overlapping docs processes are holding the global lock without productive forward motion, clear the overlap first so one clean owner run can proceed.\n4. Run, in order:\n   - `python3 agents/docs_quality/ralph_docs_check.py`\n   - `python3 agents/docs_quality/ralph_docs_editorial_audit.py`\n   - `python3 agents/docs_quality/ralph_docs_agentic_review.py`\n   - `python3 agents/docs_quality/ralph_docs_verify.py`\n5. If anything is red, fix the strongest process cause, not just the surface symptom. That includes docs content, self-heal rules, verifier logic, stale artifacts, incident tracking, and runtime ownership.\n6. If `ralph_process_state.json` shows `repairContinuationRequired`, `pendingIndependentStop`, or `escalationRequired`, continue the loop. Do not report success.\n7. When an incident is open and the technical checks are green enough for stop approval, spawn an isolated subagent to act as the independent stop approver. The subagent must inspect the current docs fingerprint plus verifier/editorial/agentic/process-state artifacts and write `agents/docs_quality/ralph_independent_stop_approval.json` with at least:\n   - `signedBy`\n   - `checkedAtUtc`\n   - `incidentId`\n   - `docsStateFingerprint`\n   - `repeatFailureCleared`\n   - `approvedToStopRepair`\n   - `reason`\n8. Rerun `python3 agents/docs_quality/ralph_docs_verify.py` after that signoff. Only treat the process as fixed when the verifier passes and the incident file is cleared.\n\nOutput contract:\n- Report only the current real state.\n- If still broken, name the exact blocker and exact action taken.\n- If fixed, explicitly say the independent verifier passed and the repair incident is closed.\n- Never report a maybe-green state as complete.",
+        "model": "openai-codex/gpt-5.4",
+        "thinking": "medium",
+        "timeoutSeconds": 3600,
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "matrix",
+        "to": "room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+        "accountId": "default"
+      },
+      "failureAlert": {
+        "after": 1,
+        "cooldownMs": 21600000,
+        "mode": "announce",
+        "channel": "matrix",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779919572660,
+        "lastRunAtMs": 1779893136929,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 849049,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "updatedAtMs": 1779893985978,
+      "status": "ok"
+    },
+    {
+      "id": "3f549d7c-8ee5-4739-b6da-2ee5d85f29f8",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "content-generator",
+      "enabled": true,
+      "createdAtMs": 1778315431105,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 7 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the focused RalphWorkflow content generator.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom content-generation workaround\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 /home/mistlight/.openclaw/workspace/agents/marketing/generate_content.py\n3. ls -lt /home/mistlight/.openclaw/workspace/drafts | head\n\nReport whether a draft was created and include the exact draft path if one was generated. If a draft was not created, explain why from the tool output.",
+        "timeoutSeconds": 1200,
+        "model": "minimax/MiniMax-M2.7-highspeed"
+      },
+      "delivery": {
+        "mode": "announce",
+        "to": "room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+        "channel": "matrix",
+        "accountId": "default"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779944400000,
+        "lastRunAtMs": 1779858646726,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 10823,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "lastDelivered": true
+      },
+      "updatedAtMs": 1779858657549,
+      "status": "ok"
+    },
+    {
+      "id": "a483169d-9bd1-45e2-a4c0-d566ec492ee1",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "content-poster",
+      "enabled": true,
+      "createdAtMs": 1778317620507,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 8 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the focused RalphWorkflow posting step.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom posting workaround\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py\n\nReport whether anything was posted, skipped, or failed. Include the posted URL when successful and explain the exact reason when nothing was posted.",
+        "timeoutSeconds": 1200,
+        "model": "minimax/MiniMax-M2.7-highspeed"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "matrix"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "state": {
+        "nextRunAtMs": 1779948000000,
+        "lastRunAtMs": 1779862003226,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 33524,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "lastDelivered": true
+      },
+      "updatedAtMs": 1779862036750,
+      "status": "ok"
+    },
+    {
+      "id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
+      "agentId": "main",
+      "sessionKey": "agent:main:matrix:direct:@mistlight_oriroris:matrix.org",
+      "name": "blocked-channel-recovery",
+      "enabled": true,
+      "createdAtMs": 1778544468546,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 10 * * 2,4",
+        "tz": "Europe/Berlin"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run the channel-unblock review as a self-repair pass.\n\nMandatory skill discipline every run:\n- before acting, scan installed skills and use any clearly relevant skill\n- if no installed skill is obviously enough, read ~/.agents/skills/find-skills/SKILL.md and ~/.agents/skills/search-first/SKILL.md before inventing a custom recovery path\n\nCommands:\n1. cd /home/mistlight/.openclaw/workspace\n2. python3 -m unittest agents.unblocker.tests.test_unblocker -v\n3. python3 /home/mistlight/.openclaw/workspace/agents/unblocker/run.py\n\nGoal:\n- update the channel registry with fresh attempt history\n- pursue every legitimate human-equivalent path available\n- make the next best decision yourself and keep momentum\n- require proof for any claimed recovery\n\nRules:\n- Do not use bot-evasion or anti-detection tactics. Stay within site policies and legitimate auth/workflow routes.\n- Coverage is incomplete until each blocked channel in scope is either advanced/recovered with proof or marked blocked with the exact blocker.\n- If you claim a channel is recovered/actionable, include the exact proof artifact or command result.",
+        "timeoutSeconds": 180,
+        "model": "openai-codex/gpt-5.4",
+        "thinking": "medium"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "matrix"
+      },
+      "failureAlert": {
+        "after": 2,
+        "channel": "matrix",
+        "cooldownMs": 3600000,
+        "mode": "announce",
+        "accountId": "default"
+      },
+      "description": "Generic blocked-channel recovery owner loop. Owns broad legitimacy-safe channel recovery without stale deep-review topology leakage.",
+      "state": {
+        "nextRunAtMs": 1779957000000,
+        "lastRunAtMs": 1779786898468,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 148375,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "updatedAtMs": 1779787046843,
+      "status": "ok"
+    }
+  ],
+  "total": 25,
+  "offset": 0,
+  "limit": 25,
+  "hasMore": false,
+  "nextOffset": null,
+  "deliveryPreviews": {
+    "a49ec2cc-8343-45bf-a52e-eff8b0975585": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "0372271b-8c4e-4986-ad27-31e50d3fb54c": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "0251da77-feaa-40ee-837e-7bc10895dc87": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "explicit"
+    },
+    "ba650cdc-c443-476f-a03e-749be36fde91": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "explicit"
+    },
+    "1c0ad179-185c-4067-ba16-d41702524ee0": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "e90fa8d1-b086-49f8-893c-1c57d38eb1b3": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "ff783799-2d21-45f7-bb06-eed9c46b95a6": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "b7d74fa6-ab9b-4f66-9d03-a77c0ad7a56c": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "fe8f8f62-cb85-4d49-9181-fc5f6c958950": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "explicit"
+    },
+    "5a7cc4fc-69f7-4101-b4af-baf2adb604c1": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "explicit"
+    },
+    "ce3f9db8-bb49-4f97-9ee3-d4786314c204": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "126471f7-1226-4aee-a2fe-e7ff17a28d6d": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "5e8746f2-2311-48f6-a113-4ac6880b2376": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "b3d15455-99b6-4a06-8f11-47f1ab07073d": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "6a9e1bbe-a907-4e13-bc94-e44bc31170ea": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "explicit"
+    },
+    "50578fdf-ea83-46bd-8580-36d2bae7ba54": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "841fc1af-7ebc-44eb-a5e9-5fd53a10990f": {
+      "label": "announce -> matrix:@mistlight_oriroris:matrix.org",
+      "detail": "explicit"
+    },
+    "dc190b5f-f215-458b-bdce-ba36be178c80": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "fef7edfb-2339-432b-bf35-e2694e90ed27": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "explicit"
+    },
+    "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "resolved from last, session agent:main:matrix:direct:@mistlight_oriroris:matrix.org"
+    },
+    "6571aec7-c6bd-4e1c-99e5-0f0b7efaabee": {
+      "label": "not requested",
+      "detail": "not requested"
+    },
+    "49041897-5970-4473-9732-7e69d74b0e5a": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "explicit"
+    },
+    "3f549d7c-8ee5-4739-b6da-2ee5d85f29f8": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "explicit"
+    },
+    "a483169d-9bd1-45e2-a4c0-d566ec492ee1": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "explicit"
+    },
+    "0b14ccb6-86d5-4ab9-9549-875ae305570a": {
+      "label": "announce -> matrix:room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+      "detail": "explicit"
+    }
+  }
+}

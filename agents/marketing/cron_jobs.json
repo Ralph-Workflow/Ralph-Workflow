@@ -1,0 +1,34 @@
+{
+  "jobs": [
+    {
+      "name": "marketing-distribution-hunter",
+      "description": "Runs the distribution hunter so system-design repairs create fresh execution artifacts instead of stopping at monitoring.",
+      "schedule_hint": "Every 6 hours",
+      "command": "python3 agents/marketing/distribution_hunter.py"
+    },
+    {
+      "name": "marketing-outcome-capability-runner",
+      "description": "Forces a non-Reddit, Codeberg-linked distribution capability when outcome-system repairs are still open, so the loop creates reusable execution assets instead of another prescription.",
+      "schedule_hint": "Every 12 hours or immediately after a workflow audit with system-design repairs",
+      "command": "python3 agents/marketing/outcome_capability_runner.py"
+    },
+    {
+      "name": "marketing-outcome-execution-board-runner",
+      "description": "Turns the marketing execution board into an active follow-through runtime so system-design repairs advance the best current Codeberg-linked lane instead of stopping at packet refreshes or queue housekeeping.",
+      "schedule_hint": "Every 6 hours, offset from the distribution hunter, and immediately after a system-design repair refreshes the execution board",
+      "command": "python3 agents/marketing/outcome_execution_board_runner.py"
+    },
+    {
+      "name": "marketing-apollo-outbound-verifier",
+      "description": "Re-checks whether Apollo is merely list-ready or actually send-verified.",
+      "schedule_hint": "Daily",
+      "command": "python3 agents/marketing/apollo_outbound_verifier.py"
+    },
+    {
+      "name": "marketing-apollo-sequence-launcher",
+      "description": "Refreshes the Codeberg-primary Apollo launch packet only when a non-zero list is verified, keeping launch gates separate from live-send proof.",
+      "schedule_hint": "After each successful Apollo list verification refresh",
+      "command": "python3 agents/marketing/apollo_sequence_launcher.py"
+    }
+  ]
+}

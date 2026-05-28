@@ -1,17 +1,17 @@
 {
-  "generated_at": "2026-05-28T09:14:54.842373+02:00",
+  "generated_at": "2026-05-28T12:24:23.727250+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 0.02,
+  "report_age_hours": 1.03,
   "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "latest_healthy_report_age_hours": 0.02,
-  "latest_post_age_hours": 40.45,
+  "latest_healthy_report_age_hours": 1.03,
+  "latest_post_age_hours": 43.61,
   "reddit_monitor_runtime": {
     "status": "fresh_report_reused",
-    "age_hours": 0.0
+    "age_hours": 3.16
   },
   "reddit_execution_status": {
     "status": "execution_blocked",
-    "age_hours": 28.16,
+    "age_hours": 31.32,
     "blocking_reason": "Reddit is serving a \"blocked by network security\" page even through the Chromium session. IP-level block is in effect."
   },
   "adoption_flat": true,
@@ -19,18 +19,18 @@
   "blocked_distribution_channels": [],
   "apollo": {
     "status": "cloudflare_auth_blocked",
-    "age_hours": 2.97,
+    "age_hours": 2.58,
     "cloudflare_blocked": true
   },
   "measurement_hold": {
     "active": true,
     "hold_started_at": "2026-05-28T05:31:32.983669",
-    "hold_until": "2026-05-31T00:00:00",
+    "hold_until": "2026-05-28T15:28:00",
     "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_measurement_hold_execution.json"
   },
   "actions": [],
   "watch_actions": [
-    "reddit_monitor_degraded",
+    "reddit_channel_blocked",
     "apollo_channel_blocked",
     "primary_repo_adoption_flat",
     "measurement_hold_active"

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-26T11:16:59.703929+02:00",
+  "timestamp": "2026-05-28T12:13:24.650449+02:00",
   "summary": {
     "blocked": 7,
     "partial": 0,
@@ -25,7 +25,7 @@
               "Ad/tracker blocking is optional for usability/privacy, not for bypassing protections"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704186+02:00"
+          "timestamp": "2026-05-28T12:13:24.650704+02:00"
         },
         {
           "action": "prepare_manual_api_key_request",
@@ -37,14 +37,14 @@
               "User provides API key or OAuth approval"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704197+02:00"
+          "timestamp": "2026-05-28T12:13:24.650714+02:00"
         },
         {
           "action": "check_auth_status",
           "status": "blocked",
           "summary": "No dev.to API key configured.",
           "details": {},
-          "timestamp": "2026-05-26T11:16:59.704203+02:00"
+          "timestamp": "2026-05-28T12:13:24.650720+02:00"
         }
       ],
       "proof_artifacts": [
@@ -61,7 +61,7 @@
               "Ad/tracker blocking is optional for usability/privacy, not for bypassing protections"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704186+02:00"
+          "timestamp": "2026-05-28T12:13:24.650704+02:00"
         },
         {
           "channel_id": "devto",
@@ -74,7 +74,7 @@
               "User provides API key or OAuth approval"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704197+02:00"
+          "timestamp": "2026-05-28T12:13:24.650714+02:00"
         },
         {
           "channel_id": "devto",
@@ -82,7 +82,7 @@
           "status": "blocked",
           "summary": "No dev.to API key configured.",
           "details": {},
-          "timestamp": "2026-05-26T11:16:59.704203+02:00"
+          "timestamp": "2026-05-28T12:13:24.650720+02:00"
         }
       ],
       "next_actions": [
@@ -110,7 +110,7 @@
               "Ad/tracker blocking is optional for privacy only"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704404+02:00"
+          "timestamp": "2026-05-28T12:13:24.650934+02:00"
         },
         {
           "action": "document_policy_requirements",
@@ -133,14 +133,14 @@
               "User provides approved API/session route if allowed"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704412+02:00"
+          "timestamp": "2026-05-28T12:13:24.650942+02:00"
         },
         {
           "action": "check_auth_status",
           "status": "blocked",
           "summary": "No approved Twitter auth path configured yet. Keep pursuing the best legitimate local route toward a usable session/API path.",
           "details": {},
-          "timestamp": "2026-05-26T11:16:59.704416+02:00"
+          "timestamp": "2026-05-28T12:13:24.650947+02:00"
         }
       ],
       "proof_artifacts": [
@@ -157,7 +157,7 @@
               "Ad/tracker blocking is optional for privacy only"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704404+02:00"
+          "timestamp": "2026-05-28T12:13:24.650934+02:00"
         },
         {
           "channel_id": "twitter",
@@ -181,7 +181,7 @@
               "User provides approved API/session route if allowed"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704412+02:00"
+          "timestamp": "2026-05-28T12:13:24.650942+02:00"
         },
         {
           "channel_id": "twitter",
@@ -189,7 +189,7 @@
           "status": "blocked",
           "summary": "No approved Twitter auth path configured yet. Keep pursuing the best legitimate local route toward a usable session/API path.",
           "details": {},
-          "timestamp": "2026-05-26T11:16:59.704416+02:00"
+          "timestamp": "2026-05-28T12:13:24.650947+02:00"
         }
       ],
       "next_actions": [
@@ -219,7 +219,7 @@
               "User builds genuine participation history manually"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704472+02:00"
+          "timestamp": "2026-05-28T12:13:24.651004+02:00"
         },
         {
           "action": "verify_browser_readiness",
@@ -233,7 +233,7 @@
               "Ad/tracker blocking is optional for privacy only"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704607+02:00"
+          "timestamp": "2026-05-28T12:13:24.651142+02:00"
         }
       ],
       "proof_artifacts": [
@@ -252,7 +252,7 @@
               "User builds genuine participation history manually"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704472+02:00"
+          "timestamp": "2026-05-28T12:13:24.651004+02:00"
         },
         {
           "channel_id": "reddit",
@@ -267,7 +267,7 @@
               "Ad/tracker blocking is optional for privacy only"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704607+02:00"
+          "timestamp": "2026-05-28T12:13:24.651142+02:00"
         }
       ],
       "next_actions": [
@@ -296,7 +296,7 @@
               "User manually submits launch/post when ready"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704658+02:00"
+          "timestamp": "2026-05-28T12:13:24.651190+02:00"
         },
         {
           "action": "verify_browser_readiness",
@@ -308,7 +308,7 @@
             ],
             "notes": []
           },
-          "timestamp": "2026-05-26T11:16:59.704792+02:00"
+          "timestamp": "2026-05-28T12:13:24.651327+02:00"
         }
       ],
       "proof_artifacts": [
@@ -327,7 +327,7 @@
               "User manually submits launch/post when ready"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704658+02:00"
+          "timestamp": "2026-05-28T12:13:24.651190+02:00"
         },
         {
           "channel_id": "hackernews",
@@ -340,7 +340,7 @@
             ],
             "notes": []
           },
-          "timestamp": "2026-05-26T11:16:59.704792+02:00"
+          "timestamp": "2026-05-28T12:13:24.651327+02:00"
         }
       ],
       "next_actions": [
@@ -368,7 +368,7 @@
               "User obtains legitimate account/invite"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704830+02:00"
+          "timestamp": "2026-05-28T12:13:24.651366+02:00"
         }
       ],
       "proof_artifacts": [
@@ -386,7 +386,7 @@
               "User obtains legitimate account/invite"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704830+02:00"
+          "timestamp": "2026-05-28T12:13:24.651366+02:00"
         }
       ],
       "next_actions": [
@@ -412,7 +412,7 @@
               "Browser should be stable for manual launch prep"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704997+02:00"
+          "timestamp": "2026-05-28T12:13:24.651532+02:00"
         },
         {
           "action": "document_policy_requirements",
@@ -433,7 +433,7 @@
               "User completes launch assets and manual submission"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.705004+02:00"
+          "timestamp": "2026-05-28T12:13:24.651538+02:00"
         }
       ],
       "proof_artifacts": [
@@ -450,7 +450,7 @@
               "Browser should be stable for manual launch prep"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.704997+02:00"
+          "timestamp": "2026-05-28T12:13:24.651532+02:00"
         },
         {
           "channel_id": "producthunt",
@@ -472,7 +472,7 @@
               "User completes launch assets and manual submission"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.705004+02:00"
+          "timestamp": "2026-05-28T12:13:24.651538+02:00"
         }
       ],
       "next_actions": [
@@ -497,7 +497,7 @@
               "User confirms which repos/actions are authorized"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.705048+02:00"
+          "timestamp": "2026-05-28T12:13:24.651580+02:00"
         },
         {
           "action": "check_auth_status",
@@ -506,7 +506,7 @@
           "details": {
             "output": "You are not logged into any GitHub hosts. To log in, run: gh auth login"
           },
-          "timestamp": "2026-05-26T11:16:59.733264+02:00"
+          "timestamp": "2026-05-28T12:13:24.680379+02:00"
         }
       ],
       "proof_artifacts": [
@@ -521,7 +521,7 @@
               "User confirms which repos/actions are authorized"
             ]
           },
-          "timestamp": "2026-05-26T11:16:59.705048+02:00"
+          "timestamp": "2026-05-28T12:13:24.651580+02:00"
         },
         {
           "channel_id": "github-write",
@@ -531,7 +531,7 @@
           "details": {
             "output": "You are not logged into any GitHub hosts. To log in, run: gh auth login"
           },
-          "timestamp": "2026-05-26T11:16:59.733264+02:00"
+          "timestamp": "2026-05-28T12:13:24.680379+02:00"
         }
       ],
       "next_actions": [

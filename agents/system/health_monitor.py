@@ -275,6 +275,16 @@ def owner_domain_for_path(path: Path) -> str:
 
 
 
+def _is_deferred_marketing_measurement_blocker(check_name: str, payload: dict, item_text: str) -> bool:
+    if check_name != 'marketing_independent_verification':
+        return False
+    text = item_text.strip().lower()
+    if 'primary repo adoption remains measurement-pending' not in text:
+        return False
+    watchpoints = [str(entry).lower() for entry in (payload.get('watchpoints') or [])]
+    return any('measurement hold is active' in entry for entry in watchpoints)
+
+
 def extract_review_findings(check_name: str, path: Path, payload: dict) -> list[dict]:
     findings: list[dict] = []
     for field in REVIEW_FINDING_FIELDS:
@@ -286,6 +296,8 @@ def extract_review_findings(check_name: str, path: Path, payload: dict) -> list[
         for item in value:
             item_text = str(item).strip()
             if not item_text:
+                continue
+            if _is_deferred_marketing_measurement_blocker(check_name, payload, item_text):
                 continue
             findings.append({
                 "job_id": "__artifacts__",

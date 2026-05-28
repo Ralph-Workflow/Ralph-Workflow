@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-05-11T06:00:01.478357",
+  "files_found": 1,
+  "actions": [
+    {
+      "platform": "twitter",
+      "file": "2026-05-11_twitter_thread.txt",
+      "status": "manual_post_needed"
+    }
+  ]
+}

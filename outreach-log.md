@@ -7486,3 +7486,7 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-28 09:14:54
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-31T00:00:00.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 12:24:23
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-28T15:28:00.

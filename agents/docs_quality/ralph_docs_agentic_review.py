@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -111,6 +112,32 @@ Return JSON only with this schema:
 '''
 
 
+def _extract_json_payload(text: str) -> str:
+    fenced_matches = re.findall(r'```json\s*(\{.*?\})\s*```', text, flags=re.DOTALL)
+    for candidate in reversed(fenced_matches):
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            continue
+
+    decoder = json.JSONDecoder()
+    for start in [idx for idx, ch in enumerate(text) if ch == '{']:
+        try:
+            _, end = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            continue
+        candidate = text[start:start + end]
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict) and 'status' in parsed:
+            return candidate
+
+    raise RuntimeError(f'opencode review returned no standalone review JSON object: {text}')
+
+
 def run_review() -> dict:
     ensure_acpx()
     prompt_file = WORKSPACE / 'agents' / 'docs_quality' / '.agentic_review_prompt.txt'
@@ -124,11 +151,7 @@ def run_review() -> dict:
     combined = (proc.stdout + proc.stderr).strip()
     if proc.returncode != 0:
         raise RuntimeError(f'opencode review failed: {combined}')
-    start = combined.find('{')
-    end = combined.rfind('}')
-    if start == -1 or end == -1 or end < start:
-        raise RuntimeError(f'opencode review returned no JSON object: {combined}')
-    payload = combined[start:end + 1]
+    payload = _extract_json_payload(combined)
     try:
         return json.loads(payload)
     except json.JSONDecodeError as exc:

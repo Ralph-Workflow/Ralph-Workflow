@@ -10417,3 +10417,87 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with the positioning document. README \u2192 START_HERE \u2192 docs/README journey is coherent, secondary pages reinforce the same story, and internal leakage is avoided on all top-level surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "github-mirror/README.md 'Baseline capabilities' paragraph mentions `arabold/docs-mcp-server` on `localhost:6280` \u2014 implementation-specific plumbing detail that belongs in the MCP docs page, not a top-level install README. Trim to 'docs-aware guidance when an MCP server is available' and link the detail page."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'The operating system for autonomous coding', frames as AI agent orchestrator, composable loop framework, strong default workflow \u2014 all canonical positioning. Install-first structure avoids pitching internals before value."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run, clear task fit/non-fit guidance, result-first success criteria, no internal plumbing language. Reinforces the positioning without competing with README."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Curated docs map with explicit routes, 'Keep proof secondary' section, and clear page roles that don't duplicate the README or START_HERE jobs."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Strong secondary page that explains why the simple core matters for real engineering work, why the default workflow is practically important, and routes back to the main journey without fighting it."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with the positioning document. The README \u2192 START_HERE \u2192 docs/README journey is coherent, promoted next-click pages reinforce the same story, and there is no internal leakage on top-level surfaces. The messaging consistently frames Ralph Workflow as a composable loop framework built on a simple Ralph-loop core, with a strong default workflow and result-first evaluation.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'operating system for autonomous coding' tagline and 'composable loop framework' framing. Cleanly separates install/operator role from product pitch. All capabilities listed as secondary bullets, not the lead. Correctly identifies Codeberg as primary."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Textbook alignment with positioning. Leads with product identity, result-first evaluation ('what the software does now and what checks ran'), clear task-fit guardrails, and routes into the docs map. No internal plumbing or artifact language."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with coherent routing categories. Actively manages the proof-as-secondary treatment: 'Use proof-oriented pages only after you already understand the product story.' Does not fight the upstream pages."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Correctly self-identifies as supporting proof ('not the main product pitch'). Evidence ordering follows the rubric exactly: working behavior first, real checks second, written scope third, artifacts fourth. This is the positioning doc's proof-page discipline implemented correctly."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

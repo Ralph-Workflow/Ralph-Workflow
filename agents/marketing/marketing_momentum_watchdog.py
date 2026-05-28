@@ -153,11 +153,15 @@ def newest_post_time() -> datetime | None:
 
 
 def newest_healthy_report_time(now: datetime) -> tuple[Path | None, float | None]:
+    latest_alias = SEO / 'reddit_monitor_latest.md'
     latest_healthy = SEO / 'reddit_monitor_latest_healthy.md'
     candidates: list[Path] = []
-    if latest_healthy.exists():
-        candidates.append(latest_healthy)
-    candidates.extend(sorted(SEO.glob('reddit_monitor_*.md'), reverse=True))
+    for candidate in (latest_alias, latest_healthy):
+        if candidate.exists() and candidate not in candidates:
+            candidates.append(candidate)
+    for report in sorted(SEO.glob('reddit_monitor_*.md'), reverse=True):
+        if report not in candidates:
+            candidates.append(report)
     for report in candidates:
         try:
             text = report.read_text(encoding='utf-8')

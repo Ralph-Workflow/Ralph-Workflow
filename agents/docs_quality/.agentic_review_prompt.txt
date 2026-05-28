@@ -1,0 +1,764 @@
+You are auditing Ralph Workflow public documentation quality.
+
+Judge the docs system holistically, not as isolated pages.
+
+Canonical positioning document:
+```md
+# Ralph Workflow Positioning Reference
+
+This file is the durable product-definition reference for marketing and messaging.
+Use it when writing README copy, landing-page language, social posts, comparisons, outreach, or review assets.
+
+## What Ralph Workflow is
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator.
+It runs the coding agents you already use on your own machine.
+
+It is fundamentally built on Ralph-loop ideas, but it is not just generic "Ralph" and should not be framed that way.
+Ralph Workflow is an improvement on Ralph.
+
+## Core conceptual framing
+
+The key idea is simple at the center:
+- loop planning
+- loop development iteration
+- loop the overall process
+- keep explicit handoffs between phases
+- keep the plan concrete enough to drive the next phase cleanly
+
+That is why Ralph Workflow is more than just "AI orchestration."
+It is composable orchestration built around loop structure.
+
+A strong concise framing:
+> Ralph Workflow takes the simple Ralph-loop idea and turns it into a composable loop framework for real software engineering.
+
+Another durable framing:
+> Ralph Workflow is the operating system for autonomous coding.
+
+The full story should preserve all of these truths together:
+
+- the core Ralph loop is simple
+- that simple core composes into complex workflows
+- that simplicity makes the system easier to configure, reason about, and extend
+- Ralph Workflow is an AI agent orchestrator, not just another coding chat or thin wrapper
+- the shipped default workflow is already very good for writing software
+- users can start with the default workflow and build on top of it when needed
+
+This should feel like **simple at the center, powerful in composition**.
+
+## What it is for
+
+Ralph Workflow is for big, ambitious, well-specified work.
+A good first run should sound like:
+- the fitness app you wanted to build
+- a major product milestone
+- a serious application slice
+- a substantial engineering chunk with real acceptance criteria
+
+It is not for:
+- small tweaks
+- narrow chores
+- trivial one-hour edits
+- vague product ideas with no spec
+
+## How to evaluate it
+
+The result comes first.
+Do not lead with logs.
+Do not lead with internal artifacts.
+Do not lead with diff language alone.
+
+Lead with:
+- what the software does now
+- what checks actually ran
+- especially integration tests and other real guardrails
+- whether the software is runnable, testable, and actually ready
+- what a human can verify directly
+
+Logs are fallback evidence only.
+Diffs are useful supporting evidence, but not the primary promise.
+
+## Engineering-practice dependency
+
+Ralph Workflow depends on good software engineering practices.
+It does not replace them.
+
+Always preserve this framing:
+- clear specs matter
+- meaningful tests matter
+- integration checks matter
+- executable software matters
+- honest review discipline matters
+
+If a repo lacks those guardrails, Ralph should reflect that honestly instead of pretending the result is more trustworthy than it is.
+
+## Repo / surface hierarchy
+
+- Codeberg is the primary repo and source of truth.
+- GitHub is the mirror.
+- GitHub must never be treated as the write target for Ralph Workflow source updates.
+- Update Codeberg; GitHub follows automatically as the downstream mirror.
+- Never manually push to GitHub unless it is the sync script performing the Codeberg→GitHub mirror update.
+- Public-facing copy should not accidentally flatten the mirror into the primary.
+- When both are shown, frame them as: Codeberg primary, GitHub mirror for GitHub-native inspection/star/watch behavior.
+
+## Messaging guardrails
+
+Do not:
+- collapse Ralph Workflow into generic "Ralph"
+- describe it as if it were the generic Ralph loop
+- position it around small or narrow tasks
+- lead public docs with internal agent-to-agent or artifact-plumbing language
+- lead with logs as if people should read giant logs first
+- lead with artifacts, review bundles, finish receipts, transcript-vs-diff framing, or merge-decision framing as if those are the main product story
+- explain internal workflow plumbing before explaining why the product matters to the end user
+- imply Ralph magically creates a good testing strategy when the repo does not have one
+- treat GitHub like the primary repo when Codeberg is the source of truth
+
+Do:
+- frame it as an improvement on Ralph
+- frame it as a composable loop framework
+- keep the simple-core / serious-engineering contrast
+- emphasize that the simple core is what makes more complex workflows easier to build and configure
+- emphasize the strong default workflow for writing software
+- emphasize that people can use the default first and extend it later
+- emphasize ambitious, well-specified work
+- emphasize runnable software and real checks
+- emphasize result-first evaluation
+- present Codeberg as primary and GitHub as the mirror
+
+## Public-docs content boundary
+
+Top-level public docs should not lead with internal mechanics that do not matter to the evaluator or end user.
+
+Usually keep these out of the top-level story unless directly necessary:
+
+- artifacts as a featured concept
+- internal handoff structure
+- workflow plumbing
+- internal phase receipts
+- internal agent-to-agent transfer details
+- implementation-shaped terminology that mainly matters to maintainers
+
+Those may belong in:
+
+- developer documentation
+- architecture documentation
+- deep reference pages
+- proof/supporting pages that are clearly secondary to the main product story
+
+Top-level/public docs should instead lead with:
+
+- what Ralph Workflow is
+- why it is different
+- why the simple Ralph-loop core matters
+- how that simplicity enables complex composition
+- why the default workflow is already strong for writing software
+- how users can start with the default and extend it later
+
+## Positioning failure signals
+
+The positioning has drifted if any of these become prominent on top-level surfaces:
+
+- artifact language appears before product language
+- “reviewable result” sounds like the main differentiator
+- transcript/diff/merge-decision copy dominates the first screen
+- internals are explained before user value is clear
+- the docs sound like process receipts instead of product positioning
+- the product feels more complicated to understand than the underlying core actually is
+
+## Public-docs writing order
+
+When writing public/product docs:
+
+1. explain the simple core first
+2. explain composition and orchestration second
+3. explain the strong default workflow third
+4. explain extension/configuration fourth
+5. only then include proof details if they materially help evaluation
+
+```
+
+Rubric:
+```md
+# Ralph Workflow Docs Quality Rubric
+
+This rubric is the primary standard for agentic docs review.
+
+## Canonical source of truth
+- `agents/marketing/RALPH_WORKFLOW_POSITIONING.md`
+
+## Core judgment
+The docs system should explain Ralph Workflow as:
+- **the operating system for autonomous coding**
+- an **AI agent orchestrator**
+- built on a **simple Ralph-loop core**
+- **powerful in composition** because the simple core can be composed into larger workflows
+- shipping with a **strong default workflow for writing software**
+- something users can adopt **as-is first** and extend later
+
+## Required quality criteria
+Judge all of these at once:
+1. marketing positioning alignment
+2. factual / product accuracy
+3. no internal developer-only concepts sold as end-user value
+4. copyedited wording that reads clearly and naturally
+5. marketable framing without hype sludge
+6. good information hierarchy
+7. low link anxiety on top-level surfaces
+8. coherent README -> START_HERE -> docs map journey
+9. clear audience fit / non-fit
+10. promoted next-click pages reinforce the same story instead of fighting it
+
+## Hard failures
+Fail if any of these are true on top-level/promoted public docs:
+- leads with artifacts, review bundles, handoff structure, workflow plumbing, transcript-vs-diff, merge-decision, or similar internal process residue
+- sounds like the product is mainly about reviewable output rather than orchestration / workflow power
+- README, START_HERE, and docs map do not work as one route
+- copy is technically compliant but still confusing, clunky, or hard to trust
+- promoted docs route evaluators into stale framing
+- the user would reasonably need to remind the docs agent about these same criteria again
+
+## Evidence expectations
+A passing review must cite concrete files/pages and explain:
+- what is working
+- what is still broken
+- which pages most need remediation
+- whether the loop is healthy enough that the user should not need to repeat the same instruction again
+
+```
+
+Primary public docs surfaces (embedded below so you do not need additional file reads):
+```text
+FILE: /home/mistlight/RalphWithReviewer/README.md
+1: <!-- AI AGENTS: DO NOT MODIFY. This file is intentionally narrow. Public first-run docs live on the canonical Ralph Workflow surfaces. -->
+2: 
+3: # Ralph Workflow
+4: 
+5: **The operating system for autonomous coding.**
+6: 
+7: Ralph Workflow is an AI agent orchestrator built around a simple Ralph-loop core.
+8: That core stays simple, but it composes into a stronger composable workflow for substantial, well-specified planning, development, verification, and review.
+9: It also ships with a strong default workflow for writing software before you customize anything.
+10: 
+11: This source-tree README is **not** the main first-run guide.
+12: Its job is to point you to the canonical public route and to the local source-tree docs that exist in this repository.
+13: 
+14: ## Canonical public route
+15: 
+16: Use this route in order:
+17: 
+18: 1. Codeberg primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+19: 2. `START_HERE.md` in the canonical public docs flow
+20: 3. `docs/README.md` as the curated docs switchboard
+21: 4. the operator manual when you need deeper configuration or reference detail
+22: 
+23: ## Local source-tree docs in this repo
+24: 
+25: If you are already inside this source tree, use these local docs for maintainer-oriented detail:
+26: 
+27: - [docs/quick-reference.md](docs/quick-reference.md)
+28: - [docs/architecture/README.md](docs/architecture/README.md)
+29: - [docs/agent-compatibility.md](docs/agent-compatibility.md)
+30: 
+31: ## What this file is deliberately not doing
+32: 
+33: This README does not try to be:
+34: 
+35: - the main product pitch
+36: - another competing onboarding path
+37: - the full operator manual
+38: - a proof or evaluation page
+39: 
+40: That separation is intentional. Repeated docs drift happened because too many surfaces were trying to do all jobs at once.
+41: 
+42: ## License
+43: 
+44: Licensed under AGPL-v3.
+45: The license applies to Ralph Workflow itself, not to the code it generates.
+
+FILE: /home/mistlight/RalphWithReviewer/ralph-workflow/README.md
+1: # Ralph Workflow CLI Source
+2: 
+3: **The operating system for autonomous coding.**
+4: 
+5: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+6: That simple center is what makes the workflow understandable, extensible, and powerful in composition.
+7: The product ships with a strong default workflow for writing software; this source-tree README is narrower than that public story.
+8: 
+9: ## Page role
+10: 
+11: This file is the **implementation-facing source README** for the CLI directory.
+12: It is not the canonical public first-run guide.
+13: 
+14: If you want the public product journey, use this route instead:
+15: 
+16: 1. Codeberg primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+17: 2. `START_HERE.md`
+18: 3. `docs/README.md`
+19: 4. the operator manual for configuration/reference questions
+20: 
+21: ## What lives in this directory
+22: 
+23: This directory contains the CLI implementation and related source for the Ralph Workflow command-line tool, which is built for substantial, well-specified software engineering work.
+24: Use it when you are changing the implementation, building locally, or reading source-level behavior.
+25: 
+26: ## Local development
+27: 
+28: Build locally:
+29: 
+30: ```bash
+31: cargo build --release
+32: ```
+33: 
+34: Run tests:
+35: 
+36: ```bash
+37: cargo test
+38: ```
+39: 
+40: Format and lint:
+41: 
+42: ```bash
+43: cargo fmt --check
+44: cargo clippy --all-targets --all-features
+45: ```
+46: 
+47: ## Source-tree docs
+48: 
+49: Use these local docs when working on the implementation:
+50: 
+51: - [../docs/quick-reference.md](../docs/quick-reference.md)
+52: - [../docs/architecture/README.md](../docs/architecture/README.md)
+53: - [../docs/template-guide.md](../docs/template-guide.md)
+54: 
+55: ## Why this file is intentionally narrow
+56: 
+57: The recurring docs-agent failure was page-role collapse:
+58: multiple READMEs tried to act as product pitch, onboarding path, manual, and proof surface at the same time.
+59: This file is intentionally limited so the public route stays coherent.
+60: 
+61: ## License
+62: 
+63: Licensed under AGPL-v3.
+
+FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md
+1: # Ralph Workflow (Python)
+2: 
+3: **Codeberg is the primary repo:** [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
+4: _(GitHub mirror at [github.com/Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow))_
+5: 
+6: Ralph Workflow is a **free and open-source** Python 3.12+ CLI for **AI agent orchestration** on your own machine.
+7: It is designed for **well-specified, substantial work** — the kind you can't afford to babysit.
+8: It extends the simple Ralph loop into a **composable loop framework** for real software engineering, and the default workflow is already strong enough to start with before you customize anything.
+9: 
+10: This README is the **install + operator entrypoint**, not the main product pitch.
+11: The full docs, first-task guide, and developer material live on [ralphworkflow.com](https://ralphworkflow.com/docs).
+12: 
+13: ## Install
+14: 
+15: ```bash
+16: pipx install ralph-workflow
+17: ralph --help
+18: ```
+19: 
+20: ## Verification
+21: 
+22: When you change Ralph Workflow itself, the canonical repo-level verification command is:
+23: 
+24: ```bash
+25: make verify
+26: ```
+27: 
+28: ## Operator docs
+29: 
+30: - [Getting Started](https://ralphworkflow.com/docs/getting-started.html)
+31: - [Quickstart](https://ralphworkflow.com/docs/quickstart.html)
+32: - [Configuration](https://ralphworkflow.com/docs/configuration.html)
+33: - [Reference](https://ralphworkflow.com/docs/reference.html) and User stories
+34: 
+35: ## Baseline capabilities
+36: 
+37: Ralph Workflow ships a built-in local work surface for workspace and file operations, git read/status/diff/log operations, artifact submission, plan-reading, and media-read support. `ralph --init` sets up or repairs the baseline capability bundle so the default workflow is ready on first run and can recover from degraded helpers. `ralph --diagnose` reports capability health before you start work so you can spot missing, unreachable, degraded, or outdated pieces early.
+38: 
+39: It also ships DuckDuckGo-backed web search, built-in `visit_url` single-page retrieval with SSRF-safe defaults, mirrored upstream skill bundles installed by `ralph --init`, and docs-aware guidance that turns on when `arabold/docs-mcp-server` is reachable on `localhost:6280`. When docs-mcp is absent, prompts show a short setup hint instead of pretending docs lookup is available. See the [MCP Servers](https://ralphworkflow.com/docs/mcp/mcp-servers.html) page for web search, web visit, and docs-mcp details.
+40: 
+41: ## Deeper material
+42: 
+43: - [Developer Reference](https://ralphworkflow.com/docs/developer-reference.html)
+44: - [Modules index](https://ralphworkflow.com/docs/modules/index.html)
+
+FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md
+1: # Start Here: Run Ralph Workflow on One Real Task
+2: 
+3: > **GitHub is the mirror. Codeberg is the primary repo.**
+4: > Inspect and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+5: 
+6: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+7: It runs the coding agents you already use on your own machine, turns that simple loop structure into a stronger composable workflow for substantial, well-specified software engineering work, and gives you a strong default workflow before you customize anything.
+8: 
+9: This page gives the shortest honest first run.
+10: Start with one real, well-specified backlog task and judge the outcome by what the software does now and what checks ran.
+11: Bring your existing coding agents, keep your existing setup, and keep your keys to yourself.
+12: 
+13: ## Before you start
+14: 
+15: Have these ready:
+16: 
+17: - one real git repo you care about
+18: - Python 3.12+
+19: - one supported agent CLI already installed
+20: - working auth for that agent
+21: 
+22: ## Pick the right first task
+23: 
+24: Good first tasks:
+25: 
+26: - a substantial feature slice with clear acceptance criteria
+27: - a refactor with tests and clear acceptance criteria
+28: - a verification or test-coverage pass on behavior you already rely on
+29: - a cleanup task with a real finish line
+30: 
+31: Bad first tasks:
+32: 
+33: - tiny edits where setup dominates the work
+34: - vague exploration
+35: - risky production surgery
+36: - work that depends on constant mid-run steering
+37: 
+38: If you are unsure, use [docs/first-task-guide.md](./docs/first-task-guide.md).
+39: 
+40: ## Install and run
+41: 
+42: ```bash
+43: pipx install ralph-workflow
+44: cd /path/to/your/project
+45: ralph --init
+46: ralph --diagnose
+47: $EDITOR PROMPT.md
+48: ralph
+49: ```
+50: 
+51: Use `ralph --init` first to set up or repair the baseline bundle, then run `ralph --diagnose` to confirm capability health before your first task.
+52: 
+53: - `ralph --init` provisions the default local work surface, web helpers, and shipped baseline skills for a first run that is ready to use.
+54: - `ralph --diagnose` is the pre-flight check; it shows which baseline helpers are healthy, missing, unreachable, degraded, or need repair.
+55: 
+56: ## What success looks like
+57: 
+58: After a good first run, you should be able to point to:
+59: 
+60: - a real repo change that matches the written task
+61: - meaningful checks that ran and reported clear outcomes
+62: - a result you can review without reconstructing the whole run
+63: - a clear sense of whether the default workflow helped enough to keep using
+64: 
+65: ## Next pages only if you need them
+66: 
+67: - task selection — [docs/first-task-guide.md](./docs/first-task-guide.md)
+68: - docs switchboard — [docs/README.md](./docs/README.md)
+69: - operator manual — [ralph-workflow/docs/sphinx/index.rst](./ralph-workflow/docs/sphinx/index.rst)
+
+FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md
+1: # Documentation Map
+2: 
+3: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+4: That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
+5: 
+6: 
+7: Use this page after [README.md](../README.md) and [START_HERE.md](../START_HERE.md).
+8: Those pages explain what Ralph Workflow is and how to judge one honest first run.
+9: This page routes you to the next page that best matches your question.
+10: 
+11: ## Choose one route
+12: 
+13: ### I want the fastest first successful run
+14: 
+15: - [Choose your first task](./first-task-guide.md)
+16: - [First-task prompt templates](./first-task-prompt-templates.md)
+17: - [Getting started in the manual](../ralph-workflow/docs/sphinx/getting-started.md)
+18: 
+19: ### I want the maintained operator manual
+20: 
+21: - [Manual home](../ralph-workflow/docs/sphinx/index.rst)
+22: - [Configuration](../ralph-workflow/docs/sphinx/configuration.md)
+23: - [Reference](../ralph-workflow/docs/sphinx/reference.md)
+24: - [User stories](../ralph-workflow/docs/sphinx/user-stories.md)
+25: 
+26: ### I need the repo-root docs families mapped clearly
+27: 
+28: These repo-root docs are a **map of the surrounding documentation system**, not the main operator manual.
+29: The maintained day-to-day operator path is the Sphinx manual above.
+30: Use these folders only when you know you need contributor guidance or deeper background.
+31: 
+32: - `docs/agents/` — contributor and verification guidance for agents, testing, type-ignore policy, and verification workflow
+33: - `docs/code-style/` — documentation rubric plus maintained style/process guidance
+34: - `docs/tooling/` — tooling setup and support notes, including Python-specific guidance like `python-tooling.md`
+35: - `docs/performance/` — deeper performance notes and supporting background
+36: 
+37: ### I want product framing before I go deeper
+38: 
+39: - [AI agent orchestration CLI](./ai-agent-orchestration-cli.md)
+40: - [Why the spec still matters](./spec-driven-ai-agent.md)
+41: - [What unattended use should mean](./unattended-coding-agent.md)
+42: 
+43: ## Keep proof secondary
+44: 
+45: Use proof-oriented pages only after you already understand the product story or the operator route.
+46: If you need deeper evidence, the manual and linked supporting pages will take you there.
+47: 
+48: ## Primary repo
+49: 
+50: Codeberg is the primary repo and source of truth:
+51: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+
+FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md
+1: # AI Agent Orchestration CLI: What Matters in Practice
+2: 
+3: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+4: That simple center composes into more complex workflows for substantial, well-specified software engineering work on your own machine with the coding agents you already use, and the shipped default is already strong enough to start with.
+5: 
+6: If you are comparing AI agent orchestration CLIs, the useful question is not whether a tool can call an agent.
+7: The useful question is whether it gives you a workflow that stays understandable, reviewable, and extensible when the task stops being tiny.
+8: 
+9: ## What Ralph Workflow is trying to solve
+10: 
+11: A single long coding-agent session can work for small edits.
+12: It gets much shakier when the task needs:
+13: 
+14: - a real written spec
+15: - explicit planning before implementation
+16: - repeated verification instead of one final guess
+17: - room to swap or extend agent behavior later
+18: - a handoff a human can judge without reverse-engineering the whole run
+19: 
+20: Ralph Workflow takes the simple Ralph-loop idea and uses it as the center of a larger orchestration model.
+21: The point is not complexity for its own sake.
+22: The point is to keep the center simple so the larger workflow stays easier to reason about.
+23: 
+24: ## Why the default workflow matters
+25: 
+26: The default workflow matters because most users should not have to design an orchestration system before they can test one.
+27: You should be able to start with the shipped path, run a real task, and only then decide whether to extend it.
+28: 
+29: That is the practical promise: simple at the center, stronger in composition, useful before customization.
+30: 
+31: ## Where to go next
+32: 
+33: - for the shortest honest first run: [START_HERE.md](../START_HERE.md)
+34: - for task selection help: [first-task-guide.md](./first-task-guide.md)
+35: - for the operator manual: [Sphinx manual home](../ralph-workflow/docs/sphinx/index.rst)
+36: - for configuration and file locations: [configuration.md](../ralph-workflow/docs/sphinx/configuration.md)
+
+FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md
+1: # Spec-Driven AI Agent: Why the Spec Still Matters
+2: 
+3: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+4: That simple center composes into more complex workflows for substantial, well-specified software engineering work, and a written spec is what gives that stronger default workflow a real finish line.
+5: 
+6: If an agent keeps saying it is done before the work actually holds up, the problem is often not raw model capability.
+7: The problem is that the task was never specific enough to verify honestly.
+8: 
+9: ## Why Ralph Workflow leans on specs
+10: 
+11: Ralph Workflow is designed for ambitious work that already deserves a clear target:
+12: 
+13: - a real feature slice
+14: - a milestone with acceptance criteria
+15: - a refactor with defined invariants
+16: - a verification pass with concrete failure conditions
+17: 
+18: That is where a spec stops being ceremony and starts being operational.
+19: It tells the workflow what done means.
+20: It also gives the human a standard to review against afterward.
+21: 
+22: ## What a good spec changes
+23: 
+24: A serious spec helps in three places at once:
+25: 
+26: 1. **Planning** — the agent can make better choices when constraints are explicit.
+27: 2. **Verification** — checks can be judged against something real instead of vibes.
+28: 3. **Review** — the human can compare the result to the promised scope instead of reading tea leaves from a transcript.
+29: 
+30: Without that written target, even a strong model can produce work that sounds plausible while drifting away from what mattered.
+31: 
+32: ## Why this fits the default workflow
+33: 
+34: Ralph Workflow is not asking for giant design docs on every change.
+35: It is asking you to use the workflow where ambiguity is expensive and a clear finish line matters.
+36: That is one reason the default workflow works better on serious repo tasks than on tiny, vague chores.
+37: 
+38: ## What to read next
+39: 
+40: - for choosing a strong first task: [first-task-guide.md](./first-task-guide.md)
+41: - for the shortest honest run path: [START_HERE.md](../START_HERE.md)
+42: - for operator setup and configuration: [configuration.md](../ralph-workflow/docs/sphinx/configuration.md)
+
+FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md
+1: # Choose Your First Ralph Workflow Task
+2: 
+3: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+4: That simple center composes into more complex workflows for substantial, well-specified repo work, and the shipped default workflow is strongest when the task already has a real finish line.
+5: 
+6: ## Do not start with a vague demo
+7: 
+8: The fastest honest test is one substantial backlog task you already care about.
+9: Choose something that is large enough to benefit from orchestration, but clear enough to judge afterward.
+10: 
+11: A good first task is:
+12: 
+13: - substantial enough that setup is not the whole story
+14: - defined enough that success is easy to evaluate afterward
+15: - detailed enough that you can write a serious spec
+16: - real enough that you already want it shipped
+17: 
+18: ## Good examples
+19: 
+20: Strong first runs usually look like:
+21: 
+22: - a substantial feature slice with acceptance criteria
+23: - a refactor with tests and known invariants
+24: - a verification pass on behavior you already rely on
+25: - a cleanup project with a concrete finish line
+26: 
+27: ## Weak examples
+28: 
+29: Avoid starting with:
+30: 
+31: - tiny edits where orchestration overhead dominates
+32: - vague exploration with no testable goal
+33: - risky production surgery that needs constant live steering
+34: - chores so small that a direct coding session would be simpler
+35: 
+36: ## Why this matters
+37: 
+38: Ralph Workflow works best when the task is real, ambitious, and well specified.
+39: That is where the simple loop core and strong default workflow have room to show why they are useful.
+40: 
+41: ## Next pages
+42: 
+43: - for a short first-run path: [START_HERE.md](../START_HERE.md)
+44: - for prompt shaping help: [first-task-prompt-templates.md](./first-task-prompt-templates.md)
+45: - for operator setup: [getting-started.md](../ralph-workflow/docs/sphinx/getting-started.md)
+
+FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md
+1: # Unattended Coding Agent: What It Should Actually Mean
+2: 
+3: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+4: That simple center composes into more complex workflows for substantial, well-specified repo work on your own machine with the agents you already use, and the default workflow is already strong enough to start with.
+5: 
+6: If you are looking for an unattended coding agent, the important question is not just whether a model can keep typing while you are away.
+7: The important question is whether you can come back to software you can judge honestly.
+8: 
+9: ## Unattended should still mean accountable
+10: 
+11: A useful unattended workflow should leave you with:
+12: 
+13: - a clear task boundary
+14: - software that actually runs or verifies better than before
+15: - checks that tell you something real
+16: - enough structure that you can understand what happened without replaying everything
+17: 
+18: That is the standard Ralph Workflow is trying to meet.
+19: It is not promising magic independence from engineering discipline.
+20: It is promising a stronger way to organize serious work.
+21: 
+22: ## When unattended use fits best
+23: 
+24: Ralph Workflow fits best when you have:
+25: 
+26: - a backlog task with a written finish line
+27: - a repo with meaningful tests or validation
+28: - enough scope that a simple chat session becomes awkward
+29: - time to evaluate the result after the run
+30: 
+31: It fits worse when the task is vague, tiny, or dependent on constant mid-run steering.
+32: 
+33: ## Why the default workflow matters
+34: 
+35: Most people should not have to build an orchestration system before they can judge one.
+36: You should be able to start with the shipped path, learn how it behaves on a real task, and extend it later only if you need to.
+37: 
+38: ## Where to go next
+39: 
+40: - for the shortest honest first run: [START_HERE.md](../START_HERE.md)
+41: - for choosing a task worth running unattended: [first-task-guide.md](./first-task-guide.md)
+42: - for the maintained manual: [Sphinx manual home](../ralph-workflow/docs/sphinx/index.rst)
+43: - for user-goal routing inside the manual: [user-stories.md](../ralph-workflow/docs/sphinx/user-stories.md)
+
+FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md
+1: # What Good Ralph Workflow Output Looks Like
+2: 
+3: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+4: This page is supporting proof for that composable workflow system and its strong default workflow, not the main product pitch.
+5: 
+6: Use this page after you already understand the workflow and want a review standard for the morning-after handoff.
+7: Start with the product story and operator route first, then use this page to judge whether a run produced something worth trusting.
+8: 
+9: ## What to evaluate first
+10: 
+11: The first question is not whether the transcript sounds smart.
+12: The first question is what the software does now.
+13: 
+14: Good output usually means:
+15: 
+16: - the task scope is recognizable from the result
+17: - the repo is in a better state than before
+18: - meaningful checks ran and their outcome is explicit
+19: - the change can be reviewed against a real written spec
+20: - the human can decide what to do next without reconstructing the whole run
+21: 
+22: ## Supporting evidence, in the right order
+23: 
+24: Use evidence in this order:
+25: 
+26: 1. **working behavior** — what changed in the software
+27: 2. **real checks** — tests, integration checks, or other meaningful validation
+28: 3. **written scope** — whether the result matches the promised task
+29: 4. **supporting artifacts** — logs, diffs, or deeper traces if you need them
+30: 
+31: Logs and transcripts can be useful.
+32: They just should not be the main promise.
+33: 
+34: ## What weak output looks like
+35: 
+36: Be skeptical when a run gives you:
+37: 
+38: - lots of narration but unclear product change
+39: - a diff with no convincing checks
+40: - a confident summary for a vague task
+41: - artifacts that sound organized but do not make the result easier to judge
+42: 
+43: Ralph Workflow depends on real engineering guardrails.
+44: If the repo does not have them, the honest outcome may be limited proof rather than full trust.
+45: 
+46: ## Where to go next
+47: 
+48: - for the shortest first-run path: [START_HERE.md](../START_HERE.md)
+49: - for choosing a task with a real finish line: [first-task-guide.md](./first-task-guide.md)
+50: - for why specs matter to output quality: [spec-driven-ai-agent.md](./spec-driven-ai-agent.md)
+```
+
+Instructions:
+1. Judge the README -> START_HERE -> docs/README journey.
+2. Judge whether the embedded promoted next-click pages reinforce or fight that journey.
+3. Decide whether the docs currently satisfy the rubric as a whole.
+4. Be harsh. If the user would reasonably need to repeat the same docs-agent instruction again, fail.
+
+Return JSON only with this schema:
+{
+  "status": "pass" | "fail",
+  "summary": "short verdict",
+  "loopHealthy": true | false,
+  "criteria": {
+    "positioning": "pass|fail",
+    "accuracy": "pass|fail",
+    "internalLeakage": "pass|fail",
+    "copyQuality": "pass|fail",
+    "informationArchitecture": "pass|fail",
+    "journeyCoherence": "pass|fail"
+  },
+  "mustFix": ["..."],
+  "strongestEvidence": [{"path": "...", "reason": "..."}],
+  "shouldUserNeedToRepeatThis": true | false
+}

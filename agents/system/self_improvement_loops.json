@@ -16,6 +16,20 @@
       "verifierCrontabLine": "6,36 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/verifier_cron.log 2>&1",
       "maxArtifactAgeMinutes": 120,
       "requiresVerifierPassPhrase": "Status: independently verified pass"
+    },
+    {
+      "name": "agent-architecture-watchdog",
+      "kind": "gateway-cron",
+      "baseDir": "/home/mistlight/.openclaw/workspace/agents/system",
+      "runnerScript": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_runner.py",
+      "verifierScript": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "checkerScript": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_checker.py",
+      "runnerArtifact": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+      "verifierArtifact": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+      "ownerCronJob": "dc190b5f-f215-458b-bdce-ba36be178c80",
+      "maxArtifactAgeMinutes": 480,
+      "requiresVerifierPassPhrase": "Status: independently verified pass",
+      "allowVerifierContractExternalized": true
     }
   ]
 }

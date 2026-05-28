@@ -154,7 +154,10 @@ def forbid_any(path: Path, screen: str, needles: list[str], kind: str, message_p
 
 
 def count_top_links(path: Path, upto_line: int = 120) -> int:
-    return sum(line.count('](') for line in text(path).splitlines()[:upto_line])
+    import re
+    content = '\n'.join(text(path).splitlines()[:upto_line])
+    content = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', content)
+    return content.count('](')
 
 
 def heading_count(path: Path) -> int:

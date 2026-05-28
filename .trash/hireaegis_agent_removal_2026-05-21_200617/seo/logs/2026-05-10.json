@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-05-10T12:00:01.056466",
+  "sites": {
+    "https://hireaegis.com": [
+      "MISSING_CHARSET"
+    ],
+    "https://billing.hireaegis.com": [
+      "MISSING_META_DESC"
+    ],
+    "https://ralphworkflow.com": []
+  },
+  "opportunities": [
+    {
+      "keyword": "unattended AI coding",
+      "difficulty": "medium",
+      "cpc": 2.5,
+      "action": "Create tutorial video targeting this phrase"
+    },
+    {
+      "keyword": "spec-driven development AI",
+      "difficulty": "low",
+      "cpc": 1.8,
+      "action": "Create tutorial targeting this phrase"
+    }
+  ],
+  "fixes": []
+}

@@ -1,3 +1,9 @@
+---
+experiment_id: "2026-05-22-start-here-first-task-guide"
+content_type: "conversion-asset"
+cta: "codeberg_primary_repo"
+---
+
 # First Task Guide: Pick One Backlog Task You Can Judge Honestly
 
 > **Codeberg is the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
@@ -84,6 +90,7 @@ If not, narrow the task.
 ## 4. Judge the result by evidence, not narration
 
 The next morning, ignore how confident the agent sounded.
+If you want a fast scorecard, use [Tomorrow-morning scorecard](../content/examples/tomorrow_morning_scorecard.md).
 
 Check:
 - does the diff match the task?
@@ -106,5 +113,6 @@ After the first run:
 
 - [Start here on one real task](../START_HERE.md)
 - [Good unattended task vs bad one](../content/guides/good_unattended_task.md)
+- [Tomorrow-morning scorecard](../content/examples/tomorrow_morning_scorecard.md)
 - [Unattended AI coding workflow](../content/guides/unattended_ai_coding_workflow.md)
 - [Review AI coding output before merge](../content/guides/review_ai_coding_output_before_merge.md)

@@ -301,7 +301,15 @@ def build_status(now: datetime | None = None) -> dict:
     repo_review_at = launch_at + timedelta(days=REPO_VISIT_REVIEW_DAYS)
     adoption_review_at = launch_at + timedelta(days=ADOPTION_REVIEW_DAYS)
 
-    if not result.get('outcome_ready') or record_count <= 0:
+    effective_record_count = int(outbound_result.get('record_count') or record_count)
+    effective_sequence_name = outbound_result.get('sequence_name') or result.get('sequence_name') or _chosen_action_dict(launch_payload).get('sequence_name')
+    effective_final_url = outbound_result.get('final_url') or result.get('final_url') or _chosen_action_dict(launch_payload).get('url')
+    effective_evidence = list(outbound_result.get('evidence') or result.get('evidence') or [])
+    effective_outcome_ready = bool(result.get('outcome_ready')) and record_count > 0
+    if outbound_status == 'verified_live_sequence':
+        effective_outcome_ready = True
+
+    if not effective_outcome_ready or effective_record_count <= 0:
         status = 'not_outcome_ready'
         measurement_pending = False
         next_review_at = launch_at
@@ -336,15 +344,15 @@ def build_status(now: datetime | None = None) -> dict:
         'live_list_log': str(_latest_live_list_verification()[0]) if _latest_live_list_verification()[0] else None,
         'outbound_verification_log': str(outbound_path) if outbound_path else None,
         'launch_timestamp': launch_at.isoformat(),
-        'record_count': record_count,
-        'sequence_name': result.get('sequence_name') or _chosen_action_dict(launch_payload).get('sequence_name'),
-        'final_url': result.get('final_url') or _chosen_action_dict(launch_payload).get('url'),
+        'record_count': effective_record_count,
+        'sequence_name': effective_sequence_name,
+        'final_url': effective_final_url,
         'launch_review_at': launch_review_at.isoformat(),
         'repo_visit_review_at': repo_review_at.isoformat(),
         'adoption_review_at': adoption_review_at.isoformat(),
         'next_review_at': next_review_at.isoformat(),
         'verification_timestamp': outbound_payload.get('timestamp'),
-        'evidence': list(outbound_result.get('evidence') or result.get('evidence') or []),
+        'evidence': effective_evidence,
         'needs_live_verification': False,
     }
 

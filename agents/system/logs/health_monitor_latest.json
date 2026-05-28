@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-28T10:44:48.365314",
-  "jobs_checked": 26,
-  "issues_found": 11,
+  "ts": "2026-05-28T12:18:48.569865",
+  "jobs_checked": 25,
+  "issues_found": 3,
   "issues": [
     {
       "job_id": "50578fdf-ea83-46bd-8580-36d2bae7ba54",
@@ -16,22 +16,6 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "required_text": "Status: independently verified pass",
-      "likely_cause": "Verifier artifact exists but does not show required pass contract"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_verifier",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
-      "required_text": "Status: independently verified pass",
-      "likely_cause": "Verifier artifact exists but does not show required pass contract"
-    },
-    {
-      "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "loop_verification_fail",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
@@ -41,132 +25,24 @@
       "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact."
     },
     {
-      "job_id": "__artifacts__",
-      "name": "docs_verifier_stability",
-      "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
-      "last_error": "latest docs verifier verdict is not pass: 'fail'",
-      "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
-      "recent_failures": 0,
-      "consecutive_passes_since_last_fail": 0
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T10:44:34.674485+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
-    },
-    {
       "job_id": "50578fdf-ea83-46bd-8580-36d2bae7ba54",
       "name": "marketing-workflow-audit_escalation",
       "category": "escalation_required",
       "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
-      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=21",
-      "repeats_in_recent_history": 21,
+      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=27",
+      "repeats_in_recent_history": 27,
       "owner_domain": "marketing",
       "incident_key": "marketing-workflow-audit::live_error",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_escalation",
-      "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=181",
-      "repeats_in_recent_history": 181,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_verifier_escalation",
-      "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=87",
-      "repeats_in_recent_history": 87,
-      "owner_domain": "docs",
-      "incident_key": "docs_verifier::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_verifier_stability_escalation",
-      "category": "escalation_required",
-      "last_error": "latest docs verifier verdict is not pass: 'fail'",
-      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=93",
-      "repeats_in_recent_history": 93,
-      "owner_domain": "docs",
-      "incident_key": "docs_verifier_stability::loop_verification_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
-      "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T10:44:34.674485+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=351",
-      "repeats_in_recent_history": 351,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
   "repairs_attempted": [
     {
-      "type": "rerun_docs_verifier_for_stability",
-      "job": "docs_verifier_stability",
-      "ok": false,
-      "detail": "independent verifier failed signoff\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is coherent, well-positioned, and would not require repeating the instruction.\",\n  \"loopHealthy\": true,\n  \"criteria\": {\n    \"positioning\": \"pass\",\n    \"ac"
-    },
-    {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": false,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
-    },
-    {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": false,
-      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T10:44:34.674485+02:00\"\n}"
-    },
-    {
       "type": "owner_loop_escalation",
       "job": "marketing-workflow-audit_escalation",
       "ok": true,
       "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779957878454:28\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_verifier_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779957880346:29\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_verifier_stability_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779957882326:30\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779957884241:31\"\n}"
     }
   ]
 }

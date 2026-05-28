@@ -3,16 +3,21 @@ from __future__ import annotations
 
 import json
 import re
-from collections import Counter, defaultdict
-from datetime import datetime
+from collections import Counter
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path('/home/mistlight/.openclaw/workspace')
 LOG_JSONL = ROOT / 'agents/marketing/logs/reddit_posts.jsonl'
 OUT_MD = ROOT / 'agents/marketing/logs/reddit_post_analysis.md'
 OUT_JSON = ROOT / 'agents/marketing/logs/reddit_post_analysis.json'
+OUT_MD_LATEST = ROOT / 'agents/marketing/logs/reddit_post_analysis_latest.md'
+OUT_JSON_LATEST = ROOT / 'agents/marketing/logs/reddit_post_analysis_latest.json'
 
-OPENING_STOPWORDS = {'the','a','an','and','but','for','with','that','this','from','into','your','have','had','when','what','more','just','they','them','then','than','still','really'}
+OPENING_STOPWORDS = {'the', 'a', 'an', 'and', 'but', 'for', 'with', 'that', 'this', 'from', 'into', 'your', 'have', 'had', 'when', 'what', 'more', 'just', 'they', 'them', 'then', 'than', 'still', 'really'}
+RECENT_POST_WINDOW = 6
+RECENT_POST_MAX_AGE_HOURS = 96
+CADENCE_RECORD_TYPES = {'structural_body_cadence', 'cadence', 'cadence_check'}
 
 
 def norm(text: str) -> str:
@@ -23,39 +28,99 @@ def tokens(text: str) -> list[str]:
     return [t for t in re.findall(r"[a-z0-9']+", text.lower()) if len(t) > 3 and t not in OPENING_STOPWORDS]
 
 
-def load_rows() -> list[dict]:
-    rows = []
+def _parse_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _is_structural_row(row: dict) -> bool:
+    row_type = str(row.get('type') or '').strip().lower()
+    if row_type in CADENCE_RECORD_TYPES:
+        return True
+    return 'body' not in row and 'metadata' not in row and row_type != 'reddit'
+
+
+def _write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding='utf-8')
+
+
+def _write_json_pair(payload: dict) -> None:
+    rendered = json.dumps(payload, indent=2, ensure_ascii=False)
+    _write_text(OUT_JSON, rendered)
+    _write_text(OUT_JSON_LATEST, rendered)
+
+
+def _write_markdown_pair(content: str) -> None:
+    _write_text(OUT_MD, content)
+    _write_text(OUT_MD_LATEST, content)
+
+
+def load_rows() -> tuple[list[dict], int]:
+    rows: list[dict] = []
+    filtered_structural = 0
     if not LOG_JSONL.exists():
-        return rows
+        return rows, filtered_structural
     for line in LOG_JSONL.read_text(encoding='utf-8').splitlines():
         line = line.strip()
         if not line:
             continue
         try:
-            rows.append(json.loads(line))
+            row = json.loads(line)
         except Exception:
             continue
-    return rows
-
-
-RECENT_POST_WINDOW = 6
+        if not isinstance(row, dict):
+            continue
+        if _is_structural_row(row):
+            filtered_structural += 1
+            continue
+        rows.append(row)
+    return rows, filtered_structural
 
 
 def main() -> int:
-    rows = load_rows()
+    rows, filtered_structural = load_rows()
     OUT_MD.parent.mkdir(parents=True, exist_ok=True)
+    generated_at = datetime.now().isoformat()
+
     if not rows:
-        payload = {'generated_at': datetime.now().isoformat(), 'count': 0, 'status': 'no_posts'}
-        OUT_JSON.write_text(json.dumps(payload, indent=2), encoding='utf-8')
-        OUT_MD.write_text('# Reddit Post Analysis\n\nNo logged Reddit posts yet.\n', encoding='utf-8')
+        payload = {
+            'generated_at': generated_at,
+            'count': 0,
+            'recent_window_count': 0,
+            'status': 'no_posts',
+            'filtered_structural_records': filtered_structural,
+            'recent_window_max_age_hours': RECENT_POST_MAX_AGE_HOURS,
+        }
+        _write_json_pair(payload)
+        _write_markdown_pair(
+            '# Reddit Post Analysis\n\n'
+            f'- Generated: {generated_at}\n'
+            f'- Filtered {filtered_structural} cadence/structural records\n\n'
+            'No logged Reddit posts yet.\n'
+        )
         return 0
 
-    recent_rows = rows[-RECENT_POST_WINDOW:]
+    now = datetime.now(UTC)
+    recent_cutoff = now - timedelta(hours=RECENT_POST_MAX_AGE_HOURS)
+    recent_candidates = []
+    for row in rows:
+        parsed_ts = _parse_timestamp(str(row.get('timestamp') or ''))
+        if parsed_ts is not None and parsed_ts >= recent_cutoff:
+            recent_candidates.append(row)
+    recent_rows = recent_candidates[-RECENT_POST_WINDOW:]
 
     by_account = Counter()
     by_community = Counter()
     title_words = Counter()
-    opening_lines = []
+    opening_lines: list[str] = []
     body_tokens = Counter()
     phrase_hits = Counter()
     post_summaries = []
@@ -98,7 +163,7 @@ def main() -> int:
     recommendations = []
     if repeated_openings:
         recommendations.append('Avoid reusing the same opening line; vary the first paragraph deliberately.')
-    if phrase_hits['reviewable'] and phrase_hits['reviewable'] == len(recent_rows):
+    if recent_rows and phrase_hits['reviewable'] and phrase_hits['reviewable'] == len(recent_rows):
         recommendations.append('Keep the reviewability angle, but rotate supporting language so posts do not sound templated.')
     if by_community.get('r/ClaudeCode', 0) or by_community.get('ClaudeCode', 0):
         recommendations.append('ClaudeCode is the strongest current venue, but avoid stacking too many similar comments there without fresh thread-specific advice.')
@@ -108,9 +173,11 @@ def main() -> int:
     recommendations.append('Score opportunities not just on topic fit but on whether they create a distinctly new reply angle versus existing logged comments.')
 
     payload = {
-        'generated_at': datetime.now().isoformat(),
+        'generated_at': generated_at,
         'count': len(rows),
         'recent_window_count': len(recent_rows),
+        'recent_window_max_age_hours': RECENT_POST_MAX_AGE_HOURS,
+        'filtered_structural_records': filtered_structural,
         'by_account': dict(by_account),
         'by_community': dict(by_community),
         'top_title_words': [w for w, _ in title_words.most_common(15)],
@@ -121,32 +188,38 @@ def main() -> int:
         'recent_posts': post_summaries[-10:],
         'recommendations': recommendations,
     }
-    OUT_JSON.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding='utf-8')
+    _write_json_pair(payload)
 
     md = [
         '# Reddit Post Analysis',
         '',
         f'- Generated: {payload["generated_at"]}',
         f'- Logged posts analyzed: {len(rows)} total / {len(recent_rows)} recent-window posts',
-        f'- Accounts seen: {", ".join(f"{k} ({v})" for k, v in by_account.items())}',
-        f'- Communities seen: {", ".join(f"{k} ({v})" for k, v in by_community.items())}',
+        f'- Recent window max age: {RECENT_POST_MAX_AGE_HOURS}h',
+        f'- Filtered {filtered_structural} cadence/structural records',
+        f'- Accounts seen: {", ".join(f"{k} ({v})" for k, v in by_account.items()) if by_account else "none in recent window"}',
+        f'- Communities seen: {", ".join(f"{k} ({v})" for k, v in by_community.items()) if by_community else "none in recent window"}',
         '',
         '## What the past posts actually say',
-        f'- Most repeated themes: {", ".join(k for k, _ in phrase_hits.most_common(8) if _ > 0)}',
-        f'- Frequent body tokens: {", ".join(top_tokens[:12])}',
+        f'- Most repeated themes: {", ".join(k for k, v in phrase_hits.most_common(8) if v > 0) or "none in recent window"}',
+        f'- Frequent body tokens: {", ".join(top_tokens[:12]) or "none in recent window"}',
         '',
         '## Repetition risks',
     ]
     if repeated_openings:
         md.extend([f'- Reused opening line: "{line}"' for line in repeated_openings])
     else:
-        md.append('- No exact repeated opening line detected.')
+        md.append('- No exact repeated opening line detected in the recent window.')
     md.extend(['', '## Recommendations'])
     md.extend([f'- {r}' for r in recommendations])
     md.extend(['', '## Recent post log rollup'])
-    for row in post_summaries[-6:]:
-        md.append(f"- {row['timestamp']} — u/{row['account']} — {row['community']} — {row['title']} — {row['comment_url']}")
-    OUT_MD.write_text('\n'.join(md) + '\n', encoding='utf-8')
+    if post_summaries:
+        for row in post_summaries[-6:]:
+            md.append(f"- {row['timestamp']} — u/{row['account']} — {row['community']} — {row['title']} — {row['comment_url']}")
+    else:
+        md.append(f'- No recent-window Reddit posts in the last {RECENT_POST_MAX_AGE_HOURS} hours.')
+    _write_markdown_pair('\n'.join(md) + '\n')
+
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 

@@ -1,13 +1,8 @@
 {
-  "checked_at": "2026-05-28T11:30:19.108697+02:00",
-  "verdict": "qualified_pass",
-  "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
+  "checked_at": "2026-05-28T13:09:16.485188+02:00",
+  "verdict": "fail",
+  "summary": "Independent verification found architecture blockers that prevent a healthy verdict.",
   "verified_repairs": [
-    {
-      "claim": "architecture report still reflects elevated overall risk, but that risk can be treated as externally blocked rather than a local escalation-design failure",
-      "status": "verified",
-      "details": "agent_architecture_latest.json reports overall_health='high_risk' while architecture-owned blockers are clear and the remaining live blocker is external to the architecture loop."
-    },
     {
       "claim": "Architecture report refresh captured the verifier repair state before fresh independent signoff.",
       "status": "verified",
@@ -16,7 +11,7 @@
     {
       "claim": "architecture audit metadata matches the live Gateway cron topology",
       "status": "verified",
-      "details": "openclaw cron list --json reports 26 live jobs, 26 enabled, 0 disabled, and the architecture artifact matches that state."
+      "details": "openclaw cron list --json reports 25 live jobs, 25 enabled, 0 disabled, and the architecture artifact matches that state."
     },
     {
       "claim": "architecture verifier now fails closed on stale independent verification",
@@ -31,12 +26,17 @@
     {
       "claim": "health monitor shows no architecture-owned live system issues while the architecture verifier is being independently checked",
       "status": "verified",
-      "details": "health_monitor_latest.json records jobs_checked=26 and architecture-owned blockers are clear."
+      "details": "health_monitor_latest.json records jobs_checked=25 and architecture-owned blockers are clear."
     },
     {
       "claim": "architecture verification isolates external domain blockers as watchpoints instead of manufacturing new architecture incidents",
       "status": "verified",
-      "details": "External blockers present: marketing-workflow-audit:live_error, docs_verifier:artifact_contract_fail, marketing_independent_verification:loop_verification_fail, docs_verifier_stability:loop_verification_fail"
+      "details": "External blockers present: marketing-workflow-audit:live_error, marketing_independent_verification:loop_verification_fail"
+    },
+    {
+      "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
+      "status": "verified",
+      "details": "recent_failures=21, consecutive_passes_since_last_fail=9"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -47,22 +47,16 @@
       "claim": "marketing learning remains outcome-driven rather than activity-only",
       "status": "verified",
       "details": "marketing_workflow_audit_latest.json keeps the bottleneck explicit and ties repairs to Codeberg adoption movement."
-    },
-    {
-      "claim": "architecture escalation system is independently sound even though an external domain blocker remains unresolved",
-      "status": "verified",
-      "details": "All remaining blockers are externally classified and do not indicate a local architecture/escalation design failure."
     }
   ],
   "remaining_blockers": [
-    "docs verifier did not show independent pass",
-    "latest docs verifier verdict is not pass: 'fail'",
+    "architecture report overall health is not healthy: 'architecture_green_external_red'",
     "marketing independent verification is not pass: 'fail'"
   ],
-  "architecture_errors": [],
+  "architecture_errors": [
+    "architecture report overall health is not healthy: 'architecture_green_external_red'"
+  ],
   "external_blockers": [
-    "docs verifier did not show independent pass",
-    "latest docs verifier verdict is not pass: 'fail'",
     "marketing independent verification is not pass: 'fail'"
   ],
   "evidence": [
@@ -72,7 +66,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "summary": "Architecture audit refreshed with overall_health='high_risk'."
+      "summary": "Architecture audit refreshed with overall_health='architecture_green_external_red'."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
@@ -80,7 +74,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Health monitor reports jobs_checked=26 and issues_found=11."
+      "summary": "Health monitor reports jobs_checked=25 and issues_found=3."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
@@ -95,7 +89,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]

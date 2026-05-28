@@ -60,3 +60,27 @@
 - Stronger wording rule saved on 2026-05-24: any use of "safe internal fix" or similar phrasing for internal work is a red-flag process failure. Treat that wording as evidence the agent is inventing an escape hatch and self-correct into direct execution.
 - Stronger unblocking rule saved on 2026-05-24: if an internal system is blocked or underpowered, the fix is not limited to small patches. Writing an entire framework, watchdog, remediation path, or enforcement loop is in-bounds and expected when that is what unblocks the system.
 - New durable escalation rule saved on 2026-05-24: any failure that recurs 3 times is automatically an escalation, no matter how minor it appears. This explicitly includes spelling mistakes, wording slips, formatting errors, and other trivial defects. Third-strike failures must be treated as process/framework/watchdog problems, not local one-off defects.
+
+<!-- FOUNDRY_BUNDLE:BEGIN -->
+## OpenClaw Workflow Bundle (openclaw)
+
+Install Foundry:
+- `npx skills add https://github.com/pchaganti/gx-openclaw-foundry --skill foundry --yes`
+
+Install bundled skills:
+- `npx skills add /home/mistlight/.openclaw/workspace --skill agent-architecture-audit --yes`
+- `npx skills add /home/mistlight/.openclaw/workspace --skill openclaw-debugging --yes`
+- `npx skills add /home/mistlight/.openclaw/workspace --skill documentation --yes`
+- `npx skills add /home/mistlight/.openclaw/workspace --skill continuous-learning-v2 --yes`
+
+Bundle entrypoint:
+- If the request is about mining chat history into skills, discovering candidate skills, fabricating a portable bundle, sharing it, indexing it, or writing host routing memory, call `foundry`.
+
+Skill-call routing defaults:
+- If the request is about auditing agent architecture, watchdogs, cron supervision, or self-healing loops, call `agent-architecture-audit`.
+- If the request is about OpenClaw runtime failures, session traces, skill visibility, or configuration drift, call `openclaw-debugging`.
+- If the request is about README/docs/governance drift or verification artifacts, call `documentation`.
+- If the request is about recurring failure patterns, learning loops, or reusable remediations, call `continuous-learning-v2`.
+
+Use `find-skills` first when available to confirm/install the right skill, then call `foundry` or the routed skill.
+<!-- FOUNDRY_BUNDLE:END -->

@@ -1,0 +1,77 @@
+{
+  "timestamp": "2026-05-09T06:31:52.157940",
+  "health_score": 30,
+  "max_score": 100,
+  "status": "CRITICAL",
+  "metrics": {
+    "mrr": 0,
+    "subscribers": 0,
+    "new_this_week": 0,
+    "content_generated_today": 1,
+    "community_actions": 0,
+    "platforms_reached": [],
+    "seo_issues": [
+      "https://hireaegis.com: MISSING_CHARSET",
+      "https://billing.hireaegis.com: MISSING_META_DESC"
+    ],
+    "keyword_opportunities": [
+      "unattended AI coding",
+      "spec-driven development AI"
+    ],
+    "conversion_bottleneck": "API access blocked - fix revenue agent first"
+  },
+  "immediate_actions": [
+    {
+      "id": "CONTENT-002",
+      "priority": "HIGH",
+      "area": "content",
+      "action": "Content being created but not converting - review CTA placement and product-market fit",
+      "impact": "Traffic exists but isn't becoming revenue"
+    },
+    {
+      "id": "SEO-001",
+      "priority": "MEDIUM",
+      "area": "seo",
+      "action": "Fix SEO issue: https://hireaegis.com: MISSING_CHARSET",
+      "impact": "Technical SEO issues hurt organic discovery"
+    },
+    {
+      "id": "SEO-001",
+      "priority": "MEDIUM",
+      "area": "seo",
+      "action": "Fix SEO issue: https://billing.hireaegis.com: MISSING_META_DESC",
+      "impact": "Technical SEO issues hurt organic discovery"
+    },
+    {
+      "id": "CONV-001",
+      "priority": "HIGH",
+      "area": "conversion",
+      "action": "Address bottleneck: API access blocked - fix revenue agent first",
+      "impact": "Can't optimize funnel without measurement"
+    }
+  ],
+  "strategic_recommendations": [
+    {
+      "id": "STRAT-001",
+      "priority": "HIGH",
+      "area": "strategy",
+      "action": "Pivot content strategy: focus 80% on topics that lead to consulting, not product CTAs",
+      "why": "Product-market fit not proven - consulting revenue proves demand"
+    },
+    {
+      "id": "STRAT-002",
+      "priority": "HIGH",
+      "area": "strategy",
+      "action": "Start distributing content manually - community agent checklists are ready",
+      "why": "Content without distribution is noise"
+    },
+    {
+      "id": "STRAT-003",
+      "priority": "MEDIUM",
+      "area": "strategy",
+      "action": "Target these keywords: unattended AI coding, spec-driven development AI",
+      "why": "High-intent searches = buyers, not browsers"
+    }
+  ],
+  "revenue_error": "HTTP 401: Unauthorized"
+}

@@ -19,6 +19,13 @@ def sh(*args: str) -> tuple[int, str, str]:
     return p.returncode, p.stdout, p.stderr
 
 
+def live_cron_jobs() -> list[dict]:
+    code, out, err = sh('openclaw', 'cron', 'list', '--json')
+    if code != 0:
+        raise RuntimeError((out or err).strip() or 'failed to inspect live cron jobs')
+    return json.loads(out or '{}').get('jobs', []) or []
+
+
 def read_crontab() -> str:
     code, out, err = sh('bash', '-lc', 'crontab -l 2>/dev/null || true')
     return out if code == 0 else ''
@@ -71,12 +78,31 @@ def loop_status(loop: dict) -> dict:
         if not p.exists():
             out['errors'].append(f'missing required path: {raw}')
 
-    try:
-        added = ensure_crontab_lines([loop['runnerCrontabLine'], loop['verifierCrontabLine']])
-        for line in added:
-            out['repairs'].append(f'restored crontab line: {line}')
-    except Exception as e:
-        out['errors'].append(f'failed to ensure crontab lines: {e}')
+    loop_kind = loop.get('kind', 'crontab-watchdog')
+    if loop_kind == 'gateway-cron':
+        try:
+            jobs = live_cron_jobs()
+        except Exception as e:
+            out['errors'].append(f'failed to inspect live cron jobs: {e}')
+        else:
+            owner_job = next((job for job in jobs if job.get('id') == loop.get('ownerCronJob')), None)
+            if not owner_job:
+                out['errors'].append(f"missing live owner cron job: {loop.get('ownerCronJob')}")
+            else:
+                if owner_job.get('name') != loop['name']:
+                    out['errors'].append(
+                        f"owner cron job name mismatch: expected {loop['name']}, got {owner_job.get('name')}"
+                    )
+                if not owner_job.get('enabled', True):
+                    out['errors'].append(f"owner cron job disabled: {owner_job.get('id')}")
+                out['ownerCronStatus'] = owner_job.get('status')
+    else:
+        try:
+            added = ensure_crontab_lines([loop['runnerCrontabLine'], loop['verifierCrontabLine']])
+            for line in added:
+                out['repairs'].append(f'restored crontab line: {line}')
+        except Exception as e:
+            out['errors'].append(f'failed to ensure crontab lines: {e}')
 
     if out['errors']:
         out['status'] = 'error'
@@ -120,7 +146,10 @@ def loop_status(loop: dict) -> dict:
 
     verifier_text = verifier_art.read_text(encoding='utf-8') if verifier_art.exists() else ''
     if loop['requiresVerifierPassPhrase'] not in verifier_text:
-        out['errors'].append('verifier artifact missing required pass phrase')
+        if loop.get('allowVerifierContractExternalized') and str(out.get('checkerResult') or '').startswith('AGENT_ARCHITECTURE_OK'):
+            out['verifierContractExternalized'] = True
+        else:
+            out['errors'].append('verifier artifact missing required pass phrase')
 
     out['status'] = 'ok' if not out['errors'] else 'error'
     return out

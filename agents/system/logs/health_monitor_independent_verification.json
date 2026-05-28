@@ -1,17 +1,12 @@
 {
-  "checked_at": "2026-05-22T19:05:06.231359+02:00",
-  "verdict": "pass",
-  "summary": "Fresh independent verification confirms the health monitor now checks the live architecture-verifier boundary, and the repaired full-contract loops remain green.",
+  "checked_at": "2026-05-28T13:09:14.395040+02:00",
+  "verdict": "fail",
+  "summary": "Independent verification found blockers that prevent the repaired health monitor from being certified healthy.",
   "verified_repairs": [
     {
       "claim": "health_monitor.py now checks both the live architecture verifier and live-vs-artifact cron topology coherence",
       "status": "verified",
       "details": "Source inspection shows runtime verifier enforcement plus direct checks that agent_architecture_latest.json agrees with live Gateway cron topology."
-    },
-    {
-      "claim": "direct rerun of health_monitor.py is green after the repair",
-      "status": "verified",
-      "details": "health_monitor_latest.json records jobs_checked=20 and issues_found=0."
     },
     {
       "claim": "architecture-verifier path is healthy after the health-monitor repair",
@@ -22,14 +17,12 @@
       "claim": "docs loop artifact is genuinely green under the tightened contract",
       "status": "verified",
       "details": "ralph_agentic_latest.json has status=pass, loopHealthy=true, shouldUserNeedToRepeatThis=false, empty mustFix, and all criteria pass."
-    },
-    {
-      "claim": "loop-integrity audit is green on the repaired full-contract loops",
-      "status": "verified",
-      "details": "loop_integrity_latest.json now reports agent-architecture-watchdog status=ok and autonomous-marketing-stack status=ok."
     }
   ],
-  "remaining_blockers": [],
+  "remaining_blockers": [
+    "health monitor latest run is not green: issues_found=3",
+    "loop integrity still reports autonomous-marketing-stack as None"
+  ],
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
@@ -37,7 +30,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Latest health-monitor run reports issues_found=0 and jobs_checked=20."
+      "summary": "Latest health-monitor run reports issues_found=3 and jobs_checked=25."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",

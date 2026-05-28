@@ -1,0 +1,20 @@
+const { chromium } = require('playwright-core');
+(async()=>{
+  const browser = await chromium.launch({headless:true});
+  const page = await browser.newPage({ viewport: { width: 1440, height: 2200 } });
+  await page.goto('https://www.toolhunter.cc/submit', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForSelector('iframe[src*="tally.so"]', { timeout: 60000 });
+  const handle = await page.$('iframe[src*="tally.so"]');
+  const frame = await handle.contentFrame();
+  if (!frame) throw new Error('No tally frame found');
+  await frame.waitForLoadState('domcontentloaded');
+  await frame.getByPlaceholder('Enter a Project Name').fill('Ralph Workflow');
+  await frame.getByPlaceholder('https://github.com/example/app').fill('https://github.com/Ralph-Workflow/Ralph-Workflow');
+  await frame.getByPlaceholder('Describe the application').fill('Ralph Workflow is a free and open-source CLI for developers who want to hand off coding work that is too big to babysit and too risky to trust blindly. It orchestrates Claude Code, Codex CLI, and OpenCode on your own machine, runs planning, build, and review as one unattended overnight flow, and hands back a reviewable diff, checks, and artifacts by morning.');
+  await frame.getByRole('button', { name: 'Submit' }).click();
+  await page.waitForTimeout(5000);
+  const bodyText = await frame.locator('body').innerText();
+  console.log(bodyText.slice(0,4000));
+  await page.screenshot({ path: '/tmp/toolhunter_submit_result.png', fullPage: true });
+  await browser.close();
+})();

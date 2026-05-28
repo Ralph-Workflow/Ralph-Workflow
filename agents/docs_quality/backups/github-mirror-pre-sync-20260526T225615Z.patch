@@ -1,0 +1,418 @@
+diff --git a/README.md b/README.md
+index 21984b60..353f35cd 100644
+--- a/README.md
++++ b/README.md
+@@ -3,8 +3,8 @@
+ > **The operating system for autonomous coding.**
+ 
+ [![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
+-![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)
+-![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
++[![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
++[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+ 
+ > **GitHub is the mirror. Codeberg is the primary repo.**
+ > Inspect, star, watch, fork, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+@@ -37,17 +37,6 @@ Requires Python 3.12+.
+ Make sure the agent CLIs you want Ralph Workflow to call are already installed and authenticated.
+ Ralph Workflow does not replace those coding agents. It orchestrates them.
+ 
+-## Not the best fit when
+-
+-Ralph Workflow is probably the wrong first choice when:
+-
+-- the task is tiny enough to finish in one short interactive agent session
+-- the scope is still vague and you do not have a real written finish line yet
+-- you want a hosted black-box service instead of running agents on your own machine
+-- you are looking for a general chat assistant rather than a software workflow
+-
+-For task-fit guidance, go to [START_HERE.md](START_HERE.md) and [docs/first-task-guide.md](docs/first-task-guide.md).
+-
+ ## License
+ 
+ [AGPL-3.0-or-later](LICENSE).
+diff --git a/START_HERE.md b/START_HERE.md
+index 0592d083..f7f0c88c 100644
+--- a/START_HERE.md
++++ b/START_HERE.md
+@@ -6,7 +6,7 @@
+ Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+ It runs the coding agents you already use on your own machine, turns that simple loop structure into a stronger composable workflow for substantial, well-specified software engineering work, and gives you a strong default workflow before you customize anything.
+ 
+-If you want the shortest honest first run, this page is it.
++This page gives the shortest honest first run.
+ Start with one real, well-specified backlog task and judge the outcome by what the software does now and what checks ran.
+ 
+ ## Before you start
+diff --git a/docs/README.md b/docs/README.md
+index f9c616bb..e5cea3d1 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -18,6 +18,17 @@ Those pages explain what Ralph Workflow is and how to judge one honest first run
+ - [Reference](../ralph-workflow/docs/sphinx/reference.md)
+ - [User stories](../ralph-workflow/docs/sphinx/user-stories.md)
+ 
++### I need the repo-root docs families mapped clearly
++
++These repo-root docs are a **map of the surrounding documentation system**, not the main operator manual.
++The maintained day-to-day Python/operator path is the Sphinx manual above.
++Some repo-root families are current Python guidance, while others are historical or mixed-status reference.
++
++- `docs/agents/` — current Python contributor and verification guidance for agents, testing, type-ignore policy, and verification workflow
++- `docs/code-style/` — current Python documentation rubric and maintained style/process guidance; some older code-style pages may still reflect the retired Rust-era system
++- `docs/tooling/` — mixed-status tooling notes; prefer current Python-specific guidance like `python-tooling.md`, treat Rust-only tooling pages as archival unless explicitly referenced
++- `docs/performance/` — primarily archival / historical Rust-era performance material, not the maintained Python operator path
++
+ ### I want product framing before I go deeper
+ 
+ - [AI agent orchestration CLI](./ai-agent-orchestration-cli.md)
+diff --git a/docs/reviewable-output.md b/docs/reviewable-output.md
+index aca08880..f217a2c2 100644
+--- a/docs/reviewable-output.md
++++ b/docs/reviewable-output.md
+@@ -1,11 +1,11 @@
+ # What Good Ralph Workflow Output Looks Like
+ 
+-Use this page after you already understand the workflow and want a review standard for judging a run.
++Use this page after you already understand the workflow and want a review standard or proof surface.
+ This page is supporting proof for Ralph Workflow, not the product pitch. Start with the product story and operator route first.
+ 
+ ## What to evaluate first
+ 
+-The first question is not whether the run sounds smart.
++The first question is not whether the transcript sounds smart.
+ The first question is what the software does now.
+ 
+ Good output usually means:
+@@ -23,9 +23,9 @@ Use evidence in this order:
+ 1. **working behavior** — what changed in the software
+ 2. **real checks** — tests, integration checks, or other meaningful validation
+ 3. **written scope** — whether the result matches the promised task
+-4. **supporting detail** — logs, diffs, or deeper traces if you need them
++4. **supporting artifacts** — logs, diffs, or deeper traces if you need them
+ 
+-Deeper traces can be useful.
++Logs and transcripts can be useful.
+ They just should not be the main promise.
+ 
+ ## What weak output looks like
+@@ -35,7 +35,7 @@ Be skeptical when a run gives you:
+ - lots of narration but unclear product change
+ - a diff with no convincing checks
+ - a confident summary for a vague task
+-- supporting detail that sounds organized but does not make the result easier to judge
++- artifacts that sound organized but do not make the result easier to judge
+ 
+ Ralph Workflow depends on real engineering guardrails.
+ If the repo does not have them, the honest outcome may be limited proof rather than full trust.
+diff --git a/ralph-workflow/README.md b/ralph-workflow/README.md
+index 2aa92078..6b7da5ec 100644
+--- a/ralph-workflow/README.md
++++ b/ralph-workflow/README.md
+@@ -4,6 +4,7 @@ Ralph Workflow is a **free and open-source** Python 3.12+ CLI for **AI agent orc
+ It extends the simple Ralph loop into a **composable loop framework** for real software engineering, and the default workflow is already strong enough to start with before you customize anything.
+ 
+ This README is the **install + operator entrypoint**, not the main product pitch.
++It intentionally leaves out deeper material that belongs in the manual and developer docs.
+ 
+ ## Use this route
+ 
+@@ -18,6 +19,14 @@ pipx install ralph-workflow
+ ralph --help
+ ```
+ 
++## Verification
++
++When you change Ralph Workflow itself, the canonical repo-level verification command is:
++
++```bash
++make verify
++```
++
+ ## Operator docs
+ 
+ - [Getting Started](docs/sphinx/getting-started.md)
+@@ -25,3 +34,8 @@ ralph --help
+ - [Configuration](docs/sphinx/configuration.md)
+ - [Reference](docs/sphinx/reference.md)
+ - [User stories](docs/sphinx/user-stories.md)
++
++## Deeper material
++
++- [Developer Reference](docs/sphinx/developer-reference.md)
++- [Modules index](docs/sphinx/modules.rst)
+diff --git a/ralph-workflow/docs/sphinx/advanced-artifact-configuration.md b/ralph-workflow/docs/sphinx/advanced-artifact-configuration.md
+index a0d054a8..88124581 100644
+--- a/ralph-workflow/docs/sphinx/advanced-artifact-configuration.md
++++ b/ralph-workflow/docs/sphinx/advanced-artifact-configuration.md
+@@ -1,5 +1,9 @@
+ # Advanced Artifact Configuration
+ 
++Ralph Workflow keeps a simple Ralph-loop core at the center and composes outward into stronger workflows only when you need them.
++Use this page when the shipped default workflow is already making sense and you need deeper artifact configuration control for substantial repo work.
++
++
+ Use this page when you want to change the **typed outputs Ralph Workflow expects and records**.
+ `artifacts.toml` is the operator file for artifact contracts: required outputs, decision vocabularies, summary paths, and artifact JSON locations.
+ 
+diff --git a/ralph-workflow/docs/sphinx/advanced-mcp-configuration.md b/ralph-workflow/docs/sphinx/advanced-mcp-configuration.md
+index 27670661..64aba12e 100644
+--- a/ralph-workflow/docs/sphinx/advanced-mcp-configuration.md
++++ b/ralph-workflow/docs/sphinx/advanced-mcp-configuration.md
+@@ -1,5 +1,9 @@
+ # Advanced MCP Configuration
+ 
++Ralph Workflow keeps a simple Ralph-loop core at the center and composes outward into stronger workflows only when you need them.
++Use this page when the shipped default workflow is already making sense and you need deeper mcp configuration control for substantial repo work.
++
++
+ Use this page when you want to control Ralph Workflow’s **tool and external-integration layer**.
+ `mcp.toml` is the operator file for MCP servers, search backends, readable-page fetches, and related tool access.
+ 
+diff --git a/ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md b/ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md
+index 5d8c74b7..b95b820e 100644
+--- a/ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md
++++ b/ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md
+@@ -1,5 +1,9 @@
+ # Advanced Pipeline Configuration
+ 
++Ralph Workflow keeps a simple Ralph-loop core at the center and composes outward into stronger workflows only when you need them.
++Use this page when the shipped default workflow is already making sense and you need deeper pipeline configuration control for substantial repo work.
++
++
+ Use this page when the default workflow is already clear and you want to change **how Ralph Workflow runs work**.
+ `pipeline.toml` is the operator file for reshaping the workflow graph itself: phases, transitions, counters, recovery rules, and fan-out behavior.
+ 
+diff --git a/ralph-workflow/docs/sphinx/ai-agent-workflow-composer.md b/ralph-workflow/docs/sphinx/ai-agent-workflow-composer.md
+index e0d740ee..fd32e1a2 100644
+--- a/ralph-workflow/docs/sphinx/ai-agent-workflow-composer.md
++++ b/ralph-workflow/docs/sphinx/ai-agent-workflow-composer.md
+@@ -4,6 +4,10 @@ orphan: true
+ 
+ # AI Agent Workflow Composer: When One Agent Session Stops Being Enough
+ 
++Ralph Workflow is an AI agent orchestrator for substantial, well-specified repo work on your own machine.
++This page exists to explain one specific part of that system without repeating the whole onboarding story.
++
++
+ Use this page when you need to break one software task into multiple agent phases without losing the thread.
+ It explains how Ralph Workflow keeps the center simple while composing planning, implementation, verification, and review into one supervised handoff.
+ 
+diff --git a/ralph-workflow/docs/sphinx/ai-coding-workflow-automation.md b/ralph-workflow/docs/sphinx/ai-coding-workflow-automation.md
+index 76875f14..0e8fa5be 100644
+--- a/ralph-workflow/docs/sphinx/ai-coding-workflow-automation.md
++++ b/ralph-workflow/docs/sphinx/ai-coding-workflow-automation.md
+@@ -4,6 +4,10 @@ orphan: true
+ 
+ # AI Coding Workflow Automation: What Actually Makes It Useful
+ 
++Ralph Workflow is an AI agent orchestrator for substantial, well-specified repo work on your own machine.
++This page exists to explain one specific part of that system without repeating the whole onboarding story.
++
++
+ Use this page when you want the practical reason workflow automation matters beyond “let the agent run longer.”
+ The value comes from structured phases, explicit checks, and a morning-after result you can actually judge.
+ 
+diff --git a/ralph-workflow/docs/sphinx/claude-code-automation.md b/ralph-workflow/docs/sphinx/claude-code-automation.md
+index ab8c160c..2fa1eb44 100644
+--- a/ralph-workflow/docs/sphinx/claude-code-automation.md
++++ b/ralph-workflow/docs/sphinx/claude-code-automation.md
+@@ -4,6 +4,10 @@ orphan: true
+ 
+ # Claude Code Automation for Real Repo Work
+ 
++Ralph Workflow is an AI agent orchestrator for substantial, well-specified repo work on your own machine.
++This page exists to explain one specific part of that system without repeating the whole onboarding story.
++
++
+ Use this page when Claude Code is already part of your toolkit and you want to run it inside a stronger unattended workflow.
+ It focuses on where Ralph Workflow adds structure, limits, and reviewability instead of treating one long session as enough.
+ 
+diff --git a/ralph-workflow/docs/sphinx/getting-started.md b/ralph-workflow/docs/sphinx/getting-started.md
+index 83d77ebb..5e5f2e04 100644
+--- a/ralph-workflow/docs/sphinx/getting-started.md
++++ b/ralph-workflow/docs/sphinx/getting-started.md
+@@ -35,14 +35,39 @@ If you are unsure what counts as a good task, use [First Task Guide](first-task-
+ ## First-run flow
+ 
+ 1. Install Ralph Workflow and confirm the CLI is available.
+-2. Pick one real repo and one task with a clear finish line.
+-3. Start with the default workflow instead of customizing immediately.
+-4. Let Ralph plan, implement, and verify the change.
+-5. Judge the result by the software change and the checks, not by transcript confidence alone.
++2. Initialize the repo with `ralph --init`.
++3. Pick one real repo and one task with a clear finish line.
++4. Start with the default workflow instead of customizing immediately.
++5. Let Ralph plan, implement, and verify the change.
++6. Judge the result by the software change and the checks, not by transcript confidence alone.
+ 
+ That flow matters because Ralph Workflow is designed to give you a stronger unattended coding loop than a single long agent session.
+ The point of the first run is to see whether the default loop improves the repo in a way you can actually review.
+ 
++## Minimal first-run example
++
++```bash
++pipx install ralph-workflow
++cd /path/to/your/repo
++ralph --init
++$EDITOR PROMPT.md
++ralph
++```
++
++Example `PROMPT.md` starting point:
++
++```md
++# Goal
++Ship one focused backlog task with tests or another real verification step.
++
++## Constraints
++- keep the change scoped to the task
++- run the relevant checks before stopping
++```
++
++If you need the underlying concepts first, open [Concepts](concepts.md).
++If your first run goes sideways, use [Troubleshooting](troubleshooting.md).
++
+ ## Recommended next clicks after your first run
+ 
+ - Need the shortest operator checklist? Use [Quickstart](quickstart.md).
+diff --git a/ralph-workflow/docs/sphinx/index.rst b/ralph-workflow/docs/sphinx/index.rst
+index 86c9ebbc..a3cdad7c 100644
+--- a/ralph-workflow/docs/sphinx/index.rst
++++ b/ralph-workflow/docs/sphinx/index.rst
+@@ -11,6 +11,10 @@ If you are brand new, start with :doc:`getting-started`.
+ If you need configuration or operator detail, start with :doc:`configuration` or :doc:`reference`.
+ If you need docs grouped by real user goal, start with :doc:`user-stories`.
+ 
++.. note::
++
++   New here? Start with :doc:`getting-started` before you dive into the rest of the manual.
++
+ Manual paths
+ ============
+ 
+diff --git a/ralph-workflow/docs/sphinx/open-source-ai-coding-orchestrator.md b/ralph-workflow/docs/sphinx/open-source-ai-coding-orchestrator.md
+index 34ed834a..4ba31acd 100644
+--- a/ralph-workflow/docs/sphinx/open-source-ai-coding-orchestrator.md
++++ b/ralph-workflow/docs/sphinx/open-source-ai-coding-orchestrator.md
+@@ -4,6 +4,10 @@ orphan: true
+ 
+ # Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For
+ 
++Ralph Workflow is an AI agent orchestrator for substantial, well-specified repo work on your own machine.
++This page exists to explain one specific part of that system without repeating the whole onboarding story.
++
++
+ Use this page when you want the shortest explanation of Ralph Workflow’s job in the stack.
+ It is about orchestrating real coding work on your machine with a simple core and composable workflow control, not about being another generic chat shell.
+ 
+diff --git a/ralph-workflow/docs/sphinx/parallel-mode.md b/ralph-workflow/docs/sphinx/parallel-mode.md
+index 0e7e1f5f..246a7f9b 100644
+--- a/ralph-workflow/docs/sphinx/parallel-mode.md
++++ b/ralph-workflow/docs/sphinx/parallel-mode.md
+@@ -4,6 +4,10 @@ orphan: true
+ 
+ # Parallel Mode
+ 
++Ralph Workflow is an AI agent orchestrator for substantial, well-specified repo work on your own machine.
++This page exists to explain one specific part of that system without repeating the whole onboarding story.
++
++
+ Use this page when one agent lane is no longer enough and you need controlled fan-out.
+ It explains how Ralph Workflow keeps parallel work reviewable instead of turning multiple sessions into untracked noise.
+ 
+diff --git a/ralph-workflow/docs/sphinx/quickstart.md b/ralph-workflow/docs/sphinx/quickstart.md
+index 9a4bae9e..87a1ddc5 100644
+--- a/ralph-workflow/docs/sphinx/quickstart.md
++++ b/ralph-workflow/docs/sphinx/quickstart.md
+@@ -7,10 +7,14 @@ The shipped default workflow is already strong enough to start with; this page j
+ ## Quickstart checklist
+ 
+ 1. Pick a real repo and a task with a visible finish line.
+-2. Prefer the default workflow before touching advanced config.
+-3. Run Ralph Workflow on that task.
+-4. Judge the result by the repo change and the checks that ran.
+-5. Only customize after you know what the default loop already does well enough.
++2. Initialize the repo with `ralph --init`.
++3. Prefer the default workflow before touching advanced config.
++4. Run Ralph Workflow on that task.
++5. Judge the result by the repo change and the checks that ran.
++6. Only customize after you know what the default loop already does well enough.
++
++For explicit project-local overrides, run `ralph --init-local-config` and then edit `.agent/ralph-workflow.toml` in that repo.
++That local file belongs to the opt-in override flow, not the default `ralph --init` path.
+ 
+ ## Good first-task shape
+ 
+diff --git a/ralph-workflow/docs/sphinx/reference.md b/ralph-workflow/docs/sphinx/reference.md
+index 6a8f17eb..091a26a8 100644
+--- a/ralph-workflow/docs/sphinx/reference.md
++++ b/ralph-workflow/docs/sphinx/reference.md
+@@ -1,6 +1,7 @@
+ # Operator Reference
+ 
+ 
++
+ Ralph Workflow is the operating system for autonomous coding: a simple core loop that scales into a stronger workflow for substantial, well-specified repo work.
+ This reference section is for day-to-day operation after that product story is already clear.
+ 
+diff --git a/ralph-workflow/docs/sphinx/remote-supervision-of-coding-agents.md b/ralph-workflow/docs/sphinx/remote-supervision-of-coding-agents.md
+index 99bcb667..a3424151 100644
+--- a/ralph-workflow/docs/sphinx/remote-supervision-of-coding-agents.md
++++ b/ralph-workflow/docs/sphinx/remote-supervision-of-coding-agents.md
+@@ -4,6 +4,10 @@ orphan: true
+ 
+ # Remote Supervision of Coding Agents
+ 
++Ralph Workflow is an AI agent orchestrator for substantial, well-specified repo work on your own machine.
++This page exists to explain one specific part of that system without repeating the whole onboarding story.
++
++
+ Use this page when you need oversight from somewhere other than the terminal that started the run.
+ It explains the supervision model for checking progress, judging outcomes, and staying in control while the workflow keeps running.
+ 
+diff --git a/ralph-workflow/docs/sphinx/run-claude-code-overnight-without-babysitting.md b/ralph-workflow/docs/sphinx/run-claude-code-overnight-without-babysitting.md
+index 05afedd2..d24e979e 100644
+--- a/ralph-workflow/docs/sphinx/run-claude-code-overnight-without-babysitting.md
++++ b/ralph-workflow/docs/sphinx/run-claude-code-overnight-without-babysitting.md
+@@ -4,6 +4,10 @@ orphan: true
+ 
+ # Run Claude Code Overnight Without Babysitting
+ 
++Ralph Workflow is an AI agent orchestrator for substantial, well-specified repo work on your own machine.
++This page exists to explain one specific part of that system without repeating the whole onboarding story.
++
++
+ Use this page when you want an overnight Claude Code run without treating “leave it open” as a process.
+ It explains the difference between unattended execution with guardrails and a long interactive session you still have to babysit.
+ 
+diff --git a/ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md b/ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md
+index b8ac6ee1..61630f0d 100644
+--- a/ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md
++++ b/ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md
+@@ -4,6 +4,10 @@ orphan: true
+ 
+ # What Breaks First When You Run Multiple Coding Agents?
+ 
++Ralph Workflow is an AI agent orchestrator for substantial, well-specified repo work on your own machine.
++This page exists to explain one specific part of that system without repeating the whole onboarding story.
++
++
+ Use this page when parallel agent work sounds attractive but you want the honest failure modes first.
+ It focuses on coordination breakdowns, review bottlenecks, and why orchestration quality matters more than raw agent count.
+ 
+diff --git a/ralph-workflow/docs/sphinx/why-worktrees-are-not-enough.md b/ralph-workflow/docs/sphinx/why-worktrees-are-not-enough.md
+index ac275bec..4c7ecca5 100644
+--- a/ralph-workflow/docs/sphinx/why-worktrees-are-not-enough.md
++++ b/ralph-workflow/docs/sphinx/why-worktrees-are-not-enough.md
+@@ -4,6 +4,10 @@ orphan: true
+ 
+ # Why Worktrees Are Not Enough for Unattended AI Coding
+ 
++Ralph Workflow is an AI agent orchestrator for substantial, well-specified repo work on your own machine.
++This page exists to explain one specific part of that system without repeating the whole onboarding story.
++
++
+ Use this page when someone suggests that separate worktrees alone solve unattended coding risk.
+ It explains why isolation helps, but still needs workflow structure, checks, and review discipline around it.
+ 

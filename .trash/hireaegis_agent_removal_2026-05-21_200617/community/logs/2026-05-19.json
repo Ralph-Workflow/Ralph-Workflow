@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-05-19T06:00:01.931175",
+  "files_found": 2,
+  "actions": [
+    {
+      "platform": "reddit",
+      "file": "/home/mistlight/.openclaw/workspace/drafts/checklist_reddit_2026-05-19_approval_plan_mode_comment.txt",
+      "status": "checklist_ready"
+    },
+    {
+      "platform": "twitter",
+      "file": "2026-05-19_twitter_thread.txt",
+      "status": "manual_post_needed"
+    }
+  ]
+}

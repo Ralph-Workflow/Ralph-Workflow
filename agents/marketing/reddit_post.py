@@ -46,6 +46,8 @@ BANNED_BODY_PREFIXES = (
     # 2026-05-21: repair -- additional opening repeats from audit
     "forcing the handoff to be boring and explicit",
     "the fix is an explicit baton pass between sessions",
+    # 2026-05-27: repair -- repeated question-style opener seen twice in same thread family
+    "which of the five made the most difference for your team",
 )
 
 BANNED_BODY_PHRASES = (

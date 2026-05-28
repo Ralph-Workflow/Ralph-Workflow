@@ -1,0 +1,25 @@
+{
+  "approved": true,
+  "signedBy": "docs-surface-fixer",
+  "checkedAtUtc": "2026-05-20T20:51:23Z",
+  "findings": [
+    "The current failure was centered on the Ralph Workflow repo docs, not the workspace-level marketing stubs.",
+    "docs/README.md was too thin as a journey map and promoted framing pages without enough guidance about route order.",
+    "START_HERE.md still skipped the stronger Sphinx getting-started handoff, which kept the first-run journey feeling underdesigned.",
+    "docs/spec-driven-ai-agent.md had obvious duplicate opening copy and read like a promoted stub instead of a complete framing page."
+  ],
+  "repairsApplied": [
+    "Reworked github-mirror/docs/README.md into a clearer route map with explicit branches for first run, operator manual, and framing-before-install.",
+    "Updated github-mirror/START_HERE.md to route directly into the maintained Sphinx getting-started guide before the broader docs map.",
+    "Rewrote github-mirror/docs/spec-driven-ai-agent.md into a complete page with distinct job separation, practical spec guidance, and cleaner next-click routing."
+  ],
+  "proof": [
+    "Local diff confirms targeted public-surface edits in repos/Ralph-Workflow/github-mirror/START_HERE.md, docs/README.md, and docs/spec-driven-ai-agent.md.",
+    "Direct file inspection confirms the spec-driven page no longer has duplicated opening paragraphs and now carries a full framing role.",
+    "The repaired route now reads more deliberately as README -> START_HERE -> docs map or Sphinx getting-started -> deeper manual/framing pages."
+  ],
+  "blockers": [
+    "Fresh local verifier run was blocked by an existing global docs-loop lock: 'SKIP: another Ralph docs loop process already holds the global lock' (exit 75).",
+    "Because of that lock, an independent rerun should happen next from the main agent once the loop is free."
+  ]
+}

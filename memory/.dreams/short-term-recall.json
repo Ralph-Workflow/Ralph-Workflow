@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-11T23:37:26.703Z",
+  "updatedAt": "2026-05-28T05:09:17.514Z",
   "entries": {
     "memory:memory/2026-05-09.md:1:19": {
       "key": "memory:memory/2026-05-09.md:1:19",
@@ -186,6 +186,1470 @@
         "dev.to",
         "need",
         "twitter"
+      ]
+    },
+    "memory:memory/2026-05-21.md:21:25": {
+      "key": "memory:memory/2026-05-21.md:21:25",
+      "path": "memory/2026-05-21.md",
+      "startLine": 21,
+      "endLine": 25,
+      "source": "memory",
+      "snippet": "- New durable architecture requirement from mistlight on 2026-05-21: competitor analysis, market positioning, Reddit/marketing learnings, and adjacent agent findings must work together as one coordinated system rather than isolated report loops. Use the agent-architecture-audit lens to push the stack toward a shared knowledge base with common findings artifacts, cross-agent-readable memory, and enforced reuse so agents write knowledge once and the rest of the system can consume and act on it consistently. # 2026-05-21 - Durable operating preference clarified further: for codebase-related work, especially complex tasks, OpenCode is an allowed and preferred path to use proactively rather than",
+      "recallCount": 12,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 12,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T06:54:21.019Z",
+      "lastRecalledAt": "2026-05-28T04:33:10.017Z",
+      "queryHashes": [
+        "49ea06815931",
+        "0e53ec8f1e9b",
+        "4ddff36cbdf1",
+        "dbf4464c66a1",
+        "0c11e8d2e177",
+        "93929cf3a3b6",
+        "6bb7d343318f",
+        "73e51bdb3b3c",
+        "9559ff052f5a",
+        "7a593a9c95e7",
+        "98c40255e006",
+        "45a1b03f5e39"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "reddit/marketing",
+        "agent-architecture-audit",
+        "cross-agent-readable",
+        "codebase-related",
+        "new",
+        "durable",
+        "architecture",
+        "requirement"
+      ]
+    },
+    "memory:memory/2026-05-21.md:39:42": {
+      "key": "memory:memory/2026-05-21.md:39:42",
+      "path": "memory/2026-05-21.md",
+      "startLine": 39,
+      "endLine": 42,
+      "source": "memory",
+      "snippet": "- Architecture audit finding saved on 2026-05-21: several non-docs loops still present as `tracked_only` rather than full checker/runner/verifier contracts, especially the marketing stack. Treat any claimed self-improving loop without explicit remediation plus independent verification evidence as degraded until upgraded or explicitly reclassified as monitor-only. - Durable instruction reinforced on 2026-05-21: never wait for a follow-up prompt when a safe internal fix path exists; fix it immediately. - On 2026-05-21 I cleaned accidental duplicate entries out of `memory/2026-05-21.md`, upgraded the marketing loop and agent-architecture watchdog from ambiguous `tracked_only` entries into real",
+      "recallCount": 12,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 12,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T06:54:21.019Z",
+      "lastRecalledAt": "2026-05-28T04:33:10.017Z",
+      "queryHashes": [
+        "49ea06815931",
+        "0e53ec8f1e9b",
+        "4ddff36cbdf1",
+        "dbf4464c66a1",
+        "0c11e8d2e177",
+        "93929cf3a3b6",
+        "6bb7d343318f",
+        "73e51bdb3b3c",
+        "9559ff052f5a",
+        "7a593a9c95e7",
+        "98c40255e006",
+        "45a1b03f5e39"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "non-docs",
+        "tracked-only",
+        "checker/runner/verifier",
+        "self-improving",
+        "monitor-only",
+        "follow-up",
+        "memory/2026-05-21.md",
+        "agent-architecture"
+      ]
+    },
+    "memory:memory/2026-05-21.md:18:23": {
+      "key": "memory:memory/2026-05-21.md:18:23",
+      "path": "memory/2026-05-21.md",
+      "startLine": 18,
+      "endLine": 23,
+      "source": "memory",
+      "snippet": "- Architecture audit finding saved on 2026-05-21: several non-docs loops still present as `tracked_only` rather than full checker/runner/verifier contracts, especially the marketing stack. Treat any claimed self-improving loop without explicit remediation plus independent verification evidence as degraded until upgraded or explicitly reclassified as monitor-only. - Durable instruction reinforced on 2026-05-21: never wait for a follow-up prompt when a safe internal fix path exists; fix it immediately. - On 2026-05-21 I cleaned accidental duplicate entries out of `memory/2026-05-21.md`, upgraded the marketing loop and agent-architecture watchdog from ambiguous `tracked_only` entries into real",
+      "recallCount": 12,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 12,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T06:54:21.019Z",
+      "lastRecalledAt": "2026-05-28T04:33:10.017Z",
+      "queryHashes": [
+        "49ea06815931",
+        "0e53ec8f1e9b",
+        "4ddff36cbdf1",
+        "dbf4464c66a1",
+        "0c11e8d2e177",
+        "93929cf3a3b6",
+        "6bb7d343318f",
+        "73e51bdb3b3c",
+        "9559ff052f5a",
+        "7a593a9c95e7",
+        "98c40255e006",
+        "45a1b03f5e39"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "non-docs",
+        "tracked-only",
+        "checker/runner/verifier",
+        "self-improving",
+        "monitor-only",
+        "follow-up",
+        "memory/2026-05-21.md",
+        "agent-architecture"
+      ]
+    },
+    "memory:memory/2026-05-21.md:42:47": {
+      "key": "memory:memory/2026-05-21.md:42:47",
+      "path": "memory/2026-05-21.md",
+      "startLine": 42,
+      "endLine": 47,
+      "source": "memory",
+      "snippet": "- New durable architecture requirement from mistlight on 2026-05-21: competitor analysis, market positioning, Reddit/marketing learnings, and adjacent agent findings must work together as one coordinated system rather than isolated report loops. Use the agent-architecture-audit lens to push the stack toward a shared knowledge base with common findings artifacts, cross-agent-readable memory, and enforced reuse so agents write knowledge once and the rest of the system can consume and act on it consistently. - Full loop-process sweep on 2026-05-21: docs loop is independently green, architecture loop is independently green, system-health monitor is green with explicit artifact checks and split l",
+      "recallCount": 8,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 8,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T06:54:21.019Z",
+      "lastRecalledAt": "2026-05-28T03:30:28.840Z",
+      "queryHashes": [
+        "49ea06815931",
+        "4ddff36cbdf1",
+        "dbf4464c66a1",
+        "93929cf3a3b6",
+        "6bb7d343318f",
+        "73e51bdb3b3c",
+        "9559ff052f5a",
+        "7a593a9c95e7"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "reddit/marketing",
+        "agent-architecture-audit",
+        "cross-agent-readable",
+        "loop-process",
+        "system-health",
+        "new",
+        "durable",
+        "architecture"
+      ]
+    },
+    "memory:memory/2026-05-19.md:475:480": {
+      "key": "memory:memory/2026-05-19.md:475:480",
+      "path": "memory/2026-05-19.md",
+      "startLine": 475,
+      "endLine": 480,
+      "source": "memory",
+      "snippet": "- Critical correction on 2026-05-19: I claimed a docs-audit cron job had already been added, but with the tools available in that turn I had not actually configured any cron. Treat that as a false completion claim. Durable rule: do not claim scheduled enforcement exists unless I have verified the real scheduler state or created the schedule myself. - Durable docs-loop requirement: prompt/process files are not enough by themselves for recurring enforcement. A real scheduler-backed check (cron or equivalent) must exist and be verified before I say the loop is operational. - Real shared docs-quality loop added on 2026-05-19 for Ralph Workflow: repo-root `AGENTS.md` now forces docs-editing agent",
+      "recallCount": 7,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 7,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T06:54:21.019Z",
+      "lastRecalledAt": "2026-05-28T03:30:28.840Z",
+      "queryHashes": [
+        "49ea06815931",
+        "4ddff36cbdf1",
+        "dbf4464c66a1",
+        "93929cf3a3b6",
+        "6bb7d343318f",
+        "73e51bdb3b3c",
+        "7a593a9c95e7"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "docs-audit",
+        "docs-loop",
+        "prompt/process",
+        "scheduler-backed",
+        "docs-quality",
+        "repo-root",
+        "agents.md",
+        "docs-editing"
+      ]
+    },
+    "memory:memory/2026-05-20.md:298:322": {
+      "key": "memory:memory/2026-05-20.md:298:322",
+      "path": "memory/2026-05-20.md",
+      "startLine": 298,
+      "endLine": 322,
+      "source": "memory",
+      "snippet": "- (2 others were already live from prior runs) - Backlink plan updated: 4 confirmed backlink sources documented - AlternativeTo submission blocked by Cloudflare (needs manual browser step) **`mirror_repo_flat` (priority 3)** — NOT ACTIONABLE (already correct): - `positioning.py` has CODEBERG_PRIMARY and GITHUB_MIRROR correctly set - `reddit.txt` draft labels Codeberg as primary and GitHub as mirror - `reddit_autopost.py` uses CODEBERG_PRIMARY_URL as the primary CTA - GitHub is intentionally secondary — no dedicated effort warranted unless Codeberg moves ### SEO Status - On-page score: 100/100 (A) - Content gaps covered: \"unattended coding agent\", \"AI agent orchestration CLI\", \"Ralph Work",
+      "recallCount": 3,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 3,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T07:43:25.347Z",
+      "lastRecalledAt": "2026-05-28T03:38:04.778Z",
+      "queryHashes": [
+        "0e53ec8f1e9b",
+        "0c11e8d2e177",
+        "98c40255e006"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "mirror-repo-flat",
+        "positioning.py",
+        "codeberg-primary",
+        "github-mirror",
+        "reddit.txt",
+        "reddit-autopost.py",
+        "codeberg-primary-url",
+        "on-page"
+      ]
+    },
+    "memory:memory/2026-05-20.md:22:47": {
+      "key": "memory:memory/2026-05-20.md:22:47",
+      "path": "memory/2026-05-20.md",
+      "startLine": 22,
+      "endLine": 47,
+      "source": "memory",
+      "snippet": "- Claude Code Automation: https://telegra.ph/Claude-Code-Automation-Making-Unattended-Runs-Actually-Pay-Off-05-20 ✅ - (2 others were already live from prior runs) - Backlink plan updated: 4 confirmed backlink sources documented - AlternativeTo submission blocked by Cloudflare (needs manual browser step) **`mirror_repo_flat` (priority 3)** — NOT ACTIONABLE (already correct): - `positioning.py` has CODEBERG_PRIMARY and GITHUB_MIRROR correctly set - `reddit.txt` draft labels Codeberg as primary and GitHub as mirror - `reddit_autopost.py` uses CODEBERG_PRIMARY_URL as the primary CTA - GitHub is intentionally secondary — no dedicated effort warranted unless Codeberg moves ### SEO Status - O",
+      "recallCount": 3,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 3,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T07:43:25.347Z",
+      "lastRecalledAt": "2026-05-28T03:38:04.778Z",
+      "queryHashes": [
+        "0e53ec8f1e9b",
+        "0c11e8d2e177",
+        "98c40255e006"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "mirror-repo-flat",
+        "positioning.py",
+        "codeberg-primary",
+        "github-mirror",
+        "reddit.txt",
+        "reddit-autopost.py",
+        "codeberg-primary-url",
+        "claude"
+      ]
+    },
+    "memory:memory/2026-05-17.md:29:34": {
+      "key": "memory:memory/2026-05-17.md:29:34",
+      "path": "memory/2026-05-17.md",
+      "startLine": 29,
+      "endLine": 34,
+      "source": "memory",
+      "snippet": "- Marketing should emphasize local/existing-agent orchestration, unattended overnight execution, and waking up to substantial finished work — not vague AI buzzwords. - User explicitly requires RalphWorkflow marketing to keep refining its messaging and to consistently answer four fundamental marketing questions; marketing should remain continuously active. - Tightened the marketing loop into a faster always-on cadence: workflow audit hourly, momentum watchdog every 30 minutes, adoption tracker hourly, site refresh every 2 hours, and added a new active marketing execution loop every 30 minutes that must pick and do the highest-leverage action. - Durable marketing learning: with the current bot",
+      "recallCount": 3,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 3,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T08:39:13.882Z",
+      "lastRecalledAt": "2026-05-28T01:18:11.894Z",
+      "queryHashes": [
+        "2de05a35d278",
+        "11eb3379cb33",
+        "936a49940774"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "local/existing-agent",
+        "always-on",
+        "highest-leverage",
+        "marketing",
+        "emphasize",
+        "local",
+        "existing",
+        "orchestration"
+      ]
+    },
+    "memory:memory/2026-05-17.md:22:30": {
+      "key": "memory:memory/2026-05-17.md:22:30",
+      "path": "memory/2026-05-17.md",
+      "startLine": 22,
+      "endLine": 30,
+      "source": "memory",
+      "snippet": "- User explicitly requested a thorough sweep of marketing materials to replace any remaining \"trial\" framing with free/open-source wording. - Thoroughly scrubbed remaining non-license marketing/public uses of \"trial\" and replaced RalphWorkflow framing with free/open-source wording; pushed the public repo cleanup in commit 89345ba7. ## RalphWorkflow core product framing - Durable marketing lesson: do not trust internal marketing logs alone for conversion assets; verify the live public repo/site before assuming a README, START_HERE page, or proof doc is actually shipped. A repo-level conversion asset only matters once it is visibly present on the public landing surface. - User clarified the d",
+      "recallCount": 7,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 7,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T08:39:13.882Z",
+      "lastRecalledAt": "2026-05-28T01:18:11.894Z",
+      "queryHashes": [
+        "2de05a35d278",
+        "04e1e8afdd40",
+        "46a06831dead",
+        "b21d2e7e9a05",
+        "11eb3379cb33",
+        "84a6b33f181c",
+        "936a49940774"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "free/open-source",
+        "non-license",
+        "marketing/public",
+        "repo/site",
+        "start-here",
+        "repo-level",
+        "explicitly",
+        "requested"
+      ]
+    },
+    "memory:memory/2026-05-17.md:13:25": {
+      "key": "memory:memory/2026-05-17.md:13:25",
+      "path": "memory/2026-05-17.md",
+      "startLine": 13,
+      "endLine": 25,
+      "source": "memory",
+      "snippet": "- User explicitly requires ongoing re-analysis of the RalphWorkflow marketing loop itself using bigger-picture, proven marketing thinking: verify results, identify what worked vs failed, seek improvements, and keep adapting instead of equating activity with good marketing. - Standing directive: always be doing something that pushes RalphWorkflow adoption forward; default to action, not passive planning. - User reinforced that the assistant should not artificially limit imagination or channel choice in marketing; broader execution is allowed so long as it serves adoption. - Current strategic framing to preserve: the main lens is adoption and conversion, not just content production; prioritize",
+      "recallCount": 16,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 16,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T08:39:13.882Z",
+      "lastRecalledAt": "2026-05-28T05:09:17.514Z",
+      "queryHashes": [
+        "2de05a35d278",
+        "04e1e8afdd40",
+        "ee635e874b96",
+        "7f0a6c1ed498",
+        "46a06831dead",
+        "2d3398f51dbc",
+        "b21d2e7e9a05",
+        "11eb3379cb33",
+        "fd4d33e350c6",
+        "b826652d96a8",
+        "23576d6efe83",
+        "84a6b33f181c",
+        "d402e213bcae",
+        "936a49940774",
+        "49b2a0855032"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "re-analysis",
+        "bigger-picture",
+        "explicitly",
+        "requires",
+        "ongoing",
+        "analysis",
+        "ralphworkflow",
+        "marketing"
+      ]
+    },
+    "memory:memory/2026-05-27.md:6:11": {
+      "key": "memory:memory/2026-05-27.md:6:11",
+      "path": "memory/2026-05-27.md",
+      "startLine": 6,
+      "endLine": 11,
+      "source": "memory",
+      "snippet": "- Verified live scheduler state after the changes; the biggest remaining GPT spend is still concentrated in the docs verifier supervisor, marketing active/audit loops, Ralph-Site owner loop, marketing daily/research daily, and reddit monitor. - Caught one incorrect scheduler-target patch during the optimization pass, reverted it immediately, and then applied the cadence reduction to the correct job. - Implemented the next architecture split so GPT is no longer the first-line path for docs supervision and marketing audit refresh. Added `agents/docs_quality/ralph_docs_supervisor_precheck.py` and `agents/marketing/marketing_workflow_audit_precheck.py`, created live MiniMax cron jobs for both pr",
+      "recallCount": 9,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 9,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T08:39:13.882Z",
+      "lastRecalledAt": "2026-05-28T04:33:10.017Z",
+      "queryHashes": [
+        "2de05a35d278",
+        "ee635e874b96",
+        "7f0a6c1ed498",
+        "2d3398f51dbc",
+        "fd4d33e350c6",
+        "d402e213bcae",
+        "936a49940774",
+        "45a1b03f5e39"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "gpt",
+        "active/audit",
+        "ralph-site",
+        "daily/research",
+        "scheduler-target",
+        "first-line",
+        "verified",
+        "live"
+      ]
+    },
+    "memory:memory/2026-05-22.md:1:7": {
+      "key": "memory:memory/2026-05-22.md:1:7",
+      "path": "memory/2026-05-22.md",
+      "startLine": 1,
+      "endLine": 7,
+      "source": "memory",
+      "snippet": "## 2026-05-22 — Marketing loop truthfulness + progress audit continuation - Continued the runtime event with a deeper audit of the RalphWorkflow marketing loop. - Durable finding: the marketing system is no longer allowed to call itself healthy just because scheduled scripts ran and fresh artifacts exist; flat Codeberg adoption, blocked channels, and degraded Reddit discovery must count against health/pass status. - Durable finding: as of 2026-05-22 00:12 Europe/Berlin, the truthful state is that marketing process quality improved, but outcome progress is still not proven. Codeberg and GitHub mirror adoption remained flat across the recent 9-sample window. - Durable finding: a real action di",
+      "recallCount": 6,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 6,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T08:39:13.882Z",
+      "lastRecalledAt": "2026-05-28T03:10:54.801Z",
+      "queryHashes": [
+        "2de05a35d278",
+        "11eb3379cb33",
+        "fd4d33e350c6",
+        "b826652d96a8",
+        "936a49940774",
+        "1b50654dd90a"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "health/pass",
+        "europe/berlin",
+        "9-sample",
+        "marketing",
+        "loop",
+        "truthfulness",
+        "progress",
+        "audit"
+      ]
+    },
+    "memory:memory/2026-05-19.md:611:618": {
+      "key": "memory:memory/2026-05-19.md:611:618",
+      "path": "memory/2026-05-19.md",
+      "startLine": 611,
+      "endLine": 618,
+      "source": "memory",
+      "snippet": "- Durable lesson: when Codeberg adoption is flat and external distribution is blocked or waiting on auth, the best same-run conversion repair is often not another homepage tweak — it is making the **first actual evaluation decision** easier. Evaluators drop when they understand the product but still do not know what backlog task is safe to try tonight. ## RalphWorkflow marketing durable note — machine-readable repo identity is its own conversion surface - On 2026-05-20, added live JSON-LD `Organization` + `SoftwareSourceCode` metadata to `https://ralphworkflow.com`, with `codeRepository` pointing to **Codeberg** and GitHub only in `sameAs` as the mirror. - Durable lesson: after visible home",
+      "recallCount": 13,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 13,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T11:14:19.590Z",
+      "lastRecalledAt": "2026-05-28T05:09:17.514Z",
+      "queryHashes": [
+        "04e1e8afdd40",
+        "ee635e874b96",
+        "7f0a6c1ed498",
+        "46a06831dead",
+        "2d3398f51dbc",
+        "b21d2e7e9a05",
+        "fd4d33e350c6",
+        "b826652d96a8",
+        "23576d6efe83",
+        "84a6b33f181c",
+        "d402e213bcae",
+        "49b2a0855032"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "same-run",
+        "machine-readable",
+        "json-ld",
+        "ralphworkflow.com",
+        "durable",
+        "lesson",
+        "when",
+        "codeberg"
+      ]
+    },
+    "memory:memory/2026-05-19.md:704:710": {
+      "key": "memory:memory/2026-05-19.md:704:710",
+      "path": "memory/2026-05-19.md",
+      "startLine": 704,
+      "endLine": 710,
+      "source": "memory",
+      "snippet": "## RalphWorkflow marketing durable note — repo-native first-run task choice is a direct conversion lever - On 2026-05-20, rewrote `README.md` and `START_HERE_RALPHWORKFLOW.md` so the first-screen evaluator path includes a copy-paste spec template plus three exact first-task shapes (`validation rule`, `feature slice`, `isolated refactor`) instead of making the visitor infer a good first run from deeper docs alone. - Durable lesson: when Codeberg adoption is flat and distribution repairs are already live, the next leak can be **task-selection hesitation** on the repo itself. The highest-leverage docs move is not more explanation — it is making the first runnable task obvious immediately on the",
+      "recallCount": 13,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 13,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T11:14:19.590Z",
+      "lastRecalledAt": "2026-05-28T05:09:17.514Z",
+      "queryHashes": [
+        "04e1e8afdd40",
+        "ee635e874b96",
+        "7f0a6c1ed498",
+        "46a06831dead",
+        "2d3398f51dbc",
+        "b21d2e7e9a05",
+        "fd4d33e350c6",
+        "b826652d96a8",
+        "23576d6efe83",
+        "84a6b33f181c",
+        "d402e213bcae",
+        "49b2a0855032"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "repo-native",
+        "first-run",
+        "readme.md",
+        "start-here-ralphworkflow.md",
+        "first-screen",
+        "copy-paste",
+        "first-task",
+        "task-selection"
+      ]
+    },
+    "memory:memory/2026-05-19.md:679:687": {
+      "key": "memory:memory/2026-05-19.md:679:687",
+      "path": "memory/2026-05-19.md",
+      "startLine": 679,
+      "endLine": 687,
+      "source": "memory",
+      "snippet": "## RalphWorkflow marketing durable note — stale directory guidance can quietly waste entire flat-adoption windows - On 2026-05-20, the biggest same-run executable repair was not another submission; it was fixing the backlink strategy + SEO outreach inventory so the loop stopped treating stale Toolhunt-style lanes and fragile search checks as current work. - Durable lesson: once several directory submissions are already live or pending, the risk shifts from \"not enough ideas\" to **bad lane memory**. Keep the operating inventory explicit: which surfaces are live proof, which are pending review/indexing, which are manual-only, and which are dead. Otherwise the loop can look active while spendin",
+      "recallCount": 3,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 3,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T11:14:19.590Z",
+      "lastRecalledAt": "2026-05-27T22:14:34.466Z",
+      "queryHashes": [
+        "04e1e8afdd40",
+        "b21d2e7e9a05",
+        "23576d6efe83"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "flat-adoption",
+        "same-run",
+        "toolhunt-style",
+        "review/indexing",
+        "manual-only",
+        "ralphworkflow",
+        "marketing",
+        "durable"
+      ]
+    },
+    "memory:memory/2026-05-19.md:580:587": {
+      "key": "memory:memory/2026-05-19.md:580:587",
+      "path": "memory/2026-05-19.md",
+      "startLine": 580,
+      "endLine": 587,
+      "source": "memory",
+      "snippet": "- Durable lesson: for the live Rails homepage, count the **final rendered title including the `— Ralph Workflow` suffix** and verify the public HTML after restart. A source string that looks short enough in ERB can still ship an overlong or awkward title once the layout appends the brand, and `&` can render badly in the title path; use explicit live fetch verification before counting the repair as complete. ## RalphWorkflow marketing durable note — hosted docs proof blocks can drift back toward mirror-native trust links - On 2026-05-20 I found that the live hosted docs index (`https://ralphworkflow.com/docs/`) still exposed `GitDB project page` plus an extra `SaaSHub alternatives` link even",
+      "recallCount": 7,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 7,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T17:08:09.087Z",
+      "lastRecalledAt": "2026-05-28T05:09:17.514Z",
+      "queryHashes": [
+        "ee635e874b96",
+        "2d3398f51dbc",
+        "b826652d96a8",
+        "23576d6efe83",
+        "d402e213bcae",
+        "49b2a0855032"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "mirror-native",
+        "ralphworkflow.com/docs",
+        "durable",
+        "lesson",
+        "live",
+        "rails",
+        "homepage",
+        "count"
+      ]
+    },
+    "memory:memory/2026-05-17.md:33:37": {
+      "key": "memory:memory/2026-05-17.md:33:37",
+      "path": "memory/2026-05-17.md",
+      "startLine": 33,
+      "endLine": 37,
+      "source": "memory",
+      "snippet": "- Durable marketing learning: docs-home traffic is high-intent but can still leak if the page jumps straight into technical navigation. Put the four-question framing, first-task guidance, and the \"would you merge this?\" test near the top of public docs, not just in repo marketing pages. - Durable marketing learning: repo-level proof assets are not enough on their own; hosted docs need their own first-task and reviewable-output pages wired into the homepage and getting-started path, or interested evaluators still miss the strongest trust/conversion material. - Durable marketing learning: a meaningful chunk of high-intent prospects already use worktrees or separate agent sessions, so they need",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T17:12:32.701Z",
+      "lastRecalledAt": "2026-05-27T17:12:32.701Z",
+      "queryHashes": [
+        "7f0a6c1ed498"
+      ],
+      "recallDays": [
+        "2026-05-27"
+      ],
+      "conceptTags": [
+        "docs-home",
+        "high-intent",
+        "four-question",
+        "first-task",
+        "repo-level",
+        "reviewable-output",
+        "getting-started",
+        "trust/conversion"
+      ]
+    },
+    "memory:memory/2026-05-19.md:505:512": {
+      "key": "memory:memory/2026-05-19.md:505:512",
+      "path": "memory/2026-05-19.md",
+      "startLine": 505,
+      "endLine": 512,
+      "source": "memory",
+      "snippet": "- Durable marketing lesson (2026-05-20): the real hosted-homepage SEO source lives in `repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst` (title + description) and `.../docs/sphinx/_themes/ralph-docs/page.html` (JSON-LD/schema wording). Future homepage SEO repairs should land there first instead of wasting a loop rediscovering the site path or poking unrelated repo-root docs. ## RalphWorkflow marketing durable note — first-run conversion improves when top-level docs get shorter, not broader - On 2026-05-20 I pushed commit `e9196969` (`Tighten first-run evaluator path`) after the audit still showed the main bottleneck was `distribution_and_message_to_primary_repo_conver",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T17:20:00.956Z",
+      "lastRecalledAt": "2026-05-27T22:14:34.466Z",
+      "queryHashes": [
+        "46a06831dead",
+        "23576d6efe83"
+      ],
+      "recallDays": [
+        "2026-05-27",
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "hosted-homepage",
+        "docs/sphinx",
+        "themes/ralph-docs/page.html",
+        "json-ld/schema",
+        "repo-root",
+        "first-run",
+        "top-level",
+        "durable"
+      ]
+    },
+    "memory:memory/2026-05-17.md:138:142": {
+      "key": "memory:memory/2026-05-17.md:138:142",
+      "path": "memory/2026-05-17.md",
+      "startLine": 138,
+      "endLine": 142,
+      "source": "memory",
+      "snippet": "- Durable marketing learning: when the primary adoption metric is Codeberg, every warm-path asset has to be audited end-to-end — not just the main site. Comparison pages, submission packets, and Reddit seed links can silently keep optimizing GitHub by habit even after the strategy changes, which means the loop can look active while routing intent to the wrong repo. - Durable marketing ops learning: when the active distribution lane is `measurement_hold` and multiple same-family external windows are already open, a fast generic active-loop cadence mostly manufactures fake-progress notes. Slow the loop down until the measurement windows age, or split it into lane-specific schedules instead. -",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T20:25:34.014Z",
+      "lastRecalledAt": "2026-05-27T20:25:34.014Z",
+      "queryHashes": [
+        "11eb3379cb33"
+      ],
+      "recallDays": [
+        "2026-05-27"
+      ],
+      "conceptTags": [
+        "warm-path",
+        "end-to-end",
+        "measurement-hold",
+        "same-family",
+        "active-loop",
+        "fake-progress",
+        "lane-specific",
+        "durable"
+      ]
+    },
+    "memory:memory/2026-05-19.md:617:625": {
+      "key": "memory:memory/2026-05-19.md:617:625",
+      "path": "memory/2026-05-19.md",
+      "startLine": 617,
+      "endLine": 625,
+      "source": "memory",
+      "snippet": "## RalphWorkflow marketing durable note — concrete first-task menus reduce repo-evaluator hesitation - On 2026-05-20, repaired the top repo/docs first-run path by adding a compact \"what you can ship tonight\" task menu plus stronger \"finished code / tested code / ready to review\" language across README, START_HERE, and matching hosted-doc pages. - Durable lesson: when qualified traffic is already reaching the repo but Codeberg adoption stays flat, the leak may be **task-selection hesitation**, not awareness. Evaluators often do not need more positioning — they need 3-5 obvious first-task shapes and a crisp morning-after success test. ## RalphWorkflow marketing durable note — homepage URLs ar",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T22:14:34.466Z",
+      "lastRecalledAt": "2026-05-27T22:14:34.466Z",
+      "queryHashes": [
+        "23576d6efe83"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "first-task",
+        "repo-evaluator",
+        "repo/docs",
+        "first-run",
+        "start-here",
+        "hosted-doc",
+        "task-selection",
+        "3-5"
+      ]
+    },
+    "memory:memory/2026-05-19.md:287:293": {
+      "key": "memory:memory/2026-05-19.md:287:293",
+      "path": "memory/2026-05-19.md",
+      "startLine": 287,
+      "endLine": 293,
+      "source": "memory",
+      "snippet": "## RalphWorkflow marketing durable note — live homepage and hosted-docs can drift, and the live site wins - On 2026-05-20 I verified `https://ralphworkflow.com/` was still serving the older `operating system for autonomous coding` title/meta and install-first CTA even after the hosted docs homepage had already been tuned around `unattended coding agent` / `AI agent orchestration CLI`. - Durable repair: patch the actual Rails homepage at `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`, then trigger a live reload with `touch /home/mistlight/ralph_site/current/tmp/restart.txt` and verify the public HTML directly. - Durable lesson: when Codeberg adoption is flat, do not assume",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T22:14:34.466Z",
+      "lastRecalledAt": "2026-05-27T22:14:34.466Z",
+      "queryHashes": [
+        "23576d6efe83"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "hosted-docs",
+        "ralphworkflow.com",
+        "title/meta",
+        "install-first",
+        "ralphworkflow",
+        "marketing",
+        "durable",
+        "live"
+      ]
+    },
+    "memory:memory/2026-05-19.md:31:39": {
+      "key": "memory:memory/2026-05-19.md:31:39",
+      "path": "memory/2026-05-19.md",
+      "startLine": 31,
+      "endLine": 39,
+      "source": "memory",
+      "snippet": "## RalphWorkflow marketing durable note — homepage comparison intent should mirror live evaluator ecosystems - On 2026-05-20, after homepage metadata was already repaired, the next viable owned-surface leak was the comparison CTA block: the homepage still surfaced Hermes/Aider/Conductor links but not the warmer evaluator ecosystems Claude Code and Codex CLI. - Durable lesson: when flat adoption says the bottleneck is **message-to-primary-repo conversion**, homepage comparison CTAs should follow the tools visitors already search and compare against, not just the older alternative set. If Claude Code / Codex intent pages exist and are strong, surface them directly on the first homepage compari",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T22:14:34.466Z",
+      "lastRecalledAt": "2026-05-27T22:14:34.466Z",
+      "queryHashes": [
+        "23576d6efe83"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "owned-surface",
+        "hermes/aider/conductor",
+        "message-to-primary-repo",
+        "ralphworkflow",
+        "marketing",
+        "durable",
+        "homepage",
+        "comparison"
+      ]
+    },
+    "memory:memory/2026-05-19.md:697:705": {
+      "key": "memory:memory/2026-05-19.md:697:705",
+      "path": "memory/2026-05-19.md",
+      "startLine": 697,
+      "endLine": 705,
+      "source": "memory",
+      "snippet": "- Durable lesson: when the homepage already carries external proof but Codeberg adoption is still flat, check the repo README separately. README visitors need the same low-friction trust shortcut, but it should stay **small and curated** so it reduces evaluator doubt without turning the entry surface into a link farm. ## RalphWorkflow marketing durable note — when autonomous distribution is exhausted, keep the human packet current - On 2026-05-20 I revalidated the HN/Lobsters submission packet against the current strongest live asset (`AI Agent Orchestration CLI: A Practical Comparison for Developers`) and verified the Telegraph URL was live before escalating it again. - Durable lesson: onc",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T22:14:34.466Z",
+      "lastRecalledAt": "2026-05-27T22:14:34.466Z",
+      "queryHashes": [
+        "23576d6efe83"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "low-friction",
+        "hn/lobsters",
+        "durable",
+        "lesson",
+        "when",
+        "homepage",
+        "already",
+        "carries"
+      ]
+    },
+    "memory:memory/2026-05-19.md:172:180": {
+      "key": "memory:memory/2026-05-19.md:172:180",
+      "path": "memory/2026-05-19.md",
+      "startLine": 172,
+      "endLine": 180,
+      "source": "memory",
+      "snippet": "- Durable lesson: once distribution exists, some conversion drag is just trust-friction on the first repo-native screens. Put a **small curated proof set** directly on those surfaces instead of making evaluators dig deeper or expanding into a giant link farm. ## RalphWorkflow marketing durable note — first-task shape is a proof asset, not just a docs detail - Added a new public guide `content/guides/good_unattended_task.md` and linked it from `README.md` plus `START_HERE_RALPHWORKFLOW.md` after verifying the next viable repair was not another trustworthy directory submission but the evaluator blank page around task choice. - Durable lesson: when Codeberg conversion is flat, a missing answer",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-27T23:44:38.669Z",
+      "lastRecalledAt": "2026-05-27T23:44:38.669Z",
+      "queryHashes": [
+        "84a6b33f181c"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "trust-friction",
+        "repo-native",
+        "first-task",
+        "readme.md",
+        "start-here-ralphworkflow.md",
+        "durable",
+        "lesson",
+        "once"
+      ]
+    },
+    "memory:memory/2026-05-21.md:31:36": {
+      "key": "memory:memory/2026-05-21.md:31:36",
+      "path": "memory/2026-05-21.md",
+      "startLine": 31,
+      "endLine": 36,
+      "source": "memory",
+      "snippet": "- On 2026-05-21 I cleaned accidental duplicate entries out of `memory/2026-05-21.md`, upgraded the marketing loop and agent-architecture watchdog from ambiguous `tracked_only` entries into real full checker/runner/verifier contracts, and explicitly reclassified the remaining non-self-improving loops as `owner_only` or `monitor_only` so the loop-integrity audit no longer hides contract ambiguity. # 2026-05-21 - Durable operating preference clarified further: for codebase-related work, especially complex tasks, OpenCode is an allowed and preferred path to use proactively rather than only after being asked again. This applies beyond Ralph-Site and should influence how I choose implementation p",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:08:12.436Z",
+      "lastRecalledAt": "2026-05-28T03:08:12.436Z",
+      "queryHashes": [
+        "9559ff052f5a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "memory/2026-05-21.md",
+        "agent-architecture",
+        "tracked-only",
+        "checker/runner/verifier",
+        "non-self-improving",
+        "owner-only",
+        "monitor-only",
+        "loop-integrity"
+      ]
+    },
+    "memory:memory/2026-05-21.md:13:16": {
+      "key": "memory:memory/2026-05-21.md:13:16",
+      "path": "memory/2026-05-21.md",
+      "startLine": 13,
+      "endLine": 16,
+      "source": "memory",
+      "snippet": "- Durable operating preference clarified further: for codebase-related work, especially complex tasks, OpenCode is an allowed and preferred path to use proactively rather than only after being asked again. This applies beyond Ralph-Site and should influence how I choose implementation paths for substantial repo changes. - Added a runtime-owned `agent-architecture-watchdog` cron on 2026-05-21 to audit the whole agent system every 6 hours for self-improving-loop quality, loop overlap, ownership drift, stale loop layers, hidden repair layers, and self-certification risks. It writes architecture audit artifacts under `agents/system/logs/` and is expected to repair safe local architecture issues",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:08:12.436Z",
+      "lastRecalledAt": "2026-05-28T03:08:12.436Z",
+      "queryHashes": [
+        "9559ff052f5a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "codebase-related",
+        "ralph-site",
+        "runtime-owned",
+        "agent-architecture-watchdog",
+        "self-improving-loop",
+        "self-certification",
+        "agents/system/logs",
+        "durable"
+      ]
+    },
+    "memory:memory/2026-05-21.md:1:6": {
+      "key": "memory:memory/2026-05-21.md:1:6",
+      "path": "memory/2026-05-21.md",
+      "startLine": 1,
+      "endLine": 6,
+      "source": "memory",
+      "snippet": "# 2026-05-21 - Durable operating preference clarified further: for codebase-related work, especially complex tasks, OpenCode is an allowed and preferred path to use proactively rather than only after being asked again. This applies beyond Ralph-Site and should influence how I choose implementation paths for substantial repo changes. - Added a runtime-owned `agent-architecture-watchdog` cron on 2026-05-21 to audit the whole agent system every 6 hours for self-improving-loop quality, loop overlap, ownership drift, stale loop layers, hidden repair layers, and self-certification risks. It writes architecture audit artifacts under `agents/system/logs/` and is expected to repair safe local archit",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:08:12.436Z",
+      "lastRecalledAt": "2026-05-28T03:08:12.436Z",
+      "queryHashes": [
+        "9559ff052f5a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "codebase-related",
+        "ralph-site",
+        "runtime-owned",
+        "agent-architecture-watchdog",
+        "self-improving-loop",
+        "self-certification",
+        "agents/system/logs",
+        "durable"
+      ]
+    },
+    "memory:memory/2026-05-21.md:25:28": {
+      "key": "memory:memory/2026-05-21.md:25:28",
+      "path": "memory/2026-05-21.md",
+      "startLine": 25,
+      "endLine": 28,
+      "source": "memory",
+      "snippet": "- Added a runtime-owned `agent-architecture-watchdog` cron on 2026-05-21 to audit the whole agent system every 6 hours for self-improving-loop quality, loop overlap, ownership drift, stale loop layers, hidden repair layers, and self-certification risks. It writes architecture audit artifacts under `agents/system/logs/` and is expected to repair safe local architecture issues in the same run. - Centralized the Ralph Workflow docs rubric on 2026-05-21 at `docs/code-style/documentation-rubric.md` and strengthened it with mandatory minimum page-family structure, stronger route/system rules, and a hard requirement that every docs-related change refer to that rubric. Updated both repo-side docs in",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:08:12.436Z",
+      "lastRecalledAt": "2026-05-28T03:08:12.436Z",
+      "queryHashes": [
+        "9559ff052f5a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "runtime-owned",
+        "agent-architecture-watchdog",
+        "self-improving-loop",
+        "self-certification",
+        "agents/system/logs",
+        "page-family",
+        "route/system",
+        "docs-related"
+      ]
+    },
+    "memory:memory/2026-05-23.md:1:7": {
+      "key": "memory:memory/2026-05-23.md:1:7",
+      "path": "memory/2026-05-23.md",
+      "startLine": 1,
+      "endLine": 7,
+      "source": "memory",
+      "snippet": "# 2026-05-23 - Fixed a real health-monitor escalation design bug: repeat issues were being tagged as `escalation_required` only after the repair phase, so stronger owner-loop escalation could not trigger in the same run. - Added docs-loop stability tracking as a first-class health signal. The docs verifier now has machine-readable status/history artifacts (`ralph_verifier_latest.json`, `ralph_verifier_history.jsonl`) and the system treats repeat docs failures as an open instability window until clean passes are re-earned. - Health monitor now tracks repeat issues across recent history instead of trusting only the latest artifact, and architecture verification can fail closed on unstable doc",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:08:12.436Z",
+      "lastRecalledAt": "2026-05-28T03:08:12.436Z",
+      "queryHashes": [
+        "9559ff052f5a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "health-monitor",
+        "escalation-required",
+        "owner-loop",
+        "docs-loop",
+        "first-class",
+        "machine-readable",
+        "status/history",
+        "ralph-verifier-latest.json"
+      ]
+    },
+    "memory:memory/2026-05-21.md:8:13": {
+      "key": "memory:memory/2026-05-21.md:8:13",
+      "path": "memory/2026-05-21.md",
+      "startLine": 8,
+      "endLine": 13,
+      "source": "memory",
+      "snippet": "- Architecture audit finding saved on 2026-05-21: several non-docs loops still present as `tracked_only` rather than full checker/runner/verifier contracts, especially the marketing stack. Treat any claimed self-improving loop without explicit remediation plus independent verification evidence as degraded until upgraded or explicitly reclassified as monitor-only. - Durable instruction reinforced on 2026-05-21: never wait for a follow-up prompt when a safe internal fix path exists; fix it immediately. - On 2026-05-21 I cleaned accidental duplicate entries out of `memory/2026-05-21.md`, upgraded the marketing loop and agent-architecture watchdog from ambiguous `tracked_only` entries into real",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:08:12.436Z",
+      "lastRecalledAt": "2026-05-28T03:08:12.436Z",
+      "queryHashes": [
+        "9559ff052f5a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "non-docs",
+        "tracked-only",
+        "checker/runner/verifier",
+        "self-improving",
+        "monitor-only",
+        "follow-up",
+        "memory/2026-05-21.md",
+        "agent-architecture"
+      ]
+    },
+    "memory:memory/2026-05-22.md:6:11": {
+      "key": "memory:memory/2026-05-22.md:6:11",
+      "path": "memory/2026-05-22.md",
+      "startLine": 6,
+      "endLine": 11,
+      "source": "memory",
+      "snippet": "- Durable finding: Reddit remains structurally weak for RalphWorkflow right now due to repeated opening/body patterns plus degraded discovery/provider coverage; Reddit execution should not be treated as healthy momentum until both coverage and body freshness improve. - Durable finding: Apollo/outbound remains blocked by mailbox verification, so the system should treat that channel as genuinely constrained rather than implicitly available. - Durable repair made during this continuation: the marketing-loop health/pass logic was tightened so the runner/checker/verifier do not certify progress from artifact freshness alone. - Durable repair made during this continuation: the workflow audit now t",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:10:54.801Z",
+      "lastRecalledAt": "2026-05-28T03:10:54.801Z",
+      "queryHashes": [
+        "1b50654dd90a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "opening/body",
+        "discovery/provider",
+        "apollo/outbound",
+        "marketing-loop",
+        "health/pass",
+        "runner/checker/verifier",
+        "durable",
+        "finding"
+      ]
+    },
+    "memory:memory/2026-05-19.md:420:428": {
+      "key": "memory:memory/2026-05-19.md:420:428",
+      "path": "memory/2026-05-19.md",
+      "startLine": 420,
+      "endLine": 428,
+      "source": "memory",
+      "snippet": "- Docs process hardening on 2026-05-19 was upgraded from soft guidance into a canonical ship gate in `DOCS_PROCESS.md`: explicit full-review triggers, required pre-edit brief, surface-ownership check, one-in/one-out rule, duplication pass, top-level link budget, required copy-edit pass, required post-edit scorecard, and a ship-blocking rule against increased clutter. ## RalphWorkflow marketing durable note — exact-intent automation pages should target the reviewable-handoff question - Added and pushed a new Codeberg-first landing page for `AI coding workflow automation` plus curated entry links from `README.md`, `docs/README.md`, and the hosted docs homepage/toctree. - Durable lesson: once",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:10:54.801Z",
+      "lastRecalledAt": "2026-05-28T03:10:54.801Z",
+      "queryHashes": [
+        "1b50654dd90a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "docs-process.md",
+        "full-review",
+        "pre-edit",
+        "surface-ownership",
+        "one-in/one-out",
+        "top-level",
+        "copy-edit",
+        "post-edit"
+      ]
+    },
+    "memory:memory/2026-05-20.md:259:271": {
+      "key": "memory:memory/2026-05-20.md:259:271",
+      "path": "memory/2026-05-20.md",
+      "startLine": 259,
+      "endLine": 271,
+      "source": "memory",
+      "snippet": "- A second manual launch of `ralph_docs_runner.py` now exits immediately with `SKIP: another Ralph docs loop process already holds the global lock` and exit code `75`, proving overlap prevention works. - Stale docs-loop processes were killed after cleanup. ### Remaining unresolved failure - A clean isolated verifier run still did not exit on its own; the remaining hang path is `ralph_docs_verify.py` -> `ralph_docs_agentic_review.py` -> `acpx opencode exec` -> `opencode acp`. - Current artifact truth after cleanup: verifier still failed signoff, watchdog still showed pending independent verification, and agentic review still reported `status: fail` plus `loopHealthy: false`. - Durable lesson",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:10:54.801Z",
+      "lastRecalledAt": "2026-05-28T03:10:54.801Z",
+      "queryHashes": [
+        "1b50654dd90a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "ralph-docs-runner.py",
+        "docs-loop",
+        "ralph-docs-verify.py",
+        "ralph-docs-agentic-review.py",
+        "second",
+        "manual",
+        "launch",
+        "now"
+      ]
+    },
+    "memory:memory/2026-05-20.md:534:546": {
+      "key": "memory:memory/2026-05-20.md:534:546",
+      "path": "memory/2026-05-20.md",
+      "startLine": 534,
+      "endLine": 546,
+      "source": "memory",
+      "snippet": "- A second manual launch of `ralph_docs_runner.py` now exits immediately with `SKIP: another Ralph docs loop process already holds the global lock` and exit code `75`, proving overlap prevention works. - Stale docs-loop processes were killed after cleanup. ### Remaining unresolved failure - A clean isolated verifier run still did not exit on its own; the remaining hang path is `ralph_docs_verify.py` -> `ralph_docs_agentic_review.py` -> `acpx opencode exec` -> `opencode acp`. - Current artifact truth after cleanup: verifier still failed signoff, watchdog still showed pending independent verification, and agentic review still reported `status: fail` plus `loopHealthy: false`. - Durable lesson",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:10:54.801Z",
+      "lastRecalledAt": "2026-05-28T03:10:54.801Z",
+      "queryHashes": [
+        "1b50654dd90a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "ralph-docs-runner.py",
+        "docs-loop",
+        "ralph-docs-verify.py",
+        "ralph-docs-agentic-review.py",
+        "second",
+        "manual",
+        "launch",
+        "now"
+      ]
+    },
+    "memory:memory/2026-05-20.md:544:555": {
+      "key": "memory:memory/2026-05-20.md:544:555",
+      "path": "memory/2026-05-20.md",
+      "startLine": 544,
+      "endLine": 555,
+      "source": "memory",
+      "snippet": "- User made the standard explicit: if they have to repeat the same docs/process remediation, the failure already happened; they should never need to harp this hard on one issue. - Durable requirement: the docs agent process must self-detect recurrence, self-escalate, and self-repair before the user has to say \"fix the docs agent process.\" - The monitor being active is not enough; if it cannot drive real repair or loudly fail the loop, it is part of the failure. - Current truth at this point: `ralph_editorial_latest.md` reached `DOCS_EDITORIAL_OK`, but `ralph_agentic_latest.json` still reported `status: fail`, `loopHealthy: false`, and `shouldUserNeedToRepeatThis: true`. - `ralph_verifier_lat",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:10:54.801Z",
+      "lastRecalledAt": "2026-05-28T03:10:54.801Z",
+      "queryHashes": [
+        "1b50654dd90a"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "docs/process",
+        "self-detect",
+        "self-escalate",
+        "self-repair",
+        "ralph-editorial-latest.md",
+        "docs-editorial-ok",
+        "ralph-agentic-latest.json",
+        "ralph-verifier-lat"
+      ]
+    },
+    "memory:memory/2026-05-19.md:108:116": {
+      "key": "memory:memory/2026-05-19.md:108:116",
+      "path": "memory/2026-05-19.md",
+      "startLine": 108,
+      "endLine": 116,
+      "source": "memory",
+      "snippet": "- Durable lesson: once broad positioning is already decent, homepage SEO repairs should not just shorten copy — they should absorb the **exact missing evaluator phrases** from the content-gap report and keep the primary-repo action path on the same first screen. - Also repaired two duplicate homepage toctree entries discovered during verification so the docs build remains green after the messaging change. ## RalphWorkflow marketing durable note — homepage title and CTA order are separate levers - Tightened the hosted homepage title tag to carry both `unattended coding agent` and `AI agent orchestration CLI`, clarified the meta promise around reviewable output on the user's own machine, and",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:30:28.840Z",
+      "lastRecalledAt": "2026-05-28T03:30:28.840Z",
+      "queryHashes": [
+        "7a593a9c95e7"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "content-gap",
+        "primary-repo",
+        "durable",
+        "lesson",
+        "once",
+        "broad",
+        "positioning",
+        "already"
+      ]
+    },
+    "memory:memory/2026-05-19.md:384:392": {
+      "key": "memory:memory/2026-05-19.md:384:392",
+      "path": "memory/2026-05-19.md",
+      "startLine": 384,
+      "endLine": 392,
+      "source": "memory",
+      "snippet": "- Durable lesson: once broad positioning is already decent, homepage SEO repairs should not just shorten copy — they should absorb the **exact missing evaluator phrases** from the content-gap report and keep the primary-repo action path on the same first screen. - Also repaired two duplicate homepage toctree entries discovered during verification so the docs build remains green after the messaging change. ## RalphWorkflow marketing durable note — homepage title and CTA order are separate levers - Tightened the hosted homepage title tag to carry both `unattended coding agent` and `AI agent orchestration CLI`, clarified the meta promise around reviewable output on the user's own machine, and",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:30:28.840Z",
+      "lastRecalledAt": "2026-05-28T03:30:28.840Z",
+      "queryHashes": [
+        "7a593a9c95e7"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "content-gap",
+        "primary-repo",
+        "durable",
+        "lesson",
+        "once",
+        "broad",
+        "positioning",
+        "already"
+      ]
+    },
+    "memory:memory/2026-05-19.md:102:110": {
+      "key": "memory:memory/2026-05-19.md:102:110",
+      "path": "memory/2026-05-19.md",
+      "startLine": 102,
+      "endLine": 110,
+      "source": "memory",
+      "snippet": "## RalphWorkflow marketing durable note — owned trust pages beat external trust links - Replaced an external trust-article dependency with a new owned/public `how-to-tell-if-an-ai-coding-task-is-actually-done` landing page and rewired README, START_HERE, docs map, and hosted docs index to point at owned Ralph pages instead of write.as/Telegraph-style links. - Durable lesson: when Codeberg adoption is flat, do not just add more trust content — **pull high-intent trust questions back onto owned conversion surfaces**. External article hosts can capture search intent but still leak the primary repo action at the exact moment a skeptical evaluator is deciding whether to inspect, star, watch, or f",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:30:28.840Z",
+      "lastRecalledAt": "2026-05-28T03:30:28.840Z",
+      "queryHashes": [
+        "7a593a9c95e7"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "trust-article",
+        "owned/public",
+        "start-here",
+        "write.as/telegraph-style",
+        "high-intent",
+        "ralphworkflow",
+        "marketing",
+        "durable"
+      ]
+    },
+    "memory:memory/2026-05-19.md:378:386": {
+      "key": "memory:memory/2026-05-19.md:378:386",
+      "path": "memory/2026-05-19.md",
+      "startLine": 378,
+      "endLine": 386,
+      "source": "memory",
+      "snippet": "## RalphWorkflow marketing durable note — owned trust pages beat external trust links - Replaced an external trust-article dependency with a new owned/public `how-to-tell-if-an-ai-coding-task-is-actually-done` landing page and rewired README, START_HERE, docs map, and hosted docs index to point at owned Ralph pages instead of write.as/Telegraph-style links. - Durable lesson: when Codeberg adoption is flat, do not just add more trust content — **pull high-intent trust questions back onto owned conversion surfaces**. External article hosts can capture search intent but still leak the primary repo action at the exact moment a skeptical evaluator is deciding whether to inspect, star, watch, or f",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T03:30:28.840Z",
+      "lastRecalledAt": "2026-05-28T03:30:28.840Z",
+      "queryHashes": [
+        "7a593a9c95e7"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "trust-article",
+        "owned/public",
+        "start-here",
+        "write.as/telegraph-style",
+        "high-intent",
+        "ralphworkflow",
+        "marketing",
+        "durable"
+      ]
+    },
+    "memory:memory/2026-05-19.md:44:55": {
+      "key": "memory:memory/2026-05-19.md:44:55",
+      "path": "memory/2026-05-19.md",
+      "startLine": 44,
+      "endLine": 55,
+      "source": "memory",
+      "snippet": "- On 2026-05-20, prepared `drafts/2026-05-20_reddit_next-window_fresh-bodies.md` with 3 fresh bodies for the current best `r/ClaudeCode` pain threads instead of spending another cooldown cycle on zero-output monitoring. - Durable lesson: when Reddit is cooling down and HN/Lobsters are blocked, the best local move is to bank **post-ready bodies** that vary opening line, paragraph geometry, and product-mention placement all at once. Freshness has to be structural, not just lexical. ## RalphWorkflow marketing durable note — measurement-pending state must suppress stale repair churn - On 2026-05-20, repaired `marketing_workflow_audit.py` and `marketing_momentum_watchdog.py` so once outreach has",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T04:33:10.017Z",
+      "lastRecalledAt": "2026-05-28T04:33:10.017Z",
+      "queryHashes": [
+        "45a1b03f5e39"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "r/claudecode",
+        "zero-output",
+        "hn/lobsters",
+        "post-ready",
+        "product-mention",
+        "measurement-pending",
+        "marketing-workflow-audit.py",
+        "marketing-momentum-watchdog.py"
+      ]
+    },
+    "memory:memory/2026-05-19.md:473:476": {
+      "key": "memory:memory/2026-05-19.md:473:476",
+      "path": "memory/2026-05-19.md",
+      "startLine": 473,
+      "endLine": 476,
+      "source": "memory",
+      "snippet": "- Docs-quality bar tightened again on 2026-05-19: README and linked docs must make sense holistically as one user journey. The governance loop now explicitly requires strong information hierarchy, easy-to-understand copy, coherent routing, low duplication, and iteration until the linked docs system is genuinely clear rather than merely improved. - Added a real scheduled docs-enforcement loop on 2026-05-19: cron job `ralph-workflow-full-house-docs-audit` runs weekly on Mondays at 11:00 Europe/Berlin and performs a full-house Ralph Workflow docs audit. The job is instructed to strengthen process rules first if needed, then holistically inspect README/START_HERE/docs index/high-traffic linked d",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T04:33:10.017Z",
+      "lastRecalledAt": "2026-05-28T04:33:10.017Z",
+      "queryHashes": [
+        "45a1b03f5e39"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "docs-quality",
+        "easy-to-understand",
+        "docs-enforcement",
+        "europe/berlin",
+        "full-house",
+        "readme/start-here/docs",
+        "index/high-traffic",
+        "docs"
+      ]
+    },
+    "memory:memory/2026-05-20.md:247:263": {
+      "key": "memory:memory/2026-05-20.md:247:263",
+      "path": "memory/2026-05-20.md",
+      "startLine": 247,
+      "endLine": 263,
+      "source": "memory",
+      "snippet": "- The no-op runner also re-ran the full expensive audit stack again even though it had made no file changes, wasting time and increasing overlap risk. ### Structural prevention changes applied - Removed the old OS crontab entries for direct docs runner/verifier launches. - Kept the Gateway-owned `ralph-workflow-docs-verifier-supervisor` as the single runtime owner. - Added a shared global lock (`agents/docs_quality/.docs_loop.lock`) so overlapping docs-loop runs fail fast instead of piling up. - Added subprocess timeouts to `ralph_docs_agentic_review.py`, `ralph_docs_runner.py`, and `ralph_docs_verify.py`. - Changed runner/verifier state tracking to fingerprint actual docs-surface contents,",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T04:33:10.017Z",
+      "lastRecalledAt": "2026-05-28T04:33:10.017Z",
+      "queryHashes": [
+        "45a1b03f5e39"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "gateway",
+        "no-op",
+        "re-ran",
+        "runner/verifier",
+        "gateway-owned",
+        "agents/docs-quality",
+        "docs-loop.lock",
+        "docs-loop"
+      ]
+    },
+    "memory:memory/2026-05-28.md:1:7": {
+      "key": "memory:memory/2026-05-28.md:1:7",
+      "path": "memory/2026-05-28.md",
+      "startLine": 1,
+      "endLine": 7,
+      "source": "memory",
+      "snippet": "## 2026-05-28 runtime flush - Repaired the stale marketing execution-board freshness chain so `drafts/marketing_execution_board_latest.md`, `agents/marketing/logs/outcome_execution_board_latest.json`, and `agents/marketing/logs/distribution_lane_latest.json` now refresh in sync and verify as fresh. - Reran marketing loop / independent verification after the repair; the stale-board blocker cleared. - Current whole-stack state is down to one real blocker: `marketing_independent_verification` still fails because primary repo adoption is still measurement-pending after shipped repairs, not because of artifact drift. - Latest health monitor at `2026-05-28T07:05:19.388673` reports 1 remaining issu",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-28T05:09:17.514Z",
+      "lastRecalledAt": "2026-05-28T05:09:17.514Z",
+      "queryHashes": [
+        "49b2a0855032"
+      ],
+      "recallDays": [
+        "2026-05-28"
+      ],
+      "conceptTags": [
+        "execution-board",
+        "stale-board",
+        "whole-stack",
+        "measurement-pending",
+        "2026-05-28t07",
+        "19.388673",
+        "runtime",
+        "flush"
       ]
     }
   }

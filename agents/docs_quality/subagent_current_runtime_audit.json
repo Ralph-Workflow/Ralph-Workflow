@@ -1,0 +1,232 @@
+{
+  "approved": false,
+  "signedBy": "docs-runtime-audit-subagent",
+  "checkedAtUtc": "2026-05-20 22:46:07 UTC",
+  "findings": [
+    "Current watchdog status shows checker/editorial/agentic/verifier runs all exited 0 and agentic artifact is green.",
+    "Watchdog unhealthy verdict is driven only by stale parallel signoff mismatch and repeat-failure escalation state, not by a live docs-stack failure.",
+    "Runtime state remains at consecutiveFailures=7 with no lastHealthyAtUtc because the watchdog only clears that counter on a healthy run; current stale signoff prevents that transition.",
+    "Cron job state for c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80 currently records lastRunStatus=ok and no consecutiveErrors, though a runningAtMs marker indicates an in-flight run.",
+    "Recent cron history shows earlier timeouts/broken reports, then later successful runs whose own summaries say deactivation is blocked by stale verifier/signoff state rather than fresh checker/editorial/agentic breakage."
+  ],
+  "proof": {
+    "watchdogStatus": {
+      "checkedAtUtc": "2026-05-20 22:44:17 UTC",
+      "healthy": false,
+      "reasons": [
+        "parallel signoff did not approve deactivation",
+        "REPEAT_FAILURE_ESCALATION_REQUIRED: consecutive failures reached 6",
+        "AUTO-ESCALATION RULE: use parallel subagents / all-hands repair before considering deactivation"
+      ],
+      "docsStateFingerprint": "29e78604506fe227",
+      "runs": [
+        {
+          "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_check.py",
+          "exit": 0,
+          "summary": "DOCS_QUALITY_OK"
+        },
+        {
+          "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_editorial_audit.py",
+          "exit": 0,
+          "summary": "DOCS_EDITORIAL_OK"
+        },
+        {
+          "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_agentic_review.py",
+          "exit": 0,
+          "summary": "{\n  \"status\": \"pass\",\n  \"summary\": \"Coherent, well-separated docs system that follows all rubrics. README\\u2192START_HERE\\u2192docs/README\\u2192Sphinx journey is clean, page roles are distinct, positioning is aligned, and common end-user questions are directly answerable.\",\n  \"loopHealthy\": true,\n  \"criteria\": {\n    \"positioning\": \"pass\","
+        },
+        {
+          "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py",
+          "exit": 0,
+          "summary": "independently verified pass\nSTOP_REASON: initial verification already passed\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL"
+        }
+      ],
+      "agentic": {
+        "status": "pass",
+        "loopHealthy": true,
+        "shouldUserNeedToRepeatThis": false,
+        "summary": "The Ralph Workflow docs system is clean, well-structured, and aligned with the positioning reference. The README\u2192START_HERE\u2192docs/README\u2192Sphinx journey is coherent and non-duplicating. Page roles are clearly separated, advanced config docs exist for all real surfaces, user stories are explicitly routed, and no hard failures are present."
+      },
+      "parallelSignoff": {
+        "approvedToDeactivate": false,
+        "docsStateFingerprint": "5dec6ed90d64d6a3",
+        "verifierPassed": false,
+        "repeatFailureCleared": false,
+        "reason": "Do not deactivate aggressive self-heal. The current docs fingerprint (5dec6ed90d64d6a3) does not match the prior green signoff/verifier state, the live editorial audit is failing on positioning gaps in getting-started.md and quickstart.md, and the repeat-failure condition is not cleared while the watchdog runtime still records unresolved consecutive failures."
+      }
+    },
+    "runtimeState": {
+      "consecutiveFailures": 7,
+      "lastDocsStateFingerprint": "29e78604506fe227",
+      "lastHealthyAtUtc": null,
+      "lastEscalationAtUtc": "2026-05-20 22:44:17 UTC",
+      "lastEscalationReason": "consecutive failures reached 6"
+    },
+    "recentCronRunTail": [
+      {
+        "ts": 1779309413010,
+        "jobId": "c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80",
+        "action": "finished",
+        "status": "error",
+        "error": "cron: job execution timed out",
+        "diagnostics": {
+          "summary": "cron: job execution timed out",
+          "entries": [
+            {
+              "ts": 1779309412933,
+              "source": "cron-setup",
+              "severity": "error",
+              "message": "cron: job execution timed out"
+            }
+          ]
+        },
+        "deliveryStatus": "unknown",
+        "runAtMs": 1779308812616,
+        "durationMs": 600317,
+        "nextRunAtMs": 1779309600000
+      },
+      {
+        "ts": 1779310781840,
+        "jobId": "c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80",
+        "action": "finished",
+        "status": "error",
+        "error": "cron: job execution timed out",
+        "diagnostics": {
+          "summary": "cron: job execution timed out",
+          "entries": [
+            {
+              "ts": 1779310781831,
+              "source": "cron-setup",
+              "severity": "error",
+              "message": "cron: job execution timed out"
+            }
+          ]
+        },
+        "deliveryStatus": "unknown",
+        "runId": "manual:c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80:1779309844376:170",
+        "runAtMs": 1779309844391,
+        "durationMs": 937440,
+        "nextRunAtMs": 1779310841831
+      },
+      {
+        "ts": 1779312078415,
+        "jobId": "c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80",
+        "action": "finished",
+        "status": "ok",
+        "summary": "Docs watchdog: BROKEN\nAction: Expanded `ralph-workflow/docs/sphinx/getting-started.md` and `quickstart.md`, fixed duplicated intro drift in `docs/reviewable-output.md`, and spawned parallel audits.\nTop blocker: Fresh agentic review still reports the manual handoff/first-run journey as unhealthy, and current verifier/signoff artifacts are stale/inconsistent with the edited docs state.\nDeactivation: not allowed\nNext: Run a fresh independent verifier/signoff on the current fingerprint, then tighten page-role separation across `docs/README.md`, Sphinx home, and first-run surfaces until agentic and verifier both pass.",
+        "delivered": true,
+        "deliveryStatus": "delivered",
+        "delivery": {
+          "intended": {
+            "channel": "matrix",
+            "to": null,
+            "accountId": "default",
+            "source": "explicit"
+          },
+          "resolved": {
+            "ok": true,
+            "channel": "matrix",
+            "to": "room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+            "accountId": "default",
+            "source": "last"
+          },
+          "fallbackUsed": true,
+          "delivered": true
+        },
+        "sessionId": "008ab545-18bd-4afd-ad5c-5d8a45958f94",
+        "sessionKey": "agent:main:cron:c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80:run:008ab545-18bd-4afd-ad5c-5d8a45958f94",
+        "runId": "manual:c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80:1779311138699:172",
+        "runAtMs": 1779311595728,
+        "durationMs": 482686,
+        "nextRunAtMs": 1779312600000,
+        "model": "gpt-5.4",
+        "provider": "openai-codex",
+        "usage": {
+          "input_tokens": 106083,
+          "output_tokens": 12613,
+          "total_tokens": 60462
+        }
+      },
+      {
+        "ts": 1779314066167,
+        "jobId": "c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80",
+        "action": "finished",
+        "status": "ok",
+        "summary": "Docs watchdog: BROKEN\nAction: repaired top docs surfaces and patched `docs_stack_temp_watchdog.py` to stop forcing skipped agentic reviews.\nTop blocker: current parallel signoff is still stale/mismatched to the latest docs fingerprint, so full deactivation proof is not current yet.\nDeactivation: not allowed\nNext: let the independent parallel signoff refresh complete, then rerun the watchdog exact sequence to certify the now-green agentic/verifier state against the current fingerprint.",
+        "delivered": true,
+        "deliveryStatus": "delivered",
+        "delivery": {
+          "intended": {
+            "channel": "matrix",
+            "to": null,
+            "accountId": "default",
+            "source": "explicit"
+          },
+          "resolved": {
+            "ok": true,
+            "channel": "matrix",
+            "to": "room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+            "accountId": "default",
+            "source": "last"
+          },
+          "fallbackUsed": true,
+          "delivered": true
+        },
+        "sessionId": "bcdc2761-453a-429e-b76b-363ecf284729",
+        "sessionKey": "agent:main:cron:c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80:run:bcdc2761-453a-429e-b76b-363ecf284729",
+        "runAtMs": 1779313265847,
+        "durationMs": 800312,
+        "nextRunAtMs": 1779314400000,
+        "model": "gpt-5.4",
+        "provider": "openai-codex",
+        "usage": {
+          "input_tokens": 60848,
+          "output_tokens": 9880,
+          "total_tokens": 52778
+        }
+      },
+      {
+        "ts": 1779316100593,
+        "jobId": "c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80",
+        "action": "finished",
+        "status": "ok",
+        "summary": "Inspected the implicated docs surfaces.\n\nFindings:\n- `ralph-workflow/docs/sphinx/getting-started.md`: locally looks sane; relative links resolve.\n- `ralph-workflow/docs/sphinx/quickstart.md`: locally looks sane; relative links resolve.\n- `ralph-workflow/docs/sphinx/index.rst`: locally looks sane; `:doc:` targets resolve.\n- `docs/reviewable-output.md`: this was the clear broken surface. It had stale/awkward copy drift and duplication/inconsistency versus the maintained docs variants.\n\nEdits made:\n- Rewrote `docs/reviewable-output.md` into a clean, coherent version aligned with the maintained docs tone and structure.\n- Kept links local and validated them after editing.\n\nValidation:\n- Checked relative links in the touched file: all resolve.\n- The other specifically implicated files did not show obvious local breakage from content/link inspection.\n\nRecommendation:\n- Deactivation should remain blocked only if the watchdog is enforcing broader docs consistency beyond this local defect.\n- From this local inspection, the strongest obvious repair was `docs/reviewable-output.md`, and I applied it. The other named surfaces do not currently look broken enough to justify more blocking on their own.\n\nFound the core problem: the stack is **not provably healthy**, and aggressive self-heal deactivation should **remain blocked**.\n\nWhat I did\n- Audited watchdog/runtime artifacts under `agents/docs_quality`.\n- Inspected implicated docs pages in `github-mirror`.\n- Applied a safe local repair to the **self-heal source**, not just the docs outputs:\n  - patched `agents/docs_quality/ralph_docs_remediate.py`\n  - updated its hardcoded templates for:\n    - `docs/reviewable-output.md`\n    - `ralph-workflow/docs/sphinx/getting-started.md`\n    - `ralph-workflow/docs/sphinx/quickstart.md`\n- Rewrote those three live docs files to match the improved templates.\n\nWhat I found\n- The stack has **artifact contradiction/race** problems:\n  - `ralph_verifier_latest.md` can say pass for docs fingerprint `d57\u2026",
+        "delivered": true,
+        "deliveryStatus": "delivered",
+        "delivery": {
+          "intended": {
+            "channel": "matrix",
+            "to": null,
+            "accountId": "default",
+            "source": "explicit"
+          },
+          "resolved": {
+            "ok": true,
+            "channel": "matrix",
+            "to": "room:!NqEGMgvUEJfsEKuBGy:matrix.org",
+            "accountId": "default",
+            "source": "last"
+          },
+          "fallbackUsed": true,
+          "delivered": true
+        },
+        "sessionId": "efbf321f-7bef-4004-9ed1-14773e4d9d27",
+        "sessionKey": "agent:main:cron:c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80:run:efbf321f-7bef-4004-9ed1-14773e4d9d27",
+        "runAtMs": 1779315116243,
+        "durationMs": 984333,
+        "nextRunAtMs": 1779316200000,
+        "model": "gpt-5.4",
+        "provider": "openai-codex",
+        "usage": {
+          "input_tokens": 140682,
+          "output_tokens": 16700,
+          "total_tokens": 66125
+        }
+      }
+    ]
+  },
+  "blockers": [
+    "Parallel signoff artifact is stale for fingerprint 5dec6ed90d64d6a3 and explicitly does not approve deactivation.",
+    "Watchdog runtime repeat-failure counter/escalation is stale-persistent until a healthy run with refreshed signoff clears it."
+  ]
+}

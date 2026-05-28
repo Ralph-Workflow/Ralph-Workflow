@@ -7,6 +7,7 @@ Start here if you already know Ralph Workflow is interesting and want the shorte
 - [Start here on one real task](../START_HERE.md)
 - [First-task guide](./first-task-guide.md)
 - [Workflow composition example](../content/examples/workflow_composition_example.md)
+- [Tomorrow-morning scorecard](../content/examples/tomorrow_morning_scorecard.md)
 - [Example review bundle](../content/examples/review_bundle_example.md)
 - [When to use Ralph Workflow](./when-to-use-ralph-workflow.md)
 - [Review AI coding output before merge](../content/guides/review_ai_coding_output_before_merge.md)
@@ -30,6 +31,7 @@ Start here if you already know Ralph Workflow is interesting and want the shorte
 
 - [Example workflow composition](../content/examples/workflow_composition_example.md)
 - [Example first task](../content/examples/first_task_example.md)
+- [Tomorrow-morning scorecard](../content/examples/tomorrow_morning_scorecard.md)
 - [Example review bundle](../content/examples/review_bundle_example.md)
 
 ## Primary project home

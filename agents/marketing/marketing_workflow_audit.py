@@ -22,6 +22,7 @@ RETRO = OUT_DIR / 'reddit_post_analysis.json'
 PRINCIPLES = ROOT / 'agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md'
 FOUR_QUESTIONS_DOC = ROOT / 'agents/marketing/FOUR_MARKETING_QUESTIONS.md'
 SELF_IMPROVEMENT_DOC = ROOT / 'agents/marketing/MARKETING_SELF_IMPROVEMENT.md'
+REDDIT_FRESH_OPENINGS_DOC = ROOT / 'agents/marketing/reddit_fresh_openings.md'
 APOLLO_SEQUENCE_STATUS = OUT_DIR / 'apollo_sequence_status_latest.json'
 APOLLO_STATUS = OUT_DIR / 'apollo_status.json'
 OUTCOME_CAPABILITY_STATUS = OUT_DIR / 'outcome_capability_latest.json'
@@ -99,6 +100,49 @@ def load_json(path: Path) -> dict:
         return json.loads(path.read_text(encoding='utf-8'))
     except Exception:
         return {}
+
+
+def sync_shared_findings_artifacts(now: datetime, audit_payload: dict[str, Any]) -> dict[str, Any]:
+    """Refresh the shared runtime artifacts that downstream marketing loops actually consume.
+
+    The audit cron previously refreshed only the audit itself, which let
+    distribution_lane_latest / marketing_execution_board_latest /
+    outcome_execution_board_latest drift stale versus the new audit truth.
+    That made the loop look healthy in audit output while downstream consumers
+    still read old execution-lane state.
+    """
+    try:
+        from agents.marketing.distribution_lane_selector import choose_distribution_lane
+        from agents.marketing.distribution_lane_executor import _write_marketing_execution_board
+        from agents.marketing import outcome_execution_board_runner
+
+        decision = choose_distribution_lane(
+            now,
+            write_action_log=False,
+            persist_latest_artifacts=True,
+        )
+        board_path, board_targets = _write_marketing_execution_board(now)
+        status_payload = outcome_execution_board_runner._build_payload(
+            now=now,
+            audit=audit_payload,
+            decision=decision,
+            board_path=board_path,
+            board_targets=board_targets,
+            execution=None,
+        )
+        outcome_execution_board_runner._write_status(status_payload)
+        return {
+            'status': 'synced',
+            'selected_lane': getattr(decision, 'lane', ''),
+            'execution_board_path': str(board_path),
+            'execution_board_targets': list(board_targets),
+            'outcome_status_path': str(outcome_execution_board_runner.STATUS_JSON),
+        }
+    except Exception as exc:
+        return {
+            'status': 'failed',
+            'error': f'{type(exc).__name__}: {exc}',
+        }
 
 
 def reddit_execution_status_path() -> Path:
@@ -391,10 +435,20 @@ def load_reddit_channel_state() -> dict[str, bool]:
                 runtime_recent = (datetime.now().astimezone() - runtime_dt) <= timedelta(hours=12)
             except ValueError:
                 runtime_recent = False
+        blocking_statuses = {'network_security_blocked', 'execution_blocked', 'not_logged_in'}
         if runtime_recent and runtime_status == 'browser_session_ready':
             reddit_blocked = False
-        elif runtime_recent and runtime_status in {'network_security_blocked', 'execution_blocked', 'not_logged_in'}:
-            reddit_blocked = True
+        elif runtime_status in blocking_statuses:
+            runtime_blocking_can_still_explain_monitor = (
+                runtime_recent
+                or provider_degraded
+                or 'fails closed on posting' in text_l
+                or 'fail closed on posting' in text_l
+                or 'partial coverage' in text_l
+                or 'partial visibility' in text_l
+            )
+            if runtime_blocking_can_still_explain_monitor:
+                reddit_blocked = True
 
     return {
         'reddit_blocked': reddit_blocked,
@@ -821,6 +875,10 @@ def main() -> int:
         low_signal.append(f'{latest_activity_type or "latest marketing activity"}: {latest_activity_warning}')
     if reddit_blocked:
         low_signal.append('Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.')
+        if REDDIT_FRESH_OPENINGS_DOC.exists():
+            low_signal.append(
+                f'Reddit opening repair already exists in the shared artifact {REDDIT_FRESH_OPENINGS_DOC}; reuse that bank when channel access returns instead of drafting another siloed template.'
+            )
 
     for repair in sorted(repair_actions, key=lambda row: (row.get('priority', 99), row.get('failure_type', ''))):
         should_change_now.append(repair['action'])
@@ -889,6 +947,8 @@ def main() -> int:
         } if latest_action else None,
         'apollo_sequence_status': apollo_sequence_status or None,
     }
+    AUDIT_JSON.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding='utf-8')
+    payload['shared_artifact_sync'] = sync_shared_findings_artifacts(now, payload)
     AUDIT_JSON.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding='utf-8')
 
     lines = [
@@ -984,6 +1044,17 @@ def main() -> int:
     lines += ['', '## Four marketing questions that messaging must answer']
     lines += [f'- {k}: {v}' for k, v in message_checks.items()]
     lines += ['', '## Principle reference', f'- See `{PRINCIPLES}`', f'- See `{FOUR_QUESTIONS_DOC}`', f'- See `{SELF_IMPROVEMENT_DOC}`']
+    sync_status = payload.get('shared_artifact_sync') or {}
+    lines += ['', '## Shared findings artifact sync']
+    lines.append(f"- Status: {sync_status.get('status', 'unknown')}")
+    if sync_status.get('selected_lane'):
+        lines.append(f"- Refreshed distribution lane: {sync_status['selected_lane']}")
+    if sync_status.get('execution_board_path'):
+        lines.append(f"- Execution board: {sync_status['execution_board_path']}")
+    if sync_status.get('outcome_status_path'):
+        lines.append(f"- Outcome status: {sync_status['outcome_status_path']}")
+    if sync_status.get('error'):
+        lines.append(f"- Error: {sync_status['error']}")
     AUDIT_MD.write_text('\n'.join(lines) + '\n', encoding='utf-8')
     print(json.dumps(payload, indent=2, ensure_ascii=False))
     return 0

@@ -93,6 +93,7 @@ A good first run should leave you with:
 If the run only gives you activity or narration without a convincing repo outcome, treat that as a miss and tighten the task before trying again.
 
 If you want to see the expected handoff shape before you run, read [content/examples/review_bundle_example.md](./content/examples/review_bundle_example.md).
+If you want a fast pass/fail checklist for the next morning, use [content/examples/tomorrow_morning_scorecard.md](./content/examples/tomorrow_morning_scorecard.md).
 
 ## Tomorrow-morning review card
 
@@ -109,7 +110,9 @@ If the answer is yes, follow the project on **Codeberg** first: <https://codeber
 ## Next pages only if you need them
 
 - task selection — [docs/first-task-guide.md](./docs/first-task-guide.md)
+- tomorrow-morning scorecard — [content/examples/tomorrow_morning_scorecard.md](./content/examples/tomorrow_morning_scorecard.md)
 - morning-after review bundle example — [content/examples/review_bundle_example.md](./content/examples/review_bundle_example.md)
 - choosing Ralph Workflow vs another chat/editor loop — [docs/when-to-use-ralph-workflow.md](./docs/when-to-use-ralph-workflow.md)
 - workflow composition walkthrough — [content/examples/workflow_composition_example.md](./content/examples/workflow_composition_example.md)
 - docs switchboard — [docs/README.md](./docs/README.md)
+- [Workflow composition example](./content/examples/workflow_composition_example.md)

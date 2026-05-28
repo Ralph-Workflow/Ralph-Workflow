@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
 import urllib.request
 import urllib.parse
@@ -32,10 +33,19 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-AGENTS_DIR = Path("/home/mistlight/.openclaw/workspace/agents/marketing")
+SCRIPT_NAME = Path(__file__).name
+ROOT = Path("/home/mistlight/.openclaw/workspace")
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from agents.marketing.market_intelligence_runtime import record_market_intelligence_production
+
+AGENTS_DIR = ROOT / "agents/marketing"
 REPORTS_DIR = Path("/home/mistlight/.openclaw/workspace/seo-reports")
 COMPETITOR_REPORTS = REPORTS_DIR / "competitors"
 COMPETITOR_REPORTS.mkdir(parents=True, exist_ok=True)
+MARKET_INTELLIGENCE_FILE = AGENTS_DIR / "logs" / "market_intelligence_latest.json"
+POSITIONING_DOC = AGENTS_DIR / "RALPH_WORKFLOW_POSITIONING.md"
 
 SITE = "ralphworkflow.com"
 SITE_URL = f"https://{SITE}"
@@ -465,6 +475,62 @@ def discover_new_competitors() -> list[dict]:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def write_market_intelligence_artifact(
+    *,
+    monitoring: dict,
+    comparisons: list[tuple[str, str, Path]],
+    new_competitors: list[dict],
+    summary_path: Path,
+    snapshot_path: Path,
+) -> None:
+    payload = {
+        "generated_at": datetime.now().isoformat(),
+        "source": "competitor_analysis.py",
+        "positioning_doc": str(POSITIONING_DOC),
+        "summary_report": str(summary_path),
+        "monitoring_snapshot": str(snapshot_path),
+        "comparison_pages": [
+            {
+                "slug": slug,
+                "name": name,
+                "path": str(path),
+            }
+            for slug, name, path in comparisons
+        ],
+        "competitors": {
+            slug: {
+                "name": data.get("name") or COMPETITORS.get(slug, {}).get("name"),
+                "positioning": data.get("positioning") or COMPETITORS.get(slug, {}).get("positioning"),
+                "site_status": data.get("site_status"),
+                "github_stars": data.get("github_stars"),
+                "key_features_found": data.get("key_features_found", []),
+            }
+            for slug, data in monitoring.items()
+        },
+        "ralph_core_truths": {
+            "what_is_it": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.",
+            "who_is_it_for": "Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session.",
+            "why_different": "It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.",
+            "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process.",
+        },
+        "ralph_advantage_keywords": RALPH_ADVANTAGE_KEYWORDS,
+        "discovered_candidates": new_competitors,
+        "reuse_contract": {
+            "runtime_proven_consumers": [
+                "agents/marketing/run.py",
+                "agents/marketing/reddit_monitor.py",
+            ],
+            "prompt_guided_consumers": [
+                "ralph-site-owner-loop",
+                "agent-architecture-watchdog",
+            ],
+            "purpose": "Shared market and competitor findings artifact for site updates, positioning checks, and marketing tactics.",
+        },
+    }
+    MARKET_INTELLIGENCE_FILE.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    record_market_intelligence_production("competitor_analysis.py", payload)
+
+
 def main() -> int:
     script_start = time.time()
     print(f"[competitor_analysis] Starting competitor analysis at {datetime.now().strftime('%Y-%m-%d %H:%M')}")
@@ -525,6 +591,15 @@ def main() -> int:
     summary_path = REPORTS_DIR / f"competitor_analysis_{today}.md"
     summary_path.write_text("\n".join(summary_lines))
 
+    snapshot_path = COMPETITOR_REPORTS / f"monitoring_{today}.json"
+    write_market_intelligence_artifact(
+        monitoring=monitoring,
+        comparisons=comparisons,
+        new_competitors=new_competitors,
+        summary_path=summary_path,
+        snapshot_path=snapshot_path,
+    )
+
     total = time.time() - script_start
     print(f"\nCompetitor analysis complete ({total:.1f}s total):")
     print(f"  - Monitored: {len(monitoring)} competitors")
@@ -533,6 +608,45 @@ def main() -> int:
     print(f"  - Report: {summary_path}")
 
     return 0
+
+
+# ── Self-improvement ──────────────────────────────────────────────────────────
+
+SELF_IMPROVEMENT_MANDATE = {
+    "owner": "marketing_system",
+    "goal": "improve real marketing outcomes, not just technical health",
+    "default_decision_rule": "it is up to the system to decide and proceed",
+    "required_when_outcomes_flat": [
+        "create_new_agents",
+        "repair_existing_agents",
+        "rewrite_prompts",
+        "change_cron_jobs",
+        "patch_marketing_scripts",
+        "add_or_tighten_tests",
+        "retire_stale_paths",
+        "generate_new_distribution_assets",
+    ],
+    "technical_repairs_alone_are_insufficient": True,
+}
+
+# Note: competitor_analysis.py is an intelligence/reporting script.
+# Self-improvement for reporters means: if outcomes are flat, the system should
+# expand competitor coverage or change how findings feed into marketing strategy.
+
+def flat_outcome_count(script_name: str, max_runs: int = 3) -> int:
+    log_path = Path('/home/mistlight/.openclaw/workspace/outreach-log.md')
+    if not log_path.exists():
+        return 0
+    text = log_path.read_text()
+    import re
+    entries = re.findall(rf'###\s+.*?{re.escape(script_name)}.*?(?=\n###|\Z)', text, re.DOTALL)
+    flat_count = sum(1 for e in entries if 'no measurable outcome' in e.lower() or 'flat' in e.lower())
+    return min(flat_count, max_runs)
+
+
+def should_self_improve() -> bool:
+    """Return True if this loop has had flat outcomes for 3+ consecutive runs."""
+    return flat_outcome_count(SCRIPT_NAME.replace('.py','')) >= 3
 
 
 if __name__ == "__main__":

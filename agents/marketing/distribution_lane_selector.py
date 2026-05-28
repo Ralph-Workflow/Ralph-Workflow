@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 import urllib.parse
 from dataclasses import dataclass, is_dataclass, replace
 from datetime import datetime, timedelta
@@ -12,6 +13,15 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path('/home/mistlight/.openclaw/workspace')
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from agents.marketing.run_posting import (
+    already_posted_successfully,
+    digest_text,
+    extract_title_and_body,
+    load_posted,
+)
 AGENTS_DIR = ROOT / 'agents/marketing'
 LOG_DIR = AGENTS_DIR / 'logs'
 DRAFTS_DIR = ROOT / 'drafts'
@@ -42,6 +52,12 @@ STACKOVERFLOW_LATEST_PATH = LOG_DIR / 'stackoverflow_answer_lane_latest.json'
 STACKOVERFLOW_HANDOFF_LATEST_PATH = DRAFTS_DIR / 'stackoverflow_answer_handoff_packet_latest.md'
 DIRECTORY_CONFIRMATION_EXECUTION_LATEST_PATH = DRAFTS_DIR / 'directory_confirmation_execution_latest.md'
 BACKLINK_STATUS_LATEST_PATH = LOG_DIR / 'backlink_status_latest.json'
+OWNED_CONTENT_SOURCE_CANDIDATES = [
+    ROOT / 'content/guides/good_unattended_task.md',
+    ROOT / 'docs/first-task-guide.md',
+    ROOT / 'content/guides/review_ai_coding_output_before_merge.md',
+    ROOT / 'content/guides/autonomous_ai_workflows_production_reliability.md',
+]
 LOW_SIGNAL_APOLLO_MARKERS = {
     'record count was 0',
     '0 right after creation',
@@ -282,9 +298,7 @@ def _reddit_autopost_state_path() -> Path:
 
 
 def _execution_board_latest_path() -> Path:
-    if EXECUTION_BOARD_LATEST_PATH.parent == DRAFTS_DIR:
-        return EXECUTION_BOARD_LATEST_PATH
-    return DRAFTS_DIR / 'marketing_execution_board_latest.md'
+    return EXECUTION_BOARD_LATEST_PATH
 
 
 def _reddit_autopost_cooldown_active(now: datetime) -> bool:
@@ -440,6 +454,48 @@ def _is_manual_community_discussion_asset(*, action_type: str, title: str, artif
 
 
 
+def _primary_repo_flat_manual_review_asset_suppressed(
+    now: datetime,
+    *,
+    primary_repo_flat_targets: list[str] | None = None,
+    manual_review_targets: list[str] | None = None,
+) -> bool:
+    targets = primary_repo_flat_targets
+    if targets is None:
+        recent_publisher_targets = set(_recent_contact_targets(
+            now,
+            action_types=PUBLISHER_CONTACT_ACTION_TYPES,
+            days=7,
+        )) | _recent_curator_queue_contact_targets(now, days=7)
+        active_manual_targets = _active_manual_outreach_delivery_targets(now)
+        targets = [
+            target for target in _primary_repo_flat_contact_targets_waiting_for_execution()
+            if target not in recent_publisher_targets and target not in active_manual_targets
+        ]
+
+    review_targets = manual_review_targets or _primary_repo_flat_manual_review_targets_waiting_for_execution(now)
+    if not review_targets:
+        return False
+
+    if _primary_repo_flat_packet_delivery_still_active(now, targets or []):
+        return False
+
+    if not _primary_repo_flat_manual_review_asset_current(now, review_targets):
+        return False
+
+    manual_followthrough_repeat_count = _primary_repo_flat_manual_followthrough_repeat_count(
+        now,
+        review_targets,
+        hours=PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW_HOURS,
+    )
+    if manual_followthrough_repeat_count >= PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD:
+        return True
+
+    # Prepared-only packet churn should block reselecting the stale sendable packet,
+    # not hide a distinct current manual-review asset for untouched non-runtime targets.
+    return False
+
+
 def _manual_outreach_assets_waiting_for_execution(now: datetime | None = None) -> list[dict[str, Any]]:
     now = now or datetime.now()
     assets: list[dict[str, Any]] = []
@@ -496,6 +552,27 @@ def _manual_outreach_assets_waiting_for_execution(now: datetime | None = None) -
             'targets': primary_repo_flat_targets,
             'artifact_path': packet_path,
             'title': 'Primary-repo-flat publisher contact packet',
+        })
+
+    manual_review_targets = _primary_repo_flat_manual_review_targets_waiting_for_execution(now)
+    manual_review_path = DRAFTS_DIR / 'primary_repo_flat_manual_review_asset_latest.md'
+    manual_review_suppressed = _primary_repo_flat_manual_review_asset_suppressed(
+        now,
+        primary_repo_flat_targets=primary_repo_flat_targets,
+        manual_review_targets=manual_review_targets,
+    )
+    if (
+        manual_review_targets
+        and not manual_review_suppressed
+        and _primary_repo_flat_manual_review_asset_current(now, manual_review_targets)
+    ):
+        asset_path = str(manual_review_path)
+        seen_paths.add(asset_path)
+        assets.append({
+            'target': ', '.join(manual_review_targets[:3]),
+            'targets': manual_review_targets,
+            'artifact_path': asset_path,
+            'title': 'Primary-repo-flat manual follow-through asset',
         })
 
     cutoff = now - timedelta(days=14)
@@ -588,6 +665,8 @@ def _active_manual_outreach_delivery_targets(now: datetime) -> set[str]:
         if not (
             action_type.endswith(MANUAL_OUTREACH_ASSET_ACTION_SUFFIX)
             or str(chosen_action.get('channel') or payload.get('channel') or '').strip().lower() == 'manual_contact_asset'
+            or bool(result.get('targets_prepared'))
+            or bool(((payload.get('why_this_action') or {}).get('targets_prepared') if isinstance(payload.get('why_this_action'), dict) else None))
         ):
             continue
         raw_prepared_targets = (
@@ -644,13 +723,36 @@ def _active_manual_outreach_delivery_targets(now: datetime) -> set[str]:
             continue
         if next_review_at is not None and next_review_at < now:
             continue
-        raw_targets = ((payload.get('why_this_action') or {}).get('targets_prepared') or [])
+        explicit_targets: set[str] = set()
+        raw_targets = (
+            result.get('targets_delivered')
+            or result.get('targets')
+            or payload.get('targets')
+            or chosen_action.get('targets')
+            or []
+        )
         for item in raw_targets:
             target = _display_target_name(str(item).strip())
             if target:
-                targets.add(target)
+                explicit_targets.add(target)
+        if explicit_targets:
+            targets.update(explicit_targets)
+            continue
+        local_prepared_targets = (
+            result.get('targets_prepared')
+            or (((payload.get('why_this_action') or {}).get('targets_prepared')) if isinstance(payload.get('why_this_action'), dict) else None)
+            or []
+        )
+        normalized_local_prepared = {
+            target for item in local_prepared_targets
+            if (target := _display_target_name(str(item).strip()))
+        }
+        if normalized_local_prepared:
+            targets.update(normalized_local_prepared)
+            continue
         if packet_path and packet_path in prepared_targets_by_packet:
             targets.update(prepared_targets_by_packet[packet_path])
+            continue
         fallback_target = _display_target_name(str(chosen_action.get('target') or payload.get('target') or '').strip())
         if fallback_target:
             targets.add(fallback_target)
@@ -698,6 +800,7 @@ def _execution_board_waiting_blocks() -> list[list[str]]:
 
 
 def _execution_board_has_no_truthful_do_now_packet(now: datetime | None = None) -> bool:
+    now = now or datetime.now()
     path = _execution_board_latest_path()
     try:
         text = path.read_text(encoding='utf-8')
@@ -720,30 +823,68 @@ def _execution_board_has_no_truthful_do_now_packet(now: datetime | None = None) 
             or 'hold manual delivery until that congestion clears' in joined
         )
 
-    def _block_is_explicit_empty(block: list[str]) -> bool:
-        joined = '\n'.join(block)
-        return any(
-            marker in joined
-            for marker in (
-                'No do-now handoff packet is currently truthful in this review window.',
-                'No truthful do-now packet remains on this board right now.',
-                '- None in the current short-window hold.',
-            )
-        )
-
     board_is_post_hold_only = bool(blocks) and all(_block_is_post_hold_only(block) for block in blocks)
     if board_is_post_hold_only:
         return True
 
-    if explicit_empty_marker and any(not _block_is_explicit_empty(block) for block in blocks):
+    manual_outreach_assets = _manual_outreach_assets_waiting_for_execution(now)
+    if manual_outreach_assets:
+        def _asset_is_not_truthful_in_current_window(asset: dict[str, Any]) -> bool:
+            artifact_name = Path(str(asset.get('artifact_path') or '')).name.lower()
+            title = str(asset.get('title') or '').strip().lower()
+            targets = [str(item).strip() for item in (asset.get('targets') or []) if str(item).strip()]
+            if (
+                artifact_name == 'primary_repo_flat_contact_handoff_packet_latest.md'
+                or 'publisher contact packet' in title
+            ):
+                return True
+            if (
+                artifact_name == 'primary_repo_flat_manual_review_asset_latest.md'
+                or 'manual follow-through asset' in title
+            ):
+                if _primary_repo_flat_manual_review_asset_suppressed(
+                    now,
+                    manual_review_targets=targets or None,
+                ):
+                    return True
+                return not _execution_board_surfaces_manual_publisher_follow_through(targets)
+            return False
+
+        if not explicit_empty_marker or any(not _asset_is_not_truthful_in_current_window(asset) for asset in manual_outreach_assets):
+            return False
+    if _pending_confirmation_actions(now):
         return False
 
-    if _manual_outreach_assets_waiting_for_execution(now):
-        return False
-    if _pending_confirmation_actions(now or datetime.now()):
+    # The execution board is the canonical cross-lane truth surface, but stale copied empty-state
+    # lines should not erase a real follow-through asset that still exists in the logs/artifacts.
+    if explicit_empty_marker:
+        return True
+
+    return False
+
+
+def _execution_board_surfaces_manual_publisher_follow_through(targets: list[str] | None = None) -> bool:
+    blocks = _execution_board_waiting_blocks()
+    if not blocks:
         return False
 
-    return explicit_empty_marker
+    asset_markers = {
+        'manual publisher outreach asset',
+        'primary-repo-flat manual follow-through asset',
+        'primary_repo_flat_manual_review_asset_latest.md',
+    }
+    normalized_targets = [str(target).strip().lower() for target in (targets or []) if str(target).strip()]
+
+    for block in blocks:
+        joined = '\n'.join(block)
+        lowered = joined.lower()
+        if 'when: do now' not in lowered:
+            continue
+        if not any(marker in lowered for marker in asset_markers):
+            continue
+        if not normalized_targets or any(target in lowered for target in normalized_targets):
+            return True
+    return False
 
 
 def _execution_board_requests_primary_repo_flat_refresh() -> bool:
@@ -817,17 +958,41 @@ def _distribution_architecture_repair_state(
         recent_guard_follow_through_logs: list[str] = []
         guard_pause_logs: list[str] = []
         latest_matching_at: datetime | None = None
+        latest_matching_release_at: datetime | None = None
         latest_guard_follow_through_at: datetime | None = None
         latest_guard_pause_at: datetime | None = None
+        latest_guard_pause_release_at: datetime | None = None
         earliest_guard_pause_at: datetime | None = None
+        concrete_guard_pause_artifacts: set[str] = set()
+        for path in LOG_DIR.glob('marketing_*.json'):
+            if any(token in path.name for token in ('latest', 'workflow_audit', 'loop_runner', 'loop_verifier', 'independent_verification', 'momentum_watchdog', 'positioning_audit')):
+                continue
+            payload = _load_json(path)
+            chosen_action = _chosen_action_dict(payload)
+            chosen_action_type = str(chosen_action.get('type') or payload.get('action_type') or payload.get('type') or payload.get('action') or '').strip()
+            if chosen_action_type == 'distribution_architecture_guard_pause':
+                artifact = str(
+                    chosen_action.get('artifact')
+                    or chosen_action.get('draft')
+                    or chosen_action.get('packet')
+                    or ''
+                ).strip()
+                if artifact:
+                    concrete_guard_pause_artifacts.add(artifact)
         for path in LOG_DIR.glob('marketing_*.json'):
             if any(token in path.name for token in ('latest', 'workflow_audit', 'loop_runner', 'loop_verifier', 'independent_verification', 'momentum_watchdog', 'positioning_audit')):
                 continue
             payload = _load_json(path)
             action_type = _chosen_action_type(payload)
             chosen_action = _chosen_action_dict(payload)
+            distribution_execution = payload.get('distribution_execution') if isinstance(payload.get('distribution_execution'), dict) else {}
+            distribution_execution_type = str(distribution_execution.get('action_type') or distribution_execution.get('type') or '').strip()
             action_channel = str(chosen_action.get('channel') or payload.get('channel') or '').strip()
-            is_guard_pause = action_type == 'distribution_architecture_guard_pause' or action_channel == 'distribution_architecture_guard_pause'
+            is_guard_pause = (
+                action_type == 'distribution_architecture_guard_pause'
+                or action_channel == 'distribution_architecture_guard_pause'
+                or distribution_execution_type == 'distribution_architecture_guard_pause'
+            )
             if action_type not in DISTRIBUTION_ARCHITECTURE_REPAIR_ACTION_TYPES | DISTRIBUTION_ARCHITECTURE_GUARD_FOLLOW_THROUGH_ACTION_TYPES and not is_guard_pause:
                 continue
             dt = _parse_dt(payload.get('timestamp') or payload.get('timestamp_utc'))
@@ -837,6 +1002,11 @@ def _distribution_architecture_repair_state(
                 continue
             verification = payload.get('verification') if isinstance(payload.get('verification'), dict) else {}
             logged_fingerprint = str(verification.get('execution_board_fingerprint') or '').strip()
+            logged_release_at = _parse_dt(
+                verification.get('short_review_window_release_at')
+                or payload.get('short_review_window_release_at')
+                or payload.get('release_at')
+            )
             if not fingerprint:
                 fingerprint_matches = True
             elif logged_fingerprint:
@@ -852,6 +1022,7 @@ def _distribution_architecture_repair_state(
                 matching_logs.append(str(path))
                 if latest_matching_at is None or dt > latest_matching_at:
                     latest_matching_at = dt
+                    latest_matching_release_at = logged_release_at
             if action_type == 'distribution_architecture_churn_guard_repair':
                 guard_logs.append(str(path))
             if action_type == 'distribution_architecture_guard_follow_through':
@@ -859,9 +1030,13 @@ def _distribution_architecture_repair_state(
                 if latest_guard_follow_through_at is None or dt > latest_guard_follow_through_at:
                     latest_guard_follow_through_at = dt
             if is_guard_pause:
+                summary_artifact = str(distribution_execution.get('artifact_path') or '').strip()
+                if not action_type and distribution_execution_type == 'distribution_architecture_guard_pause' and summary_artifact and summary_artifact in concrete_guard_pause_artifacts:
+                    continue
                 guard_pause_logs.append(str(path))
                 if latest_guard_pause_at is None or dt > latest_guard_pause_at:
                     latest_guard_pause_at = dt
+                    latest_guard_pause_release_at = logged_release_at
                 if earliest_guard_pause_at is None or dt < earliest_guard_pause_at:
                     earliest_guard_pause_at = dt
         return {
@@ -871,8 +1046,10 @@ def _distribution_architecture_repair_state(
             'recent_guard_follow_through_logs': recent_guard_follow_through_logs,
             'guard_pause_logs': guard_pause_logs,
             'latest_matching_at': latest_matching_at,
+            'latest_matching_release_at': latest_matching_release_at,
             'latest_guard_follow_through_at': latest_guard_follow_through_at,
             'latest_guard_pause_at': latest_guard_pause_at,
+            'latest_guard_pause_release_at': latest_guard_pause_release_at,
             'earliest_guard_pause_at': earliest_guard_pause_at,
         }
 
@@ -886,14 +1063,18 @@ def _distribution_architecture_repair_state(
         'latest_matching_at': None,
         'latest_guard_follow_through_at': None,
         'latest_guard_pause_at': None,
+        'latest_guard_pause_release_at': None,
+        'latest_matching_release_at': None,
         'earliest_guard_pause_at': None,
     }
     if fingerprint:
         fallback_state = _collect(fallback_started_at)
-        for key in ('matching_logs', 'guard_logs', 'guard_follow_through_logs', 'guard_pause_logs'):
+        for key in ('matching_logs', 'guard_logs', 'guard_pause_logs'):
             if not state[key]:
                 state[key] = fallback_state[key]
-        for key in ('latest_matching_at', 'latest_guard_follow_through_at', 'latest_guard_pause_at'):
+        if not state['guard_follow_through_logs'] and not state['guard_pause_logs']:
+            state['guard_follow_through_logs'] = fallback_state['guard_follow_through_logs']
+        for key in ('latest_matching_at', 'latest_matching_release_at', 'latest_guard_follow_through_at', 'latest_guard_pause_at', 'latest_guard_pause_release_at'):
             if state[key] is None:
                 state[key] = fallback_state[key]
         if state['earliest_guard_pause_at'] is None:
@@ -908,6 +1089,7 @@ def _distribution_architecture_repair_state(
     guard_pause_logs = state['guard_pause_logs']
     if not guard_follow_through_logs and guard_logs and recent_guard_follow_through_logs:
         guard_follow_through_logs = recent_guard_follow_through_logs
+    latest_guard_follow_through_at = state['latest_guard_follow_through_at']
     cumulative_guard_pause_logs = list(dict.fromkeys([
         *guard_pause_logs,
         *fallback_state['guard_pause_logs'],
@@ -918,6 +1100,7 @@ def _distribution_architecture_repair_state(
         'repeat_count': len(matching_logs),
         'matching_logs': matching_logs,
         'latest_matching_at': state['latest_matching_at'],
+        'latest_matching_release_at': state['latest_matching_release_at'],
         'third_strike': len(matching_logs) >= 2,
         'guard_installed': bool(guard_logs),
         'guard_logs': guard_logs,
@@ -925,12 +1108,13 @@ def _distribution_architecture_repair_state(
         'current_guard_follow_through_count': len(recent_guard_follow_through_logs),
         'recent_guard_follow_through_count': len(recent_guard_follow_through_logs),
         'guard_follow_through_logs': guard_follow_through_logs,
-        'latest_guard_follow_through_at': state['latest_guard_follow_through_at'],
+        'latest_guard_follow_through_at': latest_guard_follow_through_at,
         'guard_pause_count': len(guard_pause_logs),
         'guard_pause_logs': guard_pause_logs,
         'cumulative_guard_pause_count': len(cumulative_guard_pause_logs),
         'cumulative_guard_pause_logs': cumulative_guard_pause_logs,
         'latest_guard_pause_at': state['latest_guard_pause_at'],
+        'latest_guard_pause_release_at': state['latest_guard_pause_release_at'],
         'earliest_guard_pause_at': state['earliest_guard_pause_at'],
     }
 
@@ -1044,6 +1228,7 @@ def _short_review_window_reentry_repairs_state(
     repairs_seen: set[str] = set()
     historical_repairs_seen: set[str] = set()
     bridge_repairs_seen: set[str] = set()
+    historical_bridge_repairs_seen: set[str] = set()
     window_ends_at = min(now, release_at)
     for path in LOG_DIR.glob('marketing_*.json'):
         if any(token in path.name for token in ('latest', 'workflow_audit', 'loop_runner', 'loop_verifier', 'independent_verification', 'momentum_watchdog', 'positioning_audit')):
@@ -1061,10 +1246,16 @@ def _short_review_window_reentry_repairs_state(
             historical_repairs_seen.add(action_type)
             if dt >= window_started_at:
                 repairs_seen.add(action_type)
-        elif dt >= window_started_at:
-            bridge_repairs_seen.add(action_type)
+        else:
+            historical_bridge_repairs_seen.add(action_type)
+            if dt >= window_started_at:
+                bridge_repairs_seen.add(action_type)
 
-    if repairs_seen != MEASUREMENT_HOLD_REENTRY_REPAIR_ACTION_TYPES and bridge_repairs_seen and historical_repairs_seen == MEASUREMENT_HOLD_REENTRY_REPAIR_ACTION_TYPES:
+    if (
+        repairs_seen != MEASUREMENT_HOLD_REENTRY_REPAIR_ACTION_TYPES
+        and historical_repairs_seen == MEASUREMENT_HOLD_REENTRY_REPAIR_ACTION_TYPES
+        and (bridge_repairs_seen or historical_bridge_repairs_seen)
+    ):
         repairs_seen = set(MEASUREMENT_HOLD_REENTRY_REPAIR_ACTION_TYPES)
 
     return {
@@ -1189,6 +1380,29 @@ def _recent_owned_content_posts(now: datetime, hours: int = 36) -> list[dict[str
             posts.append(item)
     posts.sort(key=lambda item: _parse_dt(item.get('timestamp') or item.get('timestamp_utc')) or datetime.min)
     return posts
+
+
+def _owned_content_publication_available() -> bool:
+    posted = load_posted()
+    for source_path in OWNED_CONTENT_SOURCE_CANDIDATES:
+        if not source_path.exists():
+            continue
+        raw = source_path.read_text(encoding='utf-8')
+        _, body, metadata = extract_title_and_body(raw)
+        body = body.strip()
+        if len(body) < 300:
+            continue
+        draft_hash = digest_text(body)
+        if already_posted_successfully(
+            posted,
+            draft_hash,
+            'telegraph',
+            experiment_id=metadata.get('experiment_id'),
+            source_path=str(source_path),
+        ):
+            continue
+        return True
+    return False
 
 
 def _recent_live_action_family_count(now: datetime, *, hours: int, family: str) -> int:
@@ -1503,6 +1717,21 @@ def _directory_secondary_surface_followup_active(now: datetime) -> bool:
 def _is_primary_repo_flat(adoption: dict[str, Any]) -> bool:
     evaluation = adoption.get('evaluation', {})
     return 'primary_repo_flat' in evaluation.get('failing_signals', [])
+
+
+def _should_enforce_empty_board_architecture_repair(adoption: dict[str, Any], now: datetime) -> bool:
+    if _is_primary_repo_flat(adoption):
+        return True
+
+    audit = _load_json(_audit_latest_json_path())
+    bottleneck = str(audit.get('current_bottleneck') or '').strip().lower()
+    if bottleneck in {'conversion_to_free_use', 'distribution_and_message_to_primary_repo_conversion'}:
+        return True
+
+    if audit.get('repair_window_status') in ACTIVE_REPAIR_WINDOW_STATUSES and _execution_board_has_no_truthful_do_now_packet(now):
+        return True
+
+    return False
 
 
 def _working_directory_channels() -> list[str]:
@@ -1896,6 +2125,31 @@ def _primary_repo_flat_non_executable_targets_waiting_for_execution() -> list[st
     return targets
 
 
+def _primary_repo_flat_manual_review_targets_waiting_for_execution(now: datetime | None = None) -> list[str]:
+    now = now or datetime.now()
+    recent_publisher_targets = set(_recent_contact_targets(
+        now,
+        action_types=PUBLISHER_CONTACT_ACTION_TYPES,
+        days=7,
+    ))
+    active_manual_targets = _active_manual_outreach_delivery_targets(now)
+    payload = _load_json(_primary_repo_flat_contact_discovery_path())
+    targets: list[str] = []
+    for row in payload.get('targets', []) or []:
+        target_name = _display_target_name(str(row.get('target') or '').strip())
+        channels = row.get('channels') or []
+        if not target_name or not channels:
+            continue
+        if _publisher_target_has_runtime_sendable_channel(channels):
+            continue
+        if not _publisher_target_has_manual_executable_channel(channels):
+            continue
+        if target_name in recent_publisher_targets or target_name in active_manual_targets:
+            continue
+        targets.append(target_name)
+    return targets
+
+
 def _publisher_target_is_packet_executable(row: dict[str, Any]) -> bool:
     channels = row.get('channels') or []
     return _publisher_target_has_packet_executable_channel(channels)
@@ -1954,6 +2208,12 @@ def _publisher_target_has_manual_executable_channel(channels: list[dict[str, Any
             'message form',
             'intake form',
             'feedback form',
+            'contact page',
+            'advertise page',
+            'consultation page',
+            'consulting page',
+            'work with me page',
+            'work with me',
         )):
             return True
         if any(token in value for token in (
@@ -1965,6 +2225,28 @@ def _publisher_target_has_manual_executable_channel(channels: list[dict[str, Any
             'jotform.com',
             'hubspot.com',
             'formspree.io',
+        )):
+            return True
+    return False
+
+
+def _publisher_target_has_manual_reviewable_channel(channels: list[dict[str, Any]]) -> bool:
+    for channel in channels:
+        channel_type = str((channel or {}).get('type') or '').strip().lower()
+        if channel_type in {'telegram', 'github_issue', 'x', 'linkedin'}:
+            return True
+        if channel_type != 'website':
+            continue
+        label = str((channel or {}).get('label') or '').strip().lower()
+        if any(token in label for token in (
+            'contact',
+            'about',
+            'advertise',
+            'feedback',
+            'support',
+            'faq',
+            'consult',
+            'work with me',
         )):
             return True
     return False
@@ -2133,6 +2415,39 @@ def _primary_repo_flat_recent_prep_matches_targets(now: datetime, expected_targe
     return _primary_repo_flat_recent_prep_count(now, expected_targets) > 0
 
 
+def _primary_repo_flat_manual_followthrough_repeat_count(now: datetime, expected_targets: list[str], *, hours: int | None = None) -> int:
+    expected = [target.strip() for target in expected_targets if target.strip()]
+    if not expected:
+        return 0
+    cutoff = now - (timedelta(hours=hours) if hours is not None else timedelta(days=7))
+    total = 0
+    for path in LOG_DIR.glob('marketing_*.json'):
+        if any(token in path.name for token in ('latest', 'workflow_audit', 'loop_runner', 'loop_verifier', 'independent_verification', 'momentum_watchdog', 'positioning_audit')):
+            continue
+        payload = _load_json(path)
+        dt = _parse_dt(payload.get('timestamp') or payload.get('timestamp_utc'))
+        if dt is None:
+            dt = datetime.fromtimestamp(path.stat().st_mtime)
+        if dt < cutoff or dt > now:
+            continue
+        if _chosen_action_type(payload) != 'manual_outreach_asset_follow_through':
+            continue
+        result = payload.get('result') if isinstance(payload.get('result'), dict) else {}
+        status = str(result.get('status') or payload.get('status') or '').strip().lower()
+        if status != 'prepared':
+            continue
+        if bool(result.get('live_external_action') or payload.get('live_external_action')):
+            continue
+        prepared = [
+            _display_target_name(str(item).strip())
+            for item in ((payload.get('why_this_action') or {}).get('targets_prepared') or [])
+            if str(item).strip()
+        ]
+        if prepared and prepared == expected[:len(prepared)]:
+            total += 1
+    return total
+
+
 def _primary_repo_flat_contact_handoff_packet_current(now: datetime, expected_targets: list[str]) -> bool:
     handoff_path = _primary_repo_flat_contact_handoff_path()
     if not _handoff_packet_is_current(handoff_path, expected_targets, allow_superset=True):
@@ -2145,6 +2460,16 @@ def _primary_repo_flat_contact_handoff_packet_current(now: datetime, expected_ta
         _recent_action_delivery_current(now, 'primary_repo_flat_contact_handoff_packet_execution', not_before=handoff_mtime)
         or _primary_repo_flat_recent_prep_matches_targets(now, expected_targets)
     )
+
+
+def _primary_repo_flat_manual_review_asset_current(now: datetime, expected_targets: list[str]) -> bool:
+    if not expected_targets:
+        return False
+    asset_path = DRAFTS_DIR / 'primary_repo_flat_manual_review_asset_latest.md'
+    if not _handoff_packet_is_current(asset_path, expected_targets, allow_superset=True):
+        return False
+    asset_mtime = datetime.fromtimestamp(asset_path.stat().st_mtime)
+    return now - asset_mtime <= timedelta(days=7)
 
 
 def _primary_repo_flat_packet_delivery_still_active(now: datetime, expected_targets: list[str]) -> bool:
@@ -2719,8 +3044,9 @@ def choose_distribution_lane(
         (
             item for item in manual_outreach_assets
             if str(item.get('artifact_path') or '').strip() == str(primary_repo_flat_handoff_path)
-            or 'primary-repo-flat' in str(item.get('title') or '').strip().lower()
-            or 'primary_repo_flat' in Path(str(item.get('artifact_path') or '')).name.lower()
+            or 'publisher contact packet' in str(item.get('title') or '').strip().lower()
+            or 'contact_handoff_packet' in Path(str(item.get('artifact_path') or '')).name.lower()
+            or 'primary_repo_flat_manual_review_asset' in Path(str(item.get('artifact_path') or '')).name.lower()
         ),
         None,
     )
@@ -2760,6 +3086,12 @@ def choose_distribution_lane(
         primary_repo_flat_contact_targets,
         hours=PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW_HOURS,
     )
+    primary_repo_flat_manual_review_targets = _primary_repo_flat_manual_review_targets_waiting_for_execution(now)
+    primary_repo_flat_manual_followthrough_repeat_count = _primary_repo_flat_manual_followthrough_repeat_count(
+        now,
+        primary_repo_flat_manual_review_targets,
+        hours=PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW_HOURS,
+    ) if primary_repo_flat_manual_review_targets else 0
     primary_repo_flat_prepared_only_family_repeat_count = _primary_repo_flat_prepared_only_family_repeat_count(
         now,
         hours=PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_WINDOW_HOURS,
@@ -2785,8 +3117,74 @@ def choose_distribution_lane(
         hours=SHORT_REVIEW_WINDOW_HOURS,
     )
     execution_board_short_review_release_at = _execution_board_short_review_release_at()
+    distribution_architecture_repair_state = _distribution_architecture_repair_state(
+        now,
+        release_at=recent_live_external_release_at,
+    )
     skip_directory_submissions, skip_curator_outreach = _active_repair_pause_flags()
     skip_publisher_outreach = _publisher_outreach_paused_by_repair_window()
+    primary_repo_flat_followthrough_targets = {
+        str(item).strip()
+        for item in (
+            primary_repo_flat_followthrough_asset.get('targets')
+            if isinstance(primary_repo_flat_followthrough_asset, dict)
+            and isinstance(primary_repo_flat_followthrough_asset.get('targets'), list)
+            else []
+        )
+        if str(item).strip()
+    }
+    if not primary_repo_flat_followthrough_targets and isinstance(primary_repo_flat_followthrough_asset, dict):
+        fallback_followthrough_target = str(primary_repo_flat_followthrough_asset.get('target') or '').strip()
+        if fallback_followthrough_target:
+            primary_repo_flat_followthrough_targets = {fallback_followthrough_target}
+    if (
+        primary_repo_flat_followthrough_asset is not None
+        and not runtime_sendable_primary_repo_flat_targets
+        and not skip_publisher_outreach
+    ):
+        generic_manual_outreach_assets = [primary_repo_flat_followthrough_asset, *generic_manual_outreach_assets]
+        manual_outreach_asset_targets = [
+            str(item.get('target') or '').strip()
+            for item in generic_manual_outreach_assets
+            if str(item.get('target') or '').strip()
+        ]
+    execution_board_manual_followthrough_do_now = _execution_board_surfaces_manual_publisher_follow_through(
+        sorted(primary_repo_flat_followthrough_targets),
+    )
+    primary_repo_flat_manual_followthrough_blocked_by_repair_window = (
+        skip_publisher_outreach
+        and not runtime_sendable_primary_repo_flat_targets
+        and (
+            primary_repo_flat_followthrough_asset is not None
+            or execution_board_manual_followthrough_do_now
+            or bool(primary_repo_flat_manual_review_targets)
+        )
+        and not (primary_repo_flat_followthrough_targets & active_manual_outreach_delivery_targets)
+    )
+    execution_board_manual_followthrough_actionable = bool(
+        primary_repo_flat_followthrough_asset is not None
+        and not primary_repo_flat_manual_followthrough_blocked_by_repair_window
+        and execution_board_manual_followthrough_do_now
+        and _primary_repo_flat_manual_review_asset_current(
+            now,
+            sorted(primary_repo_flat_followthrough_targets) or primary_repo_flat_manual_review_targets,
+        )
+        and (
+            primary_repo_flat_followthrough_targets
+            or primary_repo_flat_manual_review_targets
+            or non_executable_primary_repo_flat_contact_targets
+        )
+    )
+    if primary_repo_flat_manual_followthrough_blocked_by_repair_window:
+        generic_manual_outreach_assets = [
+            item for item in generic_manual_outreach_assets
+            if item is not primary_repo_flat_followthrough_asset
+        ]
+        manual_outreach_asset_targets = [
+            str(item.get('target') or '').strip()
+            for item in generic_manual_outreach_assets
+            if str(item.get('target') or '').strip()
+        ]
 
     reasons: list[str] = []
     lane = 'owned_content'
@@ -2883,6 +3281,14 @@ def choose_distribution_lane(
             'A channel-ready manual publisher outreach asset already exists '
             f'({", ".join(manual_outreach_asset_targets[:3])}), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.'
         )
+    if primary_repo_flat_manual_followthrough_blocked_by_repair_window:
+        reasons.append(
+            'A manual-only primary-repo-flat publisher follow-through asset exists, but the active same-family publisher-overlap repair window says not to resurface that prepared-only asset again until another family advances or the current reply window materially changes.'
+        )
+    elif skip_publisher_outreach and execution_board_manual_followthrough_actionable:
+        reasons.append(
+            'The publisher-overlap repair still blocks a net-new same-family burst, but the execution board explicitly surfaces the manual publisher follow-through asset as do-now, so reuse that asset instead of collapsing back to a fake-empty hold.'
+        )
     if active_manual_outreach_delivery_targets:
         reasons.append(
             'An active manual publisher handoff already covers '
@@ -2919,6 +3325,11 @@ def choose_distribution_lane(
         reasons.append(
             'The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, '
             'so another packet refresh would be fake progress even if the exact target list drifted.'
+        )
+    if primary_repo_flat_manual_followthrough_repeat_count >= PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD and not active_manual_outreach_delivery_targets:
+        reasons.append(
+            'The same manual publisher follow-through asset has already been resurfaced multiple times without a live handoff window, '
+            'so selecting it again right now would be fake progress.'
         )
     primary_repo_flat_post_hold_only = (
         primary_repo_flat_contact_handoff_current
@@ -3117,7 +3528,10 @@ def choose_distribution_lane(
             and not primary_repo_flat_packet_delivery_active
             and runtime_sendable_primary_repo_flat_targets
         )
-        or primary_repo_flat_followthrough_asset is not None
+        or (
+            primary_repo_flat_followthrough_asset is not None
+            and runtime_sendable_primary_repo_flat_targets
+        )
     ) and (skip_curator_outreach or stackoverflow_post_cooldown_surface_exhausted or recent_live_external_actions >= SHORT_REVIEW_WINDOW_EXTERNAL_ACTION_THRESHOLD):
         lane = 'primary_repo_flat_contact_handoff_packet'
         reason = (
@@ -3127,7 +3541,7 @@ def choose_distribution_lane(
             'A current Codeberg-first publisher contact packet already exists for fresh primary-repo-flat targets; '
             'reuse that packet as the truthful follow-through surface instead of stalling behind another measurement hold or churn guard.'
         )
-    elif primary_flat and generic_manual_outreach_assets and (skip_curator_outreach or stackoverflow_post_cooldown_surface_exhausted or recent_live_external_actions >= SHORT_REVIEW_WINDOW_EXTERNAL_ACTION_THRESHOLD):
+    elif primary_flat and (generic_manual_outreach_assets or execution_board_manual_followthrough_actionable) and (skip_curator_outreach or stackoverflow_post_cooldown_surface_exhausted or recent_live_external_actions >= SHORT_REVIEW_WINDOW_EXTERNAL_ACTION_THRESHOLD):
         lane = 'manual_outreach_asset_follow_through'
         reason = (
             'The active repair window still blocks another net-new publisher burst, but a channel-ready manual publisher outreach asset already exists for an untouched Codeberg-primary target; '
@@ -3154,7 +3568,7 @@ def choose_distribution_lane(
     elif primary_flat and curator_queue_saturated and len(recent_posts) >= 2 and not comparison_queue_saturated:
         lane = 'comparison_backlink_outreach'
         reason = 'Curator queue prep is already full; ship a fresh comparison/backlink outreach asset instead of another follow-through note.'
-    elif primary_flat and stackoverflow_post_cooldown_surface_exhausted and apollo_measurement_pending and reddit_execution_degraded and not unsubmitted_channels and comparison_queue_saturated and (prepared_curator_handoff_targets == 0 or curator_measurement_saturated) and not recent_proof_asset_shipped and not _execution_board_has_no_truthful_do_now_packet(now):
+    elif primary_flat and stackoverflow_post_cooldown_surface_exhausted and apollo_measurement_pending and reddit_execution_degraded and not unsubmitted_channels and comparison_queue_saturated and (prepared_curator_handoff_targets == 0 or curator_measurement_saturated) and not recent_proof_asset_shipped and (stackoverflow_manual_delivery_current or not _execution_board_has_no_truthful_do_now_packet(now)):
         lane = 'repo_conversion_proof_asset'
         reason = 'The post-cooldown StackOverflow slot already burned without a fresh placement-ready outcome, and the other external lanes are still in-flight; ship a repo proof asset instead of logging another empty-board hold.'
     elif primary_flat and stackoverflow_post_cooldown_surface_exhausted and apollo_measurement_pending and reddit_execution_degraded and not unsubmitted_channels and comparison_queue_saturated:
@@ -3167,9 +3581,9 @@ def choose_distribution_lane(
         lane = 'repo_conversion_proof_asset'
         reason = 'The StackOverflow packet is already ready or already handed off for placement, and the external lanes are still in measurement windows; ship a missing repo proof asset instead of refreshing the same packet again.'
     elif primary_flat and primary_repo_flat_prepared_only_family_repeat_count >= PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD and not primary_repo_flat_packet_delivery_active and apollo_measurement_pending and reddit_execution_degraded and not unsubmitted_channels and comparison_queue_saturated:
-        lane = 'measurement_hold' if recent_live_external_release_at is not None and now < recent_live_external_release_at and recent_proof_asset_shipped else 'repo_conversion_proof_asset'
+        lane = 'measurement_hold' if recent_proof_asset_shipped else 'repo_conversion_proof_asset'
         reason = (
-            'The primary-repo-flat publisher lane is stuck in prepared-only packet churn during the active short review window, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet.'
+            'The primary-repo-flat publisher lane is stuck in prepared-only packet churn, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet.'
             if lane == 'measurement_hold' else
             'The primary-repo-flat publisher lane is stuck in prepared-only packet churn, so ship a repo conversion proof asset instead of refreshing another publisher packet.'
         )
@@ -3232,6 +3646,41 @@ def choose_distribution_lane(
             'hold for a truthful execution slot instead of logging fake progress.'
         )
     if (
+        lane == 'owned_content'
+        and not _execution_board_has_no_truthful_do_now_packet(now)
+    ):
+        if (
+            primary_repo_flat_contact_handoff_current
+            and not primary_repo_flat_packet_delivery_active
+            and runtime_sendable_primary_repo_flat_targets
+        ) or (
+            primary_repo_flat_followthrough_asset is not None
+            and runtime_sendable_primary_repo_flat_targets
+        ):
+            lane = 'primary_repo_flat_contact_handoff_packet'
+            reason = (
+                'A current Codeberg-first publisher contact packet already exists for fresh primary-repo-flat targets; '
+                'reuse that truthful do-now follow-through surface instead of falling back to another owned-content pass.'
+            )
+        elif generic_manual_outreach_assets or execution_board_manual_followthrough_actionable:
+            lane = 'manual_outreach_asset_follow_through'
+            reason = (
+                'A channel-ready manual publisher outreach asset already exists for an untouched Codeberg-primary target; '
+                'use that truthful do-now follow-through surface instead of falling back to another owned-content pass.'
+            )
+        elif (
+            directory_secondary_surface_targets
+            and directory_secondary_surface_packet_current
+            and not recent_directory_confirmation_shipped
+            and not directory_secondary_surface_followup_active
+        ):
+            lane = 'directory_confirmation'
+            reason = (
+                'A current directory secondary-surface repair packet already targets a live page that still misroutes or obscures Codeberg repo intent; '
+                'reuse that truthful do-now follow-through surface instead of falling back to another owned-content pass.'
+            )
+
+    if (
         lane == 'primary_repo_flat_contact_handoff_packet'
         and primary_repo_flat_recent_prep_repeat_count >= PRIMARY_REPO_FLAT_PACKET_PREP_REPEAT_THRESHOLD
         and not primary_repo_flat_packet_delivery_active
@@ -3251,7 +3700,7 @@ def choose_distribution_lane(
         and recent_live_external_release_at is not None
         and now < recent_live_external_release_at
         and _execution_board_has_no_truthful_do_now_packet(now)
-        and lane in {'primary_repo_flat_contact_handoff_packet', 'curator_outreach', 'measurement_hold', 'owned_content'}
+        and lane in {'primary_repo_flat_contact_handoff_packet', 'manual_outreach_asset_follow_through', 'curator_outreach', 'measurement_hold', 'owned_content'}
     ):
         lane = 'measurement_hold'
         reason = (
@@ -3266,11 +3715,11 @@ def choose_distribution_lane(
         and reddit_execution_degraded
         and not unsubmitted_channels
         and comparison_queue_saturated
-        and lane in {'primary_repo_flat_contact_handoff_packet', 'curator_outreach', 'measurement_hold', 'owned_content'}
+        and lane in {'primary_repo_flat_contact_handoff_packet', 'manual_outreach_asset_follow_through', 'curator_outreach', 'measurement_hold', 'owned_content'}
     ):
-        lane = 'measurement_hold' if recent_live_external_release_at is not None and now < recent_live_external_release_at and recent_proof_asset_shipped else 'repo_conversion_proof_asset'
+        lane = 'measurement_hold' if recent_proof_asset_shipped else 'repo_conversion_proof_asset'
         reason = (
-            'The primary-repo-flat publisher lane is stuck in prepared-only packet churn during the active short review window, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet.'
+            'The primary-repo-flat publisher lane is stuck in prepared-only packet churn, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet.'
             if lane == 'measurement_hold' else
             'The primary-repo-flat publisher lane is stuck in prepared-only packet churn, so ship a repo conversion proof asset instead of refreshing another publisher packet.'
         )
@@ -3288,26 +3737,42 @@ def choose_distribution_lane(
             'A newer live external action extended the short review window past the execution board\'s post-hold release timestamp, '
             'so the board truth is stale; repair the lane architecture instead of resurfacing a packet too early.'
         )
+    if lane == 'repo_conversion_proof_asset' and recent_proof_asset_shipped:
+        lane = 'measurement_hold'
+        reason = (
+            'A repo conversion proof asset already shipped recently, and the remaining external lanes are still in-flight or blocked; '
+            'hold for truthful follow-through instead of looping on another docs-only proof asset.'
+        )
     short_window_reentry_repairs = _short_review_window_reentry_repairs_state(
         now,
         release_at=recent_live_external_release_at,
     )
-    distribution_architecture_repair_state = _distribution_architecture_repair_state(
-        now,
-        release_at=recent_live_external_release_at,
+    empty_board_fallback_lanes = {'measurement_hold', 'owned_content', 'repo_conversion_proof_asset'}
+    release_window_active = bool(
+        recent_live_external_release_at is not None
+        and now < recent_live_external_release_at
     )
-    empty_board_fallback_lanes = {'measurement_hold', 'owned_content'}
+    release_window_cleared = bool(
+        recent_live_external_release_at is not None
+        and now >= recent_live_external_release_at
+    )
+    short_window_congestion_active = bool(
+        release_window_active
+        and recent_live_external_actions >= SHORT_REVIEW_WINDOW_EXTERNAL_ACTION_THRESHOLD
+    )
+    short_window_congestion_cleared = bool(
+        release_window_cleared
+        and recent_live_external_actions >= SHORT_REVIEW_WINDOW_EXTERNAL_ACTION_THRESHOLD
+    )
     short_window_active_with_exhausted_reentry_repairs = (
         lane in empty_board_fallback_lanes
-        and recent_live_external_release_at is not None
-        and now < recent_live_external_release_at
+        and short_window_congestion_active
         and _execution_board_has_no_truthful_do_now_packet(now)
         and short_window_reentry_repairs['reentry_repairs_complete']
     )
     short_window_cleared_with_empty_board = (
         lane in empty_board_fallback_lanes
-        and recent_live_external_release_at is not None
-        and now >= recent_live_external_release_at
+        and short_window_congestion_cleared
         and _execution_board_has_no_truthful_do_now_packet(now)
     )
     execution_board_short_window_cleared_with_empty_board = (
@@ -3323,24 +3788,62 @@ def choose_distribution_lane(
     )
     guarded_empty_board_inside_active_short_window = (
         lane in empty_board_fallback_lanes
-        and recent_live_external_release_at is not None
-        and now < recent_live_external_release_at
+        and short_window_congestion_active
         and _execution_board_has_no_truthful_do_now_packet(now)
         and distribution_architecture_repair_state.get('guard_installed')
-        and bool(distribution_architecture_repair_state.get('guard_follow_through_count'))
+        and bool(
+            distribution_architecture_repair_state.get('guard_follow_through_count')
+            or distribution_architecture_repair_state.get('guard_pause_count')
+        )
     )
     owned_content_empty_board_inside_active_short_window = (
         lane == 'owned_content'
-        and recent_live_external_release_at is not None
-        and now < recent_live_external_release_at
+        and short_window_congestion_active
         and _execution_board_has_no_truthful_do_now_packet(now)
     )
+    active_release_window_with_empty_board_fallback = (
+        lane in empty_board_fallback_lanes
+        and release_window_active
+        and _execution_board_has_no_truthful_do_now_packet(now)
+        and not short_window_congestion_active
+    )
 
-    if (
+    empty_board_architecture_repair_required = _should_enforce_empty_board_architecture_repair(adoption, now)
+
+    current_logged_release_at = distribution_architecture_repair_state.get('latest_matching_release_at')
+    release_window_materially_changed_since_latest_repair = bool(
+        recent_live_external_release_at is not None
+        and current_logged_release_at is not None
+        and recent_live_external_release_at > current_logged_release_at
+    )
+    release_window_materially_changed_since_latest_guard_pause = bool(
+        recent_live_external_release_at is not None
+        and distribution_architecture_repair_state.get('latest_guard_pause_release_at') is not None
+        and recent_live_external_release_at > distribution_architecture_repair_state.get('latest_guard_pause_release_at')
+    )
+    latest_matching_release_at = distribution_architecture_repair_state.get('latest_matching_release_at')
+    latest_guard_pause_release_at = distribution_architecture_repair_state.get('latest_guard_pause_release_at')
+    cleared_short_window_duplicate_repair_without_material_change = bool(
+        recent_live_external_release_at is not None
+        and latest_matching_release_at is not None
+        and latest_guard_pause_release_at is not None
+        and latest_matching_release_at == recent_live_external_release_at
+        and latest_guard_pause_release_at == recent_live_external_release_at
+        and not release_window_materially_changed_since_latest_repair
+        and not release_window_materially_changed_since_latest_guard_pause
+    )
+    no_release_window_duplicate_repair_without_material_change = bool(
+        recent_live_external_release_at is None
+        and execution_board_short_review_release_at is None
+        and latest_matching_release_at is None
+        and latest_guard_pause_release_at is None
+    )
+
+    if empty_board_architecture_repair_required and ((
         lane in empty_board_fallback_lanes
         and recent_live_external_actions < SHORT_REVIEW_WINDOW_EXTERNAL_ACTION_THRESHOLD
         and (skip_directory_submissions or skip_curator_outreach)
-    ) or short_window_active_with_exhausted_reentry_repairs or short_window_cleared_with_empty_board or execution_board_short_window_cleared_with_empty_board or no_short_window_idle_empty_board or guarded_empty_board_inside_active_short_window or owned_content_empty_board_inside_active_short_window:
+    ) or short_window_active_with_exhausted_reentry_repairs or short_window_cleared_with_empty_board or execution_board_short_window_cleared_with_empty_board or no_short_window_idle_empty_board or guarded_empty_board_inside_active_short_window or owned_content_empty_board_inside_active_short_window or active_release_window_with_empty_board_fallback):
         if distribution_architecture_repair_state['repeat_count']:
             reasons.append(
                 f"{distribution_architecture_repair_state['repeat_count']} prior distribution-architecture repair run(s) already hit this same empty-board window."
@@ -3402,15 +3905,43 @@ def choose_distribution_lane(
                             'pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.'
                         )
                 else:
-                    lane = 'distribution_architecture_repair'
-                    if distribution_architecture_repair_state.get('guard_pause_count'):
-                        reasons.append(
-                            f"{distribution_architecture_repair_state.get('guard_pause_count', 0)} prior guard pause run(s) already reused this same fingerprint in the current review window."
-                        )
-                    reason = (
-                        'The current execution-board fingerprint is still empty even though a third-strike churn guard and guard follow-through already exist for this review window; '
-                        'perform a concrete distribution-architecture repair now instead of logging another guard pause.'
+                    latest_matching_at = distribution_architecture_repair_state.get('latest_matching_at')
+                    earliest_guard_pause_at = distribution_architecture_repair_state.get('earliest_guard_pause_at')
+                    repair_already_ran_since_guard_pause_started = bool(
+                        latest_matching_at is not None
+                        and earliest_guard_pause_at is not None
+                        and latest_matching_at >= earliest_guard_pause_at
                     )
+                    if (
+                        skip_publisher_outreach
+                        and repair_already_ran_since_guard_pause_started
+                        and _execution_board_has_no_truthful_do_now_packet(now)
+                        and execution_board_short_review_release_at is not None
+                        and recent_live_external_actions < SHORT_REVIEW_WINDOW_EXTERNAL_ACTION_THRESHOLD
+                        and not short_window_reentry_repairs['reentry_repairs_complete']
+                    ):
+                        lane = 'distribution_architecture_guard_pause'
+                        reason = (
+                            'The active publisher-overlap repair window is still holding same-family follow-through, and the execution board review window already rolled without surfacing a truthful do-now lane; '
+                            'preserve the guard pause instead of churning another distribution-architecture repair.'
+                        )
+                    else:
+                        lane = 'distribution_architecture_repair'
+                        if distribution_architecture_repair_state.get('guard_pause_count'):
+                            reasons.append(
+                                f"{distribution_architecture_repair_state.get('guard_pause_count', 0)} prior guard pause run(s) already reused this same fingerprint in the current review window."
+                            )
+                        if short_window_reentry_repairs['reentry_repairs_complete']:
+                            reason = (
+                                'The active publisher-overlap repair window still blocks same-family follow-through, but this short review window already consumed both re-entry repairs and still produced no truthful do-now lane; '
+                                'perform a concrete distribution-architecture repair now instead of preserving another guard pause.'
+                            )
+                        else:
+                            reason = (
+                                'The current execution-board fingerprint is still empty even though a third-strike churn guard and guard follow-through already exist for this review window; '
+                                'perform a concrete distribution-architecture repair now instead of logging another guard pause.'
+                            )
+                        
             else:
                 latest_matching_at = distribution_architecture_repair_state.get('latest_matching_at')
                 earliest_guard_pause_at = distribution_architecture_repair_state.get('earliest_guard_pause_at')
@@ -3420,28 +3951,103 @@ def choose_distribution_lane(
                     and latest_matching_at >= earliest_guard_pause_at
                 )
                 if short_window_cleared_with_empty_board or execution_board_short_window_cleared_with_empty_board or no_short_window_idle_empty_board:
-                    lane = 'distribution_architecture_repair'
-                    if repair_already_ran_since_guard_pause_started:
+                    if (
+                        distribution_architecture_repair_state.get('guard_pause_count')
+                        and repair_already_ran_since_guard_pause_started
+                        and cleared_short_window_duplicate_repair_without_material_change
+                    ):
+                        lane = 'distribution_architecture_guard_pause'
                         reason = (
-                            'The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; '
-                            'perform another concrete distribution-architecture repair now instead of logging another guard follow-through.'
+                            'The short review window already cleared and a newer concrete repair already ran for this guarded empty-board fingerprint, '
+                            'but neither the fingerprint nor the release window changed afterward; pause duplicate guard churn until a real board-truth change lands.'
                         )
-                    elif distribution_architecture_repair_state.get('repeat_count', 0) >= 2:
+                    elif (
+                        distribution_architecture_repair_state.get('guard_pause_count')
+                        and repair_already_ran_since_guard_pause_started
+                        and no_release_window_duplicate_repair_without_material_change
+                    ):
+                        lane = 'distribution_architecture_repair'
                         reason = (
-                            'The short review window already cleared and repeated concrete repairs still did not produce a truthful board lane; '
-                            'perform another concrete distribution-architecture repair now instead of logging another guard follow-through.'
+                            'No active short review window remains, but the guarded empty-board fingerprint is still unchanged after a newer concrete repair already ran past the last guard pause; '
+                            'perform another concrete distribution-architecture repair now instead of logging another guard pause.'
+                        )
+                    else:
+                        lane = 'distribution_architecture_repair'
+                        if distribution_architecture_repair_state.get('guard_pause_count'):
+                            if repair_already_ran_since_guard_pause_started:
+                                reason = (
+                                    'The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; '
+                                    'perform another concrete distribution-architecture repair now instead of logging another guard pause.'
+                                )
+                            elif distribution_architecture_repair_state.get('repeat_count', 0) >= 2:
+                                reason = (
+                                    'The short review window already cleared and repeated concrete repairs still did not produce a truthful board lane; '
+                                    'perform another concrete distribution-architecture repair now instead of logging another guard pause.'
+                                )
+                            else:
+                                reason = (
+                                    'The short review window already cleared, but the guarded execution-board fingerprint is still empty; '
+                                    'perform a concrete distribution-architecture repair now instead of logging another guard pause.'
+                                )
+                        elif repair_already_ran_since_guard_pause_started:
+                            reason = (
+                                'The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; '
+                                'perform another concrete distribution-architecture repair now instead of logging another guard follow-through.'
+                            )
+                        elif distribution_architecture_repair_state.get('repeat_count', 0) >= 2:
+                            reason = (
+                                'The short review window already cleared and repeated concrete repairs still did not produce a truthful board lane; '
+                                'perform another concrete distribution-architecture repair now instead of logging another guard follow-through.'
+                            )
+                        else:
+                            reason = (
+                                'The short review window already cleared, but the guarded execution-board fingerprint is still empty; '
+                                'perform a concrete distribution-architecture repair now instead of logging another guard follow-through.'
+                            )
+                elif repair_already_ran_since_guard_pause_started and distribution_architecture_repair_state.get('guard_pause_count'):
+                    if release_window_materially_changed_since_latest_repair or release_window_materially_changed_since_latest_guard_pause:
+                        if (
+                            skip_publisher_outreach
+                            and _execution_board_has_no_truthful_do_now_packet(now)
+                            and execution_board_short_review_release_at is not None
+                            and recent_live_external_actions < SHORT_REVIEW_WINDOW_EXTERNAL_ACTION_THRESHOLD
+                            and not short_window_reentry_repairs['reentry_repairs_complete']
+                        ):
+                            lane = 'distribution_architecture_guard_pause'
+                            reason = (
+                                'The active publisher-overlap repair window is still holding same-family follow-through, and the execution board fingerprint did not gain a truthful do-now lane when the board review window moved; '
+                                'preserve the guard pause instead of churning another distribution-architecture repair.'
+                            )
+                        else:
+                            lane = 'distribution_architecture_repair'
+                            if short_window_reentry_repairs['reentry_repairs_complete']:
+                                reason = (
+                                    'The active publisher-overlap repair window still blocks same-family follow-through, but the board review window moved, both re-entry repairs are already spent, and no truthful do-now lane appeared; '
+                                    'perform another concrete distribution-architecture repair now instead of preserving another guard pause.'
+                                )
+                            else:
+                                reason = (
+                                    'The same guarded empty-board fingerprint is still blocking a truthful lane, and the live-action release window changed after the latest repair/pause; '
+                                    'perform another concrete distribution-architecture repair now instead of logging another guard pause.'
+                                )
+                    else:
+                        lane = 'distribution_architecture_guard_pause'
+                        reason = (
+                            'The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; '
+                            'a newer concrete repair already ran after the current guard pause started, so pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.'
+                        )
+                elif distribution_architecture_repair_state.get('guard_pause_count'):
+                    lane = 'distribution_architecture_repair'
+                    if distribution_architecture_repair_state.get('repeat_count', 0) >= 2:
+                        reason = (
+                            'The same empty-board distribution-architecture failure already hit the guard-pause path repeatedly again in this review window; '
+                            'perform a concrete distribution-architecture repair now instead of logging another guard pause.'
                         )
                     else:
                         reason = (
-                            'The short review window already cleared, but the guarded execution-board fingerprint is still empty; '
-                            'perform a concrete distribution-architecture repair now instead of logging another guard follow-through.'
+                            'The current execution-board fingerprint is still empty even though a third-strike churn guard already logged a guard pause for this review window; '
+                            'perform a concrete distribution-architecture repair now instead of logging another guard pause.'
                         )
-                elif repair_already_ran_since_guard_pause_started and distribution_architecture_repair_state.get('guard_pause_count'):
-                    lane = 'distribution_architecture_guard_pause'
-                    reason = (
-                        'The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and a newer concrete repair already ran after the current guard pause started; '
-                        'pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.'
-                    )
                 else:
                     lane = 'distribution_architecture_guard_follow_through'
                     reason = (
@@ -3473,10 +4079,19 @@ def choose_distribution_lane(
                     'There is no active short review window anymore, but the execution board is still empty and the selector still '
                     f'fell back to {fallback_lane}; repair the lane architecture instead of logging another fake-idle hold.'
                 )
+            elif active_release_window_with_empty_board_fallback:
+                fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
+                reason = (
+                    'The execution board is already empty for this active review window, but the selector still fell back to owned content after saturating recent Telegraph output; '
+                    'repair the lane architecture instead of letting it loop on another Telegraph-first pass.'
+                    if lane == 'owned_content' and len(recent_posts) >= 2 else
+                    'The execution board is already empty for this active review window, but the selector still fell back to a non-executable hold surface; '
+                    f'repair the lane architecture instead of drifting into {fallback_lane}.'
+                )
             else:
                 fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
                 reason = (
-                    'The short review window already cleared, but every truthful external/manual lane is still blocked, exhausted, '
+                    'There is no active short review window anymore, and every truthful external/manual lane is still blocked, exhausted, '
                     f'or already delivered; repair the lane architecture instead of letting the selector drift into {fallback_lane}.'
                     if recent_live_external_release_at is not None and now >= recent_live_external_release_at else
                     'No active short review window remains, but every truthful external/manual lane is still blocked, exhausted, '
@@ -3505,6 +4120,41 @@ def choose_distribution_lane(
             'The same empty-board distribution-architecture failure already hit the guard-pause path repeatedly again in this review window; '
             'escalate into a concrete distribution-architecture repair now instead of logging another guard pause.'
         )
+
+    if (
+        primary_flat
+        and primary_repo_flat_manual_followthrough_blocked_by_repair_window
+        and lane in {'manual_outreach_asset_follow_through', 'distribution_architecture_guard_follow_through', 'distribution_architecture_guard_pause'}
+        and not (
+            _execution_board_has_no_truthful_do_now_packet(now)
+            and short_window_reentry_repairs['reentry_repairs_complete']
+        )
+    ):
+        lane = 'measurement_hold'
+        reason = (
+            'A manual-only primary-repo-flat publisher follow-through asset exists, but same-family publisher outreach is still paused and no runtime-sendable path is open; '
+            'preserve the hold instead of surfacing fake follow-through or escalating into another architecture churn cycle.'
+        )
+
+    if lane == 'owned_content' and not _owned_content_publication_available():
+        if reset_targets_ready:
+            lane = 'distribution_reset'
+            reason = (
+                'No unpublished repo-native guide remains for owned-content publication, so do not let the selector drift into an owned-content noop; '
+                'create fresh reset targets instead.'
+            )
+        elif _execution_board_has_no_truthful_do_now_packet(now):
+            lane = 'distribution_architecture_repair'
+            reason = (
+                'No unpublished repo-native guide remains for owned-content publication and no truthful do-now packet is left on the board, '
+                'so repair the lane architecture instead of letting the selector drift into an owned-content noop.'
+            )
+        else:
+            lane = 'measurement_hold'
+            reason = (
+                'No unpublished repo-native guide remains for owned-content publication, so do not let the selector drift into an owned-content noop; '
+                'hold for the next truthful execution window instead.'
+            )
 
     artifact_path = str(write_action_brief(
         lane=lane,
@@ -3836,6 +4486,8 @@ def write_marketing_action_log(decision: LaneDecision, now: datetime) -> Path:
         payload['verification'] = {
             'execution_board_fingerprint': _execution_board_fingerprint(),
         }
+        if decision.short_review_window_release_at:
+            payload['verification']['short_review_window_release_at'] = decision.short_review_window_release_at
     path = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d')}_{decision.lane}.json"
     path.write_text(json.dumps(payload, indent=2) + '\n', encoding='utf-8')
     return path

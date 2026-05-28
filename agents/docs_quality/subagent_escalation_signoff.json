@@ -1,0 +1,26 @@
+{
+  "approved": false,
+  "signedBy": "docs-watchdog-escalation-verifier",
+  "checkedAtUtc": "2026-05-20 20:46:00 UTC",
+  "scope": "Verified repeat-failure auto-escalation / subagent-spawning behavior for Ralph docs watchdog framework, runtime script, and live cron presence.",
+  "findings": [
+    "The framework doc was already broadly aligned with aggressive repeat-failure handling, but it did not explicitly require the live watchdog prompt/runtime to treat persistent repeat failure as an all-hands subagent-spawning event.",
+    "The live watchdog runtime previously reran the local runner only once and had no persistent runtime memory for consecutive failures or same-fingerprint repeat failure detection.",
+    "The live crontab currently shows only comment lines for the Ralph docs watchdog runner / independent verifier near lines 15-16; no active cron command for job c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80 was found in the accessible crontab output.",
+    "An existing docs_stack_parallel_signoff.json currently claims deactivation approval, but that alone is not enough proof that live repeat-failure auto-escalation will trigger all-hands behavior automatically."
+  ],
+  "repairsApplied": [
+    "Patched agents/docs_quality/docs_stack_temp_watchdog.py to add repeat-failure runtime state, consecutive-failure tracking, same-fingerprint failure detection, stronger aggressive repair passes, and explicit REPEAT_FAILURE_ESCALATION_REQUIRED / AUTO-ESCALATION RULE reporting in failure reasons.",
+    "Patched agents/docs_quality/REPEAT_FAILURE_RESPONSE_FRAMEWORK.md to explicitly require all-hands watchdog/runtime escalation with parallel subagent spawning when repeat failure persists past ordinary repair attempts.",
+    "Patched agents/docs_quality/README.md to state that repeat-failure auto-escalation into all-hands repair and parallel subagent spawning is required before aggressive self-heal deactivation."
+  ],
+  "proof": [
+    "python3 -m py_compile succeeded for agents/docs_quality/docs_stack_temp_watchdog.py, agents/docs_quality/ralph_docs_runner.py, and agents/docs_quality/ralph_docs_verify.py.",
+    "The patched watchdog source now contains runtime state persistence (docs_stack_temp_watchdog_runtime.json), repeat failure thresholds, and explicit escalation reason emission.",
+    "crontab inspection returned docs comment markers but no active accessible command tied to the requested cron id, so live automatic execution strength could not be confirmed."
+  ],
+  "blockers": [
+    "Live runtime approval is withheld because the accessible crontab output did not show an active watchdog/verifier command for the named cron job id c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80.",
+    "I did not approve because 'should trigger all-hands automatically' requires not just stronger code/prompts but confirmed live scheduling / invocation wiring."
+  ]
+}

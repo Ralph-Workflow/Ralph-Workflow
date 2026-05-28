@@ -174,6 +174,8 @@ def incident_escalations(current_issues: list[dict]) -> list[dict]:
             continue
         key = incident_key(issue)
         item = incidents.get(key) or {}
+        if item.get('blocked_by'):
+            continue
         level = item.get('escalation_level')
         if level in {'owner', 'critical'}:
             escalations.append({

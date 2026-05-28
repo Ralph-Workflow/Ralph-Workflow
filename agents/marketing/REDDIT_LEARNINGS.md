@@ -569,3 +569,79 @@ Rule: no opening from this list may appear in more than one subreddit in the sam
 - Lean into phrases like **shared-boundary drift**, **stable handoff contract**, **clean re-entry**, **finish receipt**, and **trust the finish line**.
 - If a thread is mostly about setup or tooling glue, keep RalphWorkflow out unless the workflow value case is unusually natural.
 - Before posting, compare against the last 3 full bodies for **opening move**, **concept cadence**, and **where/if the product mention lands**.
+
+## New lessons - 2026-05-27 (12:45 CEST)
+### What worked
+- A forced-refresh pass with healthier telemetry (**49 scanned, ok=6, blocked=2**) surfaced a broader and cleaner shortlist than the earlier **03:05 CEST** snapshot, so the monitor should keep preferring fresh local reruns over stale carry-forward when coverage improves.
+- Threads about **context continuity across tools** and **parallel coding agents getting messy** are still strong research fits because they expose the same visible-finish and merge-safety pain in plainer language.
+
+### What did not work
+- Better coverage still did not turn the current shortlist into strong RalphWorkflow mention targets; the honest mention-fit stayed **medium-low**.
+- The `r/cursor` / `r/CursorAI` workflow-change family is now stale from a posting perspective because it was just used on **2026-05-26** and the opening line is already flagged as repetitive.
+
+### Wording and selection lessons
+- Keep **context continuity**, **parallel repo mess**, and **workflow-vs-agent boundary** as active scan lenses next to **production failure** and **visible finish state**.
+- Keep the hard split between **discussion-fit** and **mention-fit** even when coverage improves; broader visibility should widen research truth before it widens posting pressure.
+- Treat recent `r/cursor` workflow-change threads as prior-used/stale unless a genuinely new angle appears.
+
+## New lessons - 2026-05-27 (21:15 CEST)
+### What worked
+- Another forced-refresh local rerun with still-usable telemetry (**47 scanned, ok=5, blocked=2**) held onto the broader shortlist shape instead of collapsing back to the weaker **03:05 CEST** view, which is a good sign that the monitor repair is stable.
+- **Context continuity**, **parallel repo mess**, and **full-dev-environment parallelism** still surface as durable research themes even when the exact thread mix shifts slightly.
+
+### What did not work
+- The stronger shortlist still did **not** produce clean posting pressure; honest RalphWorkflow mention-fit remained **medium-low** across all four surviving threads.
+- Roundup / list-style **"these tools actually work in production"** posts are useful for market language, but they still lean too promo-heavy to be comfortable RalphWorkflow mention targets.
+
+### Wording and selection lessons
+- Add **workflow-builder roundup / comparison-list posts** as a research lens, but keep them behind the same **helpful reply first / mention fit second** gate as the rest of the pool.
+- Keep failing closed on posting while retrieval stays partial and the best surviving threads are still more valuable as signal than as distribution.
+- When the shortlist is anchored by **context continuity** and **parallel-agent mess**, prefer extracting market language and objections over forcing another finish-state plug.
+
+## New lessons - 2026-05-27 (22:48 CEST)
+### What worked
+- The degraded rerun still surfaced a real **production-failure** discussion outside the usual AI/coding communities (`r/cybersecurity`), which confirms the content-first approach is widening research truth even when coverage is thin.
+- Preserving the healthier earlier same-day pass as the main market picture is more honest than letting a thinner later rerun redefine the day.
+
+### What did not work
+- Telemetry weakened sharply on the rerun (**12 scanned, ok=1, blocked=3**), so the live shortlist narrowed too much to trust as the whole market.
+- The surviving threads were still better as research than as distribution; mention-fit stayed **medium-low**.
+
+### Wording and selection lessons
+- Add **security / governance reviews of agent failures** as a secondary research lens, but keep the same **helpful reply first / mention fit second** gate before treating them as posting opportunities.
+- If a later forced rerun is materially thinner than an earlier same-day pass, treat it as **degraded telemetry**, not as a fresh signal that opportunities disappeared.
+- Keep the hard fail-closed rule on posting whenever blocked-query count rises and the rerun breadth drops below the healthier same-day baseline.
+
+## Structural changes — 2026-05-28 (10:30 CEST)
+
+### Telegraph pipeline retired
+- All 20 live Telegraph posts across 10+ days show 0-1 views each. The channel is dead.
+- Telegraph is no longer an active distribution surface. New content goes to ralphworkflow.com/blog.
+- run_posting.py should skip Telegraph and only run as a draft-hash checker. Future posting should target the Ralph-Site blog commit + deploy pipeline.
+
+### SEO content factory created
+- New agent: `agents/marketing/seo_content_factory.py`
+- Covers 5 keyword gaps with live blog posts on ralphworkflow.com/blog:
+  - unattended coding agent
+  - AI agent orchestration CLI
+  - AI coding workflow automation
+  - Claude Code automation
+  - spec-driven AI agent
+- All 5 return 200 on the live site. Sitemap grew from 81 → 86 URLs.
+
+### Reddit cadence — state confirmed
+- Structural cadence confirmed broken across all recent posts (4-paragraph shape: contrast opener → handoff framing → proof bundle → product close)
+- Posting suspended — fail-closed enforced. Monitoring continues degraded (1-3 blocked queries per pass).
+- Reddit recovery path: structural rewrite package exists at `drafts/2026-05-22_reddit_structural_rewrite.md` but no autonomous execution path exists without browserless access.
+
+### Remaining blocked lanes (2026-05-28)
+- Apollo: Cloudflare auth blocked. Next review 2026-06-01.
+- Dev.to: Apple OAuth blocked.
+- SMTP curator email: No credentials available.
+- HN/Lobsters: 7+ audit cycles stuck. Structural ceiling rule triggered.
+- Comparison backlinks: 8 prepared, all status=prepared, review due 2026-06-05, no autonomous distribution path.
+
+### New process rule
+- The primary autonomous distribution lane is now ralphworkflow.com/blog content production + Codeberg/PyPI outbound linking.
+- When next SEO report identifies new keyword gaps, write blog posts directly in Ralph-Site/content/blog/, commit, push, and cap deploy. Do not create draft files in drafts/ for Telegraph.
+- GitHub Discussions outreach is the next autonomous lane to explore (available, unblocked, unused).

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "incidentOpen": false,
+  "repairContinuationRequired": false,
+  "pendingIndependentStop": false,
+  "escalationRequired": false,
+  "currentIncidentId": null,
+  "consecutiveVerifierFailures": 0,
+  "totalVerifierFailures": 49,
+  "lastFailureAtUtc": "2026-05-28T09:37:58.622515+00:00",
+  "lastFailureReason": "candidate pass reached but independent stop approval is still missing: signoff fingerprint does not match current docs state",
+  "lastFailureDocsStateFingerprint": "53a01fb5bc936b96",
+  "lastHealthyAtUtc": "2026-05-28T10:07:29.177105+00:00",
+  "lastHealthyDocsStateFingerprint": "53a01fb5bc936b96",
+  "lastIndependentStopApprovedAtUtc": "2026-05-28T09:38:26Z",
+  "lastIndependentStopApprovedFingerprint": "53a01fb5bc936b96",
+  "lastIndependentStopApprovedBy": "ralph-independent-stop-approver (independent subagent)"
+}

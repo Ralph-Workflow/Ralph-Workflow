@@ -22,9 +22,10 @@ You can use that default as-is, or build on top of it when you need something mo
 1. [START_HERE.md](START_HERE.md) — copy-paste first run on one real task
 2. [docs/first-task-guide.md](docs/first-task-guide.md) — pick a task you can judge honestly tomorrow morning
 3. [content/examples/workflow_composition_example.md](content/examples/workflow_composition_example.md) — see how the task, implementation, verification, and review handoff fit together
-4. [content/examples/review_bundle_example.md](content/examples/review_bundle_example.md) — see the morning-after handoff you should expect before you trust the run
-5. [docs/when-to-use-ralph-workflow.md](docs/when-to-use-ralph-workflow.md) — decide if you need a workflow instead of another chat or editor loop
-6. [docs/README.md](docs/README.md) — curated docs switchboard after that
+4. [content/examples/tomorrow_morning_scorecard.md](content/examples/tomorrow_morning_scorecard.md) — judge the first run in 10 minutes instead of trusting the summary
+5. [content/examples/review_bundle_example.md](content/examples/review_bundle_example.md) — see the morning-after handoff you should expect before you trust the run
+6. [docs/when-to-use-ralph-workflow.md](docs/when-to-use-ralph-workflow.md) — decide if you need a workflow instead of another chat or editor loop
+7. [docs/README.md](docs/README.md) — curated docs switchboard after that
 
 ## Install
 

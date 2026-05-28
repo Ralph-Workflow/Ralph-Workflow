@@ -1,0 +1,30 @@
+{
+  "approved": false,
+  "signedBy": "docs-watchdog-execution-verifier",
+  "checkedAtUtc": "2026-05-20 20:46:45 UTC",
+  "scope": "Verify whether Ralph docs watchdog job c99cfa5f-41a1-4bc2-845f-6b6e1d5c7e80 is actually executing every 10 minutes; inspect cron state, run history, running state, status artifacts, and blockers; repair locally if safe.",
+  "findings": [
+    "User crontab contains only comments for the Ralph docs watchdog runner/verifier; there is no actual cron command installed for either job.",
+    "cron.service is active, but there is no evidence of scheduled executions for the docs watchdog path in crontab or accessible system cron fragments.",
+    "The watchdog/log artifacts are stale and inconsistent: watchdog_cron.log last updated 2026-05-20 19:02:11 +0200, verifier_cron.log 2026-05-20 19:11:38 +0200, while current status/signoff files changed later via manual/subagent activity.",
+    "Manual execution of docs_stack_temp_watchdog.py did not prove health. It failed with 'verifier failed' and 'parallel signoff fingerprint does not match current docs state'.",
+    "A live Ralph docs loop/runner process was found running, which caused ralph_docs_verify.py to exit 75 with 'another Ralph docs loop process already holds the global lock'. That means current execution is lock-contented and not a clean scheduled heartbeat.",
+    "The watchdog execution path is therefore not proven healthy every 10 minutes; at best it is being invoked ad hoc/manually and can block on concurrent loop activity."
+  ],
+  "repairsApplied": [
+    "No persistent scheduler repair applied, because installing or changing cron entries would alter persistent scheduling state and was not safe to do blindly from a verifier role.",
+    "Killed stray overlapping docs watchdog/verify/runner processes during verification to confirm lock contention source and avoid leaving extra verifier noise behind."
+  ],
+  "proof": [
+    "crontab -l shows lines 15-16 are only comments: '# Ralph docs watchdog runner' and '# Ralph docs independent verifier' with no commands beneath them.",
+    "ps showed concurrent docs processes including ralph_docs_runner.py and ralph_docs_agentic_review.py, and later ralph_docs_verify.py holding the global lock path agents/docs_quality/.docs_loop.lock.",
+    "agents/docs_quality/docs_stack_temp_watchdog_status.json at 2026-05-20 20:44:18 UTC reported healthy=false with reasons ['verifier failed', 'parallel signoff fingerprint does not match current docs state'].",
+    "agents/docs_quality/ralph_docs_verify.py can emit exit 75 on lock contention, which was observed in the watchdog run output as 'SKIP: another Ralph docs loop process already holds the global lock'.",
+    "Current signoff fingerprint and docs-state fingerprint diverged (signoff a0b7bc42142e43c1 vs watchdog fa50764b881e95d0), so even the deactivation proof was stale for the present docs state."
+  ],
+  "blockers": [
+    "Missing actual 10-minute cron entries for the watchdog/verifier jobs.",
+    "Concurrent docs loop activity causes verifier lock contention and prevents a clean health signal.",
+    "Because scheduling is absent, I cannot truthfully certify real every-10-minute execution behavior."
+  ]
+}
