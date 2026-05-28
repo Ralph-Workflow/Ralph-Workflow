@@ -174,11 +174,54 @@ def newest_healthy_report_time(now: datetime) -> tuple[Path | None, float | None
     return None, None
 
 
+# Throttle: only append a watchdog note if the STATUS has changed since the last note,
+# and at most once per 60 minutes.  Prevents flood of identical entries.
+_WATCHDOG_NOTE_MIN_INTERVAL_MINUTES = 60
+_WATCHDOG_LAST_STATUS_PATH = STATUS_DIR / 'momentum_watchdog_last_status.json'
+
+
+def _hash_status(status: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(status.encode()).hexdigest()[:16]
+
+
+def _should_skip_note(status_hash: str, now: datetime) -> bool:
+    if not _WATCHDOG_LAST_STATUS_PATH.exists():
+        return False
+    try:
+        last = json.loads(_WATCHDOG_LAST_STATUS_PATH.read_text(encoding='utf-8'))
+        last_hash = last.get('status_hash', '')
+        last_ts_str = last.get('timestamp', '')
+        if not last_ts_str:
+            return False
+        last_ts = datetime.fromisoformat(last_ts_str).astimezone()
+        minutes_elapsed = (now - last_ts).total_seconds() / 60
+        if status_hash == last_hash and minutes_elapsed < _WATCHDOG_NOTE_MIN_INTERVAL_MINUTES:
+            return True
+        return False
+    except (json.JSONDecodeError, OSError, ValueError):
+        return False
+
+
+def _record_status(status_hash: str, now: datetime) -> None:
+    _WATCHDOG_LAST_STATUS_PATH.write_text(json.dumps({
+        'status_hash': status_hash,
+        'timestamp': now.isoformat(),
+    }), encoding='utf-8')
+
+
 def append_note(text: str) -> None:
+    now = datetime.now().astimezone()
+    status_hash = _hash_status(text)
+    if _should_skip_note(status_hash, now):
+        return
+    _record_status(status_hash, now)
+
     path = ROOT / 'outreach-log.md'
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.read_text(encoding='utf-8') if path.exists() else '# Outreach Log\n'
-    stamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    stamp = now.strftime('%Y-%m-%d %H:%M:%S')
     block = f"\n### Marketing momentum watchdog\n- **When:** {stamp}\n- **Note:** {text}\n"
     path.write_text(existing.rstrip() + '\n' + block, encoding='utf-8')
 
@@ -253,6 +296,16 @@ def latest_reddit_execution_status(now: datetime) -> dict[str, object]:
 
 
 def main() -> int:
+    # Material-change gate: skip run if nothing changed since last check
+    try:
+        from agents.marketing.material_change_gate import should_run
+        ok, reason = should_run()
+        if not ok:
+            print(json.dumps({'ok': True, 'gate_skip': True, 'reason': reason, 'timestamp': datetime.now().astimezone().isoformat()}))
+            return 0
+    except ImportError:
+        pass  # fail-open: if gate can't load, proceed
+
     now = datetime.now().astimezone()
     STATUS_DIR.mkdir(parents=True, exist_ok=True)
     subprocess.run([sys.executable, str(RETRO)], capture_output=True, text=True)

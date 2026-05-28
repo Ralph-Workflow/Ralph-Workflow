@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-05-28T17:59:59.037406",
+  "action_type": "distribution_architecture_repair_and_concrete_distribution",
+  "status": "executed",
+  "actions_completed": [
+    {
+      "action": "ralph_site_blog_cta_fix",
+      "detail": "Added Codeberg-primary + GitHub-mirror CTAs to 3 zero-CTA blog posts (hello-ralph-workflow.md, how-to-run-claude-code-unattended.md, spec-driven-ai-agents-why-workflow-is-the-unit-of-work.md)",
+      "commits": [
+        "fix(marketing): add Codeberg-primary + GitHub-mirror CTAs to 3 zero-CTA blog posts"
+      ],
+      "live_external_action": true,
+      "result": "pushed to Ralph-Site main"
+    },
+    {
+      "action": "ralph_site_new_seo_blog_post",
+      "detail": "Created new SEO blog post targeting uncovered keyword gap: AI agent output verification / how to review unattended coding results without reading every line. Includes practical verification checklist with Codeberg-primary CTAs.",
+      "title": "AI Agent Output Verification: How to Review Unattended Coding Results Without Reading Every Line",
+      "commits": [
+        "feat(seo): new blog post - AI agent output verification review checklist"
+      ],
+      "live_external_action": true,
+      "result": "pushed to Ralph-Site main"
+    },
+    {
+      "action": "material_change_gate_created",
+      "detail": "Built material_change_gate.py that hashes marketing log state and skips runs when nothing changed. Reduces ~50+/day to max ~6/day (4-hour cooldown). Exit code 2 = skip, 0 = proceed, 1 = fail-open.",
+      "path": "agents/marketing/material_change_gate.py",
+      "live_external_action": false,
+      "result": "gate operational, integrated into marketing_momentum_watchdog.py"
+    },
+    {
+      "action": "devto_lane_bootstrap_attempted",
+      "detail": "Dev.to blocked by reCAPTCHA on signup. Both accounts (old creds + bootstrap script) never actually existed. Headless signup impossible without CAPTCHA solving.",
+      "live_external_action": false,
+      "result": "blocked_dead_end \u2014 documented for future manual-as-human bootstrap"
+    }
+  ],
+  "codeberg_cta_total": 4,
+  "github_cta_total": 4,
+  "devto_blocked_reason": "reCAPTCHA \u2014 headless signup impossible, accounts never created",
+  "pypi_still_blocked": "no token anywhere in environment",
+  "distribution_lanes_saturated": true,
+  "hold_window_repair_complete": true,
+  "material_change_gate_details": {
+    "path": "agents/marketing/material_change_gate.py",
+    "mechanism": "SHA256 hash of distribution_lane_latest.json, market_intelligence_latest.json, marketing_workflow_audit_latest.json",
+    "cooldown": "4 hours minimum between runs",
+    "exit_codes": {
+      "0": "proceed",
+      "1": "error (fail-open)",
+      "2": "skip (no material change)"
+    },
+    "wired_into": "marketing_momentum_watchdog.py main()",
+    "expected_impact": "Reduce from ~50+/day to ~6/day max"
+  }
+}
