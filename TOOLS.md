@@ -92,9 +92,9 @@ Add whatever helps you do your job. This is your cheat sheet.
 
 ## Model Quick Policy
 
-- Default: `openai-codex/gpt-5.4`
-- Use `minimax/MiniMax-M2.7-highspeed` only for clearly straightforward, low-judgment, easy-to-verify tasks
-- If unsure, use `openai-codex/gpt-5.4`
+- Default: `minimax/MiniMax-M2.7`
+- Use `minimax/MiniMax-M2.7-highspeed` for clearly straightforward, low-judgment, easy-to-verify tasks
+- If unsure, use `minimax/MiniMax-M2.7`
 
 ## Related
 

@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-28T06:17:38.789932+02:00",
+    "checked_at": "2026-05-28T07:07:17.272980+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 25,
     "live_jobs_enabled": 25,
@@ -39,13 +39,7 @@
     "live_running_job_names": [
       "Push research findings to git repo",
       "agent-architecture-watchdog",
-      "apollo-channel-monitor",
-      "codeberg-github-mirror-sync",
-      "marketing-momentum-watchdog",
-      "marketing-workflow-audit-precheck",
-      "reddit-pipeline-watchdog",
-      "repo-adoption-tracker",
-      "system-health-monitor"
+      "marketing-momentum-watchdog"
     ],
     "live_last_error_job_names": [],
     "live_last_error_details": {},
@@ -75,7 +69,7 @@
     {
       "severity": "medium",
       "title": "Live Gateway topology matches the current runtime state",
-      "mechanism": "Direct live cron inspection shows 25 enabled/total-visible jobs, 0 disabled jobs, 9 running jobs, and 0 live last-error jobs.",
+      "mechanism": "Direct live cron inspection shows 25 enabled/total-visible jobs, 0 disabled jobs, 3 running jobs, and 0 live last-error jobs.",
       "source_layer": "runtime cron topology",
       "root_cause": "Architecture/runtime topology remains coherent while owner-loop work is in flight.",
       "evidence_refs": [
@@ -132,7 +126,7 @@
     {
       "status": "refreshed_live_topology",
       "target": "live cron topology snapshot",
-      "change": "Refreshed the audit against the current live view: 25 enabled jobs, 0 disabled jobs, 9 running jobs, and 0 live last-error jobs.",
+      "change": "Refreshed the audit against the current live view: 25 enabled jobs, 0 disabled jobs, 3 running jobs, and 0 live last-error jobs.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ]
@@ -163,9 +157,9 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-28T06:17:40.785208+02:00",
+    "checked_at": "2026-05-28T07:07:19.284449+02:00",
     "verdict": "qualified_pass",
-    "previous_artifact_checked_at": "2026-05-28T06:16:12.334022+02:00",
+    "previous_artifact_checked_at": "2026-05-28T07:06:08.252710+02:00",
     "previous_artifact_verdict": "qualified_pass",
     "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
@@ -185,36 +179,26 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-05-28T06:17:40.785208+02:00",
+    "architecture_verifier_checked_at": "2026-05-28T07:07:19.284449+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
     },
-    "health_monitor_issues_found": 6,
+    "health_monitor_issues_found": 1,
     "health_monitor_issue_names": [
-      "marketing_independent_verification",
-      "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt",
-      "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin"
+      "marketing_independent_verification"
     ],
     "health_monitor_issue_categories": [
-      "marketing_independent_verification:loop_verification_fail",
-      "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt:review_followup_required",
-      "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required"
+      "marketing_independent_verification:loop_verification_fail"
     ],
     "marketing_workflow_audit_timeout_seconds": 5400,
-    "marketing_workflow_audit_last_duration_ms": 322276,
-    "marketing_workflow_audit_timeout_headroom_seconds": 5077.724,
+    "marketing_workflow_audit_last_duration_ms": 507920,
+    "marketing_workflow_audit_timeout_headroom_seconds": 4892.08,
     "marketing_workflow_audit_timeout_repaired_pending_clean_rerun": false,
     "live_running_job_names": [
       "Push research findings to git repo",
       "agent-architecture-watchdog",
-      "apollo-channel-monitor",
-      "codeberg-github-mirror-sync",
-      "marketing-momentum-watchdog",
-      "marketing-workflow-audit-precheck",
-      "reddit-pipeline-watchdog",
-      "repo-adoption-tracker",
-      "system-health-monitor"
+      "marketing-momentum-watchdog"
     ],
     "live_last_error_job_names": [],
     "marketing_bottleneck": "distribution_and_message_to_primary_repo_conversion",
@@ -226,20 +210,17 @@
     "marketing_momentum_status": "watch",
     "marketing_momentum_watch_actions": [
       "reddit_monitor_degraded",
+      "apollo_channel_blocked",
       "primary_repo_adoption_flat",
       "measurement_hold_active"
     ],
     "independent_architecture_verdict": "qualified_pass",
     "docs_blocker_localized": false,
     "external_watch_issue_names": [
-      "marketing_independent_verification",
-      "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt",
-      "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin"
+      "marketing_independent_verification"
     ],
     "external_watch_issue_categories": [
-      "marketing_independent_verification:loop_verification_fail",
-      "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt:review_followup_required",
-      "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required"
+      "marketing_independent_verification:loop_verification_fail"
     ],
     "required_runtime_consumers_present": [
       "agents/marketing/distribution_lane_executor.py",
@@ -257,7 +238,7 @@
   "notes": [
     "Architecture green here means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.",
     "Persisted disabled jobs remain history only; live disabled jobs are 0.",
-    "Independent live inspection in this snapshot saw 25 total jobs, 25 enabled, 0 disabled, 9 running, and 0 live last-error jobs.",
+    "Independent live inspection in this snapshot saw 25 total jobs, 25 enabled, 0 disabled, 3 running, and 0 live last-error jobs.",
     "The remaining blocker is external marketing outcome evidence, not architecture runtime drift.",
     "No live timeout-budget repair was applied in this watchdog run."
   ]

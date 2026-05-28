@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-05-28T06:35:48.852596+02:00",
+  "type": "distribution_lane_latest_truth_repair",
+  "title": "Repair stale distribution-lane latest truth detection for the scheduled post-hold rerun",
+  "ok": true,
+  "status": "repaired_and_verified",
+  "live_external_action": false,
+  "outcome_ready": true,
+  "goal": "Improve the 2026-05-28 post-hold marketer rerun by fail-closing when distribution_lane_latest.json points at a stale latest-artifact snapshot.",
+  "shared_findings_reused": [
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/outcome_execution_board_latest.json",
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/adoption_metrics_latest.md",
+    "agents/marketing/logs/market_intelligence_latest.json"
+  ],
+  "changes": [
+    {
+      "path": "agents/marketing/marketing_loop_independent_verify.py",
+      "summary": "Added freshness verification for distribution_lane_latest.json, including alias mtime and its referenced artifact Generated timestamp, and made active hold certification fail closed when that latest surface is stale."
+    },
+    {
+      "path": "agents/marketing/tests/test_marketing_system.py",
+      "summary": "Added regression coverage proving the verifier rejects stale distribution-lane latest truth during an active hold and still accepts a fresh lane artifact."
+    },
+    {
+      "path": "agents/marketing/logs/distribution_lane_latest.json",
+      "summary": "Refreshed the latest distribution-lane truth surface so the current scheduled rerun reads the real 2026-05-28 selection snapshot."
+    },
+    {
+      "path": "agents/marketing/logs/outcome_execution_board_latest.json",
+      "summary": "Refreshed the paired execution-board latest snapshot to keep hold-window truth surfaces aligned."
+    }
+  ],
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_marketing_system.MarketingLoopCertificationTests -v",
+    "runtime": "python3 - <<'PY' ... outcome_execution_board_runner.sync_latest_truth_snapshot(...) ... PY",
+    "results": [
+      "Targeted marketing loop certification tests passed with the new stale-distribution-lane guard.",
+      "distribution_lane_latest.json now points at /home/mistlight/.openclaw/workspace/drafts/2026-05-28_distribution_action_brief.md instead of the stale 2026-05-25 snapshot.",
+      "outcome_execution_board_latest.json now reports timestamp 2026-05-28T06:33:46.708167 and execution_board_path /home/mistlight/.openclaw/workspace/drafts/2026-05-28_marketing_execution_board.md."
+    ]
+  },
+  "current_truth": {
+    "why_this_slot": "The execution board still had no truthful do-now packet, the post-hold rerun was already scheduled, and improving that rerun's fail-closed truth inputs was the highest-leverage executable move.",
+    "release_rerun_at": "2026-05-28T09:12:15+02:00",
+    "selected_lane_latest": "distribution_architecture_repair",
+    "execution_board_empty": true,
+    "codeberg_window_delta": {
+      "stars": 0,
+      "watchers": 0,
+      "forks": 0,
+      "samples": 9
+    }
+  }
+}

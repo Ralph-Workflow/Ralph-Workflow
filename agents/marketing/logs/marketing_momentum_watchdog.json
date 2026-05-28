@@ -1,26 +1,26 @@
 {
-  "generated_at": "2026-05-28T06:07:53.302926+02:00",
+  "generated_at": "2026-05-28T06:49:18.544488+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 1.16,
-  "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest_healthy.md",
-  "latest_healthy_report_age_hours": 7.32,
-  "latest_post_age_hours": 37.34,
+  "report_age_hours": 0.01,
+  "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
+  "latest_healthy_report_age_hours": 0.01,
+  "latest_post_age_hours": 38.03,
   "reddit_monitor_runtime": {
     "status": "fresh_report_reused",
-    "age_hours": 1.15
+    "age_hours": 0.0
   },
   "reddit_execution_status": {
     "status": "execution_blocked",
-    "age_hours": 25.04,
+    "age_hours": 25.73,
     "blocking_reason": "Reddit is serving a \"blocked by network security\" page even through the Chromium session. IP-level block is in effect."
   },
   "adoption_flat": true,
   "pending_repairs": [],
   "blocked_distribution_channels": [],
   "apollo": {
-    "status": "login_succeeded",
-    "age_hours": 5.59,
-    "cloudflare_blocked": false
+    "status": "cloudflare_auth_blocked",
+    "age_hours": 0.54,
+    "cloudflare_blocked": true
   },
   "measurement_hold": {
     "active": true,
@@ -31,6 +31,7 @@
   "actions": [],
   "watch_actions": [
     "reddit_monitor_degraded",
+    "apollo_channel_blocked",
     "primary_repo_adoption_flat",
     "measurement_hold_active"
   ],

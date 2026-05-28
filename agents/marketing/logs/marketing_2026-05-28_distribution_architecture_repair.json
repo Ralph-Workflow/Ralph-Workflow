@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-28T00:12:52.040565",
+  "timestamp": "2026-05-28T06:47:27.094711",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -12,21 +12,22 @@
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
       "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
-      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
-    "reasoning": "The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; perform another concrete distribution-architecture repair now instead of logging another guard pause.",
+    "reasoning": "The active publisher-overlap repair window still blocks same-family follow-through, but the board review window moved, both re-entry repairs are already spent, and no truthful do-now lane appeared; perform another concrete distribution-architecture repair now instead of preserving another guard pause.",
     "supporting_reasons": [
-      "1 owned-content posts already shipped in the last 36 hours.",
+      "Primary Codeberg adoption is flat in the current measurement window.",
+      "1 live external marketing action(s) already shipped in the last 6 hours.",
       "Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
-      "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
       "Apollo already has an active measurement window until 2026-06-01T23:11:13.732870+02:00, so do not spend this run repackaging the same outbound lane.",
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
+      "No actionable prepared curator targets remain outside the current measurement windows, so the next lane should create fresh high-intent demand capture rather than another packet refresh.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, 23blocks-OS/ai-maestro, AI Coding Stack), so those targets should not be re-queued immediately.",
+      "A manual-only primary-repo-flat publisher follow-through asset exists, but the active same-family publisher-overlap repair window says not to resurface that prepared-only asset again until another family advances or the current reply window materially changes.",
       "An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
@@ -41,7 +42,7 @@
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
-      "2 prior distribution-architecture repair run(s) already hit this same empty-board window.",
+      "6 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint."
     ]
   },
@@ -50,6 +51,7 @@
     "ok": true
   },
   "verification": {
-    "execution_board_fingerprint": "3e26e805934cbe10ee36c100131ca7a828d5e2a4"
+    "execution_board_fingerprint": "aa74c721cc9662ea96b010a08b8556d1b9c2bf75",
+    "short_review_window_release_at": "2026-05-28T09:12:15"
   }
 }

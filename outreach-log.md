@@ -7404,3 +7404,23 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Apollo monitor
 - **When:** 2026-05-28 06:16:56
 - **Note:** Apollo status changed from `login_succeeded` to `cloudflare_auth_blocked`.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 06:36:54
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 06:37:44
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 06:39:22
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 06:45:38
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 06:49:18
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-28T06:20:13.343825",
+  "generated_at": "2026-05-28T06:48:35.711196",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -112,7 +112,7 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
     "5 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
-    "The most recent runtime activity was distribution_architecture_guard_pause_truth_repair, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The most recent runtime activity was distribution_architecture_churn_guard_repair, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint."
@@ -148,15 +148,15 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_060710_distribution_architecture_guard_pause_truth_repair.json",
-    "type": "distribution_architecture_guard_pause_truth_repair",
-    "title": "Repair empty-board hold-window truth so the selector stops collapsing back to fake measurement holds",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28.json",
+    "type": "distribution_architecture_churn_guard_repair",
+    "title": "Distribution lane execution: distribution_architecture_repair",
     "status": "executed",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": null
+    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_063800_distribution_architecture_repair.md"
   },
   "latest_executed_action": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_dupple_publisher_outreach.json",

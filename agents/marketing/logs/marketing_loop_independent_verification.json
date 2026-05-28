@@ -1,15 +1,15 @@
 {
-  "checked_at": "2026-05-28T04:58:39.436333+02:00",
+  "checked_at": "2026-05-28T06:49:18.724818+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-28T04:58:39.415686"
+      "summary": "runner ok=True generated_at=2026-05-28T06:49:18.703191"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_monitor_degraded', 'primary_repo_adoption_flat', 'measurement_hold_active']"
+      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_monitor_degraded', 'apollo_channel_blocked', 'primary_repo_adoption_flat', 'measurement_hold_active']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
@@ -22,14 +22,19 @@
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json",
       "summary": "fresh=True; reason=ok"
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_lane_latest.json",
+      "summary": "fresh=True; reason=ok"
     }
   ],
   "watchpoints": [
+    "reddit monitoring is degraded, but a fresh healthy fallback report still exists inside the grace window",
     "primary repo adoption remains measurement-pending after shipped repairs",
-    "measurement hold is active, and the current manual/external follow-through queue is consolidated in fresh execution-board artifacts"
+    "measurement hold is active, and the current manual/external follow-through queue is consolidated in fresh execution-board artifacts",
+    "Apollo outbound is externally blocked (cloudflare_auth_blocked) with fresh telemetry"
   ],
   "blockers": [
-    "Reddit monitor is degraded without a fresh healthy fallback report inside the grace window.",
     "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
   ]
 }

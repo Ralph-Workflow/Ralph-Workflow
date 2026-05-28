@@ -8633,7 +8633,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
         self.assertEqual(decision.lane, 'primary_repo_flat_contact_handoff_packet')
         self.assertIn('truthful follow-through surface', decision.reason.lower())
 
-    def test_guard_pause_wins_when_publisher_overlap_hold_is_active_and_release_window_only_shifted(self):
+    def test_release_window_shift_with_completed_reentry_repairs_forces_distribution_architecture_repair(self):
         now = datetime(2026, 5, 27, 17, 57, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
         audit = {
@@ -8733,8 +8733,8 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                     stack.enter_context(patcher)
                 decision = distribution_lane_selector.choose_distribution_lane(now)
 
-        self.assertEqual(decision.lane, 'distribution_architecture_guard_pause')
-        self.assertIn('publisher-overlap repair window', decision.reason.lower())
+        self.assertEqual(decision.lane, 'distribution_architecture_repair')
+        self.assertIn('consumed both re-entry repairs', decision.reason.lower())
 
     def test_short_review_window_reentry_repairs_state_reuses_historical_repairs_after_bridge(self):
         now = datetime(2026, 5, 28, 5, 57, 0)

@@ -134,25 +134,25 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 
 ## Model Selection
 
-Default to **`openai-codex/gpt-5.4`**.
+Default to **`minimax/MiniMax-M2.7`**.
 
-Use **`minimax/MiniMax-M2.7-highspeed`** only when the task is clearly:
+Use **`minimax/MiniMax-M2.7-highspeed`** when the task is clearly:
 - straightforward
 - low-risk
 - low-judgment
 - easy to verify
 - not sensitive to nuance or strategic mistakes
 
-If you're unsure which model to use, choose **GPT-5.4**.
+If you're unsure which model to use, choose **MiniMax-M2.7**.
 
-Good MiniMax candidates:
+Good MiniMax highspeed candidates:
 - routine research sweeps
 - simple monitoring/reporting
 - straightforward posting/publishing chores
 - mechanical repo or file maintenance
 - clearly-scoped content transforms where quality is easy to inspect
 
-Use GPT-5.4 for:
+Use MiniMax-M2.7 for:
 - strategy
 - judgment calls
 - ambiguous or high-context tasks

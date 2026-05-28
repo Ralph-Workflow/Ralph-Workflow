@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-28T05:34:27.463430",
+  "timestamp": "2026-05-28T06:47:27.094711",
   "weekly_mode": false,
   "marketing_status": "measurement_hold",
   "measurement_hold": {
@@ -10,22 +10,22 @@
     "reason": "The primary-repo-flat publisher lane is stuck in prepared-only packet churn, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet."
   },
   "distribution_lane": {
-    "lane": "measurement_hold",
-    "reason": "The primary-repo-flat publisher lane is stuck in prepared-only packet churn, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet.",
+    "lane": "distribution_architecture_repair",
+    "reason": "The active publisher-overlap repair window still blocks same-family follow-through, but the board review window moved, both re-entry repairs are already spent, and no truthful do-now lane appeared; perform another concrete distribution-architecture repair now instead of preserving another guard pause.",
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_distribution_action_brief.md"
   },
   "distribution_execution": {
-    "action_type": "measurement_hold_churn_guard_repair",
+    "action_type": "distribution_architecture_churn_guard_repair",
     "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_053132_measurement_hold_follow_through.md",
-    "summary": "Reused existing measurement-hold churn-guard artifact.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_063800_distribution_architecture_repair.md",
+    "summary": "Reused existing distribution-architecture guard artifact.",
     "targets_prepared": [],
     "live_external_action": false,
     "blocking_factors": [],
-    "reused_existing_follow_through": true
+    "reused_existing_follow_through": false
   },
   "seo": {
-    "timestamp": "2026-05-28T05:34:27.597552",
+    "timestamp": "2026-05-28T06:47:27.236231",
     "onpage_score": "100/100 (A)",
     "homepage_ok": true,
     "sitemap_urls": 80,
@@ -73,5 +73,10 @@
     "stderr": ""
   },
   "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_052712_measurement_hold_skip.json",
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_measurement_hold_execution.json"
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json",
+  "post_execution_distribution_lane": {
+    "lane": "distribution_architecture_repair",
+    "reason": "The active publisher-overlap repair window still blocks same-family follow-through, but the board review window moved, both re-entry repairs are already spent, and no truthful do-now lane appeared; perform another concrete distribution-architecture repair now instead of preserving another guard pause.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_distribution_action_brief.md"
+  }
 }
