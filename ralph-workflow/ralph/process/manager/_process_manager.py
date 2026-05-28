@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import signal
 import subprocess
+import threading
 from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -81,6 +83,18 @@ class ProcessManager:
         self._terminal_records: OrderedDict[int, ProcessRecord] = OrderedDict()
         self._sync_procs: dict[int, _SyncProcessLike] = {}
         self._pty_procs: dict[int, _PtyProcessLike] = {}
+
+        # Concurrent shutdown TOCTOU audit:
+        # (A) shutdown_all() status filter - SAFE without lock: concurrent callers may both
+        #     dispatch termination; ProcessLookupError/NoSuchProcess suppressed at every step
+        # (B) _escalate_termination_sync() terminal precheck - SAFE without lock: same suppression
+        # (C) _mark_exited/_mark_killed status write - PROTECTED by this lock: writing
+        #     ProcessRecord.status, returncode, ended_at must be atomic; duplicate writes
+        #     corrupt fields and fire duplicate events. _emit called OUTSIDE the lock to
+        #     prevent deadlock from listeners that call back into ProcessManager.
+        self._status_lock = threading.Lock()
+
+        self._async_procs: dict[int, _AsyncProcessLike] = {}
         self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
         self._listener_counter = 0
         sf = (
@@ -275,6 +289,7 @@ class ProcessManager:
         )
         self._terminal_records.pop(pid, None)
         self._records[pid] = record
+        self._async_procs[pid] = proc
         self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.RUNNING)
         return ManagedAsyncProcess(proc, record, self)
 
@@ -343,6 +358,10 @@ class ProcessManager:
                 if pty_proc is not None:
                     self._escalate_termination_pty(record, pty_proc, gp)
                     continue
+                async_proc = self._async_procs.get(pid)
+                if async_proc is not None:
+                    self._escalate_async_in_sync_context(record, async_proc, gp)
+                    continue
                 self._terminate_by_pid(record, gp)
 
     def shutdown_all_for_label(
@@ -363,6 +382,10 @@ class ProcessManager:
                 pty_proc = self._pty_procs.get(pid)
                 if pty_proc is not None:
                     self._escalate_termination_pty(record, pty_proc, gp)
+                    continue
+                async_proc = self._async_procs.get(pid)
+                if async_proc is not None:
+                    self._escalate_async_in_sync_context(record, async_proc, gp)
                     continue
                 self._terminate_by_pid(record, gp)
 
@@ -412,9 +435,6 @@ class ProcessManager:
 
     def _terminate_by_pid(self, record: ProcessRecord, grace_period_s: float) -> None:
         psutil_mod = self._psutil
-        if psutil_mod is None:
-            self._mark_killed(record)
-            return
 
         try:
             root = psutil_mod.process_from_pid(record.pid)
@@ -533,6 +553,57 @@ class ProcessManager:
             logger.error("Process {} still alive after kill", pid)
             raise ProcessTerminationError(record.pid, record.pgid)
 
+    def _escalate_async_in_sync_context(
+        self,
+        record: ProcessRecord,
+        proc: _AsyncProcessLike,
+        grace_period_s: float,
+    ) -> None:
+        if record.status in _TERMINAL_STATUSES:
+            return
+        psutil_mod = self._psutil
+        if psutil_mod is not None:
+            try:
+                root = psutil_mod.process_from_pid(record.pid)
+                children = root.children(recursive=True)
+            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                self._mark_killed(record, proc.returncode)
+                return
+            all_procs = [root, *children]
+            for p in all_procs:
+                with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                    p.terminate()
+            _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
+            for p in alive:
+                with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                    p.kill()
+            _, still_alive = psutil_mod.wait_procs(
+                alive, timeout=self.policy.kill_followup_timeout_s
+            )
+            self._mark_killed(record, proc.returncode)
+            if still_alive:
+                logger.error("Process {} still alive after kill", record.pid)
+                raise ProcessTerminationError(record.pid, record.pgid)
+            return
+        # No psutil: use os.kill directly
+        with contextlib.suppress(ProcessLookupError, OSError):
+            proc.terminate()
+        with contextlib.suppress(ProcessLookupError, OSError):
+            proc.kill()
+        # Liveness probe: os.kill(pid, 0) raises ProcessLookupError if process is gone
+        try:
+            os.kill(record.pid, 0)
+        except ProcessLookupError:
+            # Process is gone - mark killed
+            self._mark_killed(record, None)
+            return
+        except PermissionError:
+            # Process exists but can't signal it - still alive
+            pass
+        # If we get here, process is still alive
+        self._mark_killed(record, None)
+        raise ProcessTerminationError(record.pid, record.pgid)
+
     def _record_terminal_state(self, record: ProcessRecord) -> None:
         self._records.pop(record.pid, None)
         limit = max(self.policy.terminal_history_limit, 0)
@@ -545,29 +616,33 @@ class ProcessManager:
             self._terminal_records.popitem(last=False)
 
     def _mark_exited(self, record: ProcessRecord, returncode: int | None) -> None:
-        if record.status in _TERMINAL_STATUSES:
-            return
-        prev = record.status
-        record.status = ProcessStatus.EXITED
-        record.returncode = returncode
-        record.ended_at = datetime.now(tz=UTC)
-        record.cause = "exited"
-        self._sync_procs.pop(record.pid, None)
-        self._pty_procs.pop(record.pid, None)
-        self._record_terminal_state(record)
+        with self._status_lock:
+            if record.status in _TERMINAL_STATUSES:
+                return
+            prev = record.status
+            record.status = ProcessStatus.EXITED
+            record.returncode = returncode
+            record.ended_at = datetime.now(tz=UTC)
+            record.cause = "exited"
+            self._sync_procs.pop(record.pid, None)
+            self._pty_procs.pop(record.pid, None)
+            self._async_procs.pop(record.pid, None)
+            self._record_terminal_state(record)
         self._emit(record, prev, ProcessStatus.EXITED)
 
     def _mark_killed(self, record: ProcessRecord, returncode: int | None = None) -> None:
-        if record.status in _TERMINAL_STATUSES:
-            return
-        prev = record.status
-        record.status = ProcessStatus.KILLED
-        record.returncode = returncode
-        record.ended_at = datetime.now(tz=UTC)
-        record.cause = "killed"
-        self._sync_procs.pop(record.pid, None)
-        self._pty_procs.pop(record.pid, None)
-        self._record_terminal_state(record)
+        with self._status_lock:
+            if record.status in _TERMINAL_STATUSES:
+                return
+            prev = record.status
+            record.status = ProcessStatus.KILLED
+            record.returncode = returncode
+            record.ended_at = datetime.now(tz=UTC)
+            record.cause = "killed"
+            self._sync_procs.pop(record.pid, None)
+            self._pty_procs.pop(record.pid, None)
+            self._async_procs.pop(record.pid, None)
+            self._record_terminal_state(record)
         self._emit(record, prev, ProcessStatus.KILLED)
 
     def _emit(

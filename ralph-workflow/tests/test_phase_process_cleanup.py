@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import itertools
+import subprocess
 import sys
 from typing import TYPE_CHECKING
 
@@ -20,7 +21,7 @@ from ralph.process.manager import (
     get_process_manager,
     reset_process_manager,
 )
-from ralph.testing.fake_process import make_sync_process_factory
+from ralph.testing.fake_process import FakeTimeoutPopen, make_sync_process_factory
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -129,3 +130,37 @@ def test_run_git_without_phase_uses_plain_label(tmp_git_repo: Path) -> None:
 
     labels = [r.label for r in pm.list_records(include_terminal=True)]
     assert "git:rev-parse" in labels, f"Expected 'git:rev-parse' in labels, got: {labels}"
+
+
+def test_run_git_timeout_terminates_managed_process() -> None:
+    """run_git raises TimeoutExpired and leaves the managed process in a terminal state.
+
+    Regression for AO-001: without the fix, the except block re-raises without
+    calling proc.terminate(), leaving the git subprocess in RUNNING state.
+    """
+    pid_iter = itertools.count(1)
+
+    def timeout_factory(command: object, opts: object) -> FakeTimeoutPopen:
+        return FakeTimeoutPopen(pid=next(pid_iter))
+
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=timeout_factory)
+    original_singleton = _mgr._pm_state.instance
+    _mgr._pm_state.instance = pm
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            run_git(
+                ["rev-parse", "HEAD"],
+                cwd=None,
+                label="git:test-timeout",
+                options=GitRunOptions(timeout=0.01),
+            )
+    finally:
+        _mgr._pm_state.instance = original_singleton
+
+    assert pm.list_active() == [], (
+        "After run_git TimeoutExpired, the git subprocess must not remain active. "
+        "The except block must call proc.terminate() before re-raising."
+    )
+    records = pm.list_records(include_terminal=True)
+    assert len(records) == 1
+    assert records[0].status != ProcessStatus.RUNNING

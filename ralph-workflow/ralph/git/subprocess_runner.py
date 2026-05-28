@@ -59,6 +59,7 @@ def run_git(
     try:
         raw_stdout, raw_stderr = proc.communicate(timeout=effective_options.timeout)
     except subprocess.TimeoutExpired:
+        proc.terminate(grace_period_s=0)
         raise
 
     def _str(v: bytes | str | None) -> str:
