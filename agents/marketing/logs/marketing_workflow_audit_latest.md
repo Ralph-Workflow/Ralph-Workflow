@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-28T03:56:29.611338
+- Generated: 2026-05-28T04:58:04.823167
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,7 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 5 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.
-- The most recent runtime activity was primary_repo_flat_status_churn_guard_repair, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
+- The most recent runtime activity was measurement_hold_churn_guard_repair, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.
 - A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint.

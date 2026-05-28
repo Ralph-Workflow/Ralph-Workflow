@@ -808,6 +808,155 @@ class RunRepairModeTests(unittest.TestCase):
             finally:
                 run.LOG_DIR = original_log_dir
 
+    def test_latest_measurement_hold_window_does_not_rebase_to_follow_through_or_churn_guard(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                execution_payload = {
+                    'timestamp': '2026-05-28T03:43:43.128124',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'why_this_action': {'summary': 'measurement hold is active'},
+                    'review_window': {'scheduled_run_at': '2026-05-28T09:12:15'},
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }
+                follow_through_payload = {
+                    'timestamp': '2026-05-28T05:12:01.551250',
+                    'chosen_action': {'type': 'measurement_hold_follow_through'},
+                    'why_this_action': {'summary': 'follow-through only'},
+                    'review_window': {'scheduled_run_at': '2026-05-28T09:12:15'},
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }
+                churn_guard_payload = {
+                    'timestamp': '2026-05-28T05:14:06.038761',
+                    'chosen_action': {'type': 'measurement_hold_churn_guard_repair'},
+                    'why_this_action': {'summary': 'guard'},
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-28_measurement_hold_execution.json').write_text(json.dumps(execution_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-28_051201_measurement_hold_follow_through.json').write_text(json.dumps(follow_through_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-28_051406_measurement_hold_churn_guard_repair.json').write_text(json.dumps(churn_guard_payload), encoding='utf-8')
+                (run.LOG_DIR / 'distribution_lane_latest.json').write_text(
+                    json.dumps({'short_review_window_release_at': '2026-05-28T09:12:15'}),
+                    encoding='utf-8',
+                )
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 28, 5, 20, 0))
+
+                self.assertIsNotNone(hold)
+                self.assertEqual(hold['hold_started_at'], datetime(2026, 5, 28, 3, 43, 43, 128124))
+                self.assertEqual(hold['hold_until'], datetime(2026, 5, 28, 9, 12, 15))
+                self.assertEqual(hold['source_log'], str(run.LOG_DIR / 'marketing_2026-05-28_measurement_hold_execution.json'))
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_latest_measurement_hold_window_respects_latest_live_external_boundary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                old_execution_payload = {
+                    'timestamp': '2026-05-28T03:43:43.128124',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'review_window': {'scheduled_run_at': '2026-05-28T09:12:15'},
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }
+                live_payload = {
+                    'timestamp': '2026-05-28T04:40:00',
+                    'chosen_action': {'type': 'publisher_email_outreach'},
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': True},
+                }
+                follow_through_payload = {
+                    'timestamp': '2026-05-28T05:12:01.551250',
+                    'chosen_action': {'type': 'measurement_hold_follow_through'},
+                    'why_this_action': {'summary': 'follow-through only'},
+                    'review_window': {'scheduled_run_at': '2026-05-28T09:12:15'},
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }
+                churn_guard_payload = {
+                    'timestamp': '2026-05-28T04:56:32.391216',
+                    'chosen_action': {'type': 'measurement_hold_churn_guard_repair'},
+                    'why_this_action': {'summary': 'guard'},
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-28_034343_measurement_hold_execution.json').write_text(json.dumps(old_execution_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-28_publisher_email_outreach.json').write_text(json.dumps(live_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-28_045632_measurement_hold_churn_guard_repair.json').write_text(json.dumps(churn_guard_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-28_051201_measurement_hold_follow_through.json').write_text(json.dumps(follow_through_payload), encoding='utf-8')
+                (run.LOG_DIR / 'distribution_lane_latest.json').write_text(
+                    json.dumps({'short_review_window_release_at': '2026-05-28T09:12:15'}),
+                    encoding='utf-8',
+                )
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 28, 5, 20, 0))
+
+                self.assertIsNotNone(hold)
+                self.assertEqual(hold['hold_started_at'], datetime(2026, 5, 28, 5, 12, 1, 551250))
+                self.assertEqual(hold['source_log'], str(run.LOG_DIR / 'marketing_2026-05-28_051201_measurement_hold_follow_through.json'))
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_latest_measurement_hold_window_does_not_match_old_holds_via_current_distribution_lane_release(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                old_hold_payload = {
+                    'timestamp': '2026-05-27T11:18:13.123092',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }
+                current_guard_payload = {
+                    'timestamp': '2026-05-28T04:56:32.391216',
+                    'chosen_action': {'type': 'measurement_hold_churn_guard_repair'},
+                    'why_this_action': {'summary': 'guard'},
+                    'review_window': {'scheduled_run_at': '2026-05-28T09:12:15'},
+                    'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+                }
+                (run.LOG_DIR / 'marketing_2026-05-27_111813_measurement_hold_execution.json').write_text(json.dumps(old_hold_payload), encoding='utf-8')
+                (run.LOG_DIR / 'marketing_2026-05-28_045632_measurement_hold_churn_guard_repair.json').write_text(json.dumps(current_guard_payload), encoding='utf-8')
+                (run.LOG_DIR / 'distribution_lane_latest.json').write_text(
+                    json.dumps({'short_review_window_release_at': '2026-05-28T09:12:15'}),
+                    encoding='utf-8',
+                )
+
+                hold = run._latest_measurement_hold_window(datetime(2026, 5, 28, 5, 20, 0))
+
+                self.assertIsNotNone(hold)
+                self.assertEqual(hold['hold_started_at'], datetime(2026, 5, 28, 4, 56, 32, 391216))
+                self.assertEqual(hold['source_log'], str(run.LOG_DIR / 'marketing_2026-05-28_045632_measurement_hold_churn_guard_repair.json'))
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_measurement_hold_follow_through_stale_check_ignores_same_run_alias_refreshes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            original_drafts_dir = run.DRAFTS_DIR
+            run.LOG_DIR = Path(tmpdir) / 'logs'
+            run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
+            run.LOG_DIR.mkdir(parents=True, exist_ok=True)
+            run.DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+            try:
+                follow_through_timestamp = datetime(2026, 5, 28, 5, 27, 12)
+                tracked_artifact = run.LOG_DIR / 'primary_repo_flat_contact_discovery_latest.json'
+                tracked_artifact.write_text('{}', encoding='utf-8')
+                same_run_mtime = follow_through_timestamp.timestamp() + 2
+                os.utime(tracked_artifact, (same_run_mtime, same_run_mtime))
+
+                self.assertFalse(
+                    run._measurement_hold_follow_through_is_stale({'timestamp': follow_through_timestamp})
+                )
+
+                later_mtime = follow_through_timestamp.timestamp() + 10
+                os.utime(tracked_artifact, (later_mtime, later_mtime))
+
+                self.assertTrue(
+                    run._measurement_hold_follow_through_is_stale({'timestamp': follow_through_timestamp})
+                )
+            finally:
+                run.LOG_DIR = original_log_dir
+                run.DRAFTS_DIR = original_drafts_dir
+
     def test_main_runs_lightweight_follow_through_during_active_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR
@@ -1438,6 +1587,123 @@ class RunRepairModeTests(unittest.TestCase):
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir
 
+    def test_latest_measurement_hold_follow_through_reuses_churn_guard_log_in_same_hold_window(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            run.LOG_DIR = Path(tmpdir)
+            try:
+                prior_log = run.LOG_DIR / 'marketing_2026-05-28_045632_measurement_hold_churn_guard_repair.json'
+                prior_log.write_text(json.dumps({
+                    'timestamp': '2026-05-28T04:56:32',
+                    'chosen_action': {
+                        'type': 'measurement_hold_churn_guard_repair',
+                        'draft': '/tmp/existing_hold_guard.md',
+                    },
+                    'result': {
+                        'status': 'executed',
+                        'summary': 'Reused churn guard truth.',
+                        'targets_prepared': [],
+                        'live_external_action': False,
+                        'blocking_factors': [],
+                    },
+                }), encoding='utf-8')
+
+                recent = run._latest_measurement_hold_follow_through({
+                    'hold_started_at': datetime(2026, 5, 28, 3, 43, 43),
+                })
+
+                self.assertIsNotNone(recent)
+                self.assertEqual(recent['action_type'], 'measurement_hold_churn_guard_repair')
+                self.assertEqual(recent['artifact_path'], '/tmp/existing_hold_guard.md')
+                self.assertEqual(recent['log_path'], str(prior_log))
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_main_reuses_existing_measurement_hold_churn_guard_in_same_hold_window(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            original_drafts_dir = run.DRAFTS_DIR
+            run.LOG_DIR = Path(tmpdir)
+            run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
+            run.DRAFTS_DIR.mkdir()
+            try:
+                prior_log = run.LOG_DIR / 'marketing_2026-05-28_045632_measurement_hold_churn_guard_repair.json'
+                prior_log.write_text(json.dumps({
+                    'timestamp': '2026-05-28T04:56:32',
+                    'chosen_action': {
+                        'type': 'measurement_hold_churn_guard_repair',
+                        'draft': '/tmp/existing_hold_guard.md',
+                    },
+                    'result': {
+                        'status': 'executed',
+                        'summary': 'Existing churn guard truth.',
+                        'targets_prepared': [],
+                        'live_external_action': False,
+                        'blocking_factors': [],
+                    },
+                }), encoding='utf-8')
+
+                hold_window = {
+                    'hold_started_at': datetime(2026, 5, 28, 3, 43, 43),
+                    'hold_until': datetime(2026, 5, 28, 9, 12, 15),
+                    'source_log': '/tmp/hold.json',
+                    'reason': 'active review window',
+                }
+                distribution_lane = LaneDecision(
+                    lane='measurement_hold',
+                    reason='Hold until short-window blockers clear.',
+                    reasons=['active review window'],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='/tmp/current-hold.md',
+                    short_review_window_release_at='2026-05-28T09:12:15',
+                )
+                distribution_execution = SimpleNamespace(
+                    lane='measurement_hold',
+                    action_type='measurement_hold_churn_guard_repair',
+                    status='executed',
+                    artifact_path='/tmp/should-not-run.md',
+                    summary='should not run',
+                    targets_prepared=[],
+                    shared_findings_used=[],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                with patch.object(run, '_latest_measurement_hold_window', return_value=hold_window), \
+                     patch.object(run, 'run_seo_daily', return_value={}), \
+                     patch.object(run, 'load_seo_trends', return_value=[]), \
+                     patch.object(run, 'compute_trends', return_value={}), \
+                     patch.object(run, 'recent_successful_posts', return_value=[]), \
+                     patch.object(run, 'load_posted_records', return_value=[]), \
+                     patch.object(run, 'enrich_posts_with_views', return_value=[]), \
+                     patch.object(run, 'summarize_content_performance', return_value={}), \
+                     patch.object(run, 'competitor_report_is_stale', return_value=False), \
+                     patch.object(run, 'load_shared_market_intelligence', return_value=None), \
+                     patch.object(run, 'load_adoption_data', return_value={}), \
+                     patch.object(run, 'write_seo_insights', return_value=run.LOG_DIR / 'seo-insights.json'), \
+                     patch.object(run, '_write_marketing_execution_board', return_value=(run.DRAFTS_DIR / 'board.md', [])), \
+                     patch.object(run, '_refresh_primary_repo_flat_contact_discovery_for_empty_board', return_value=(run.DRAFTS_DIR / 'board.md', [], None)), \
+                     patch.object(run, 'choose_distribution_lane', return_value=distribution_lane), \
+                     patch.object(run, '_measurement_hold_follow_through_is_stale', return_value=False), \
+                     patch.object(run, 'execute_distribution_lane', return_value=distribution_execution) as execute_mock, \
+                     patch.object(run, '_write_distribution_execution_log', return_value=run.LOG_DIR / 'distribution_execution.json'), \
+                     patch.object(run, '_refresh_distribution_lane_after_execution', return_value=distribution_lane):
+                    rc = run.main()
+
+                self.assertEqual(rc, 0)
+                execute_mock.assert_not_called()
+                daily_log = run.LOG_DIR / f"marketing_{datetime.now().strftime('%Y-%m-%d')}.json"
+                payload = json.loads(daily_log.read_text(encoding='utf-8'))
+                self.assertTrue(payload['distribution_execution']['reused_existing_follow_through'])
+                self.assertEqual(payload['distribution_execution']['action_type'], 'measurement_hold_churn_guard_repair')
+                self.assertEqual(payload['distribution_execution']['artifact_path'], '/tmp/existing_hold_guard.md')
+                self.assertEqual(payload['distribution_execution_log'], str(prior_log))
+            finally:
+                run.LOG_DIR = original_log_dir
+                run.DRAFTS_DIR = original_drafts_dir
+
     def test_guard_follow_through_reuse_is_stale_when_it_predates_current_short_window(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -1907,6 +2173,78 @@ class RunRepairModeTests(unittest.TestCase):
             latest_text = latest_md.read_text(encoding='utf-8')
             self.assertIn('Generated: 2026-05-27T03:21:00', latest_text)
             self.assertIn('Chosen lane: **distribution_architecture_repair**', latest_text)
+
+    def test_refresh_latest_truth_snapshot_if_stale_rewrites_outcome_and_lane_aliases(self):
+        now = datetime(2026, 5, 28, 4, 18, 0)
+        decision = LaneDecision(
+            lane='measurement_hold',
+            reason='Hold truth is current.',
+            reasons=['no truthful do-now packet exists in the review window'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/stale.md',
+            short_review_window_release_at='2026-05-28T09:12:15',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            board_path = drafts_dir / '2026-05-28_marketing_execution_board.md'
+            board_path.write_text('# current board\n', encoding='utf-8')
+
+            (log_dir / 'distribution_lane_latest.json').write_text(json.dumps({
+                'lane': 'distribution_architecture_guard_pause',
+                'reason': 'stale guard pause',
+                'reasons': [],
+                'artifact_path': str(drafts_dir / '2026-05-25_distribution_action_brief.md'),
+                'short_review_window_release_at': '2026-05-28T09:12:15',
+            }), encoding='utf-8')
+            (log_dir / 'distribution_lane_latest.md').write_text(
+                '# Ralph Workflow Distribution Action Brief\nGenerated: 2026-05-25T18:53:00\nChosen lane: **distribution_architecture_guard_pause**\n',
+                encoding='utf-8',
+            )
+            (log_dir / 'outcome_execution_board_latest.json').write_text(json.dumps({
+                'timestamp': '2026-05-25T18:53:00',
+                'selected_lane': 'distribution_architecture_guard_pause',
+                'execution_board_path': str(drafts_dir / '2026-05-25_marketing_execution_board.md'),
+                'short_review_window_release_at': '2026-05-28T09:12:15',
+            }), encoding='utf-8')
+            (log_dir / 'outcome_execution_board_latest.md').write_text(
+                '# Outcome Execution Board Runner\n\n- Generated: `2026-05-25T18:53:00`\n- Selected lane: `distribution_architecture_guard_pause`\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(run.distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(run.distribution_lane_selector, 'LATEST_JSON', log_dir / 'distribution_lane_latest.json'), \
+                 patch.object(run.distribution_lane_selector, 'LATEST_MD', log_dir / 'distribution_lane_latest.md'), \
+                 patch.object(outcome_execution_board_runner.distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(outcome_execution_board_runner.distribution_lane_selector, 'LATEST_JSON', log_dir / 'distribution_lane_latest.json'), \
+                 patch.object(outcome_execution_board_runner.distribution_lane_selector, 'LATEST_MD', log_dir / 'distribution_lane_latest.md'), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_JSON', log_dir / 'outcome_execution_board_latest.json'), \
+                 patch.object(outcome_execution_board_runner, 'STATUS_MD', log_dir / 'outcome_execution_board_latest.md'), \
+                 patch.object(outcome_execution_board_runner, 'LOG_DIR', log_dir), \
+                 patch.object(outcome_execution_board_runner, 'LATEST_EXECUTION_BOARD', drafts_dir / 'marketing_execution_board_latest.md'), \
+                 patch.object(outcome_execution_board_runner.distribution_lane_selector, '_execution_board_fingerprint', return_value='fresh123'):
+                refreshed = run._refresh_latest_truth_snapshot_if_stale(
+                    decision,
+                    now,
+                    audit={},
+                    board_path=board_path,
+                    board_targets=[],
+                )
+
+            lane_payload = json.loads((log_dir / 'distribution_lane_latest.json').read_text(encoding='utf-8'))
+            outcome_payload = json.loads((log_dir / 'outcome_execution_board_latest.json').read_text(encoding='utf-8'))
+            self.assertEqual(refreshed.lane, 'measurement_hold')
+            self.assertEqual(lane_payload['lane'], 'measurement_hold')
+            self.assertEqual(Path(lane_payload['artifact_path']).name, '2026-05-28_distribution_action_brief.md')
+            self.assertEqual(outcome_payload['selected_lane'], 'measurement_hold')
+            self.assertEqual(outcome_payload['execution_board_path'], str(board_path))
+            self.assertEqual(outcome_payload['execution_board_fingerprint'], 'fresh123')
 
     def test_write_distribution_execution_log_records_short_review_window_release_for_measurement_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:

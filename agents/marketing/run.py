@@ -1326,20 +1326,29 @@ def _latest_measurement_hold_follow_through(hold_window: dict[str, Any]) -> dict
     if not isinstance(hold_started_at, datetime):
         return None
 
+    reusable_action_types = {
+        "measurement_hold_follow_through",
+        "measurement_hold_churn_guard_repair",
+    }
+
     for path, payload, timestamp in _recent_marketing_log_payloads():
         if timestamp <= hold_started_at:
             continue
         chosen_action = payload.get("chosen_action") if isinstance(payload.get("chosen_action"), dict) else {}
         action_type = str(chosen_action.get("type") or payload.get("action_type") or "").strip()
-        if action_type != "measurement_hold_follow_through":
+        if action_type not in reusable_action_types:
             continue
         result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+        default_summary = "Reused existing measurement-hold follow-through artifact."
+        if action_type == "measurement_hold_churn_guard_repair":
+            default_summary = "Reused existing measurement-hold churn-guard artifact."
         return {
             "timestamp": timestamp,
             "log_path": str(path),
             "artifact_path": chosen_action.get("draft") or payload.get("artifact_path") or "",
+            "action_type": action_type,
             "status": str(result.get("status") or "executed"),
-            "summary": str(result.get("summary") or "Reused existing measurement-hold follow-through artifact."),
+            "summary": str(result.get("summary") or default_summary),
             "targets_prepared": list(result.get("targets_prepared") or []),
             "live_external_action": bool(result.get("live_external_action", False)),
             "blocking_factors": list(result.get("blocking_factors") or []),
@@ -1349,7 +1358,6 @@ def _latest_measurement_hold_follow_through(hold_window: dict[str, Any]) -> dict
 
 def _measurement_hold_truth_artifact_paths() -> list[Path]:
     return [
-        LOG_DIR / "distribution_lane_latest.json",
         LOG_DIR / "primary_repo_flat_contact_discovery_latest.json",
         LOG_DIR / "curator_outreach_queue_latest.json",
         LOG_DIR / "comparison_backlink_queue_latest.json",
@@ -1371,10 +1379,17 @@ def _measurement_hold_follow_through_is_stale(recent_follow_through: dict[str, A
     if not isinstance(follow_through_timestamp, datetime):
         return True
 
+    same_run_grace_seconds = 5
     for path in _measurement_hold_truth_artifact_paths():
         try:
-            if path.exists() and datetime.fromtimestamp(path.stat().st_mtime) > follow_through_timestamp:
-                return True
+            if not path.exists():
+                continue
+            modified_at = datetime.fromtimestamp(path.stat().st_mtime)
+            if modified_at <= follow_through_timestamp:
+                continue
+            if (modified_at - follow_through_timestamp).total_seconds() <= same_run_grace_seconds:
+                continue
+            return True
         except OSError:
             continue
     return False
@@ -1425,6 +1440,81 @@ def _refresh_latest_distribution_lane_alias_if_stale(decision: Any, now: datetim
         now,
         write_action_log=False,
     )
+
+
+def _latest_outcome_execution_board_alias_is_stale(
+    decision: Any,
+    now: datetime,
+    *,
+    board_path: Path,
+) -> bool:
+    status_json = outcome_execution_board_runner.STATUS_JSON
+    status_md = outcome_execution_board_runner.STATUS_MD
+    expected_lane = str(getattr(decision, 'lane', '') or '').strip()
+    expected_release_at = str(getattr(decision, 'short_review_window_release_at', '') or '').strip()
+
+    if not status_json.exists() or not status_md.exists():
+        return True
+
+    try:
+        payload = json.loads(status_json.read_text(encoding='utf-8'))
+    except (json.JSONDecodeError, OSError):
+        return True
+
+    timestamp = str(payload.get('timestamp') or '').strip()
+    if not timestamp:
+        return True
+    try:
+        generated_at = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return True
+    if generated_at.tzinfo is not None:
+        generated_at = generated_at.astimezone().replace(tzinfo=None)
+
+    if generated_at.date() != now.date():
+        return True
+    if str(payload.get('selected_lane') or '').strip() != expected_lane:
+        return True
+    if Path(str(payload.get('execution_board_path') or '')).resolve() != board_path.resolve():
+        return True
+    if str(payload.get('short_review_window_release_at') or '').strip() != expected_release_at:
+        return True
+
+    try:
+        latest_text = status_md.read_text(encoding='utf-8')
+    except OSError:
+        return True
+
+    if now.strftime('%Y-%m-%d') not in latest_text:
+        return True
+    if f"Selected lane: `{expected_lane}`" not in latest_text:
+        return True
+    return False
+
+
+def _refresh_latest_truth_snapshot_if_stale(
+    decision: Any,
+    now: datetime,
+    *,
+    audit: dict[str, Any] | None,
+    board_path: Path,
+    board_targets: list[str],
+) -> Any:
+    refreshed_decision = _refresh_latest_distribution_lane_alias_if_stale(decision, now)
+    if not _latest_outcome_execution_board_alias_is_stale(
+        refreshed_decision,
+        now,
+        board_path=board_path,
+    ):
+        return refreshed_decision
+    outcome_execution_board_runner.sync_latest_truth_snapshot(
+        now=now,
+        audit=audit or {},
+        decision=refreshed_decision,
+        board_path=board_path,
+        board_targets=board_targets,
+    )
+    return refreshed_decision
 
 
 def _distribution_architecture_execution_from_payload(
@@ -1660,7 +1750,13 @@ def main() -> int:
             now=now,
             execution_board_targets=execution_board_targets,
         )
-        distribution_lane = _refresh_latest_distribution_lane_alias_if_stale(distribution_lane, now)
+        distribution_lane = _refresh_latest_truth_snapshot_if_stale(
+            distribution_lane,
+            now,
+            audit=audit,
+            board_path=execution_board_path,
+            board_targets=execution_board_targets,
+        )
         _sync_post_hold_release_run_if_needed(
             now=now,
             distribution_lane=distribution_lane,
@@ -1679,7 +1775,7 @@ def main() -> int:
             lane_name = distribution_lane.lane
             lane_reason = distribution_lane.reason
             lane_artifact_path = getattr(distribution_lane, "artifact_path", "")
-            execution_action_type = "measurement_hold_follow_through"
+            execution_action_type = str(recent_follow_through.get("action_type") or "measurement_hold_follow_through")
             execution_status = recent_follow_through.get("status", "executed")
             execution_artifact_path = recent_follow_through.get("artifact_path", "")
             execution_summary = recent_follow_through.get("summary", "Reused existing measurement-hold follow-through artifact.")
@@ -1963,7 +2059,13 @@ def main() -> int:
                 f"[run.py] repair override active — redirecting from {original_lane} to {distribution_lane.lane}",
                 flush=True,
             )
-    distribution_lane = _refresh_latest_distribution_lane_alias_if_stale(distribution_lane, now)
+    distribution_lane = _refresh_latest_truth_snapshot_if_stale(
+        distribution_lane,
+        now,
+        audit=audit,
+        board_path=execution_board_path,
+        board_targets=execution_board_targets,
+    )
     post_hold_release_schedule = _sync_post_hold_release_run_if_needed(
         now=now,
         distribution_lane=distribution_lane,

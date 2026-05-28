@@ -1,11 +1,10 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-28T04:18:00
+Generated: 2026-05-28T05:34:27
 Chosen lane: **measurement_hold**
 
 ## Why this lane
 - The primary-repo-flat publisher lane is stuck in prepared-only packet churn, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 1 owned-content posts already shipped in the last 36 hours.
 - 1 live external marketing action(s) already shipped in the last 6 hours.
 - Active repair window says to hold another same-day publisher-contact burst until the current reply windows mature or another family advances first.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
@@ -28,9 +27,9 @@ Chosen lane: **measurement_hold**
 - Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
 - A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.
 - The live secondary-surface repair already has an active review window until 2026-05-31T00:00:00, so selecting directory confirmation again before then would be fake progress.
-- A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
-- The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.
+- The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
+- The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
 
 ## Shared findings reused
@@ -39,9 +38,6 @@ Chosen lane: **measurement_hold**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
-
-## Recent owned-content already shipped
-- Distribution lane execution: owned_content (owned_content)
 
 ## Immediate measurement-hold work
 - Do not ship another fresh outreach/reset action in this short review window

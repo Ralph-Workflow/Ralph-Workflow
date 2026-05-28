@@ -351,9 +351,62 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
         self.assertEqual(search_calls, ["production-reliability"])
         self.assertEqual(payload["total_questions_found"], 1)
 
+    def test_main_does_not_stop_early_for_recent_draft_url(self):
+        reused_question = {
+            "title": "Autonomous mode / wrapper for Claude Code?",
+            "url": "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code",
+            "tags": ["claude-code"],
+            "answers": 2,
+            "votes": 2,
+            "body_snippet": "I want Claude Code to continue, test, reflect, iterate, and use subagents without my intervention.",
+        }
+        fresh_question = {
+            "title": "How can I get more useful results from AI coding agents?",
+            "url": "https://stackoverflow.com/questions/79950000/fresh",
+            "tags": ["claude-code", "artificial-intelligence"],
+            "answers": 0,
+            "votes": 1,
+            "body_snippet": "Need a workflow with analysis, design, implementation, review, and verification instead of babysitting every step.",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            draft_dir = Path(tmp) / "drafts"
+            draft_dir.mkdir(parents=True, exist_ok=True)
+            log_path = Path(tmp) / "stackoverflow_answer_lane_latest.json"
+            packet_path = Path(tmp) / "stackoverflow_answer_handoff_packet_latest.md"
+            search_calls = []
+
+            def fake_search(spec):
+                search_calls.append(spec["label"])
+                if spec["label"] == "claude-autonomous":
+                    return [dict(reused_question)]
+                return [dict(fresh_question)]
+
+            def fake_detail(url):
+                return dict(reused_question if url == reused_question["url"] else fresh_question)
+
+            with patch.object(stackoverflow_answer_lane, "SO_LOG", log_path), \
+                 patch.object(stackoverflow_answer_lane, "SO_SEARCH_SPECS", [{"label": "claude-autonomous"}, {"label": "useful-results"}]), \
+                 patch.object(stackoverflow_answer_lane, "DRAFT_DIR", draft_dir), \
+                 patch.object(stackoverflow_answer_lane, "HANDOFF_PACKET_LATEST", packet_path), \
+                 patch.object(stackoverflow_answer_lane, "so_search_site", side_effect=fake_search), \
+                 patch.object(stackoverflow_answer_lane, "fetch_question_detail", side_effect=fake_detail), \
+                 patch.object(stackoverflow_answer_lane, "load_recent_drafted_question_urls", return_value={reused_question["url"]}), \
+                 patch.object(stackoverflow_answer_lane, "append_outreach_log"):
+                rc = stackoverflow_answer_lane.main()
+                payload = stackoverflow_answer_lane.json.loads(log_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(search_calls, ["claude-autonomous", "useful-results"])
+        self.assertEqual(payload["drafts_created"], 1)
+        self.assertEqual(payload["drafts"][0]["question_url"], fresh_question["url"])
+
     def test_load_exhausted_question_urls_uses_distribution_and_audit_retire_signal(self):
         with tempfile.TemporaryDirectory() as tmp:
             log_dir = Path(tmp)
+            root = Path(tmp)
+            drafts_dir = root / "drafts"
+            drafts_dir.mkdir(parents=True, exist_ok=True)
+            (drafts_dir / "marketing_execution_board_latest.md").write_text("no current packet block", encoding="utf-8")
             so_log = log_dir / "stackoverflow_answer_lane_latest.json"
             so_log.write_text(
                 stackoverflow_answer_lane.json.dumps(
@@ -376,12 +429,44 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
                 encoding="utf-8",
             )
             handoff_packet = log_dir / "stackoverflow_answer_handoff_packet_latest.md"
-            with patch.object(stackoverflow_answer_lane, "LOG_DIR", log_dir), \
+            with patch.object(stackoverflow_answer_lane, "ROOT", root), \
+                 patch.object(stackoverflow_answer_lane, "LOG_DIR", log_dir), \
                  patch.object(stackoverflow_answer_lane, "SO_LOG", so_log), \
                  patch.object(stackoverflow_answer_lane, "HANDOFF_PACKET_LATEST", handoff_packet):
                 exhausted = stackoverflow_answer_lane._load_exhausted_question_urls()
 
         self.assertEqual(exhausted, {"https://stackoverflow.com/questions/79942291/example"})
+
+    def test_load_exhausted_question_urls_includes_current_review_window_manual_delivery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            log_dir = root / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            drafts_dir = root / "drafts"
+            drafts_dir.mkdir(parents=True, exist_ok=True)
+            (drafts_dir / "marketing_execution_board_latest.md").write_text(
+                "StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.",
+                encoding="utf-8",
+            )
+            (log_dir / "marketing_2026-05-28_stackoverflow_manual_delivery.json").write_text(
+                stackoverflow_answer_lane.json.dumps(
+                    {
+                        "packet": {
+                            "question_url": "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code"
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (log_dir / "distribution_lane_latest.json").write_text(stackoverflow_answer_lane.json.dumps({"reasons": []}), encoding="utf-8")
+            (log_dir / "marketing_workflow_audit_latest.json").write_text(stackoverflow_answer_lane.json.dumps({"reasons": []}), encoding="utf-8")
+            (log_dir / "stackoverflow_answer_lane_latest.json").write_text(stackoverflow_answer_lane.json.dumps({}), encoding="utf-8")
+            with patch.object(stackoverflow_answer_lane, "ROOT", root), \
+                 patch.object(stackoverflow_answer_lane, "LOG_DIR", log_dir), \
+                 patch.object(stackoverflow_answer_lane, "SO_LOG", log_dir / "stackoverflow_answer_lane_latest.json"):
+                exhausted = stackoverflow_answer_lane._load_exhausted_question_urls()
+
+        self.assertEqual(exhausted, {"https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code"})
 
     def test_main_skips_exhausted_question_and_keeps_searching(self):
         exhausted_question = {

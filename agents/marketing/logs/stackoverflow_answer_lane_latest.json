@@ -1,37 +1,20 @@
 {
-  "generated_at": "2026-05-28T02:44:48.505837",
+  "generated_at": "2026-05-28T05:05:06.707762",
   "status": "ok",
   "rate_limited": false,
   "cooldown_active": false,
   "next_retry_at": null,
   "search_errors": [],
   "halted_after_rate_limit": false,
-  "total_questions_found": 1,
-  "questions_scored": 1,
-  "drafts_created": 1,
+  "total_questions_found": 0,
+  "questions_scored": 0,
+  "drafts_created": 0,
   "skipped_existing_drafts": 0,
   "reused_existing_draft": null,
   "manual_follow_through": false,
-  "top_questions": [
-    {
-      "title": "Autonomous mode / wrapper for Claude Code?",
-      "url": "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code",
-      "score": 4.2,
-      "votes": 2,
-      "answers": 2
-    }
-  ],
-  "drafts": [
-    {
-      "question_title": "Autonomous mode / wrapper for Claude Code?",
-      "question_url": "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code",
-      "question_score": 4.2,
-      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-28_autonomous-mode-wrapper-for-claude-code.md",
-      "answer_length": 1867,
-      "pain_family": "workflow-orchestration"
-    }
-  ],
+  "top_questions": [],
+  "drafts": [],
   "exhausted_question_urls": [
-    "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability"
+    "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code"
   ]
 }
