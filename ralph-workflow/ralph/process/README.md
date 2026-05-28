@@ -55,6 +55,16 @@ interactive Claude session requires PTY and controlling-terminal APIs such as `o
 `fork`, `setsid`, and `TIOCSCTTY`. On Windows, callers must use a headless transport instead
 of the PTY-backed interactive Claude path.
 
+## ProcessManagerPolicy
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `default_grace_period_s` | `float` | `5.0` | Max time to wait after graceful terminate |
+| `kill_followup_timeout_s` | `float` | `2.0` | Max time to wait after force kill |
+| `log_events` | `bool` | `True` | Enable loguru event listener |
+| `terminal_history_limit` | `int` | `256` | Max terminal records to retain |
+| `purge_on_init` | `bool` | `False` | Clear terminal records on ProcessManager init |
+
 ## Label conventions
 
 | Label | Used for |
@@ -69,14 +79,82 @@ of the PTY-backed interactive Claude path.
 `phase:review:mcp-server`. Agent-worker teardown should therefore target the
 segment-delimited prefix `agent:<scope>:<unit_id>:` rather than a bare unit id.
 
+## Pre-kill liveness verification
+
+Before each termination stage, ProcessManager calls `_verify_process_liveness(pid)`
+to check whether the process still exists at the OS level. This prevents:
+
+- **TOCTOU races**: process exits between observation and kill attempt
+- **Zombie false-positives**: zombie processes detected as still-alive
+
+On **POSIX**, `os.kill(pid, 0)` probes process existence. On **Windows**,
+`psutil.pid_exists()` provides the equivalent. `psutil.Process.status()` is
+used for zombie detection when available.
+
+The function returns a `LivenessResult` enum:
+
+- `ALIVE` — process exists and is reachable
+- `GONE` — process does not exist (no such process)
+- `ZOMBIE` — process exists but is a zombie (defunct)
+- `UNKNOWN` — liveness cannot be determined
+
 ## Escalation
 
-1. `psutil.terminate()` sent to the root process and all descendants.
-2. Wait `grace_period_s`.
-3. `psutil.kill()` sent to survivors.
-4. Wait `kill_followup_timeout_s`.
-5. If still alive → raise `ProcessTerminationError` (process is marked `KILLED`
-   regardless so the record stays consistent).
+1. **Pre-kill liveness check**: if the process is already gone, mark as KILLED
+   with cause `already_gone` and return immediately.
+2. `psutil.terminate()` sent to the root process and all descendants.
+3. Wait `grace_period_s`.
+4. `psutil.kill()` sent to survivors.
+5. Wait `kill_followup_timeout_s`.
+6. **Post-kill zombie detection**: survivors are checked for zombie status.
+   If zombie → marked KILLED with cause `zombie_after_kill`.
+7. If truly still alive → raise `ProcessTerminationError` with stage `force_kill`
+   and process is marked `FAILED`.
+
+## Stale-entry reconciliation
+
+`shutdown_all()` and `shutdown_all_for_label()` scan active records before
+termination. Any PID that no longer corresponds to an OS process is moved to
+the terminal state via `_mark_killed()` with cause `stale_entry_reconciled`.
+Zombie PIDs are reconciled with cause `zombie_reconciled`.
+
+This ensures tracking state does not drift after abnormal exit, crash, or
+interrupted cleanup.
+
+## Idempotency
+
+- `ManagedProcess.terminate()`, `ManagedPtyProcess.terminate()`, and
+  `ManagedAsyncProcess.terminate()` are idempotent: calling terminate twice on
+  the same handle is safe and produces no duplicate events.
+- `shutdown_all()` and `shutdown_all_for_label()` safely handle processes
+  already in a terminal state.
+
+## Descendant tracking
+
+`register_descendant(parent_pid, descendant_pid)` registers a descendant PID
+under a tracked parent. When the parent is terminated, the descendant
+registry is cleaned up. Use this for processes that spawn their own children
+outside the ProcessManager's direct spawn path.
+
+`list_termination_outcomes()` returns per-PID termination stage and outcome
+records for diagnostics.
+
+## ProcessTerminationError
+
+`ProcessTerminationError` provides structured failure context:
+
+- `stage` — which escalation stage failed:
+  `graceful_terminate`, `force_kill`, `zombie_detected`, `access_denied`,
+  or `already_gone`
+- `reason` — human-readable explanation of what went wrong
+- `descendant_pids` — optional list of descendant PIDs that could not be
+  terminated
+
+## purge_on_init
+
+When `ProcessManagerPolicy(purge_on_init=True)`, terminal records are cleared
+from history at `ProcessManager.__init__` time. This is useful in test
+environments or when starting with a clean slate.
 
 ## atexit safety net
 

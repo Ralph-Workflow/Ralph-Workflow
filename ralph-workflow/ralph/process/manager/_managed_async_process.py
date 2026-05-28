@@ -65,6 +65,9 @@ class ManagedAsyncProcess:
         return stdout or b"", stderr or b""
 
     async def terminate(self, grace_period_s: float | None = None) -> None:
+        # Idempotency guard: if already terminal, skip without error
+        if self._record.status in _TERMINAL_STATUSES:
+            return
         gp = (
             grace_period_s
             if grace_period_s is not None

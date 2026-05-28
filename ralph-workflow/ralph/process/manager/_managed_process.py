@@ -8,6 +8,8 @@ import threading
 import time as _time
 from typing import IO, TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
@@ -411,6 +413,13 @@ class ManagedProcess:
             self._kill_psutil_wave(psutil_mod, second_late_spawns)
 
     def terminate(self, grace_period_s: float | None = None) -> None:
+        # Idempotency guard: if already terminal, skip without error
+        if self._record.status in _TERMINAL_STATUSES:
+            logger.debug(
+                f"Process {self._record.pid} already terminal ({self._record.status.name}), "
+                f"skipping terminate"
+            )
+            return
         gp = (
             grace_period_s
             if grace_period_s is not None

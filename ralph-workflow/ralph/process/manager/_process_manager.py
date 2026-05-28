@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import enum
 import os
 import subprocess
 import threading
@@ -39,6 +40,74 @@ from ralph.process.manager._spawn_options import SpawnOptions
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+
+
+class LivenessResult(enum.Enum):
+    """Result of a process liveness check."""
+
+    ALIVE = "alive"
+    GONE = "gone"
+    ZOMBIE = "zombie"
+    UNKNOWN = "unknown"
+
+
+def _verify_process_liveness(
+    pid: int,
+    *,
+    psutil_mod: object | None = None,
+) -> LivenessResult:
+    """Check whether a PID is still alive, gone, zombie, or unknown.
+
+    On POSIX, uses os.kill(pid, 0) to probe process existence.
+    On Windows, falls back to psutil.pid_exists() if available.
+    Uses psutil for zombie detection when available.
+
+    Does NOT use _SuppressMissingProcess — each exception type is handled
+    explicitly to avoid conflating "process gone" with "no permission".
+
+    Args:
+        pid: Process ID to check.
+        psutil_mod: Optional psutil module-like object for extended checks.
+
+    Returns:
+        LivenessResult indicating the process state.
+    """
+    # Zombie detection via psutil (highest priority — check before os.kill)
+    if psutil_mod is not None:
+        try:
+            proc = psutil_mod.process_from_pid(pid)  # type: ignore[union-attr]
+            status = proc.status()  # type: ignore[union-attr]
+            if status == "zombie":
+                return LivenessResult.ZOMBIE
+        except Exception:
+            # process_from_pid failed — try POSIX fallback below
+            pass
+
+    # POSIX: use os.kill(pid, 0) to check existence
+    if hasattr(os, "kill"):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return LivenessResult.GONE
+        except PermissionError:
+            # Process exists but we lack permission to signal it
+            return LivenessResult.ALIVE
+        except OSError:
+            return LivenessResult.UNKNOWN
+        else:
+            return LivenessResult.ALIVE
+
+    # Windows fallback: use psutil if available
+    if psutil_mod is not None:
+        try:
+            exists = psutil_mod.pid_exists(pid)  # type: ignore[union-attr]
+            if exists:
+                return LivenessResult.ALIVE
+            return LivenessResult.GONE
+        except Exception:
+            return LivenessResult.UNKNOWN
+
+    return LivenessResult.UNKNOWN
 
 
 class ProcessManager:
@@ -82,6 +151,12 @@ class ProcessManager:
         self._terminal_records: OrderedDict[int, ProcessRecord] = OrderedDict()
         self._sync_procs: dict[int, _SyncProcessLike] = {}
         self._pty_procs: dict[int, _PtyProcessLike] = {}
+        self._descendants: dict[int, list[int]] = {}
+        self._termination_outcomes: dict[int, list[dict[str, str]]] = {}
+
+        # purge_on_init: clear terminal records on startup when policy requests it
+        if self.policy.purge_on_init:
+            self._terminal_records.clear()
 
         # Concurrent shutdown TOCTOU audit:
         # (A) shutdown_all() status filter - SAFE without lock: concurrent callers may both
@@ -127,6 +202,46 @@ class ProcessManager:
             self._listeners.pop(lid, None)
 
         return unsubscribe
+
+    # ------------------------------------------------------------------
+    # Descendant registry API
+    # ------------------------------------------------------------------
+
+    def register_descendant(self, parent_pid: int, descendant_pid: int) -> None:
+        """Register a descendant PID under a tracked parent.
+
+        When the parent process is terminated, descendants registered
+        here are enumerated and terminated as well.
+
+        Args:
+            parent_pid: The PID of the parent process.
+            descendant_pid: The PID of the descendant to register.
+        """
+        if parent_pid not in self._descendants:
+            self._descendants[parent_pid] = []
+        if descendant_pid not in self._descendants[parent_pid]:
+            self._descendants[parent_pid].append(descendant_pid)
+
+    def _record_termination_outcome(self, pid: int, stage: str, outcome: str) -> None:
+        """Record a termination outcome for a PID."""
+        if pid not in self._termination_outcomes:
+            self._termination_outcomes[pid] = []
+        self._termination_outcomes[pid].append({"stage": stage, "outcome": outcome})
+
+    def list_termination_outcomes(self) -> dict[int, list[dict[str, str]]]:
+        """Return a dict mapping PID to termination outcome records.
+
+        Each outcome dict has 'stage' and 'outcome' keys.
+        Returns empty dict when no outcomes have been recorded.
+
+        Returns:
+            Dict[int, list[dict[str, str]]]: PID-keyed list of outcome dicts.
+        """
+        return dict(self._termination_outcomes)
+
+    # ------------------------------------------------------------------
+    # Spawn methods
+    # ------------------------------------------------------------------
 
     def spawn(
         self,
@@ -344,9 +459,41 @@ class ProcessManager:
         if isinstance(handle, ManagedPtyProcess):
             self._escalate_termination_pty(handle.record, handle._proc, gp)
 
+    # ------------------------------------------------------------------
+    # Shutdown methods (with stale-entry reconciliation)
+    # ------------------------------------------------------------------
+
+    def _reconcile_stale_entries(self) -> int:
+        """Scan active records and mark as KILLED any PIDs no longer alive at the OS level.
+
+        Also cleans up _descendants entries for stale PIDs.
+
+        Returns:
+            Number of stale PIDs that were reconciled.
+        """
+        reconciled = 0
+        for pid in list(self._records.keys()):
+            record = self._records.get(pid)
+            if record is None or record.status in _TERMINAL_STATUSES:
+                continue
+            liveness = _verify_process_liveness(pid, psutil_mod=self._psutil)
+            if liveness in (LivenessResult.GONE, LivenessResult.UNKNOWN):
+                self._mark_killed(record, returncode=None, cause="stale_entry_reconciled")
+                logger.debug(f"Stale tracking entry reconciled: PID {pid} no longer exists")
+                reconciled += 1
+            elif liveness == LivenessResult.ZOMBIE:
+                self._mark_killed(record, returncode=None, cause="zombie_reconciled")
+                logger.warning(f"Stale zombie entry reconciled: PID {pid} is zombie")
+                reconciled += 1
+        return reconciled
+
     def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
         """Terminate all active processes."""
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
+
+        # Reconcile stale entries before attempting termination
+        self._reconcile_stale_entries()
+
         for pid, record in list(self._records.items()):
             if record.status not in _TERMINAL_STATUSES:
                 proc = self._sync_procs.get(pid)
@@ -368,6 +515,10 @@ class ProcessManager:
     ) -> None:
         """Terminate all active processes whose label starts with label_prefix."""
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
+
+        # Reconcile stale entries before attempting termination
+        self._reconcile_stale_entries()
+
         for pid, record in list(self._records.items()):
             if (
                 record.label is not None
@@ -388,25 +539,56 @@ class ProcessManager:
                     continue
                 self._terminate_by_pid(record, gp)
 
+    # ------------------------------------------------------------------
+    # Termination methods (with pre-kill liveness checks)
+    # ------------------------------------------------------------------
+
     def _terminate_root_only_sync(
         self,
         record: ProcessRecord,
         proc: _SyncProcessLike | _PtyProcessLike,
         grace_period_s: float,
     ) -> None:
+        # Pre-kill liveness check
+        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        if liveness == LivenessResult.GONE:
+            self._mark_killed(record, None, cause="already_gone")
+            logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
+            return
+
         with contextlib.suppress(ProcessLookupError):
             proc.terminate()
+        logger.debug(
+            f"Process {record.pid} graceful terminate sent, waiting {grace_period_s}s"
+        )
         try:
             rc = proc.wait(timeout=grace_period_s)
         except (subprocess.TimeoutExpired, TimeoutError):
+            logger.warning(
+                f"Process {record.pid} survived graceful terminate, escalating to force kill"
+            )
             with contextlib.suppress(ProcessLookupError):
                 proc.kill()
             try:
                 rc = proc.wait(timeout=self.policy.kill_followup_timeout_s)
             except (subprocess.TimeoutExpired, TimeoutError):
+                post_liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+                if post_liveness == LivenessResult.ZOMBIE:
+                    logger.warning(
+                        f"Process {record.pid} is zombie after force kill — parent must reap"
+                    )
+                    self._mark_killed(record, proc.poll(), cause="zombie_after_kill")
+                    return
+                if post_liveness != LivenessResult.ALIVE:
+                    self._mark_killed(record, proc.poll(), cause="killed")
+                    return
                 self._mark_termination_failed(record, proc.poll())
                 logger.error("Process {} still alive after kill", record.pid)
-                raise ProcessTerminationError(record.pid, record.pgid) from None
+                raise ProcessTerminationError(
+                    record.pid, record.pgid,
+                    stage="force_kill",
+                    reason="still alive",
+                ) from None
         self._mark_killed(record, rc)
 
     async def _terminate_root_only_async(
@@ -415,11 +597,24 @@ class ProcessManager:
         proc: _AsyncProcessLike,
         grace_period_s: float,
     ) -> None:
+        # Pre-kill liveness check
+        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        if liveness == LivenessResult.GONE:
+            self._mark_killed(record, proc.returncode, cause="already_gone")
+            logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
+            return
+
         with contextlib.suppress(ProcessLookupError):
             proc.terminate()
+        logger.debug(
+            f"Process {record.pid} graceful terminate sent, waiting {grace_period_s}s"
+        )
         try:
             rc = await asyncio.wait_for(proc.wait(), timeout=grace_period_s)
         except TimeoutError:
+            logger.warning(
+                f"Process {record.pid} survived graceful terminate, escalating to force kill"
+            )
             with contextlib.suppress(ProcessLookupError):
                 proc.kill()
             try:
@@ -427,14 +622,35 @@ class ProcessManager:
                     proc.wait(), timeout=self.policy.kill_followup_timeout_s
                 )
             except TimeoutError:
+                post_liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+                if post_liveness == LivenessResult.ZOMBIE:
+                    logger.warning(
+                        f"Process {record.pid} is zombie after force kill — parent must reap"
+                    )
+                    self._mark_killed(record, proc.returncode, cause="zombie_after_kill")
+                    return
+                if post_liveness != LivenessResult.ALIVE:
+                    self._mark_killed(record, proc.returncode, cause="killed")
+                    return
                 self._mark_termination_failed(record, proc.returncode)
                 logger.error("Process {} still alive after kill", record.pid)
-                raise ProcessTerminationError(record.pid, record.pgid) from None
+                raise ProcessTerminationError(
+                    record.pid, record.pgid,
+                    stage="force_kill",
+                    reason="still alive",
+                ) from None
         self._mark_killed(record, rc)
 
     def _terminate_by_pid(self, record: ProcessRecord, grace_period_s: float) -> None:
         psutil_mod = self._psutil
         if psutil_mod is None:
+            return
+
+        # Pre-kill liveness check
+        liveness = _verify_process_liveness(record.pid, psutil_mod=psutil_mod)
+        if liveness == LivenessResult.GONE:
+            self._mark_killed(record, cause="already_gone")
+            logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
             return
 
         try:
@@ -450,17 +666,38 @@ class ProcessManager:
         for proc in all_procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.terminate()
+        logger.debug(
+            f"Process {record.pid} graceful terminate sent to {len(all_procs)} procs, "
+            f"waiting {grace_period_s}s"
+        )
 
         _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
+        if alive:
+            logger.warning(
+                f"Process {record.pid} survived graceful terminate, escalating to force kill"
+            )
         for proc in alive:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.kill()
 
         _, still_alive = psutil_mod.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
         if still_alive:
+            # Post-kill zombie/liveness check on survivors
+            for p in still_alive:
+                pid_liveness = _verify_process_liveness(p.pid, psutil_mod=psutil_mod)
+                if pid_liveness == LivenessResult.ZOMBIE:
+                    logger.warning(
+                        f"Process {p.pid} is zombie after force kill — parent must reap"
+                    )
+                    self._mark_killed(record, cause="zombie_after_kill")
+                    return
             self._mark_termination_failed(record)
             logger.error("Process {} still alive after kill", record.pid)
-            raise ProcessTerminationError(record.pid, record.pgid)
+            raise ProcessTerminationError(
+                record.pid, record.pgid,
+                stage="force_kill",
+                reason="still alive",
+            )
         self._mark_killed(record)
 
     def _escalate_termination_sync(
@@ -470,6 +707,13 @@ class ProcessManager:
         grace_period_s: float,
     ) -> None:
         if record.status in _TERMINAL_STATUSES:
+            return
+
+        # Pre-kill liveness check
+        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        if liveness == LivenessResult.GONE:
+            self._mark_killed(record, proc.poll(), cause="already_gone")
+            logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
             return
 
         psutil_mod = self._psutil
@@ -487,11 +731,21 @@ class ProcessManager:
             self._raise_access_denied_termination(record, proc.poll())
 
         all_procs = [root, *children]
+        self._record_termination_outcome(record.pid, "graceful_terminate", "sent")
         for p in all_procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.terminate()
+        logger.debug(
+            f"Process {record.pid} graceful terminate sent to {len(all_procs)} procs, "
+            f"waiting {grace_period_s}s"
+        )
 
         _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
+        if alive:
+            logger.warning(
+                f"Process {record.pid} survived graceful terminate, escalating to force kill"
+            )
+            self._record_termination_outcome(record.pid, "force_kill", "sent")
         for p in alive:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.kill()
@@ -499,9 +753,22 @@ class ProcessManager:
         _, still_alive = psutil_mod.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
         rc = proc.poll()
         if still_alive:
+            # Post-kill zombie/liveness check on survivors
+            for p in still_alive:
+                pid_liveness = _verify_process_liveness(p.pid, psutil_mod=psutil_mod)
+                if pid_liveness == LivenessResult.ZOMBIE:
+                    logger.warning(
+                        f"Process {p.pid} is zombie after force kill — parent must reap"
+                    )
+                    self._mark_killed(record, rc, cause="zombie_after_kill")
+                    return
             self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", record.pid)
-            raise ProcessTerminationError(record.pid, record.pgid)
+            raise ProcessTerminationError(
+                record.pid, record.pgid,
+                stage="force_kill",
+                reason="still alive",
+            )
         self._mark_killed(record, rc)
 
     def _escalate_termination_pty(
@@ -511,6 +778,12 @@ class ProcessManager:
         grace_period_s: float,
     ) -> None:
         if record.status in _TERMINAL_STATUSES:
+            return
+        # Pre-kill liveness check
+        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        if liveness == LivenessResult.GONE:
+            self._mark_killed(record, proc.poll(), cause="already_gone")
+            logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
             return
         try:
             self._escalate_termination_sync(record, proc, grace_period_s)
@@ -525,6 +798,13 @@ class ProcessManager:
         grace_period_s: float,
     ) -> None:
         if record.status in _TERMINAL_STATUSES:
+            return
+
+        # Pre-kill liveness check
+        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        if liveness == LivenessResult.GONE:
+            self._mark_killed(record, proc.returncode, cause="already_gone")
+            logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
             return
 
         psutil_mod = self._psutil
@@ -561,9 +841,21 @@ class ProcessManager:
             self._raise_access_denied_termination(record, proc.returncode)
         rc = proc.returncode
         if still_alive:
+            # Post-kill zombie/liveness check
+            post_liveness = _verify_process_liveness(record.pid, psutil_mod=psutil_mod)
+            if post_liveness == LivenessResult.ZOMBIE:
+                logger.warning(
+                    f"Process {pid} is zombie after force kill — parent must reap"
+                )
+                self._mark_killed(record, rc, cause="zombie_after_kill")
+                return
             self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", pid)
-            raise ProcessTerminationError(record.pid, record.pgid)
+            raise ProcessTerminationError(
+                record.pid, record.pgid,
+                stage="force_kill",
+                reason="still alive",
+            )
         self._mark_killed(record, rc)
 
     def _escalate_async_in_sync_context(
@@ -574,6 +866,14 @@ class ProcessManager:
     ) -> None:
         if record.status in _TERMINAL_STATUSES:
             return
+
+        # Pre-kill liveness check
+        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        if liveness == LivenessResult.GONE:
+            self._mark_killed(record, proc.returncode, cause="already_gone")
+            logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
+            return
+
         psutil_mod = self._psutil
         if psutil_mod is not None:
             try:
@@ -588,7 +888,15 @@ class ProcessManager:
             for p in all_procs:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.terminate()
+            logger.debug(
+                f"Process {record.pid} graceful terminate sent to {len(all_procs)} procs, "
+                f"waiting {grace_period_s}s"
+            )
             _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
+            if alive:
+                logger.warning(
+                    f"Process {record.pid} survived graceful terminate, escalating to force kill"
+                )
             for p in alive:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.kill()
@@ -596,9 +904,22 @@ class ProcessManager:
                 alive, timeout=self.policy.kill_followup_timeout_s
             )
             if still_alive:
+                # Post-kill zombie/liveness check
+                for p in still_alive:
+                    post_liveness = _verify_process_liveness(p.pid, psutil_mod=psutil_mod)
+                    if post_liveness == LivenessResult.ZOMBIE:
+                        logger.warning(
+                            f"Process {p.pid} is zombie after force kill — parent must reap"
+                        )
+                        self._mark_killed(record, proc.returncode, cause="zombie_after_kill")
+                        return
                 self._mark_termination_failed(record, proc.returncode)
                 logger.error("Process {} still alive after kill", record.pid)
-                raise ProcessTerminationError(record.pid, record.pgid)
+                raise ProcessTerminationError(
+                    record.pid, record.pgid,
+                    stage="force_kill",
+                    reason="still alive",
+                )
             self._mark_killed(record, proc.returncode)
             return
         # No psutil: use os.kill directly
@@ -607,18 +928,24 @@ class ProcessManager:
         with contextlib.suppress(ProcessLookupError, OSError):
             proc.kill()
         # Liveness probe: os.kill(pid, 0) raises ProcessLookupError if process is gone
-        try:
-            os.kill(record.pid, 0)
-        except ProcessLookupError:
+        probe_result = _verify_process_liveness(record.pid, psutil_mod=None)
+        if probe_result == LivenessResult.GONE:
             # Process is gone - mark killed
             self._mark_killed(record, None)
             return
-        except PermissionError:
-            # Process exists but can't signal it - still alive
-            pass
+        if probe_result == LivenessResult.ZOMBIE:
+            logger.warning(
+                f"Process {record.pid} is zombie after force kill — parent must reap"
+            )
+            self._mark_killed(record, None, cause="zombie_after_kill")
+            return
         # If we get here, process is still alive
         self._mark_termination_failed(record, None)
-        raise ProcessTerminationError(record.pid, record.pgid)
+        raise ProcessTerminationError(
+            record.pid, record.pgid,
+            stage="force_kill",
+            reason="still alive",
+        )
 
     def _raise_access_denied_termination(
         self, record: ProcessRecord, returncode: int | None = None
@@ -629,7 +956,11 @@ class ProcessManager:
             reason="Access denied while terminating process",
         )
         logger.error("Access denied while terminating process {}", record.pid)
-        raise ProcessTerminationError(record.pid, record.pgid)
+        raise ProcessTerminationError(
+            record.pid, record.pgid,
+            stage="access_denied",
+            reason="Access denied while terminating process",
+        )
 
     def _record_terminal_state(self, record: ProcessRecord) -> None:
         self._records.pop(record.pid, None)
@@ -655,10 +986,13 @@ class ProcessManager:
             self._sync_procs.pop(record.pid, None)
             self._pty_procs.pop(record.pid, None)
             self._async_procs.pop(record.pid, None)
+            self._descendants.pop(record.pid, None)
             self._record_terminal_state(record)
         self._emit(record, prev, ProcessStatus.EXITED)
 
-    def _mark_killed(self, record: ProcessRecord, returncode: int | None = None) -> None:
+    def _mark_killed(
+        self, record: ProcessRecord, returncode: int | None = None, *, cause: str = "killed"
+    ) -> None:
         with self._status_lock:
             if record.status in _TERMINAL_STATUSES:
                 return
@@ -666,12 +1000,15 @@ class ProcessManager:
             record.status = ProcessStatus.KILLED
             record.returncode = returncode
             record.ended_at = datetime.now(tz=UTC)
-            record.cause = "killed"
+            record.cause = cause
             record.failure_message = None
             self._sync_procs.pop(record.pid, None)
             self._pty_procs.pop(record.pid, None)
             self._async_procs.pop(record.pid, None)
+            self._descendants.pop(record.pid, None)
             self._record_terminal_state(record)
+        if cause != "killed":
+            logger.debug(f"Process {record.pid} marked KILLED (cause={cause})")
         self._emit(record, prev, ProcessStatus.KILLED)
 
     def _mark_termination_failed(
@@ -693,7 +1030,11 @@ class ProcessManager:
             self._sync_procs.pop(record.pid, None)
             self._pty_procs.pop(record.pid, None)
             self._async_procs.pop(record.pid, None)
+            self._descendants.pop(record.pid, None)
             self._record_terminal_state(record)
+        logger.error(
+            f"Process {record.pid} termination failed: {reason}"
+        )
         self._emit(record, prev, ProcessStatus.FAILED)
 
     def _emit(
