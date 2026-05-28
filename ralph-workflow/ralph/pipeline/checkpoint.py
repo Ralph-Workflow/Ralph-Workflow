@@ -25,6 +25,7 @@ def worker_checkpoint_path(worker_namespace: Path) -> Path:
     """Return the worker-local checkpoint path."""
     return worker_namespace / "tmp" / "checkpoint.json"
 
+
 # Forbidden sentinel strings that indicate a bug in error handling.
 # If a pre-fix checkpoint contains one of these as last_error, we drop it
 # and log a warning to prevent the old bug from being resurrected.

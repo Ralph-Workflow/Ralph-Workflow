@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-import signal
 import subprocess
 import threading
 from collections import OrderedDict
@@ -435,6 +434,8 @@ class ProcessManager:
 
     def _terminate_by_pid(self, record: ProcessRecord, grace_period_s: float) -> None:
         psutil_mod = self._psutil
+        if psutil_mod is None:
+            return
 
         try:
             root = psutil_mod.process_from_pid(record.pid)

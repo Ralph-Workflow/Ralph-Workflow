@@ -187,9 +187,7 @@ class ManagedProcess:
                 ],
             )
             if live_descendants:
-                self._cleanup_descendant_waves(
-                    psutil_mod, live_descendants, cleanup_grace_period_s
-                )
+                self._cleanup_descendant_waves(psutil_mod, live_descendants, cleanup_grace_period_s)
         return stdout, stderr
 
     def _snapshot_live_descendants(self) -> list[_PsutilProcessLike]:
@@ -201,9 +199,7 @@ class ManagedProcess:
             descendants = root.children(recursive=True)
         except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             return []
-        return [
-            proc for proc in descendants if self._is_live_psutil_process(psutil_mod, proc)
-        ]
+        return [proc for proc in descendants if self._is_live_psutil_process(psutil_mod, proc)]
 
     def _is_live_psutil_process(
         self, psutil_mod: _PsutilModuleLike, proc: _PsutilProcessLike

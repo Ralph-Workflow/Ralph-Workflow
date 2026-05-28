@@ -180,8 +180,7 @@ def _compute_budget_state(state: PipelineState, pipeline_policy: PipelinePolicy)
         if phase_def is None or phase_def.commit_policy is None:
             return None
         counter = (
-            phase_def.commit_policy.route_counter
-            or phase_def.commit_policy.increments_counter
+            phase_def.commit_policy.route_counter or phase_def.commit_policy.increments_counter
         )
     if not counter or counter == "none":
         return None

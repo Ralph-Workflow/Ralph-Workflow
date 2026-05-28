@@ -792,7 +792,6 @@ def _call_determine_effect_from_policy(
     return fn(state, policy_bundle)
 
 
-
 _original_start_mcp_server = start_mcp_server
 _original_shutdown_mcp_server = shutdown_mcp_server
 _original_check_mcp_bridge_health = check_mcp_bridge_health

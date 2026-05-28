@@ -440,11 +440,7 @@ def _rewrite_env_path(value: str, source_root: str, overlay_root: str, os_name: 
         idx = value_lower.find(source_root_lower)
         if idx < 0:
             return rewritten
-        rewritten = (
-            rewritten[:idx]
-            + overlay_root
-            + rewritten[idx + len(source_root) :]
-        )
+        rewritten = rewritten[:idx] + overlay_root + rewritten[idx + len(source_root) :]
         value_lower = rewritten.lower()
 
 

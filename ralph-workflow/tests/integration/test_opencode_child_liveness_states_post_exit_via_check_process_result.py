@@ -173,7 +173,6 @@ class TestPostExitViaCheckProcessResult:
         )
 
 
-
 def _no_signals() -> CompletionSignals:
     return CompletionSignals(
         explicit_complete=False,

@@ -50,9 +50,7 @@ def _workspace_key(workspace_root: Path) -> str:
 class ExecSandboxManager:
     """Manage reusable per-workspace exec sandboxes with reset-before-run semantics."""
 
-    def __init__(
-        self, *, base_dir: Path, lock_timeout_s: float = _DEFAULT_LOCK_TIMEOUT_S
-    ) -> None:
+    def __init__(self, *, base_dir: Path, lock_timeout_s: float = _DEFAULT_LOCK_TIMEOUT_S) -> None:
         self._base_dir = base_dir
         self._lock_timeout_s = lock_timeout_s
 
@@ -84,9 +82,7 @@ class ExecSandboxManager:
         if not self._fast_reset(workspace_root, sandbox_root, worktree):
             self._full_reset(workspace_root, sandbox_root, worktree)
 
-    def _full_reset(
-        self, workspace_root: Path, sandbox_root: Path, worktree: Path
-    ) -> None:
+    def _full_reset(self, workspace_root: Path, sandbox_root: Path, worktree: Path) -> None:
         del worktree
         self._clear_sandbox_contents(sandbox_root)
         _write_overlay_owner_metadata(sandbox_root)
@@ -95,9 +91,7 @@ class ExecSandboxManager:
         _ensure_git_isolation(workspace_root, rebuilt_worktree, sandbox_root)
         self._write_ready_sentinel(sandbox_root)
 
-    def _fast_reset(
-        self, workspace_root: Path, sandbox_root: Path, worktree: Path
-    ) -> bool:
+    def _fast_reset(self, workspace_root: Path, sandbox_root: Path, worktree: Path) -> bool:
         if not self._is_ready(sandbox_root):
             return False
         if worktree.exists():
