@@ -192,7 +192,7 @@
 
 "I'm going to show you this live. This is a real feature — a job application tracker. Twelve spec items. Let me run it."
 
-**[Run `ralph run` with the spec]**
+**[Run `ralph` with the spec]**
 
 "You can see what's happening: the planning agent is breaking down the spec. Now the dev agent is implementing each item. Here's the verify step catching a logic issue — notice it didn't commit that one, it went back and refined."
 
