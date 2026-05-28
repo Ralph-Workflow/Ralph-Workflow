@@ -1,5 +1,5 @@
 {
-  "ts": "2026-05-28T04:36:49.507032",
+  "ts": "2026-05-28T05:39:13.932703",
   "jobs_checked": 25,
   "issues_found": 6,
   "issues": [
@@ -34,8 +34,8 @@
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=546",
-      "repeats_in_recent_history": 546,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=549",
+      "repeats_in_recent_history": 549,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification::loop_verification_fail",
       "escalation_level": "critical",
@@ -48,8 +48,8 @@
       "name": "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt_escalation",
       "category": "escalation_required",
       "last_error": "Reddit monitor is degraded without a fresh healthy fallback report inside the grace window.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt:review_followup_required repeat_count=60",
-      "repeats_in_recent_history": 60,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt:review_followup_required repeat_count=63",
+      "repeats_in_recent_history": 63,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt::review_followup_required",
       "escalation_level": "critical",
@@ -62,8 +62,8 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
       "category": "escalation_required",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=349",
-      "repeats_in_recent_history": 349,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=352",
+      "repeats_in_recent_history": 352,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin::review_followup_required",
       "escalation_level": "critical",
@@ -74,16 +74,16 @@
   ],
   "repairs_attempted": [
     {
-      "type": "immediate_review_followup_owner_action_cooldown",
+      "type": "immediate_review_followup_owner_action",
       "job": "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt",
       "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-05-28T00:35:32.999535+00:00"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
-      "type": "immediate_review_followup_owner_action_cooldown",
+      "type": "immediate_review_followup_owner_action",
       "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-05-28T00:35:34.719674+00:00"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",

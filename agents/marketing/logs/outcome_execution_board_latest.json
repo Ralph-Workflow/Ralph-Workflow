@@ -10,11 +10,16 @@
   "artifact_path": "/tmp/guard-pause.md",
   "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md",
   "execution_board_targets": [],
-  "execution_board_fingerprint": "8e43e29654a8cd085d59a3b52c108c3cd77ae7cc",
+  "execution_board_fingerprint": "5fc7d8f0ffe4a8bf7cc55f9e3b712814da926af8",
   "short_review_window_release_at": "2026-05-28T09:12:15",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.",
   "summary": "Reused existing distribution-architecture guard artifact.",
+  "next_truthful_checkpoint": {
+    "at": "2026-05-28T09:12:15",
+    "source": "short_review_window_release",
+    "reason": "Current short review window clears."
+  },
   "structural_capability": {
     "name": "execution_board_follow_through_runner",
     "why_new": "Creates a dedicated runtime that turns the execution board into the next actionable lane instead of letting system-design repairs stop at packet refreshes or queue housekeeping.",

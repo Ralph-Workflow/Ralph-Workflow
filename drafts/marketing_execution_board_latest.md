@@ -18,6 +18,7 @@ Generated: 2026-05-25T18:53:00
 
 ## Best executable assets still waiting
 - No do-now handoff packet is currently truthful in this review window.
+- Apollo has a verified non-zero list, but the current runtime is auth-blocked (cloudflare_auth_blocked), so do not surface the launch/review packet as a do-now asset until the runtime blocker clears.
 - Fresh publisher outreach already shipped in the current review window for: Dupple, SitePoint.
 - The current primary-repo-flat publisher contact packet was already prepared 9 time(s) in the last 48 hours without a live delivery window; do not resurface it as a do-now asset until the target set or delivery state materially changes.
 - A manual-only primary-repo-flat follow-through asset exists for ComputingForGeeks, but same-family publisher outreach is paused and those targets still lack a runtime-sendable channel; do not surface that asset as a do-now lane yet.

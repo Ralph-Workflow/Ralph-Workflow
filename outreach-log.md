@@ -7396,3 +7396,11 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 - **What I executed:** patched `agents/marketing/stackoverflow_answer_lane.py` so the already-delivered `Autonomous mode / wrapper for Claude Code?` packet is treated as exhausted for the current review window and no longer stops fresh-candidate discovery early.
 - **Verification:** `python3 -m unittest agents.marketing.tests.test_stackoverflow_answer_lane -v` passed (24 tests). Live rerun `python3 /home/mistlight/.openclaw/workspace/agents/marketing/stackoverflow_answer_lane.py` then excluded the delivered question and searched the remaining queries truthfully.
 - **Outcome:** no fresh StackOverflow candidate appeared after excluding the current-window packet, so the lane now reports a truthful empty state instead of re-surfacing fake follow-through.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 06:07:53
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.
+
+### Apollo monitor
+- **When:** 2026-05-28 06:16:56
+- **Note:** Apollo status changed from `login_succeeded` to `cloudflare_auth_blocked`.

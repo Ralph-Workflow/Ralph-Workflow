@@ -12,6 +12,41 @@ from agents.marketing.distribution_lane_selector import LaneDecision
 
 
 class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
+    def test_next_truthful_checkpoint_prefers_earliest_real_review_window(self):
+        now = datetime(2026, 5, 28, 6, 18, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_guard_pause',
+            reason='guarded empty board',
+            reasons=['no truthful do-now packet exists'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['marketing_workflow_audit_latest.json'],
+            artifact_path='/tmp/guard.md',
+            short_review_window_release_at='2026-05-28T09:12:15',
+        )
+        audit = {
+            'apollo_sequence_status': {
+                'next_review_at': '2026-06-01T23:11:13',
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            queue_path = Path(tmpdir) / 'curator_outreach_queue_latest.json'
+            queue_path.write_text(json.dumps({
+                'targets': [
+                    {'target': 'Built In', 'status': 'sent_via_email_fallback', 'review_due_date': '2026-06-07'},
+                ]
+            }), encoding='utf-8')
+
+            with patch.object(outcome_execution_board_runner, 'CURATOR_QUEUE_JSON', queue_path), \
+                 patch.object(outcome_execution_board_runner.distribution_lane_selector, '_directory_secondary_surface_followup_window', return_value={
+                     'review_at': datetime(2026, 5, 31, 0, 0, 0),
+                 }):
+                checkpoint = outcome_execution_board_runner._next_truthful_checkpoint(now, audit, decision)
+
+        self.assertEqual(checkpoint['source'], 'short_review_window_release')
+        self.assertEqual(checkpoint['at'], '2026-05-28T09:12:15')
+
     def test_distribution_architecture_execution_from_run_log_payload_is_reusable(self):
         payload = {
             'timestamp': '2026-05-26T19:24:52.714478',
@@ -108,6 +143,36 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
         self.assertEqual(persisted_lane.short_review_window_release_at, '2026-05-26T12:30:22')
         self.assertEqual(payload['selected_lane'], 'distribution_architecture_repair')
         self.assertEqual(payload['selected_action_type'], 'distribution_architecture_churn_guard_repair')
+
+    def test_build_payload_includes_next_truthful_checkpoint(self):
+        now = datetime(2026, 5, 28, 6, 18, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_guard_pause',
+            reason='guarded empty board',
+            reasons=['no truthful do-now packet exists'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['marketing_workflow_audit_latest.json'],
+            artifact_path='/tmp/guard.md',
+            short_review_window_release_at='2026-05-28T09:12:15',
+        )
+
+        with patch.object(outcome_execution_board_runner, '_next_truthful_checkpoint', return_value={
+            'at': '2026-05-28T09:12:15',
+            'source': 'short_review_window_release',
+            'reason': 'Current short review window clears.',
+        }):
+            payload = outcome_execution_board_runner._build_payload(
+                now=now,
+                audit={},
+                decision=decision,
+                board_path=Path('/tmp/board.md'),
+                board_targets=[],
+                execution=None,
+            )
+
+        self.assertEqual(payload['next_truthful_checkpoint']['source'], 'short_review_window_release')
+        self.assertEqual(payload['next_truthful_checkpoint']['at'], '2026-05-28T09:12:15')
 
     def test_sync_from_execution_refreshes_execution_board_after_latest_lane_persist(self):
         now = datetime(2026, 5, 27, 6, 26, 47)

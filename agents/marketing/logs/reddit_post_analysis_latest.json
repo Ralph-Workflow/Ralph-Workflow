@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-05-27T06:54:01.104724",
-  "count": 27,
-  "total_logged_rows": 88,
-  "cadence_records_filtered": 61,
-  "recent_window_count": 2,
+  "generated_at": "2026-05-28T06:14:37.597222",
+  "count": 28,
+  "recent_window_count": 3,
+  "recent_window_max_age_hours": 96,
+  "filtered_structural_records": 60,
   "by_account": {
-    "Informal-Salt827": 2
+    "Informal-Salt827": 3
   },
   "by_community": {
     "r/AI_Agents": 1,
-    "unknown": 1
+    "unknown": 2
   },
   "top_title_words": [
     "reddit",
@@ -25,26 +25,28 @@
     "state",
     "ralph",
     "workflow",
-    "failure",
-    "code",
-    "review",
-    "answer",
-    "changed",
-    "coding",
-    "merge",
     "team",
     "worth",
     "problem",
-    "thread",
-    "angle",
-    "agree",
-    "production",
-    "useful"
+    "failure",
+    "answer",
+    "changed",
+    "merge",
+    "code",
+    "review",
+    "coding",
+    "which",
+    "five",
+    "made",
+    "difference",
+    "thinking"
   ],
   "phrase_hits": {
-    "diff": 1
+    "diff": 2
   },
-  "repeated_openings": [],
+  "repeated_openings": [
+    "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+  ],
   "account_switches": [],
   "recent_posts": [
     {
@@ -62,9 +64,18 @@
       "title": "",
       "comment_url": "https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small",
       "opening_line": "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+    },
+    {
+      "timestamp": "2026-05-26T14:47:44.016876+00:00",
+      "account": "Informal-Salt827",
+      "community": "unknown",
+      "title": "",
+      "comment_url": "https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small",
+      "opening_line": "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
     }
   ],
   "recommendations": [
+    "Avoid reusing the same opening line; vary the first paragraph deliberately.",
     "Before each autopost, compare the candidate body against the last 3 logged bodies and rewrite if the opening, structure, or closing feel too similar.",
     "Score opportunities not just on topic fit but on whether they create a distinctly new reply angle versus existing logged comments."
   ]

@@ -227,10 +227,13 @@ def _write_distribution_execution_log(
     if getattr(distribution_lane, 'lane', '') in DISTRIBUTION_ARCHITECTURE_REUSE_LANES:
         verification['execution_board_fingerprint'] = distribution_lane_selector._execution_board_fingerprint()
         verification['guard_reason'] = getattr(distribution_lane, 'reason', '')
+    action_type = getattr(execution, 'action_type', '')
+    if action_type in {'measurement_hold_execution', 'measurement_hold_follow_through', 'measurement_hold_churn_guard_repair'}:
+        verification['truth_artifact_fingerprints'] = _measurement_hold_truth_artifact_fingerprints()
     if verification:
         payload['verification'] = verification
     short_review_window_release_at = str(getattr(distribution_lane, 'short_review_window_release_at', '') or '').strip()
-    if short_review_window_release_at and getattr(execution, 'action_type', '') in {'measurement_hold_execution', 'measurement_hold_follow_through'}:
+    if short_review_window_release_at and action_type in {'measurement_hold_execution', 'measurement_hold_follow_through', 'measurement_hold_churn_guard_repair'}:
         hold_release_at = _resolved_measurement_hold_log_release_at(distribution_lane, now)
         payload['review_window'] = {
             'scheduled_run_at': hold_release_at,
@@ -406,9 +409,6 @@ def _collapse_non_truthful_hold_lane_to_measurement_hold(
     if getattr(distribution_lane, 'lane', '') in {'measurement_hold', *DISTRIBUTION_ARCHITECTURE_REUSE_LANES}:
         return distribution_lane
     if execution_board_targets:
-        return distribution_lane
-    release_at = parse_iso_date(str(getattr(distribution_lane, 'short_review_window_release_at', '') or '').strip())
-    if release_at is not None and now >= release_at:
         return distribution_lane
     if not distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now):
         return distribution_lane
@@ -734,6 +734,27 @@ def _stable_json_fingerprint(payload: Any) -> str:
     except TypeError:
         normalized = json.dumps(str(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+
+
+def _artifact_content_fingerprint(path: Path) -> str:
+    try:
+        if path.suffix.lower() == '.json':
+            payload = json.loads(path.read_text(encoding='utf-8'))
+            return _stable_json_fingerprint(payload)
+        return hashlib.sha1(path.read_text(encoding='utf-8').encode('utf-8')).hexdigest()
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return ''
+
+
+def _measurement_hold_truth_artifact_fingerprints() -> dict[str, str]:
+    fingerprints: dict[str, str] = {}
+    for path in _measurement_hold_truth_artifact_paths():
+        if not path.exists():
+            continue
+        fingerprint = _artifact_content_fingerprint(path)
+        if fingerprint:
+            fingerprints[str(path)] = fingerprint
+    return fingerprints
 
 
 def _normalized_target_list(targets: Iterable[str]) -> list[str]:
@@ -1342,6 +1363,10 @@ def _latest_measurement_hold_follow_through(hold_window: dict[str, Any]) -> dict
         default_summary = "Reused existing measurement-hold follow-through artifact."
         if action_type == "measurement_hold_churn_guard_repair":
             default_summary = "Reused existing measurement-hold churn-guard artifact."
+        verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
+        logged_fingerprints = verification.get("truth_artifact_fingerprints")
+        if not isinstance(logged_fingerprints, dict):
+            logged_fingerprints = {}
         return {
             "timestamp": timestamp,
             "log_path": str(path),
@@ -1352,6 +1377,7 @@ def _latest_measurement_hold_follow_through(hold_window: dict[str, Any]) -> dict
             "targets_prepared": list(result.get("targets_prepared") or []),
             "live_external_action": bool(result.get("live_external_action", False)),
             "blocking_factors": list(result.get("blocking_factors") or []),
+            "truth_artifact_fingerprints": {str(key): str(value) for key, value in logged_fingerprints.items()},
         }
     return None
 
@@ -1379,6 +1405,10 @@ def _measurement_hold_follow_through_is_stale(recent_follow_through: dict[str, A
     if not isinstance(follow_through_timestamp, datetime):
         return True
 
+    logged_fingerprints = recent_follow_through.get("truth_artifact_fingerprints")
+    if not isinstance(logged_fingerprints, dict):
+        logged_fingerprints = {}
+
     same_run_grace_seconds = 5
     for path in _measurement_hold_truth_artifact_paths():
         try:
@@ -1389,6 +1419,11 @@ def _measurement_hold_follow_through_is_stale(recent_follow_through: dict[str, A
                 continue
             if (modified_at - follow_through_timestamp).total_seconds() <= same_run_grace_seconds:
                 continue
+            logged_fingerprint = str(logged_fingerprints.get(str(path)) or '').strip()
+            if logged_fingerprint:
+                current_fingerprint = _artifact_content_fingerprint(path)
+                if current_fingerprint and current_fingerprint == logged_fingerprint:
+                    continue
             return True
         except OSError:
             continue
@@ -1435,11 +1470,15 @@ def _latest_distribution_lane_alias_is_stale(decision: Any, now: datetime) -> bo
 def _refresh_latest_distribution_lane_alias_if_stale(decision: Any, now: datetime) -> Any:
     if not _latest_distribution_lane_alias_is_stale(decision, now):
         return decision
-    return distribution_lane_selector.persist_latest_lane_decision(
+    persisted = distribution_lane_selector.persist_latest_lane_decision(
         decision,
         now,
         write_action_log=False,
     )
+    persisted_lane = getattr(persisted, 'lane', None)
+    if isinstance(persisted_lane, str) and persisted_lane.strip():
+        return persisted
+    return decision
 
 
 def _latest_outcome_execution_board_alias_is_stale(

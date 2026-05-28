@@ -1,13 +1,13 @@
 # Apollo Status
 
-- Timestamp: `2026-05-28T00:32:30.102533+02:00`
-- Status: `login_succeeded`
-- Final URL: `https://app.apollo.io/#/home`
+- Timestamp: `2026-05-28T06:16:56.014924+02:00`
+- Status: `cloudflare_auth_blocked`
+- Final URL: `https://app.apollo.io/#/login`
 - Login attempted: `False`
-- Cloudflare/auth blocked: `False`
+- Cloudflare/auth blocked: `True`
 - Auth endpoint status codes: `[]`
-- Browserless probe status: `None`
-- Browserless probe final URL: `None`
+- Browserless probe status: `cloudflare_auth_blocked`
+- Browserless probe final URL: `https://app.apollo.io/#/login`
 - Browserless auth endpoint status codes: `[]`
-- Browserless notes: none
-- Notes: Cloudflare interstitial detected in response body from https://app.apollo.io/. Apollo was already on an authenticated app surface before form automation. Background Cloudflare challenges were seen on ancillary Apollo requests, but the authenticated UI remained usable.
+- Browserless notes: Browserless saw Cloudflare interstitial content from https://app.apollo.io/.
+- Notes: Cloudflare interstitial detected in response body from https://app.apollo.io/. Browserless probe status: cloudflare_auth_blocked. Browserless saw Cloudflare interstitial content from https://app.apollo.io/.

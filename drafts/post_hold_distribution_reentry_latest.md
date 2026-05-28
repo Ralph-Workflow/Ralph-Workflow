@@ -1,5 +1,5 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-05-28T05:34:27
+Generated: 2026-05-28T06:25:06
 - Hold release at: 2026-05-28T09:12:15
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-28_marketing_execution_board.md
 
@@ -25,4 +25,3 @@ Generated: 2026-05-28T05:34:27
 - channel_discovery.json: validated easy-submit directory lanes
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
-- apollo_status.json: managed outbound is authenticated and available for execution packaging

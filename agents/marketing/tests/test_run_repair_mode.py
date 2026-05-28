@@ -957,6 +957,83 @@ class RunRepairModeTests(unittest.TestCase):
                 run.LOG_DIR = original_log_dir
                 run.DRAFTS_DIR = original_drafts_dir
 
+    def test_measurement_hold_follow_through_stale_check_ignores_same_content_resync_when_fingerprint_matches(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            original_drafts_dir = run.DRAFTS_DIR
+            run.LOG_DIR = Path(tmpdir) / 'logs'
+            run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
+            run.LOG_DIR.mkdir(parents=True, exist_ok=True)
+            run.DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+            try:
+                follow_through_timestamp = datetime(2026, 5, 28, 5, 27, 12)
+                tracked_artifact = run.LOG_DIR / 'primary_repo_flat_contact_discovery_latest.json'
+                tracked_artifact.write_text('{"targets": []}\n', encoding='utf-8')
+                fingerprint = run._artifact_content_fingerprint(tracked_artifact)
+
+                later_mtime = follow_through_timestamp.timestamp() + 10
+                os.utime(tracked_artifact, (later_mtime, later_mtime))
+
+                self.assertFalse(
+                    run._measurement_hold_follow_through_is_stale({
+                        'timestamp': follow_through_timestamp,
+                        'truth_artifact_fingerprints': {str(tracked_artifact): fingerprint},
+                    })
+                )
+
+                tracked_artifact.write_text('{"targets": ["new-target"]}\n', encoding='utf-8')
+                changed_mtime = follow_through_timestamp.timestamp() + 20
+                os.utime(tracked_artifact, (changed_mtime, changed_mtime))
+
+                self.assertTrue(
+                    run._measurement_hold_follow_through_is_stale({
+                        'timestamp': follow_through_timestamp,
+                        'truth_artifact_fingerprints': {str(tracked_artifact): fingerprint},
+                    })
+                )
+            finally:
+                run.LOG_DIR = original_log_dir
+                run.DRAFTS_DIR = original_drafts_dir
+
+    def test_write_distribution_execution_log_persists_measurement_hold_truth_fingerprints(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            original_drafts_dir = run.DRAFTS_DIR
+            run.LOG_DIR = Path(tmpdir) / 'logs'
+            run.DRAFTS_DIR = Path(tmpdir) / 'drafts'
+            run.LOG_DIR.mkdir(parents=True, exist_ok=True)
+            run.DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+            try:
+                tracked_artifact = run.LOG_DIR / 'primary_repo_flat_contact_discovery_latest.json'
+                tracked_artifact.write_text('{"targets": []}\n', encoding='utf-8')
+                lane = SimpleNamespace(lane='measurement_hold', short_review_window_release_at='2026-05-28T09:12:15')
+                execution = SimpleNamespace(
+                    action_type='measurement_hold_churn_guard_repair',
+                    artifact_path='/tmp/hold.md',
+                    status='executed',
+                    summary='guard',
+                    targets_prepared=[],
+                    shared_findings_used=[],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                log_path = run._write_distribution_execution_log(
+                    distribution_lane=lane,
+                    execution=execution,
+                    now=datetime(2026, 5, 28, 5, 32, 0),
+                )
+                payload = json.loads(log_path.read_text(encoding='utf-8'))
+
+                self.assertEqual(
+                    payload['verification']['truth_artifact_fingerprints'][str(tracked_artifact)],
+                    run._artifact_content_fingerprint(tracked_artifact),
+                )
+                self.assertEqual(payload['review_window']['scheduled_run_at'], '2026-05-28T09:12:15')
+            finally:
+                run.LOG_DIR = original_log_dir
+                run.DRAFTS_DIR = original_drafts_dir
+
     def test_main_runs_lightweight_follow_through_during_active_hold(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR

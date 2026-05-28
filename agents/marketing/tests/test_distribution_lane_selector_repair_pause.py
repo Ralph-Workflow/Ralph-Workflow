@@ -1126,6 +1126,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
             audit_path = log_dir / 'audit.json'
             latest_json = log_dir / 'distribution_lane_latest.json'
             latest_md = log_dir / 'distribution_lane_latest.md'
+            execution_board = drafts_dir / 'marketing_execution_board_latest.md'
             handoff_path = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
             handoff_path.write_text(
                 '# Ralph Workflow Primary-Repo-Flat Publisher Contact Packet\n\n'
@@ -1136,6 +1137,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
             )
             adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
             audit_path.write_text(json.dumps(audit), encoding='utf-8')
+            execution_board.write_text('# board\n', encoding='utf-8')
             for filename, timestamp in [
                 ('marketing_2026-05-26_033641_primary_repo_flat_contact_handoff_packet_execution.json', '2026-05-26T03:36:41'),
                 ('marketing_2026-05-26_141021_primary_repo_flat_contact_handoff_packet_execution.json', '2026-05-26T14:10:21'),
@@ -1154,6 +1156,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                 for patcher in [
                     patch.object(distribution_lane_selector, 'LOG_DIR', log_dir),
                     patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir),
+                    patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', execution_board),
                     patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path),
                     patch.object(distribution_lane_selector, 'AUDIT_LATEST_JSON', audit_path),
                     patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json),
@@ -1181,7 +1184,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                     patch.object(distribution_lane_selector, '_comparison_queue_capacity', return_value=(8, 8)),
                     patch.object(distribution_lane_selector, '_distribution_reset_targets_ready', return_value=0),
                     patch.object(distribution_lane_selector, '_recent_live_action_family_count', side_effect=[1, 1]),
-                    patch.object(distribution_lane_selector, '_recent_live_external_action_count', return_value=1),
+                    patch.object(distribution_lane_selector, '_recent_live_external_action_count', return_value=2),
                     patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None),
                     patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)),
                     patch.object(distribution_lane_selector, '_stack_overflow_measurement_pending', return_value=True),
@@ -1232,6 +1235,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
             audit_path = log_dir / 'audit.json'
             latest_json = log_dir / 'distribution_lane_latest.json'
             latest_md = log_dir / 'distribution_lane_latest.md'
+            execution_board = drafts_dir / 'marketing_execution_board_latest.md'
             handoff_path = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
             handoff_path.write_text(
                 '# Ralph Workflow Primary-Repo-Flat Publisher Contact Packet\n\n'
@@ -1242,6 +1246,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
             )
             adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
             audit_path.write_text(json.dumps(audit), encoding='utf-8')
+            execution_board.write_text('# board\n', encoding='utf-8')
             for filename, timestamp, targets in [
                 ('marketing_2026-05-26_033921_primary_repo_flat_contact_handoff_packet_execution.json', '2026-05-26T03:39:21', ['AI Saying']),
                 ('marketing_2026-05-26_141021_primary_repo_flat_contact_handoff_packet_execution.json', '2026-05-26T14:10:21', ['TLDL']),
@@ -1260,6 +1265,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                 for patcher in [
                     patch.object(distribution_lane_selector, 'LOG_DIR', log_dir),
                     patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir),
+                    patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', execution_board),
                     patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path),
                     patch.object(distribution_lane_selector, 'AUDIT_LATEST_JSON', audit_path),
                     patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json),
@@ -1287,7 +1293,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                     patch.object(distribution_lane_selector, '_comparison_queue_capacity', return_value=(8, 8)),
                     patch.object(distribution_lane_selector, '_distribution_reset_targets_ready', return_value=0),
                     patch.object(distribution_lane_selector, '_recent_live_action_family_count', side_effect=[1, 1]),
-                    patch.object(distribution_lane_selector, '_recent_live_external_action_count', return_value=1),
+                    patch.object(distribution_lane_selector, '_recent_live_external_action_count', return_value=2),
                     patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None),
                     patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)),
                     patch.object(distribution_lane_selector, '_stack_overflow_measurement_pending', return_value=True),
@@ -1393,7 +1399,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                     patch.object(distribution_lane_selector, '_comparison_queue_capacity', return_value=(8, 8)),
                     patch.object(distribution_lane_selector, '_distribution_reset_targets_ready', return_value=0),
                     patch.object(distribution_lane_selector, '_recent_live_action_family_count', side_effect=[1, 1]),
-                    patch.object(distribution_lane_selector, '_recent_live_external_action_count', return_value=1),
+                    patch.object(distribution_lane_selector, '_recent_live_external_action_count', return_value=2),
                     patch.object(distribution_lane_selector, '_recent_live_external_window_release_at', return_value=None),
                     patch.object(distribution_lane_selector, '_active_repair_pause_flags', return_value=(False, False)),
                     patch.object(distribution_lane_selector, '_stack_overflow_measurement_pending', return_value=True),
@@ -7041,7 +7047,7 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
                     stack.enter_context(patcher)
                 decision = distribution_lane_selector.choose_distribution_lane(now)
 
-        self.assertEqual(decision.lane, 'measurement_hold')
+        self.assertEqual(decision.lane, 'distribution_architecture_repair')
         self.assertTrue(any(
             'manual-only primary-repo-flat publisher follow-through asset exists' in reason.lower()
             for reason in decision.reasons
@@ -8729,6 +8735,80 @@ class DistributionLaneSelectorRepairPauseTests(unittest.TestCase):
 
         self.assertEqual(decision.lane, 'distribution_architecture_guard_pause')
         self.assertIn('publisher-overlap repair window', decision.reason.lower())
+
+    def test_short_review_window_reentry_repairs_state_reuses_historical_repairs_after_bridge(self):
+        now = datetime(2026, 5, 28, 5, 57, 0)
+        release_at = datetime(2026, 5, 28, 9, 12, 15)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_dir = Path(tmpdir) / 'logs'
+            log_dir.mkdir()
+            (log_dir / 'marketing_2026-05-24_234934_active_loop_prompt_repair.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T23:49:34',
+                    'chosen_action': {'type': 'active_loop_prompt_repair'},
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-24_235759_post_hold_reentry_contract_repair.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T23:57:59',
+                    'chosen_action': {'type': 'post_hold_reentry_contract_repair'},
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-25_031100_measurement_hold_third_strike_guard_repair.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-25T03:11:00+02:00',
+                    'chosen_action': {'type': 'measurement_hold_third_strike_guard_repair'},
+                    'result': {'status': 'executed', 'ok': True},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir):
+                state = distribution_lane_selector._short_review_window_reentry_repairs_state(
+                    now,
+                    release_at=release_at,
+                )
+
+        self.assertEqual(
+            state['repairs_seen'],
+            set(distribution_lane_selector.MEASUREMENT_HOLD_REENTRY_REPAIR_ACTION_TYPES),
+        )
+        self.assertTrue(state['reentry_repairs_complete'])
+
+    def test_execution_board_empty_truth_ignores_suppressed_manual_followthrough_asset(self):
+        now = datetime(2026, 5, 28, 5, 57, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            drafts_dir = Path(tmpdir) / 'drafts'
+            drafts_dir.mkdir()
+            execution_board = drafts_dir / 'marketing_execution_board_latest.md'
+            execution_board.write_text(
+                '# Ralph Workflow Marketing Execution Board\n\n'
+                '## Best executable assets still waiting\n'
+                '- No do-now handoff packet is currently truthful in this review window.\n'
+                '- A manual-only primary-repo-flat follow-through asset exists for ComputingForGeeks, but do not surface that asset as a do-now lane yet.\n',
+                encoding='utf-8',
+            )
+
+            asset = {
+                'target': 'ComputingForGeeks',
+                'targets': ['ComputingForGeeks'],
+                'artifact_path': str(drafts_dir / 'primary_repo_flat_manual_review_asset_latest.md'),
+                'title': 'Primary-repo-flat manual follow-through asset',
+            }
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(distribution_lane_selector, 'EXECUTION_BOARD_LATEST_PATH', execution_board))
+                stack.enter_context(patch.object(distribution_lane_selector, '_manual_outreach_assets_waiting_for_execution', return_value=[asset]))
+                stack.enter_context(patch.object(distribution_lane_selector, '_primary_repo_flat_manual_review_asset_suppressed', return_value=True))
+                stack.enter_context(patch.object(distribution_lane_selector, '_execution_board_surfaces_manual_publisher_follow_through', return_value=False))
+                stack.enter_context(patch.object(distribution_lane_selector, '_pending_confirmation_actions', return_value=[]))
+                self.assertTrue(distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now))
 
 
 if __name__ == '__main__':

@@ -1,9 +1,11 @@
 # Reddit Post Analysis
 
-- Generated: 2026-05-28T04:58:39.289699
-- Logged posts analyzed: 88 total / 6 recent-window posts
-- Accounts seen: unknown (3), Informal-Salt827 (3)
-- Communities seen: unknown (5), r/AI_Agents (1)
+- Generated: 2026-05-28T06:14:37.597222
+- Logged posts analyzed: 28 total / 3 recent-window posts
+- Recent window max age: 96h
+- Filtered 60 cadence/structural records
+- Accounts seen: Informal-Salt827 (3)
+- Communities seen: r/AI_Agents (1), unknown (2)
 
 ## What the past posts actually say
 - Most repeated themes: diff
@@ -14,14 +16,10 @@
 
 ## Recommendations
 - Avoid reusing the same opening line; vary the first paragraph deliberately.
-- Treat pre-switch Clear-Past7954 posts as historical only; future retros and posting rules should optimize for the currently allowed account only.
 - Before each autopost, compare the candidate body against the last 3 logged bodies and rewrite if the opening, structure, or closing feel too similar.
 - Score opportunities not just on topic fit but on whether they create a distinctly new reply angle versus existing logged comments.
 
 ## Recent post log rollup
-- None — u/unknown — unknown —  — None
-- None — u/unknown — unknown —  — None
-- None — u/unknown — unknown —  — None
 - 2026-05-26T14:55:18.485562 — u/Informal-Salt827 — r/AI_Agents — Reddit reddit.com › r/ai_agents › seedance 2.0 is impressive. it’s still not a production workflow. r/AI_Agents — https://old.reddit.com/r/AI_Agents/comments/1rawxiw/seedance_20_is_impressive_its_still_not_a/onyqq6t/
 - 2026-05-26T16:47:35.135478 — u/Informal-Salt827 — unknown —  — https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small
 - 2026-05-26T14:47:44.016876+00:00 — u/Informal-Salt827 — unknown —  — https://www.reddit.com/r/cursor/comments/1rynskx/after_months_with_ai_coding_agents_these_5_small

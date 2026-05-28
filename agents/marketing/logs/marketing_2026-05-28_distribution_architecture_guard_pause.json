@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-05-28T06:04:57.730246",
+  "timestamp": "2026-05-28T06:06:49.046258",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
-    "channel": "measurement_hold",
-    "title": "Distribution lane decision: measurement_hold",
+    "channel": "distribution_architecture_guard_pause",
+    "title": "Distribution lane decision: distribution_architecture_guard_pause",
     "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_distribution_action_brief.md"
   },
   "why_this_action": {
@@ -15,7 +15,7 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "reasoning": "A manual-only primary-repo-flat publisher follow-through asset exists, but same-family publisher outreach is still paused and no runtime-sendable path is open; preserve the hold instead of surfacing fake follow-through or escalating into another architecture churn cycle.",
+    "reasoning": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; a newer concrete repair already ran after the current guard pause started, so pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 live external marketing action(s) already shipped in the last 6 hours.",
@@ -51,5 +51,9 @@
   "result": {
     "status": "prepared",
     "ok": true
+  },
+  "verification": {
+    "execution_board_fingerprint": "6cdd3138c7c004c3414d5b94de570658aefd6a18",
+    "short_review_window_release_at": "2026-05-28T09:12:15"
   }
 }
