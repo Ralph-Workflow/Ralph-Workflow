@@ -4,6 +4,11 @@
       "level": 1,
       "timestamp": "2026-05-28T23:37:35.679425",
       "reason": "churn ratio danger (distribution=5, churn=2)"
+    },
+    {
+      "level": 1,
+      "timestamp": "2026-05-29T00:47:33.801851",
+      "reason": "churn ratio danger (distribution=5, churn=3)"
     }
   ],
   "paused_crons": [],

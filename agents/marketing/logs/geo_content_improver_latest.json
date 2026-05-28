@@ -1,0 +1,59 @@
+{
+  "generated_at": "2026-05-28T22:33:22.149962+00:00",
+  "dry_run": true,
+  "posts_audited": 24,
+  "posts_processed": 5,
+  "changed_count": 5,
+  "results": [
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-orchestration-cli-composable-alternative.md",
+      "status": "changed",
+      "changes": [
+        "added_1_stat_block(s)",
+        "added_3_outbound_link(s)"
+      ],
+      "word_delta": 34,
+      "new_size": 4349
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-output-verification-review-checklist.md",
+      "status": "changed",
+      "changes": [
+        "added_1_stat_block(s)",
+        "added_3_outbound_link(s)"
+      ],
+      "word_delta": -28,
+      "new_size": 9950
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-tools-comparison-2026.md",
+      "status": "changed",
+      "changes": [
+        "added_1_stat_block(s)",
+        "added_3_outbound_link(s)"
+      ],
+      "word_delta": -2143,
+      "new_size": 1747
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-workflow-automation-loop-structure.md",
+      "status": "changed",
+      "changes": [
+        "added_1_stat_block(s)",
+        "added_3_outbound_link(s)"
+      ],
+      "word_delta": -2,
+      "new_size": 3805
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/autonomous-ai-coding-tools-compared.md",
+      "status": "changed",
+      "changes": [
+        "added_1_stat_block(s)",
+        "added_3_outbound_link(s)"
+      ],
+      "word_delta": -1204,
+      "new_size": 1687
+    }
+  ]
+}

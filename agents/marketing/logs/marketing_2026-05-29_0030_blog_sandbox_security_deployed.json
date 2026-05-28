@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-05-29T00:41:28",
+  "type": "distribution_architecture_repair_plus_blog_deploy",
+  "title": "Repaired Capistrano deploy pipeline + deployed new blog: Safe AI Code Execution",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "details": {
+    "repair": "Fixed bundle path in Capistrano assets.rake (absolute path), unbroke deploy pipeline blocked by bigdecimal compilation",
+    "blog": "safe-ai-code-execution-sandbox-isolation.md \u2014 live at https://ralphworkflow.com/blog/safe-ai-code-execution-sandbox-isolation",
+    "blog_seo": "Targeting \"safe AI code execution\" and \"sandbox isolation for coding agents\" \u2014 long-tail keywords tied to new exec sandbox feature",
+    "google_indexing": "Indexing API path built (submit_url_to_google.py) but GCP API not enabled \u2014 human enablement needed at https://console.developers.google.com/apis/api/indexing.googleapis.com/overview?project=292739303076",
+    "pypi_update": "v0.8.8 built in dist/, no publish credentials \u2014 highest-ROI blocked action",
+    "blog_total": 24,
+    "deploy_verified": "cap production deploy succeeds, puma restarts, live public surface verifies OK",
+    "adoption_snapshot": {
+      "codeberg_stars": 12,
+      "github_stars": 1,
+      "pypi_downloads_month": 1498
+    }
+  },
+  "url": "https://ralphworkflow.com/blog/safe-ai-code-execution-sandbox-isolation",
+  "warning": null
+}

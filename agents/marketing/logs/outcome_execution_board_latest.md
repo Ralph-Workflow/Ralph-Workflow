@@ -1,16 +1,16 @@
 # Outcome Execution Board Runner
 
-- Generated: `2026-05-28T23:38:19.786393`
-- Repair needed at start: `False`
-- Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-28_marketing_execution_board.md`
+- Generated: `2026-05-29T00:54:19.244786`
+- Repair needed at start: `True`
+- Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md`
 - Selected lane: `distribution_architecture_guard_pause`
 - Action type: `truth_snapshot_only`
 - Executed lane: `None`
 - Truthful do-now lane available: `False`
-- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-28_marketing_execution_board.md`
+- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
 - Measurement window: Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.
-- Next truthful checkpoint: `2026-05-28T23:44:49` (short_review_window_release)
+- Next truthful checkpoint: `2026-05-29T05:56:07` (short_review_window_release)
 - Checkpoint reason: Current short review window clears.
 
 ## Structural capability added

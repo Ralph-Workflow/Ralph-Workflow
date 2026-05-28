@@ -1,0 +1,916 @@
+{
+  "generated_at": "2026-05-28T22:31:59.170157+00:00",
+  "domain": "ralphworkflow.com",
+  "ai_bot_access": {
+    "robots_txt_url": "https://ralphworkflow.com/robots.txt",
+    "allowed_bots": [],
+    "missing_bots_to_allow": [
+      "GPTBot",
+      "ChatGPT-User",
+      "PerplexityBot",
+      "Google-Extended",
+      "Bytespider",
+      "Amazonbot",
+      "FacebookBot",
+      "anthropic-ai",
+      "CCBot",
+      "DataForSeoBot",
+      "PetalBot",
+      "KrbBot",
+      "YouBot",
+      "YandexBot"
+    ],
+    "fixing_needed": true
+  },
+  "geo_compliance": {
+    "total_pages_audited": 24,
+    "geo_passing": 0,
+    "geo_failing": 24,
+    "pass_rate_pct": 0
+  },
+  "pages_audited": [
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-orchestration-cli-composable-alternative.md",
+      "words": 660,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 3,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# AI Agent Orchestration CLI: A Composable Alternative to Monolithic Agent Frameworks"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-output-verification-review-checklist.md",
+      "words": 1699,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 12,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# AI Agent Output Verification: How to Review Unattended Coding Results Without Reading Every Line"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-tools-comparison-2026.md",
+      "words": 2416,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 9,
+      "external_links": 5,
+      "has_jsonld": false,
+      "h1s": [
+        "# AI Coding Tools Compared 2026: A Practical Guide to What Each One Actually Does"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": false,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-workflow-automation-loop-structure.md",
+      "words": 598,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 2,
+      "h2_total": 3,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# AI Coding Workflow Automation: Why Loop Structure Matters More Than Model Choice"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/autonomous-ai-coding-tools-compared.md",
+      "words": 1450,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 5,
+      "h2_total": 12,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Autonomous AI Coding Tools Compared: What Actually Works for Unattended Work"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": false,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-automation-unattended-sessions.md",
+      "words": 709,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 3,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Claude Code Automation: Running Unattended Coding Sessions That Actually Finish"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-autonomous-mode-wrapper.md",
+      "words": 636,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 7,
+      "external_links": 3,
+      "has_jsonld": false,
+      "h1s": [
+        "# Claude Code Autonomous Mode Wrapper: What Actually Works"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": false,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/codex-opencode-cline-vs-ralph-workflow-2026.md",
+      "words": 967,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 8,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/hello-ralph-workflow.md",
+      "words": 1541,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 2,
+      "h2_total": 10,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Introducing Ralph Workflow"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-run-claude-code-unattended.md",
+      "words": 2123,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 15,
+      "external_links": 6,
+      "has_jsonld": false,
+      "h1s": [
+        "# How to Run Claude Code Unattended"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": false,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-structure-autonomous-ai-agent-workflows-for-production-reliability.md",
+      "words": 889,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 2,
+      "h2_total": 8,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# How to Structure Autonomous AI Agent Workflows for Production Reliability"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-aider.md",
+      "words": 679,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 1,
+      "h2_total": 6,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Ralph Workflow vs Aider: Terminal Pair Programming vs Composable Workflow"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-claude-code.md",
+      "words": 742,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 6,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Ralph Workflow vs Claude Code: A Practical Breakdown"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-conductor-oss.md",
+      "words": 609,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 5,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Ralph Workflow vs Conductor OSS: Durable Agent Orchestration vs Software Workflow"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-conductor-teams.md",
+      "words": 583,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 1,
+      "h2_total": 5,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Ralph Workflow vs Conductor Teams: Local-First Coordination vs Reviewable Finish"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-continue.md",
+      "words": 588,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 5,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Ralph Workflow vs Continue: IDE Assistant vs Autonomous Coding Loop"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-cursor.md",
+      "words": 604,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 5,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Ralph Workflow vs Cursor: AI Editor vs Autonomous Coding Workflow"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-github-copilot.md",
+      "words": 593,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 5,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Ralph Workflow vs GitHub Copilot: Suggestions vs Finished Work"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-hermes-agent.md",
+      "words": 604,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 1,
+      "h2_total": 5,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Ralph Workflow vs Hermes Agent: Self-Improving Assistant vs Autonomous Coding Workflow"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/real-task-walkthrough-overnight-refactoring.md",
+      "words": 973,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 0,
+      "h2_total": 5,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/safe-ai-code-execution-sandbox-isolation.md",
+      "words": 829,
+      "stat_count": 1,
+      "stats_preview": [
+        "200 times"
+      ],
+      "atomic_sections": 2,
+      "h2_total": 6,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Safe AI Code Execution: How to Let a Coding Agent Run Commands Without Risking Your System"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/spec-driven-ai-agents-why-workflow-is-the-unit-of-work.md",
+      "words": 2151,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 5,
+      "h2_total": 14,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# Spec-Driven AI Agents: Why Workflow Is the Unit of Work"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": false,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/unattended-coding-agent-what-done-actually-means.md",
+      "words": 635,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 1,
+      "h2_total": 3,
+      "external_links": 2,
+      "has_jsonld": false,
+      "h1s": [
+        "# The Unattended Coding Agent: What 'Done' Actually Means"
+      ],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": true,
+        "missing_jsonld": true
+      }
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md",
+      "words": 1704,
+      "stat_count": 0,
+      "stats_preview": [],
+      "atomic_sections": 2,
+      "h2_total": 15,
+      "external_links": 4,
+      "has_jsonld": false,
+      "h1s": [],
+      "geo_compliant": false,
+      "failures": {
+        "thin_content": false,
+        "no_atomic_blocks": true,
+        "no_quantitative_stats": true,
+        "no_outbound_links": false,
+        "missing_jsonld": true
+      }
+    }
+  ],
+  "recommendations": [
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-orchestration-cli-composable-alternative.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-output-verification-review-checklist.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-tools-comparison-2026.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-workflow-automation-loop-structure.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/autonomous-ai-coding-tools-compared.md",
+      "failures": [
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-automation-unattended-sessions.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-autonomous-mode-wrapper.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/codex-opencode-cline-vs-ralph-workflow-2026.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/hello-ralph-workflow.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-run-claude-code-unattended.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-structure-autonomous-ai-agent-workflows-for-production-reliability.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-aider.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-claude-code.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-conductor-oss.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-conductor-teams.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-continue.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-cursor.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-github-copilot.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-hermes-agent.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/real-task-walkthrough-overnight-refactoring.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/safe-ai-code-execution-sandbox-isolation.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/spec-driven-ai-agents-why-workflow-is-the-unit-of-work.md",
+      "failures": [
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/unattended-coding-agent-what-done-actually-means.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "no_outbound_links",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add 3+ outbound links to authoritative sources (specs, research, official docs)",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md",
+      "failures": [
+        "no_atomic_blocks",
+        "no_quantitative_stats",
+        "missing_jsonld"
+      ],
+      "recommendations": [
+        "Start each H2 section with a direct answer sentence (definition or fact, not fluff)",
+        "Add quantitative data: benchmarks, percentages, time comparisons, ratios",
+        "Add JSON-LD schema markup for the page type (BlogPosting, TechArticle, etc.)"
+      ]
+    }
+  ],
+  "ai_citation_status": [
+    {
+      "query": "Ralph Workflow AI agent orchestrator",
+      "cited": false,
+      "note": "requires-perplexity-api"
+    },
+    {
+      "query": "ralphworkflow.com",
+      "cited": false,
+      "note": "requires-perplexity-api"
+    },
+    {
+      "query": "Ralph Workflow vs Claude Code",
+      "cited": false,
+      "note": "requires-perplexity-api"
+    },
+    {
+      "query": "open source AI agent orchestration CLI",
+      "cited": false,
+      "note": "requires-perplexity-api"
+    },
+    {
+      "query": "Perplexity AI coding workflow",
+      "cited": false,
+      "note": "requires-perplexity-api"
+    },
+    {
+      "query": "agentic loop CLI tool",
+      "cited": false,
+      "note": "requires-perplexity-api"
+    }
+  ],
+  "next_action": "Fix robots.txt to allow all AI bots"
+}
