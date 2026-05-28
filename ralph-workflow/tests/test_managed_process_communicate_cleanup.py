@@ -17,7 +17,9 @@ from ralph.process.manager import (
     ProcessManagerPolicy,
     SpawnOptions,
 )
-from ralph.process.manager._managed_process import ManagedProcessOutputLimitExceededError
+from ralph.process.manager._managed_process_output_limit_exceeded_error import (
+    ManagedProcessOutputLimitExceededError,
+)
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing._process_state import ProcessState
 from ralph.testing._process_streams import ProcessStreams

@@ -30,7 +30,9 @@ from ralph.mcp.tools.coordination import (
 from ralph.mcp.tools.exec_overlay import _get_private_exec_base
 from ralph.mcp.tools.exec_sandbox import ExecSandboxManager
 from ralph.process.manager import SpawnOptions, get_process_manager
-from ralph.process.manager._managed_process import ManagedProcessOutputLimitExceededError
+from ralph.process.manager._managed_process_output_limit_exceeded_error import (
+    ManagedProcessOutputLimitExceededError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

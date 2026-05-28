@@ -8,6 +8,9 @@ import threading
 import time as _time
 from typing import IO, TYPE_CHECKING
 
+from ralph.process.manager._managed_process_output_limit_exceeded_error import (
+    ManagedProcessOutputLimitExceededError,
+)
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
@@ -20,14 +23,6 @@ if TYPE_CHECKING:
         _SyncProcessLike,
     )
     from ralph.process.manager._process_record import ProcessRecord
-
-
-class ManagedProcessOutputLimitExceededError(RuntimeError):
-    def __init__(self, *, output_limit_bytes: int, stdout: bytes, stderr: bytes) -> None:
-        super().__init__(f"process output exceeded {output_limit_bytes} bytes")
-        self.output_limit_bytes = output_limit_bytes
-        self.stdout = stdout
-        self.stderr = stderr
 
 
 class ManagedProcess:
@@ -495,4 +490,4 @@ class ManagedProcess:
                 self._proc.wait()
 
 
-__all__ = ["ManagedProcess", "ManagedProcessOutputLimitExceededError"]
+__all__ = ["ManagedProcess"]

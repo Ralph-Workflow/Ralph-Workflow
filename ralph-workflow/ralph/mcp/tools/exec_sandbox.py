@@ -18,6 +18,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.tools._exec_cache_cleanup_summary import ExecCacheCleanupSummary
 from ralph.mcp.tools._exec_sandbox_busy_error import ExecSandboxBusyError
 from ralph.mcp.tools.exec_overlay import (
     _GENERATED_DIR_NAMES,
@@ -60,13 +61,6 @@ _BASE_PRUNE_INTERVAL_S = 1.0
 def _workspace_key(workspace_root: Path) -> str:
     digest = hashlib.sha256(str(workspace_root.resolve()).encode("utf-8")).hexdigest()
     return digest[:_KEY_LENGTH]
-
-
-@dataclass(frozen=True)
-class ExecCacheCleanupSummary:
-    removed_paths: int
-    removed_bytes: int
-    remaining_bytes: int
 
 
 @dataclass(frozen=True)
