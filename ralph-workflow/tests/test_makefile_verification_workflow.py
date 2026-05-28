@@ -4,7 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 49
+
 
 
 def _target_body(name: str) -> list[str]:
@@ -27,6 +27,30 @@ def _target_body(name: str) -> list[str]:
         raise AssertionError(f"target {name!r} not found")
 
     return body
+
+
+def _variable_definition(name: str) -> str:
+    for line in MAKEFILE_PATH.read_text(encoding="utf-8").splitlines():
+        if line.startswith(f"{name} = "):
+            return line.split("=", 1)[1].strip()
+    raise AssertionError(f"variable {name!r} not found")
+
+
+def _resolved_paths(patterns: str) -> list[Path]:
+    resolved: list[Path] = []
+    for pattern in patterns.split():
+        resolved.extend(sorted(REPO_ROOT.glob(pattern)))
+    return resolved
+
+
+def _all_pytest_root_path_variables() -> dict[str, str]:
+    definitions: dict[str, str] = {}
+    for line in MAKEFILE_PATH.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("PYTEST_ROOT_PATHS_"):
+            continue
+        name, value = line.split("=", 1)
+        definitions[name.strip()] = value.strip()
+    return definitions
 
 
 def _assert_any_line_contains(body: list[str], needle: str) -> None:
@@ -81,54 +105,11 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
         "$(PYTEST_RUNTIME_PATHS_MCP)",
         "$(PYTEST_RUNTIME_PATHS_PIPELINE)",
         "$(PYTEST_RUNTIME_PATHS_RECOVERY)",
-        "$(PYTEST_ROOT_PATHS_A_ACTIVITY)",
-        "$(PYTEST_ROOT_PATHS_A_AGENT)",
-        "$(PYTEST_ROOT_PATHS_A_AGENTS)",
-        "$(PYTEST_ROOT_PATHS_A_AGY)",
-        "$(PYTEST_ROOT_PATHS_A_ANALYSIS)",
-        "$(PYTEST_ROOT_PATHS_A_API)",
-        "$(PYTEST_ROOT_PATHS_A_ARTIFACT)",
-        "$(PYTEST_ROOT_PATHS_A_ASYNCIO)",
-        "$(PYTEST_ROOT_PATHS_A_AUDIT)",
-        "$(PYTEST_ROOT_PATHS_B)",
-        "$(PYTEST_ROOT_PATHS_C_CAPABILITY)",
-        "$(PYTEST_ROOT_PATHS_C_CHECKPOINT)",
-        "$(PYTEST_ROOT_PATHS_C_CHILD_CLASSIFIER)",
-        "$(PYTEST_ROOT_PATHS_C_CLAUDE)",
-        "$(PYTEST_ROOT_PATHS_C_CLI_1)",
-        "$(PYTEST_ROOT_PATHS_C_CLI_2)",
-        "$(PYTEST_ROOT_PATHS_C_CODEX_COMMIT)",
-        "$(PYTEST_ROOT_PATHS_C_COMPLETION)",
-        "$(PYTEST_ROOT_PATHS_C_CONFIG)",
-        "$(PYTEST_ROOT_PATHS_C_CUSTOM_POLICY)",
-        "$(PYTEST_ROOT_PATHS_C_CYCLE)",
-        "$(PYTEST_ROOT_PATHS_D)",
-        "$(PYTEST_ROOT_PATHS_E)",
-        "$(PYTEST_ROOT_PATHS_F)",
-        "$(PYTEST_ROOT_PATHS_G)",
-        "$(PYTEST_ROOT_PATHS_H)",
-        "$(PYTEST_ROOT_PATHS_I)",
-        "$(PYTEST_ROOT_PATHS_L)",
-        "$(PYTEST_ROOT_PATHS_M_CONFIG)",
-        "$(PYTEST_ROOT_PATHS_M_ARTIFACTS)",
-        "$(PYTEST_ROOT_PATHS_M_BRIDGE)",
-        "$(PYTEST_ROOT_PATHS_M_CAPABILITY)",
-        "$(PYTEST_ROOT_PATHS_M_CORE)",
-        "$(PYTEST_ROOT_PATHS_M_RUNTIME)",
-        "$(PYTEST_ROOT_PATHS_M_SERVER)",
-        "$(PYTEST_ROOT_PATHS_M_TOOL)",
-        "$(PYTEST_ROOT_PATHS_N)",
-        "$(PYTEST_ROOT_PATHS_O)",
-        "$(PYTEST_ROOT_PATHS_PA_PC)",
-        "$(PYTEST_ROOT_PATHS_PD_PF)",
-        "$(PYTEST_ROOT_PATHS_PG_PI)",
-        "$(PYTEST_ROOT_PATHS_PJ_PL)",
-        "$(PYTEST_ROOT_PATHS_PM_PZ)",
-        "$(PYTEST_ROOT_PATHS_Q_S)",
-        "$(PYTEST_ROOT_PATHS_T_Z)",
     ]
+    for name, value in sorted(_all_pytest_root_path_variables().items()):
+        if _resolved_paths(value):
+            expected_unit_markers.append(f"$({name})")
 
-    assert len(unit_body) == UNIT_TEST_SHARD_COUNT
     assert len(integration_body) == 1
     _assert_all_lines_contain(
         unit_body,
@@ -165,3 +146,10 @@ def test_makefile_exposes_explicit_twine_upload_targets() -> None:
     ]
     assert publish_body == twine_upload_body
     assert test_pypi_body == twine_upload_testpypi_body
+
+
+def test_explicit_makefile_pytest_paths_exist() -> None:
+    for variable_name, value in _all_pytest_root_path_variables().items():
+        resolved_paths = _resolved_paths(value)
+        if not resolved_paths:
+            assert variable_name in {"PYTEST_ROOT_PATHS_J", "PYTEST_ROOT_PATHS_K"}

@@ -83,6 +83,8 @@ That's it. The default workflow is already strong enough to start with. Customiz
 
 ## Documentation
 
+Maintained docs source in this repo: [`ralph-workflow/docs/sphinx/`](ralph-workflow/docs/sphinx/)
+
 | Page | What it covers |
 |---|---|
 | [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |

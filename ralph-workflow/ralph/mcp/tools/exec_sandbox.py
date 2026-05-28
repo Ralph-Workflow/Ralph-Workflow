@@ -40,8 +40,13 @@ _MIN_POOL_LOCK_TIMEOUT_S = 0.05
 _LOCK_POLL_INTERVAL_S = 0.005
 _KEY_LENGTH = 16
 _MIN_SLOTS = 1
+_DEFAULT_MAX_SLOTS = 8
+_DEFAULT_MAX_WORKSPACE_POOLS = 8
 _INITIAL_AVERAGE_SLOTS = 1.0
 _SLOT_PREFIX = "slot-"
+_BASE_LOCK_FILE = ".ralph-exec-base.lock"
+_TRASH_PREFIX = ".ralph-exec-trash-"
+_BASE_PRUNE_INTERVAL_S = 1.0
 
 
 def _workspace_key(workspace_root: Path) -> str:
@@ -53,10 +58,19 @@ class ExecSandboxManager:
     """Manage reusable per-workspace exec sandboxes with reset-before-run semantics."""
 
     def __init__(
-        self, *, base_dir: Path, lock_timeout_s: float = _DEFAULT_LOCK_TIMEOUT_S
+        self,
+        *,
+        base_dir: Path,
+        lock_timeout_s: float = _DEFAULT_LOCK_TIMEOUT_S,
+        max_slots: int = _DEFAULT_MAX_SLOTS,
+        max_workspace_pools: int = _DEFAULT_MAX_WORKSPACE_POOLS,
     ) -> None:
         self._base_dir = base_dir
         self._lock_timeout_s = lock_timeout_s
+        self._max_slots = max(_MIN_SLOTS, max_slots)
+        self._max_workspace_pools = max(_MIN_SLOTS, max_workspace_pools)
+        self._last_base_prune_monotonic = 0.0
+        self._managed_workspace_keys: set[str] = set()
 
     @contextmanager
     def acquire(self, workspace_root: Path) -> Iterator[Path]:
@@ -64,7 +78,26 @@ class ExecSandboxManager:
         self._base_dir.mkdir(parents=True, exist_ok=True)
         workspace_key = _workspace_key(workspace_root)
         pool_root = self._base_dir / workspace_key
-        pool_root.mkdir(parents=True, exist_ok=True)
+        force_prune = (
+            workspace_key not in self._managed_workspace_keys
+            and len(self._managed_workspace_keys) >= self._max_workspace_pools
+        )
+        if self._should_prune_base(workspace_key, force_prune=force_prune):
+            try:
+                with self._base_lock():
+                    if self._should_prune_base(workspace_key, force_prune=force_prune):
+                        self._prune_stale_workspace_pools_locked(
+                            current_workspace_key=workspace_key
+                        )
+                        self._last_base_prune_monotonic = time.monotonic()
+                    pool_root.mkdir(parents=True, exist_ok=True)
+            except ExecSandboxBusyError:
+                if force_prune:
+                    raise
+                pool_root.mkdir(parents=True, exist_ok=True)
+        else:
+            pool_root.mkdir(parents=True, exist_ok=True)
+        self._managed_workspace_keys.add(workspace_key)
         sandbox_root, _slot_index = self._lease_slot(pool_root, workspace_key)
         try:
             worktree = sandbox_root / "ws"
@@ -140,6 +173,9 @@ class ExecSandboxManager:
     def _pool_lock_path(self, pool_root: Path) -> Path:
         return pool_root / _POOL_LOCK_FILE
 
+    def _base_lock_path(self) -> Path:
+        return self._base_dir / _BASE_LOCK_FILE
+
     def _lock_owner_metadata(self, lock_path: Path) -> tuple[int | None, float | None]:
         if not lock_path.is_file():
             return None, None
@@ -206,7 +242,7 @@ class ExecSandboxManager:
             target_slots = _MIN_SLOTS
         if not isinstance(low_usage_streak, int):
             low_usage_streak = 0
-        normalized_target = max(_MIN_SLOTS, target_slots)
+        normalized_target = self._normalize_target_slots(target_slots)
         normalized_average = max(_INITIAL_AVERAGE_SLOTS, float(average_slots))
         return {
             "average_slots": normalized_average,
@@ -217,14 +253,156 @@ class ExecSandboxManager:
     def _save_pool_state(self, pool_root: Path, state: dict[str, float | int]) -> None:
         self._pool_state_path(pool_root).write_text(json.dumps(state), encoding="utf-8")
 
+    def _normalize_target_slots(self, target_slots: int) -> int:
+        return max(_MIN_SLOTS, min(self._max_slots, target_slots))
+
+    def _should_prune_base(self, workspace_key: str, *, force_prune: bool) -> bool:
+        if force_prune:
+            return True
+        del workspace_key
+        return (
+            time.monotonic() - self._last_base_prune_monotonic
+        ) >= _BASE_PRUNE_INTERVAL_S
+
+    def _slot_dirs(self, pool_root: Path, workspace_key: str) -> list[Path]:
+        prefix = f"{_SLOT_PREFIX}{workspace_key}-"
+        return [
+            child
+            for child in pool_root.iterdir()
+            if child.is_dir() and child.name.startswith(prefix)
+        ]
+
+    def _all_slot_dirs(self, pool_root: Path) -> list[Path]:
+        return [
+            child
+            for child in pool_root.iterdir()
+            if child.is_dir() and child.name.startswith(_SLOT_PREFIX)
+        ]
+
+    def _slot_is_live(self, slot_root: Path) -> bool:
+        lock_path = self._lock_path(slot_root)
+        lock_owner_pid, lock_owner_started_at = self._lock_owner_metadata(lock_path)
+        if lock_owner_pid is not None and _process_identity_matches(
+            lock_owner_pid, lock_owner_started_at
+        ):
+            return True
+        owner_pid, owner_started_at = _overlay_owner_metadata(slot_root)
+        return owner_pid is not None and _process_identity_matches(owner_pid, owner_started_at)
+
+    def _slot_is_locked_by_live_process(self, slot_root: Path) -> bool:
+        lock_owner_pid, lock_owner_started_at = self._lock_owner_metadata(
+            self._lock_path(slot_root)
+        )
+        return lock_owner_pid is not None and _process_identity_matches(
+            lock_owner_pid, lock_owner_started_at
+        )
+
+    def _slot_owned_by_current_process(self, slot_root: Path) -> bool:
+        owner_pid, owner_started_at = _overlay_owner_metadata(slot_root)
+        return owner_pid is not None and _process_identity_matches(
+            owner_pid, owner_started_at
+        )
+
+    def _pool_has_live_leases(self, pool_root: Path) -> bool:
+        return any(
+            self._slot_is_locked_by_live_process(slot_root)
+            for slot_root in self._all_slot_dirs(pool_root)
+        )
+
+    def _pool_lock_is_live(self, pool_root: Path) -> bool:
+        lock_owner_pid, lock_owner_started_at = self._lock_owner_metadata(
+            self._pool_lock_path(pool_root)
+        )
+        return lock_owner_pid is not None and _process_identity_matches(
+            lock_owner_pid, lock_owner_started_at
+        )
+
+    def _pool_owned_by_current_process(self, pool_root: Path) -> bool:
+        return any(
+            self._slot_owned_by_current_process(slot_root)
+            for slot_root in self._all_slot_dirs(pool_root)
+        )
+
+    def _pool_last_used_at(self, pool_root: Path) -> float:
+        state_path = self._pool_state_path(pool_root)
+        try:
+            if state_path.exists():
+                return state_path.stat().st_mtime
+            return pool_root.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    def _pool_is_stale(self, pool_root: Path) -> bool:
+        slot_dirs = self._all_slot_dirs(pool_root)
+        if not slot_dirs:
+            return True
+        return all(not self._slot_is_live(slot_root) for slot_root in slot_dirs)
+
+    def _stage_dir_for_deletion(self, path: Path) -> Path | None:
+        if not path.exists():
+            return None
+        staged_path = path.with_name(
+            f"{_TRASH_PREFIX}{path.name}-{os.getpid()}-{time.monotonic_ns()}"
+        )
+        path.replace(staged_path)
+        return staged_path
+
+    def _stage_locked_pool_dir_for_deletion(self, pool_root: Path) -> Path | None:
+        if not pool_root.exists():
+            return None
+        if not self._try_acquire_named_lock(self._pool_lock_path(pool_root)):
+            return None
+        return self._stage_dir_for_deletion(pool_root)
+
+    def _prune_stale_workspace_pools_locked(self, current_workspace_key: str) -> None:
+        staged_pool_dirs: list[Path] = []
+        reusable_idle_pools: list[Path] = []
+        deleted_pool_keys: set[str] = set()
+        for child in self._base_dir.iterdir():
+            if not child.is_dir() or child.name.startswith(_TRASH_PREFIX):
+                continue
+            if child.name == current_workspace_key:
+                continue
+            if self._pool_lock_is_live(child):
+                continue
+            slot_dirs = self._all_slot_dirs(child)
+            if not slot_dirs:
+                staged_path = self._stage_locked_pool_dir_for_deletion(child)
+                if staged_path is not None:
+                    deleted_pool_keys.add(child.name)
+                    staged_pool_dirs.append(staged_path)
+                continue
+            if self._pool_has_live_leases(child):
+                continue
+            if self._pool_owned_by_current_process(child):
+                reusable_idle_pools.append(child)
+                continue
+            staged_path = self._stage_locked_pool_dir_for_deletion(child)
+            if staged_path is not None:
+                deleted_pool_keys.add(child.name)
+                staged_pool_dirs.append(staged_path)
+
+        keep_idle_pool_count = max(0, self._max_workspace_pools - 1)
+        reusable_idle_pools.sort(key=self._pool_last_used_at, reverse=True)
+        for child in reusable_idle_pools[keep_idle_pool_count:]:
+            staged_path = self._stage_locked_pool_dir_for_deletion(child)
+            if staged_path is not None:
+                deleted_pool_keys.add(child.name)
+                staged_pool_dirs.append(staged_path)
+        self._managed_workspace_keys.difference_update(deleted_pool_keys)
+        self._delete_paths(staged_pool_dirs)
+
     def _lease_slot(self, pool_root: Path, workspace_key: str) -> tuple[Path, int]:
-        stale_slot_dirs: list[Path] = []
+        staged_stale_slot_dirs: list[Path] = []
         leased_slot: tuple[Path, int] | None = None
         with self._pool_lock(pool_root):
-            stale_slot_dirs = self._stale_slot_dirs(pool_root)
             state = self._load_pool_state(pool_root)
             target_slots = int(state["target_slots"])
-            existing_indices = self._slot_indices(pool_root, workspace_key)
+            existing_indices = [
+                slot_index
+                for slot_index in self._slot_indices(pool_root, workspace_key)
+                if slot_index <= self._max_slots
+            ]
             warm_slots = max(target_slots, max(existing_indices, default=0))
             for slot_index in range(1, warm_slots + 1):
                 slot_root = self._slot_root(pool_root, workspace_key, slot_index)
@@ -232,26 +410,38 @@ class ExecSandboxManager:
                     leased_slot = (slot_root, slot_index)
                     break
             if leased_slot is None:
+                if warm_slots >= self._max_slots:
+                    raise ExecSandboxBusyError(f"sandbox busy: {pool_root}")
                 slot_index = warm_slots + 1
                 while True:
+                    if slot_index > self._max_slots:
+                        raise ExecSandboxBusyError(f"sandbox busy: {pool_root}")
                     slot_root = self._slot_root(pool_root, workspace_key, slot_index)
                     if self._try_acquire_lock(slot_root):
                         leased_slot = (slot_root, slot_index)
                         break
                     slot_index += 1
             assert leased_slot is not None
+            stale_slot_dirs = [
+                path for path in self._stale_slot_dirs(pool_root) if path != leased_slot[0]
+            ]
+            for stale_slot_dir in stale_slot_dirs:
+                staged_path = self._stage_locked_slot_dir_for_deletion(stale_slot_dir)
+                if staged_path is not None:
+                    staged_stale_slot_dirs.append(staged_path)
             self._record_slot_usage_locked(pool_root, leased_slot[1])
 
         leased_root, leased_index = leased_slot
-        stale_slot_dirs = [path for path in stale_slot_dirs if path != leased_root]
-        self._delete_slot_dirs(stale_slot_dirs)
+        self._delete_paths(staged_stale_slot_dirs)
         return leased_root, leased_index
 
     def _record_slot_usage_locked(self, pool_root: Path, slot_index: int) -> None:
         state = self._load_pool_state(pool_root)
         average_slots = float(state["average_slots"])
         updated_average = (average_slots + slot_index) / 2.0
-        updated_target = max(_MIN_SLOTS, round(updated_average), slot_index)
+        updated_target = self._normalize_target_slots(
+            max(_MIN_SLOTS, round(updated_average), slot_index)
+        )
         low_usage_streak = int(state["low_usage_streak"])
         if slot_index == 1:
             low_usage_streak += 1
@@ -267,7 +457,7 @@ class ExecSandboxManager:
         )
 
     def _shrink_idle_slots(self, pool_root: Path, workspace_key: str) -> None:
-        slot_dirs_to_delete: list[Path] = []
+        staged_slot_dirs_to_delete: list[Path] = []
         with self._pool_lock(pool_root):
             state = self._load_pool_state(pool_root)
             target_slots = int(state["target_slots"])
@@ -275,7 +465,7 @@ class ExecSandboxManager:
             low_usage_streak = int(state["low_usage_streak"])
             if target_slots > _MIN_SLOTS and low_usage_streak >= 2:
                 average_slots = (average_slots + _MIN_SLOTS) / 2.0
-                target_slots = max(_MIN_SLOTS, round(average_slots))
+                target_slots = self._normalize_target_slots(round(average_slots))
                 state = {
                     "average_slots": average_slots,
                     "target_slots": target_slots,
@@ -283,15 +473,16 @@ class ExecSandboxManager:
                 }
                 self._save_pool_state(pool_root, state)
 
+            target_slots = self._normalize_target_slots(target_slots)
             for slot_index in reversed(self._slot_indices(pool_root, workspace_key)):
-                if slot_index <= target_slots:
+                if slot_index <= target_slots and slot_index <= self._max_slots:
                     continue
                 slot_root = self._slot_root(pool_root, workspace_key, slot_index)
-                if self._lock_path(slot_root).exists():
-                    continue
-                slot_dirs_to_delete.append(slot_root)
+                staged_path = self._stage_locked_slot_dir_for_deletion(slot_root)
+                if staged_path is not None:
+                    staged_slot_dirs_to_delete.append(staged_path)
 
-        self._delete_slot_dirs(slot_dirs_to_delete)
+        self._delete_paths(staged_slot_dirs_to_delete)
 
     def _stale_slot_dirs(self, pool_root: Path) -> list[Path]:
         stale_slot_dirs: list[Path] = []
@@ -304,17 +495,18 @@ class ExecSandboxManager:
             stale_slot_dirs.append(child)
         return stale_slot_dirs
 
-    def _delete_slot_dirs(self, slot_dirs: list[Path]) -> None:
-        for slot_dir in slot_dirs:
-            if not slot_dir.exists():
+    def _stage_locked_slot_dir_for_deletion(self, slot_dir: Path) -> Path | None:
+        if not slot_dir.exists():
+            return None
+        if not self._try_acquire_lock(slot_dir):
+            return None
+        return self._stage_dir_for_deletion(slot_dir)
+
+    def _delete_paths(self, paths: list[Path]) -> None:
+        for path in paths:
+            if not path.exists():
                 continue
-            if not self._try_acquire_lock(slot_dir):
-                continue
-            try:
-                shutil.rmtree(slot_dir, ignore_errors=True)
-            finally:
-                if slot_dir.exists():
-                    self._release_lock(slot_dir)
+            shutil.rmtree(path)
 
     def _release_lock(self, sandbox_root: Path) -> None:
         self._lock_path(sandbox_root).unlink(missing_ok=True)
@@ -326,6 +518,14 @@ class ExecSandboxManager:
             yield
         finally:
             self._pool_lock_path(pool_root).unlink(missing_ok=True)
+
+    @contextmanager
+    def _base_lock(self) -> Iterator[None]:
+        self._acquire_named_lock(self._base_lock_path())
+        try:
+            yield
+        finally:
+            self._base_lock_path().unlink(missing_ok=True)
 
     def _try_acquire_lock(self, sandbox_root: Path) -> bool:
         lock_path = self._lock_path(sandbox_root)
@@ -368,6 +568,24 @@ class ExecSandboxManager:
             finally:
                 os.close(fd)
             return
+
+    def _try_acquire_named_lock(self, lock_path: Path) -> bool:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if self._reclaim_stale_lock(lock_path):
+                return self._try_acquire_named_lock(lock_path)
+            return False
+        try:
+            payload: dict[str, int | float] = {"pid": os.getpid()}
+            _, started_at = _current_process_identity()
+            if started_at is not None:
+                payload["started_at"] = started_at
+            os.write(fd, json.dumps(payload).encode("utf-8"))
+        finally:
+            os.close(fd)
+        return True
 
 
 __all__ = ["ExecSandboxBusyError", "ExecSandboxManager"]
