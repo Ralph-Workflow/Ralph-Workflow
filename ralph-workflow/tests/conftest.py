@@ -29,7 +29,6 @@ from ralph.runtime import (
     timeout_seconds_from_env,
 )
 from ralph.workspace.memory import MemoryWorkspace
-from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
 
@@ -37,6 +36,8 @@ if TYPE_CHECKING:
     from collections.abc import Generator
     from pathlib import Path
     from types import FrameType
+
+    from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 
 class TestExecutionTimeoutError(TimeoutError):
@@ -320,6 +321,8 @@ def mock_agent_invoker(
     Returns:
         MockAgentInvoker instance.
     """
+    from tests.integration._mock_agent_invoker import MockAgentInvoker  # lazy import
+
     return MockAgentInvoker(memory_workspace)
 
 

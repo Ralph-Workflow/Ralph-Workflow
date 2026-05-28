@@ -84,6 +84,12 @@ def test_main_runs_all_verify_steps_when_successful(
                 returncode=0,
                 stdout="tests ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_test_policy")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_test_policy"),
+                returncode=0,
+                stdout="audit ok\n",
+            ),
         }
     )
 
@@ -95,10 +101,12 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "ruff", "check", "ralph/", "tests/")),
         ("uv", ("run", "python", "-m", "mypy", "ralph/")),
         ("make", ("test",)),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_test_policy")),
     ]
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[2][3] == verify_module._TOTAL_TEST_BUDGET_SECONDS
+    assert runner.calls[3][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
@@ -217,13 +225,19 @@ def test_run_verify_single_step_within_budget(
                 returncode=0,
                 stdout="tests ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_test_policy")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_test_policy"),
+                returncode=0,
+                stdout="audit ok\n",
+            ),
         }
     )
 
-    # Three steps (0=ruff, 1=mypy, 2=make test).
+    # Four steps (0=ruff, 1=mypy, 2=make test, 3=audit).
     # Each step calls time.monotonic() twice (start + end).
-    # make test takes 1s; ruff & mypy take 0s.
-    times = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    # make test takes 1s; ruff, mypy & audit take 0s.
+    times = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
@@ -391,12 +405,18 @@ def test_run_verify_non_test_steps_not_counted(
                 returncode=0,
                 stdout="tests ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_test_policy")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_test_policy"),
+                returncode=0,
+                stdout="audit ok\n",
+            ),
         }
     )
 
-    # ruff takes 100s, mypy takes 100s, make test takes 100s — all pass
+    # ruff takes 100s, mypy takes 100s, make test takes 100s, audit takes 100s — all pass
     # because nothing is tracked.
-    times = [0.0, 100.0, 100.0, 200.0, 200.0, 300.0]
+    times = [0.0, 100.0, 100.0, 200.0, 200.0, 300.0, 300.0, 400.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
@@ -404,6 +424,47 @@ def test_run_verify_non_test_steps_not_counted(
     captured = capsys.readouterr()
     assert exit_code == 0, f"expected exit 0, got {exit_code}"
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
+
+
+def test_run_verify_cumulative_equals_budget_boundary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When cumulative test time equals the budget exactly (30.0s), the
+    >= boundary check correctly flags cumulative exhaustion."""
+    runner = StubRunner(
+        {
+            ("uv", ("run", "ruff", "check", "ralph/", "tests/")): _result(
+                command="uv",
+                args=("run", "ruff", "check", "ralph/", "tests/"),
+                returncode=0,
+            ),
+            ("uv", ("run", "python", "-m", "mypy", "ralph/")): _result(
+                command="uv",
+                args=("run", "python", "-m", "mypy", "ralph/"),
+                returncode=0,
+            ),
+            ("make", ("test",)): _result(
+                command="make",
+                args=("test",),
+                returncode=TIMEOUT_EXIT_CODE,
+                stderr="tests timed out\n",
+            ),
+        }
+    )
+
+    # make test appears to take exactly 30.0s — equals budget boundary.
+    # With the >= check, this should be flagged as cumulative_exhausted.
+    times = [0.0, 0.0, 0.0, 0.0, 0.0, 30.0]
+    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
+
+    exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
+
+    captured = capsys.readouterr()
+    assert exit_code == TIMEOUT_EXIT_CODE, f"expected 124, got {exit_code}"
+    # The >= boundary: exactly 30.0s must trigger cumulative exhaustion.
+    assert "budget exhausted — cumulative test time exceeded" in captured.err
 
 
 def test_run_verify_policy_message_correctness(
