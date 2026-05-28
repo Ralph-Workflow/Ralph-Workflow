@@ -2,19 +2,13 @@
 
 > **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) before diving into config details.
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph loop core.
-That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-
-Use this page when your question is about files, precedence, validation commands, or configuration edits. If you want docs routed by use case instead of page type, open [End-User Stories](user-stories.md).
-
+Use this page when your question is about files, precedence, validation commands, or configuration edits.
 This page answers the operator question quickly: which file do I edit, at which scope, and how do I validate the change safely?
 Ralph Workflow keeps the core simple, but the docs should still point you straight to the right TOML file instead of making you reverse-engineer the policy layout.
+If you want docs routed by use case instead of page type, open [End-User Stories](user-stories.md).
 
 Bring your existing coding agents and keep your keys to yourself.
 Most operators mainly need to wire Ralph Workflow into agent CLIs they already trust, not re-home their model secrets.
-
-> **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) before diving into config details.
 
 If your immediate question is **"Where do I edit `ralph-workflow.toml`?"**, the short answer is:
 
@@ -82,8 +76,8 @@ If you already know you want the deeper docs, use this map instead of scanning t
 Use this rule of thumb:
 
 - **I want this behavior in every repo I run** → edit `~/.config/ralph-workflow.toml`
-- **I only want this behavior in one repo** → edit `.agent/ralph-workflow.toml`
-- **I want to change workflow phases, loopbacks, or phase-owned policy** → edit `.agent/pipeline.toml`
+- **I only want this behavior in one repo** → edit `.agent/ralph-workflow.toml` **unless the change is about workflow shape, phases, or loopbacks**
+- **I want to change workflow phases, loopbacks, counters, or phase-owned policy** → edit `.agent/pipeline.toml`, then read [Advanced Pipeline Configuration](advanced-pipeline-configuration.md)
 - **I want to change MCP servers or web/search access** → edit `~/.config/ralph-workflow-mcp.toml` or `.agent/mcp.toml`
 - **I want to change artifact contracts/history** → edit `.agent/artifacts.toml`
 

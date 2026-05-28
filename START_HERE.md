@@ -8,6 +8,7 @@ It runs the coding agents you already use on your own machine, turns that simple
 
 This page gives the shortest honest first run.
 Start with one real, well-specified backlog task and judge the outcome by what the software does now and what checks ran.
+Bring your existing coding agents, keep your existing setup, and keep your keys to yourself.
 
 ## Before you start
 

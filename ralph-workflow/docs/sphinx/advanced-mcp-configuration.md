@@ -1,11 +1,8 @@
 # Advanced MCP Configuration
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph loop core.
-That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-
 This page is for operators who want to control Ralph Workflow’s **tool and external-integration layer**.
 Use it when you need to wire in search, readable-page fetches, or custom MCP servers without muddling that work into the main workflow docs.
+This layer should stay deliberate: plug Ralph Workflow into tools you already trust instead of turning integrations into hidden magic.
 
 This is also where the trust boundary matters most.
 Prefer plugging Ralph Workflow into tools you already trust and keep secrets out of repo-local config whenever you can.

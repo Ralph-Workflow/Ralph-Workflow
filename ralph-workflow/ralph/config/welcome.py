@@ -179,6 +179,12 @@ def emit_first_run_welcome(
 
     content.append(_build_next_steps_text())
 
+    # Star CTA — highest-leverage conversion from install → repo adoption
+    from ralph.onboarding import CODEBERG_STAR_CTA
+
+    content.append(Text())  # blank line
+    content.append(Text(CODEBERG_STAR_CTA, style="theme.status.warning"))
+
     panel = Panel(
         Group(*content),
         title="Ralph Workflow first-run setup",

@@ -10,6 +10,11 @@ INIT_COMMAND: Final[str] = "ralph --init"
 INIT_LOCAL_CONFIG_COMMAND: Final[str] = "ralph --init-local-config"
 DIAGNOSE_COMMAND: Final[str] = "ralph --diagnose"
 RUN_COMMAND: Final[str] = "ralph"
+CODEBERG_REPO: Final[str] = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+CODEBERG_STAR_CTA: Final[str] = (
+    f"⭐ Star {CODEBERG_REPO} so we know you're using it — "
+    "stars drive development priority"
+)
 STARTER_PROMPT_SENTINEL: Final[str] = (
     "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
 )
@@ -62,6 +67,7 @@ def welcome_panel_next_steps() -> tuple[str, ...]:
         "before the first real run",
         f"Run {RUN_COMMAND} to start the pipeline",
         "Run `ralph --regenerate-config` to reset configs",
+        CODEBERG_STAR_CTA,
     )
 
 
