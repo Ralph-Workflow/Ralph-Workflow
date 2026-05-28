@@ -1,6 +1,6 @@
 .PHONY: help install dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs packaging-smoke
 
-PYTEST_WORKERS ?= 4
+PYTEST_WORKERS ?= 5
 export PYTHONPATH := $(shell realpath .)
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 30
 
@@ -54,8 +54,7 @@ install-dev: dev
 
 # Testing
 test:
-	@$(MAKE) test-unit
-	@$(MAKE) test-integration
+	uv run python -m ralph.test_suites
 
 test-unit:
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal --ignore=tests/integration -m "not subprocess_e2e"

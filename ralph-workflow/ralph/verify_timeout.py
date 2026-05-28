@@ -14,17 +14,14 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from ralph.executor.process import (
-    TIMEOUT_EXIT_CODE,
-    ProcessResult,
-    ProcessRunOptions,
-    run_process,
-)
+from ralph.executor.process import ProcessResult, ProcessRunOptions, run_process
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 
 DEFAULT_TEST_TIMEOUT_SECONDS = 1.0
 DEFAULT_SUITE_TIMEOUT_SECONDS = 30.0
 TEST_TIMEOUT_ENV = "RALPH_PYTEST_TEST_TIMEOUT_SECONDS"
 SUITE_TIMEOUT_ENV = "RALPH_PYTEST_SUITE_TIMEOUT_SECONDS"
+_VERIFY_TIMEOUT_PM = ProcessManager(policy=ProcessManagerPolicy(log_events=False))
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -51,10 +48,10 @@ _POLICY_FIX_MESSAGE = (
     "  risks combined total breach)\n"
     "- Moving slow tests to a different suite or target\n"
     "- Raising DEFAULT_SUITE_TIMEOUT_SECONDS (this is exactly\n"
-    "  the violation that was committed\u2014do NOT repeat it)\n"
+    "  the violation that was committed—do NOT repeat it)\n"
     "The combined wall-clock time of ALL suites running\n"
     "  sequentially must stay within 30 seconds when make verify is run.\n"
-    "A slow test is a design defect\u2014fix the production coupling,\n"
+    "A slow test is a design defect—fix the production coupling,\n"
     "  not the timeout.\n"
     "\n"
     "HOW TO FIX\n"
@@ -134,8 +131,9 @@ def run_command_with_timeout(
             timeout=suite_timeout_seconds,
             capture_output=capture_output,
         ),
+        _pm=_VERIFY_TIMEOUT_PM,
     )
-    if result.returncode == TIMEOUT_EXIT_CODE:
+    if result.returncode == 124:
         raise SuiteTimeoutError(suite_timeout_seconds)
     return result
 

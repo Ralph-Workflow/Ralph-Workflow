@@ -12,6 +12,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from shutil import which
 
+import pytest
+
 
 def _free_port() -> int:
     with socket.socket() as sock:
@@ -38,6 +40,7 @@ def test_upstream_manifest_covers_all_shipped_skills_and_has_no_local_sources() 
     assert all(skill["source"]["type"] == "upstream" for skill in manifest["skills"])
 
 
+@pytest.mark.subprocess_e2e
 def test_sync_script_fetches_upstream_content(tmp_path: Path) -> None:
     node_binary = which("node")
     assert node_binary is not None

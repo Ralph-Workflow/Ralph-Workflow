@@ -29,7 +29,6 @@ def _target_body(name: str) -> list[str]:
     return body
 
 
-
 def _assert_all_lines_contain(body: list[str], needles: list[str]) -> None:
     assert all(all(needle in line for needle in needles) for line in body)
 
@@ -38,6 +37,12 @@ def test_verify_target_delegates_to_wrapper_module() -> None:
     verify_body = _target_body("verify")
 
     assert verify_body == ["@uv run python -m ralph.verify"]
+
+
+def test_test_target_uses_maintained_suite_runner() -> None:
+    test_body = _target_body("test")
+
+    assert test_body == ["uv run python -m ralph.test_suites"]
 
 
 def test_docs_target_builds_html_into_single_canonical_output_tree() -> None:
@@ -76,7 +81,6 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert len(unit_body) == UNIT_TEST_SHARD_COUNT
     assert len(integration_body) == 1
 
-    # test-unit: single parallel invocation covering all non-integration tests
     _assert_all_lines_contain(
         unit_body,
         ["python -m ralph.verify_timeout", "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)"],
@@ -89,7 +93,6 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert "--dist worksteal" in unit_body[0]
     assert '"not subprocess_e2e"' in unit_body[0]
 
-    # test-integration: single invocation for tests/integration/
     assert "uv run python -m ralph.verify_timeout" in integration_body[0]
     assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
     assert "python -m pytest tests/integration/ -q" in integration_body[0]

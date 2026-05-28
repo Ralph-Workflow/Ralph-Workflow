@@ -18,16 +18,16 @@ make verify
 
 ### Total test budget — 30 seconds, immutable
 
-`make verify` runs `make test`, which executes `test-unit` (all non-integration tests in parallel) then `test-integration`.
+`make verify` runs `make test`, which executes one maintained parallel pytest invocation over `tests/` with `-m "not subprocess_e2e"`.
 
 Budget enforcement:
-- **Per-suite cap** (applies to any `make test` invocation): each `python -m ralph.verify_timeout --suite-timeout 30` call is killed after 30 s.
-- **Combined-total cap** (enforced by `make verify` only): `ralph.verify` wraps `make test` with `timeout=_TOTAL_TEST_BUDGET_SECONDS` (30 s). If the combined wall-clock time of both suites running sequentially exceeds 30 s, `make verify` fails with `(budget exhausted)`.
+- **Per-suite cap** (applies to `make test`, `make test-unit`, and `make test-integration`): each `python -m ralph.verify_timeout --suite-timeout 30` call is killed after 30 s.
+- **Combined-total cap** (enforced by `make verify` only): `ralph.verify` wraps `make test` with `timeout=_TOTAL_TEST_BUDGET_SECONDS` (30 s). If the full verification test command exceeds 30 s, `make verify` fails with `(budget exhausted)`.
 
 This combined limit is **immutable** regardless of:
-- How many test suites exist or how they are organized
-- What order suites run in
-- Whether tests are moved between suites
+- How many focused test targets exist
+- What order focused suites run in
+- Whether tests are moved between targets
 
 Do **not** raise `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS`
 to mask a slow test. Fix the test instead (remove I/O, use `MemoryWorkspace`).
@@ -64,7 +64,7 @@ python -m ralph --help
 python -m ralph --version
 ```
 
-`make test` runs `test-unit` (single parallel invocation over all of `tests/` excluding `tests/integration/`, wrapped in 30-second suite timeout) then `test-integration` (single parallel invocation over `tests/integration/`, wrapped in 30-second suite timeout), each with a 30-second per-suite cap; combined total capped at 30 s when run via `make verify`. `make test-unit` excludes `tests/integration/`. `make test-cov` enforces an 80% coverage gate. `make docs` builds Sphinx HTML with warnings as errors.
+`make test` runs the maintained verification suite as one parallel invocation over `tests/` with `-m "not subprocess_e2e"`, wrapped in the 30-second suite timeout. `make test-unit` excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` enforces an 80% coverage gate. `make docs` builds Sphinx HTML with warnings as errors.
 
 ---
 
