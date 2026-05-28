@@ -208,7 +208,10 @@ def test_create_commit() -> None:
         monkeypatch.undo()
 
     assert sha == "a" * FULL_SHA_LENGTH
-    assert captured["message"] == "Test commit message"
+    assert captured["message"] == (
+        "Test commit message\n\n"
+        "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
+    )
 
 
 def test_create_commit_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
@@ -295,9 +298,56 @@ def test_create_commit_with_author() -> None:
 
     author = cast("Actor", captured["author"])
     assert sha == "b" * FULL_SHA_LENGTH
-    assert captured["message"] == "Custom author commit"
+    assert captured["message"] == (
+        "Custom author commit\n\n"
+        "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
+    )
     assert author.name == "Custom User"
     assert author.email == "custom@example.com"
+
+
+def test_create_commit_appends_ralph_workflow_coauthor_trailer() -> None:
+    """Generated commits keep the repo identity and add Ralph Workflow as co-author."""
+    captured: dict[str, object] = {}
+
+    class FakeCommit:
+        hexsha = "d" * FULL_SHA_LENGTH
+
+    class FakeConfig:
+        def get_value(self, section: str, key: str, default: str) -> str:
+            if (section, key) == ("user", "name"):
+                return "Repo User"
+            if (section, key) == ("user", "email"):
+                return "repo@example.com"
+            return default
+
+    def fake_config_reader() -> FakeConfig:
+        return FakeConfig()
+
+    class FakeIndex:
+        def commit(self, message: str, author: object, committer: object) -> FakeCommit:
+            captured["message"] = message
+            captured["author"] = author
+            captured["committer"] = committer
+            return FakeCommit()
+
+    fake_repo = SimpleNamespace(index=FakeIndex(), config_reader=fake_config_reader)
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
+
+    try:
+        sha = create_commit(Path("/tmp/repo"), "feat(cli): support generated commits")
+    finally:
+        monkeypatch.undo()
+
+    author = cast("Actor", captured["author"])
+    assert sha == "d" * FULL_SHA_LENGTH
+    assert captured["message"] == (
+        "feat(cli): support generated commits\n\n"
+        "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
+    )
+    assert author.name == "Repo User"
+    assert author.email == "repo@example.com"
 
 
 def test_get_head_sha(tmp_git_repo: Path) -> None:

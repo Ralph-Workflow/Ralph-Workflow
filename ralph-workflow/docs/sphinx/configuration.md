@@ -160,6 +160,14 @@ git_user_name = "Your Name"
 git_user_email = "you@example.com"
 ```
 
+Generated commits still append a Ralph Workflow co-author trailer:
+
+```text
+Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>
+```
+
+That keeps the primary author identity yours while still marking commits that Ralph Workflow generated.
+
 ### Example: make one repo quieter without changing everything else
 
 Create `.agent/ralph-workflow.toml`:
