@@ -20,7 +20,16 @@ POSIX_FORBIDDEN = [
 ]
 
 # Files under RALPH_ROOT that are allowed to use subprocess directly.
-ALLOWLIST: list[tuple[str, str]] = []
+ALLOWLIST: list[tuple[str, str]] = [
+    (
+        "mcp/tools/exec_overlay.py",
+        "uses cp -c/--reflink for COW and rsync for diff-based workspace mirroring",
+    ),
+    (
+        "mcp/tools/exec_sandbox.py",
+        "uses du -sk for fast cache sizing and rm -rf for escalation cleanup",
+    ),
+]
 
 # Files under TESTS_ROOT that are allowed to use subprocess directly.
 # Each entry should have a comment explaining why it's allowlisted.

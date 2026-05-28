@@ -93,7 +93,7 @@ def _isolate_process_home(
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
 
 
-def _configure_repo_identity(repo):
+def _configure_repo_identity(repo: object) -> None:
     writer = repo.config_writer()
     try:
         writer.set_value("user", "name", "Test User")
@@ -407,7 +407,7 @@ def default_policy() -> tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy]:
 
 
 @pytest.fixture
-def cli_runner():
+def cli_runner() -> object:
     """Provide a Typer CLI test runner."""
     from typer.testing import CliRunner
 

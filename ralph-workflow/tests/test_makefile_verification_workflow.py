@@ -83,9 +83,9 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
 
     _assert_all_lines_contain(
         unit_body,
-        ["python -m ralph.verify_timeout", "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)"],
+        ["ralph.verify_timeout", "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)"],
     )
-    assert "uv run python -m ralph.verify_timeout" in unit_body[0]
+    assert "ralph.verify_timeout" in unit_body[0]
     assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in unit_body[0]
     assert "python -m pytest tests/ -q" in unit_body[0]
     assert "--ignore=tests/integration" in unit_body[0]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 from contextlib import contextmanager, suppress
@@ -179,39 +180,116 @@ def _write_overlay_owner_metadata(overlay_dir: Path) -> None:
     )
 
 
-def _mirror_workspace(source_root: Path, overlay_root: Path) -> None:
-    """Copy the workspace into a private overlay, dereferencing symlinks."""
+_COW_CP_ARGS: tuple[str, ...]
+if os.name == "posix" and os.uname().sysname == "Darwin":
+    _COW_CP_ARGS = ("-c",)
+else:
+    _COW_CP_ARGS = ("--reflink=auto",)
 
-    ignored_relative_paths = _ignored_workspace_relative_paths(source_root)
-    resolved_source_root = source_root.resolve()
 
-    def _ignore(_directory: str, names: list[str]) -> set[str]:
-        ignored = {name for name in names if name in _GENERATED_DIR_NAMES}
+def _clonefile_or_copy(src: str, dst: str, *, follow_symlinks: bool = True) -> str:
+    try:
+        subprocess.run(
+            ["cp", *_COW_CP_ARGS, src, dst],
+            capture_output=True,
+            timeout=10,
+            check=True,
+        )
+        if follow_symlinks:
+            shutil.copystat(src, dst, follow_symlinks=True)
+        return dst
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+
+
+def _mirror_workspace_rsync(
+    source_root: Path, overlay_root: Path,
+    excluded_names: list[str],
+) -> bool:
+    rsync = shutil.which("rsync")
+    if rsync is None:
+        return False
+    excludes = [f"--exclude={n}" for n in excluded_names]
+    try:
+        subprocess.run(
+            [
+                rsync, "-a", "--delete", "--copy-links",
+                *excludes,
+                f"{source_root}/", f"{overlay_root}/",
+            ],
+            capture_output=True, timeout=120, check=True,
+        )
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def _sync_dir(  # noqa: PLR0912
+    src: Path, dst: Path,
+    excluded_names: frozenset[str],
+    ignored_paths: frozenset[Path],
+) -> None:
+    dst.mkdir(parents=True, exist_ok=True)
+    try:
+        src_children = list(src.iterdir())
+    except OSError:
+        return
+    dst_children = {p.name: p for p in dst.iterdir()} if dst.exists() else {}
+
+    for src_child in src_children:
+        name = src_child.name
+        if name in excluded_names:
+            continue
+
+        d = dst / name
         try:
-            relative_directory = Path(_directory).resolve().relative_to(resolved_source_root)
+            rel = src_child.resolve().relative_to(src.resolve())
         except ValueError:
-            relative_directory = Path()
-        for name in names:
-            relative_candidate = (
-                relative_directory / name
-                if relative_directory != Path()
-                else Path(name)
-            )
-            if any(
-                relative_candidate == ignored_path
-                or ignored_path.is_relative_to(relative_candidate)
-                for ignored_path in ignored_relative_paths
-            ):
-                ignored.add(name)
-        return ignored
+            rel = Path(name)
+        if rel in ignored_paths or any(
+            p.is_relative_to(rel) for p in ignored_paths
+        ):
+            continue
 
-    shutil.copytree(
-        source_root,
-        overlay_root,
-        symlinks=False,
-        ignore=_ignore,
-        ignore_dangling_symlinks=True,
+        if src_child.is_symlink():
+            d.unlink(missing_ok=True)
+            _clonefile_or_copy(str(src_child), str(d), follow_symlinks=True)
+        elif src_child.is_file():
+            if name in dst_children and dst_children[name].is_file():
+                s_stat = src_child.stat()
+                d_stat = dst_children[name].stat()
+                if s_stat.st_mtime == d_stat.st_mtime and s_stat.st_size == d_stat.st_size:
+                    continue
+            _clonefile_or_copy(str(src_child), str(d), follow_symlinks=False)
+        elif src_child.is_dir():
+            _sync_dir(src_child, d, excluded_names, ignored_paths)
+
+    for name, dst_child in dst_children.items():
+        if name not in {c.name for c in src_children}:
+            if dst_child.is_dir():
+                shutil.rmtree(dst_child, ignore_errors=True)
+            else:
+                dst_child.unlink(missing_ok=True)
+
+
+def _mirror_workspace(source_root: Path, overlay_root: Path) -> None:
+    """Copy the workspace into a private overlay.
+
+    Tries ``rsync -a --delete`` first (fastest, Unix-only),
+    then a metadata-based diff copy (cross-platform, only copies
+    files whose mtime/size changed), falling back to
+    ``shutil.copytree`` with filesystem copy-on-write.
+    """
+    ignored_relative_paths = _ignored_workspace_relative_paths(source_root)
+    excluded_names = frozenset(_GENERATED_DIR_NAMES) | frozenset(
+        str(p.parts[0]) for p in ignored_relative_paths if len(p.parts) > 1
     )
+    excluded_paths = frozenset(ignored_relative_paths)
+    overlay_root.mkdir(parents=True, exist_ok=True)
+    if not _mirror_workspace_rsync(
+        source_root, overlay_root, sorted(excluded_names)
+    ):
+        _sync_dir(source_root, overlay_root, excluded_names, excluded_paths)
 
 
 def _resolve_gitdir_reference(gitdir_file: Path) -> Path | None:

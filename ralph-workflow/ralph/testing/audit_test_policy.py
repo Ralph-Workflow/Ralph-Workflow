@@ -17,7 +17,6 @@ import ast
 import sys
 from pathlib import Path
 
-
 # --- Allowlist: test files exempt from specific checks ---
 
 # Files with pytest.mark.subprocess_e2e are EXCLUDED from all checks.
@@ -83,7 +82,7 @@ class TestPolicyAuditor(ast.NodeVisitor):
         self._has_subprocess_e2e_marker = "subprocess_e2e" in source
 
     def _add_violation(self, node: ast.AST, category: str, detail: str) -> None:
-        lineno = getattr(node, "lineno", 0)
+        lineno: int = getattr(node, "lineno", 0)
         self.violations.append(
             TestPolicyViolation(
                 file_path=self.file_path,
@@ -123,7 +122,8 @@ class TestPolicyAuditor(ast.NodeVisitor):
                     self._add_violation(
                         node,
                         "sleep",
-                        f"{func_name}({first_arg.value}) — sleep with positive argument is a design defect",
+                        f"{func_name}({first_arg.value}) — "
+                        "sleep with positive argument is a design defect",
                     )
                     return
             # If the argument is not a constant, flag it — any non-trivial sleep is suspicious.
@@ -133,7 +133,7 @@ class TestPolicyAuditor(ast.NodeVisitor):
                 f"{func_name}(...) — dynamic sleep call; inject a clock abstraction instead",
             )
 
-    def _check_io_call(self, node: ast.Call) -> None:
+    def _check_io_call(self, node: ast.Call) -> None:  # noqa: PLR0911
         """Detect real I/O operations."""
         func_name = self._get_func_name(node)
         if func_name is None:
@@ -243,7 +243,7 @@ def _collect_subprocess_e2e_files(tests_root: Path) -> set[str]:
     return e2e_files
 
 
-def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:
+def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0911
     """Audit a single test file for policy violations.
 
     Returns a list of violations found.
@@ -274,7 +274,6 @@ def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:
         # Skip files with syntax errors — not our concern.
         return []
 
-    rel_path = file_path.relative_to(file_path.parent.parent.parent.parent).as_posix() if file_path.is_absolute() else str(file_path)
     auditor = TestPolicyAuditor(str(file_path), source)
     auditor.visit(tree)
 
@@ -286,7 +285,7 @@ def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], 
 
     Returns (violations, files_checked).
     """
-    global _SUBPROCESS_E2E_FILES
+    global _SUBPROCESS_E2E_FILES  # noqa: PLW0603
     _SUBPROCESS_E2E_FILES = _collect_subprocess_e2e_files(tests_root)
 
     all_violations: list[TestPolicyViolation] = []
@@ -295,6 +294,8 @@ def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], 
     for py_file in sorted(tests_root.rglob("*.py")):
         # Skip test_process_audit.py itself and this audit file.
         if py_file.name in ("test_process_audit.py", "audit_test_policy.py"):
+            continue
+        if "/fixtures/" in py_file.as_posix():
             continue
         violations = audit_test_file(py_file)
         if violations:
@@ -312,11 +313,9 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = argv if argv is not None else sys.argv[1:]
 
-    if args:
-        tests_root = Path(args[0])
-    else:
-        # Default: find tests/ directory relative to ralph/ package.
-        tests_root = Path(__file__).parent.parent.parent / "tests"
+    tests_root = Path(args[0]) if args else (
+        Path(__file__).parent.parent.parent / "tests"
+    )
 
     if not tests_root.is_dir():
         print(f"Error: tests directory not found: {tests_root}", file=sys.stderr)

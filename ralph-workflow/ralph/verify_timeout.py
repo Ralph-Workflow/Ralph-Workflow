@@ -47,7 +47,7 @@ _POLICY_FIX_MESSAGE = (
     "These limits are ABSOLUTE. You CANNOT avoid them by:\n"
     "- Splitting tests into more suites (adds process overhead,\n"
     "  risks combined total breach, tracked cumulatively\n"
-    "  by ralph/verify.py — N suites does NOT give N × 30s)\n"
+    "  by ralph/verify.py — N suites does NOT give N x 30s)\n"
     "- Moving slow tests to a different suite or target\n"
     "- Raising DEFAULT_SUITE_TIMEOUT_SECONDS (this is exactly\n"
     "  the violation that was committed—do NOT repeat it)\n"

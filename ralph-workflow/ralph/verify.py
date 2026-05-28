@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 #
 # Enforcement mechanism: run_verify() tracks cumulative wall-clock
 # time via time.monotonic() across ALL test-budget-tracked steps.
-# Splitting tests across N suites does NOT give you N × 30s — the
+# Splitting tests across N suites does NOT give you N x 30s — the
 # combined time of every track-tested step is summed and compared
 # against this cap. The per-step timeout passed to each runner() call
 # is min(per_suite_limit, remaining_budget), so an early suite that
@@ -198,7 +198,7 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
         ``min(step_timeout, remaining_budget)``.
       - After a tracked step completes (including on timeout) the actual
         elapsed time is added to cumulative_test_elapsed.
-      - Splitting tests across N suites does NOT give N × 30 s — the
+      - Splitting tests across N suites does NOT give N x 30 s — the
         combined time of EVERY budget-tracked step is summed and enforced.
     """
     print("Running full verification...", flush=True)
@@ -223,9 +223,14 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
                     flush=True,
                 )
                 return TIMEOUT_EXIT_CODE
-            effective_timeout = min(step_timeout, remaining_budget) if step_timeout > 0 else step_timeout
+            effective_timeout = (
+                min(step_timeout, remaining_budget) if step_timeout > 0 else step_timeout
+            )
         else:
-            effective_timeout = step_timeout
+            effective_timeout = (
+                step_timeout if step_timeout is not None
+                else _VERIFY_STEP_TIMEOUT_SECONDS
+            )
 
         step_start = time.monotonic()
         result = runner(command, args, cwd=cwd, timeout=effective_timeout, capture_output=False)
@@ -239,7 +244,10 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
         if result.stderr:
             print(result.stderr, end="", file=sys.stderr, flush=True)
         if result.returncode != 0:
-            cumulative_exhausted = is_tracked and cumulative_test_elapsed >= _TOTAL_TEST_BUDGET_SECONDS
+            cumulative_exhausted = (
+                is_tracked
+                and cumulative_test_elapsed >= _TOTAL_TEST_BUDGET_SECONDS
+            )
             print(
                 format_verify_failure_banner(
                     failed_command=_failed_command_label(
