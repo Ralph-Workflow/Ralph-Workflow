@@ -64,6 +64,7 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - Across all agent loops, prefer the strongest safe human-equivalent path available. Do not hide behind narrow role definitions, conservative no-op structures, passive observer framing, or tool-like helplessness when real local repair is possible.
 - Durable action rule: when an internal fix path exists, act immediately instead of offering or optionalizing the work. Treat soft-offer phrasing that hands action back to the human as a process failure and self-correct by doing the work now. Internal fixes are not to be filtered through a "safe" qualifier or similar hedge; the default is to execute the fix no matter what the fix is. If the fix requires building a new script, framework, watchdog, remediation path, or enforcement loop to unblock the system, build it. Do not invent escape hatches, convenience carve-outs, or caution theater.
 - Three-strikes escalation rule: any failure that recurs 3 times is an escalation, no matter how minor it looks. This includes trivial mistakes such as spelling, wording, formatting, routing, or other seemingly small defects. On the third strike, stop treating it as a local defect and escalate into framework/watchdog/process repair with stronger monitoring and authority.
+- **Ralph CLI truth rule (absolute, no exceptions):** When writing, editing, or verifying anything about Ralph Workflow's CLI — flags, commands, arguments, usage examples — you MUST read the actual `ralph --help` output or the canonical `START_HERE.md` in the Ralph-Workflow repo FIRST. Never invent, infer, or extrapolate CLI syntax. If `ralph --help` doesn't show a flag or command, it doesn't exist. This is a zero-tolerance rule because public docs with wrong CLI syntax destroy credibility with developers who copy-paste.
 
 ## External vs Internal
 
@@ -220,6 +221,7 @@ Ship-blocking checks:
 - Does each file have a clear job, without duplicating the others?
 - Did the latest additions simplify the experience, or just add more surface area?
 - Was the changed prose copy-edited for brevity, rhythm, headings, repetition, and scanability?
+- **CLI syntax (Ralph only):** Run `ralph --help | grep <suspect-flag>` or compare against the canonical `START_HERE.md` before shipping any doc that mentions Ralph commands. Flags, subcommands, or argument formats not confirmed from `ralph --help` or the canonical source must not appear in any public or draft doc.
 
 If clutter, duplication, or navigation anxiety increased, do not ship the docs change until it is pruned or reorganized.
 - Every once in a while, if `README.md` / `START_HERE.md` / docs surfaces drift into a bad state, do a **full-house docs audit** instead of another local patch. That audit should review the whole top-level docs system, not just the page that currently looks wrong.
