@@ -1,17 +1,17 @@
 {
-  "generated_at": "2026-05-28T15:12:01.762029+02:00",
+  "generated_at": "2026-05-28T16:12:01.118270+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 3.82,
+  "report_age_hours": 0.33,
   "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "latest_healthy_report_age_hours": 3.82,
-  "latest_post_age_hours": 46.4,
+  "latest_healthy_report_age_hours": 0.33,
+  "latest_post_age_hours": 47.4,
   "reddit_monitor_runtime": {
     "status": "fresh_report_reused",
-    "age_hours": 5.95
+    "age_hours": 6.95
   },
   "reddit_execution_status": {
     "status": "execution_blocked_permanent",
-    "age_hours": 2.78,
+    "age_hours": 3.78,
     "blocking_reason": "Reddit is IP-blocked at Hetzner Helsinki (95.216.6.222). Tor also blocked \u2014 exit node 192.42.116.102 is on Reddit's Tor blocklist. No proxy path exists from this runtime."
   },
   "adoption_flat": true,
@@ -19,21 +19,20 @@
   "blocked_distribution_channels": [],
   "apollo": {
     "status": "cloudflare_auth_blocked",
-    "age_hours": 1.0,
+    "age_hours": 2.0,
     "cloudflare_blocked": true
   },
   "measurement_hold": {
-    "active": true,
-    "hold_started_at": "2026-05-28T05:31:32.983669",
-    "hold_until": "2026-05-28T15:28:00",
-    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_measurement_hold_execution.json"
+    "active": false,
+    "hold_started_at": null,
+    "hold_until": null,
+    "source_log": null
   },
   "actions": [],
   "watch_actions": [
     "reddit_channel_blocked",
     "apollo_channel_blocked",
-    "primary_repo_adoption_flat",
-    "measurement_hold_active"
+    "primary_repo_adoption_flat"
   ],
   "status": "watch"
 }

@@ -10657,3 +10657,81 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean and well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README forms a coherent journey, all next-click pages reinforce the same story, no internal leakage on top-level surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Correctly narrow; routes to Codeberg primary, START_HERE, docs/README. No pitch leakage or internal plumbing."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run. Good task-fit guidance, result-first evaluation framing, no internal process residue."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Deliberately secondary page that puts evidence in the right order (behavior > checks > scope > artifacts) and warns it is supporting proof, not the main pitch."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, well-architected, and rubrik-aligned. Every surface knows its role and reinforces the same story without role-collapse.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Narrow page that explicitly says what it is not doing, points straight to Codeberg and the canonical START_HERE\u2192docs/README route. No role-collapse."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Delivers the shortest honest first-run with correct 'result first' framing (software change \u2192 checks \u2192 reviewable outcome). No artifacts/plumbing language."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Correctly positioned as supporting proof for after-the-fact judgment, not top-level product story. Evidence ordering puts working behavior first, artifacts last. The page exists without the positioning drifting upward."
+    },
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Treats Codeberg as primary on line 1, correctly identifies itself as install+operator entrypoint, links to the canonical doc site without flattening the mirror into the primary."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

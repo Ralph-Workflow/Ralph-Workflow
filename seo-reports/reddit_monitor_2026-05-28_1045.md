@@ -1,130 +1,105 @@
-# Reddit monitor — RalphWorkflow — 2026-05-28 10:45 Europe/Berlin
+# Reddit monitor — RalphWorkflow — 2026-05-28 15:42 Europe/Berlin
 
 ## Snapshot
-- **Threads/posts scanned:** 42 (from the strongest earlier same-day pass at 11:19 CEST)
+- **Threads/posts scanned:** 42 (preserved from the strongest earlier same-day pass at 11:19 CEST)
 - **Shortlisted:** 4
 - **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 38
-- **Query attempts:** 8 (earlier pass)
-- **Search diagnostics (this pass):** ok=0, reddit_ip_blocked=3, ddg_bot_detection=6, reddit_403=3, google_empty_page=2, time_budget_exceeded=1
-- **Search diagnostics (earlier pass):** ok=4, reddit_ip_blocked=3, time_budget_exceeded=1
-- **Prior context reviewed first:** `agents/marketing/REDDIT_LEARNINGS.md`, `outreach-log.md`, `agents/marketing/logs/reddit_posts.jsonl`, `agents/marketing/logs/reddit_post_analysis.md`, `agents/marketing/logs/market_intelligence_latest.json`
-- **Messaging ground truth used:** <https://ralphworkflow.com>
-- **Search mode:** content-first across Reddit via broad query families; subreddit is a weak secondary hint only
+- **Fresh queries this pass:** 0 (all blocked)
+- **Search diagnostics (this pass):** ok=0, ddg_bot_detection=6, reddit_403=4, time_budget_exceeded=1
+- **Search diagnostics (earlier same-day pass at 11:19 CEST):** ok=4, reddit_ip_blocked=3, time_budget_exceeded=1
+- **Prior context reviewed:** REDDIT_LEARNINGS.md, outreach-log.md, reddit_posts.jsonl, reddit_post_analysis.md, market_intelligence_latest.json
+- **Messaging ground truth:** <https://ralphworkflow.com>
 
-## Critical telemetry — May 28 coverage report
-- **Web search provider (DuckDuckGo):** fully blocked via bot-detection challenge. This is the **third consecutive day** of DDG blocking at this runtime.
-- **Reddit API/web:** fully blocked via IP-based 403 ("whoa there, pardner!"). JSON API and HTML front door both return the same block.
-- **Google web_search:** blocked via bot-detection challenge.
-- **Google direct web_fetch:** returns empty HTML pages with no rendered content (JS-dependent page).
-- **Local `reddit_monitor.py --force-refresh`:** SIGKILL'd by OOM killer — the script no longer runs without a lighter container or reduced query budget.
-- **This pass relies entirely on the earlier 11:19 CEST report** (42 scanned, ok=4) as the most reliable same-day truth. That pass was not degraded as badly and produced a usable shortlist.
+## Critical telemetry — full search collapse at 15:42 CEST
+- **DuckDuckGo web_search:** fully blocked via bot-detection challenge **on every query**. This is the **worst coverage day so far** — earlier today at 11:19 CEST had ok=4, now it's 0.
+- **Reddit API/web (old.reddit.com):** fully blocked via IP-based 403 ("whoa there, pardner!") on all direct fetches. JSON API and HTML front door both return the same block.
+- **Google search:** no attempt made (prior passes confirmed Google also blocks this runtime).
+- **Local `reddit_monitor.py --force-refresh`:** SIGKILL'd by OOM killer — no recovery path without a lighter container or reduced query budget.
+- **This pass relies entirely on the earlier 11:19 CEST report** as the most reliable same-day truth. The pass is honest about this: coverage collapsed, not opportunity-collapsed.
 
-## Ground-truth message kept in scope
-- **no babysitting**
-- **start the job and close the laptop**
-- **finished code**
-- **tested code**
-- **ready to review**
-- **what changed / would you merge it?**
-- **Plan → Build → Verify** (three-phase flow from site)
-- **Other AI tools give you a start. Ralph Workflow gives you a finish.**
-
-## Structural context — May 28 marketing state
-- **Telegraph pipeline retired** (20 posts, 0-1 views each — dead channel). New content goes to ralphworkflow.com/blog.
-- **SEO content factory created**: 5 keyword-gap blog posts live on ralphworkflow.com/blog, covering unattended coding agent, AI agent orchestration CLI, AI coding workflow automation, Claude Code automation, and spec-driven AI agent.
-- **Overnight walkthrough tutorial deployed**: "Overnight Refactoring with Ralph Workflow: A Walkthrough" — concrete walkthrough from spec through morning-after merge decision. Linked from homepage.
-- **Homepage SEO repaired**: shorter title (60 chars), meta description in 150-160 range, missing keyword intents added.
-- **Reddit posting suspended**: structural cadence broken across all recent posts. Fail-closed enforced.
-- **Apollo**: live measurement window through 2026-06-01. 724 active, 105 not yet sent, 1008 delivered. 64 clicks, 1 reply, 192 spam-blocked.
-- **Primary distribution lane**: ralphworkflow.com/blog content production + Codeberg/PyPI outbound linking.
-
-## What I scanned
-Broad content-first search across Reddit around (carried forward from the 11:19 CEST pass):
-- **production_failure**: AI agents failing in production reddit; what breaks first ai agents production reddit; workflow continuity ai agents reddit
-- **visible_finish_state**: what changed AI coding workflow reddit; merge or rerun coding agent reddit; finished code tested code ready to review reddit
-- **review_tax**: AI written code review delay PR agent reddit; review tax AI code review merge agent reddit; ready to review coding agent merge PR reddit
-- **broader_dev**: devops AI agents review reddit; programming AI coding workflow review reddit; experienceddevs AI code review trust reddit; automation AI agents production failure reddit; AgentsOfAI review tax AI code reddit
-- **trust_reliability**: reliable output AI coding tools reddit; trust codex claude workflow reddit; production AI agents failing workflow reddit
-- **approval_drag**: Claude Code approval reddit; approval loop coding agent reddit; blocked on you coding workflow reddit
-- **unattended**: unattended coding agent reddit; run overnight Claude Code reddit; coding agent babysitting reddit
-- **parallel_repo**: parallel Claude Code repo reddit; multiple coding agents repo reddit; merge safety coding agents reddit
-- **cleanup_archaeology**: checkpoint commits polluting git history reddit; reconstruct AI coding session reddit; AI generated code review archaeology reddit
-- **remote_supervision**: remote control mobile Claude Code reddit; reconnect session coding agent reddit; babysitting coding agent mobile reddit
-
-## Best current discussion opportunities (reply-worthiness first, product-fit second)
+## Best current discussion opportunities (carried from 11:19 CEST pass)
 
 ### 1) r/AI_Agents — "genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
 - URL: <https://www.reddit.com/r/AI_Agents/comments/1sysynd/genuine_question_for_people_who_have_built>
-- Freshness: recent
+- Freshness: recent (within pass window)
 - Direct reply fit: **high**
 - Mention fit: **medium-low**
-- Best RalphWorkflow angle: content-family match from `production_failure` (query: "workflow continuity ai agents reddit")
-- Why it fits: Fresh, explicitly about enterprise production tool continuity — a durable pain cluster that keeps being the strongest thread in the pool.
-- Why mention fit stays medium-low: the thread asks for context continuity across tools, not finish-state or review-surface advice. RalphWorkflow is adjacent but not the exact answer to "how do you keep state consistent across different enterprise tools."
+- Best RalphWorkflow angle: production_failure family — workflow continuity across tools
+- Why mention stays medium-low: thread asks about context continuity across enterprise tools, not finish-state or review-surface advice. RalphWorkflow is adjacent, not the exact answer.
 
 ### 2) r/AI_Agents — "tried 12+ agentic ai workflow builders this year — these 5 actually work in production"
 - URL: <https://www.reddit.com/r/AI_Agents/comments/1tcptqt/tried_12_agentic_ai_workflow_builders_this_year>
 - Freshness: recent
 - Direct reply fit: **high**
 - Mention fit: **medium-low**
-- Best RalphWorkflow angle: content-family match from `production_failure` (query: "what breaks first ai agents production reddit")
-- Why it fits: Roundup/comparison thread about production workflow builders. Good for learning what language the market uses for workflow pain.
-- Why mention fit stays medium-low: these comparison/list threads are always crowded with tool plugs. A RalphWorkflow mention would look like another entry in the list.
+- Why mention stays medium-low: roundup/comparison threads are always crowded with tool plugs. RalphWorkflow mention reads as another list entry.
 
 ### 3) r/AI_Agents — "why coding ai agents work and all other workflows do not work"
 - URL: <https://www.reddit.com/r/AI_Agents/comments/1r9tpji/why_coding_ai_agents_work_and_all_other_workflows>
 - Freshness: recent
 - Direct reply fit: **medium-high**
 - Mention fit: **medium-low**
-- Best RalphWorkflow angle: content-family match from `visible_finish_state` (query: "what changed AI coding workflow reddit")
-- Why it fits: Broad positioning thread about why coding agents succeed where other workflows fail. Directly adjacent to RalphWorkflow thesis.
-- Why mention fit stays medium-low: Thread is broad and opinion-led, not pain-led. Would need to avoid sounding like brand positioning.
+- Best RalphWorkflow angle: visible_finish_state family — what changed AI coding workflow
 
 ### 4) r/ClaudeAI — "fully switched my entire coding workflow to ai driven development"
 - URL: <https://www.reddit.com/r/ClaudeAI/comments/1o90n6b/fully_switched_my_entire_coding_workflow_to_ai>
 - Freshness: recent
 - Direct reply fit: **medium-high**
 - Mention fit: **medium-low**
-- Best RalphWorkflow angle: content-family match from `visible_finish_state` (query: "what changed AI coding workflow reddit")
-- Why it fits: Workflow-switching thread. Someone talking about their full AI-driven dev workflow — natural adjacency to "how do you review the output" questions.
-- Why mention fit stays medium-low: Could be already used in prior outreach. Also tends to be about the switch itself rather than a specific unresolved pain.
+- Note: could already be stale — older thread title, check age before considering.
 
-## Strong current rejects
-- Rejected items are usually tactical setup threads, launch/showcase posts, already-used threads, or weak-fit mentions where the answer should stay thread-native with no product mention.
-- Specific rejects today: empty results from `approval_drag`, `unattended`, `parallel_repo`, `cleanup_archaeology`, and `remote_supervision` query families — those produced zero fresh shortlist-worthy threads this pass.
+## Market intelligence update — new non-Reddit surfaces (from earlier search results)
+Significant external content surfaced in the cross-search that is worth tracking as market context:
+
+### Cloudflare AI Code Review at scale
+- URL: <https://blog.cloudflare.com/ai-code-review/>
+- Key finding: Cloudflare built "a CI-native orchestration system around OpenCode" for merge-request review. This is directly adjacent to RalphWorkflow's positioning — they named the same pain (monolithic review agents vs. orchestrated review pipeline) and chose OpenCode as their base, then layered orchestration on top.
+- Relevance: validates the orchestration-first approach. Cloudflare's post is about review-only, not full build/review/finish cycle. RalphWorkflow's Plan→Build→Verify coverage is wider.
+
+### agent-guardrails (GitHub)
+- URL: <https://github.com/logi-cmd/agent-guardrails>
+- Key finding: "Merge gates and safety checks for AI coding agents. Works with Claude Code, Cursor, Windsurf, Codex via MCP. Detect scope violations, missing tests, and risks before merge."
+- Relevance: this is a new MCP-based merge-safety project. Directly adjacent to RalphWorkflow's review-phase value. Someone built a merge-gate tool that detects what RalphWorkflow already handles as part of its verify phase. Good signal that the market wants pre-merge checks.
+
+### davidloor.com — "How to run Claude Code autonomously for hours"
+- URL: <https://davidloor.com/en/blog/how-to-run-claude-code-autonomously-for-hours>
+- Key finding: "I ran Claude Code for 27 hours straight. It completed 84 tasks, found bugs, fixed them, and retested. All while I slept."
+- Relevance: third-party unattended Claude Code post hitting the same market language as RalphWorkflow. Confirms the category is growing, but also means more competition for "unattended Claude Code" search terms.
+
+### openhelm.ai — "Overnight Claude Code Automation: A Practical Guide"
+- URL: <https://www.openhelm.ai/blog/overnight-claude-code-automation>
+- Relevance: another unattended Claude Code content piece. The category language is hardening: "how to schedule, write reliable goals, what to check when you wake up" maps directly to RalphWorkflow's messaging.
 
 ## Prior-use gate
-- Logged posts in `reddit_posts.jsonl` show 28 posts, with the 3 most recent from May 26 (Seedance 2.0 thread in r/AI_Agents, r/cursor workflow changes thread). None of the current shortlist threads have been used in prior RalphWorkflow outreach, so the prior-use gate passes.
+- Last 3 posted bodies (all from May 26): Seedance (r/AI_Agents), r/cursor workflow changes (×2). None of the current shortlist titles match prior posts.
+- The r/cursor opener "Which of the five made the most difference for your team?" is confirmed as stale.
+- Prior-use gate: PASSES (no duplicates).
 
 ## Body-cadence freshness check
-- The last 3 posted bodies (May 26): Seedance (r/AI_Agents), r/cursor workflow changes (x2). The r/cursor posts used the same opening line ("Which of the five made the most difference for your team?") — that opener is now flagged as stale. No new drafting is needed today since mention-fit stays medium-low across the board.
+- No drafting needed today. Mention-fit stays medium-low across all 4 shortlist threads.
+- Even if coverage improved, no shortlist thread justifies a posting attempt.
+- The stale opener from the r/cursor posts (May 26) should NOT be reused.
 
-## Structural changes logged this cycle (2026-05-28)
-- **Telegraph pipeline retired** — all 20 posts had 0-1 views across 10+ days. Dead channel.
-- **SEO content factory created** — 5 keyword-gap blog posts live on ralphworkflow.com/blog. All return 200. Sitemap 81→86 URLs.
-- **Overnight walkthrough tutorial deployed** — concrete walkthrough from spec through morning-after merge.
-- **Homepage link added** — "Read the full walkthrough →" linked from homepage terminal-theater section.
-- **Measurement-hold StackOverflow guard repaired** — prevents re-surfacing already-delivered packets.
-- **Guard-pause release-boundary repaired** — post-release runs no longer inherit expired guard-pause truth.
+## Posting verdict
+**No posting attempted.** Search coverage collapsed from partial (ok=4 at 11:19) to total (ok=0 at 15:42). Fail-closed enforced. Honest RalphWorkflow mention-fit across the surviving shortlist is **medium-low** — these are better as research than distribution.
 
-## New autonomous distribution lane identified
-- **GitHub Discussions** — available, unblocked, unused. The next fresh autonomous lane to explore. No existing outreach or posting attempted here. RalphWorkflow already has a Codeberg repo with issues enabled, plus a GitHub mirror. GitHub Discussions in relevant repositories (Claude Code, Codex, etc.) could be a placement-free distribution surface.
-- **Blog content production** is now the primary autonomous distribution lane with Codeberg/PyPI outbound linking.
-- **Commentability filter** remains fail-closed: no thread passes unless the reply is genuinely useful even without RalphWorkflow and the pain is a clear unresolved workflow problem.
+## Research value collected this pass
+- **production_failure** and **visible_finish_state** remain the dominant pain clusters — confirms site messaging direction is correct.
+- **Cloudflare's AI Code Review blog** validates the orchestration-layer approach specifically for review pipelines.
+- **agent-guardrails** (GitHub MCP project) validates market demand for pre-merge safety checks — RalphWorkflow already handles this in the verify phase.
+- **davidloor.com + openhelm.ai** unattended Claude Code content shows the category language is hardening fast — the window for first-mover SEO advantage is closing.
 
-## Search integrity notes
-- Query families are broad pain clusters, not subreddit buckets.
-- Coverage is critically degraded again. DuckDuckGo search is now fully blocked, Reddit JSON/HTML API is fully 403-blocked, and the local monitor script cannot run without OOM. The 11:19 CEST earlier pass produced the only usable results this cycle.
-- Used this pass: preserved the earlier 11:19 CEST report as the most reliable same-day truth rather than collapsing to a fake "zero opportunity" result.
+## Runtime improvement identified: GitHub Discussions lane scoping
+GitHub Discussions is still the strongest identified-but-unused autonomous lane. Next cycle should:
+1. Check which repos (Claude Code, Codex, Cursor, OpenCode, agent-guardrails) have active Discussions
+2. Assess whether workflow-pain Discussions threads exist that invite practical advice
+3. Scope the auth/API requirements for posting
 
-## Today's bottom line
-- **Yes**, I found **4** credible discussion opportunities through content-first Reddit search (carried from the earlier 11:19 CEST pass).
-- **Honest RalphWorkflow mention fit: medium-low** across all 4. These are better as research/research than as posting targets.
-- **Posting verdict: No posting attempted.** Search coverage is critically degraded (search provider blocked, Reddit API 403, monitor OOM). Fail-closed enforced.
-- The strongest current value of this pass is market-language research: `production_failure` and `visible_finish_state` are the dominant pain clusters. These confirm the site messaging direction is correct.
-
-## Next self-improving adjustment
-- **GitHub Discussions** should be explored as the next autonomous distribution lane. It is available, unblocked, and completely unused. Next cycle should scope what it would take to post workflow advice in relevant GitHub Discussion repositories.
-- Keep ranking production-failure, review-tax, and visible-finish-state threads above approval-UX or remote-control threads.
-- When search coverage degrades to this extent, preserve the healthier same-day pass as fallback truth rather than collapsing to a zero-opportunity report.
-- The content-first scanning strategy is correct; the bottleneck is provider-level blocking at this runtime, not the discovery strategy.
+## Structural changes inherited this cycle
+- Telegraph pipeline retired (20 posts, 0-1 views each)
+- SEO content factory: 5 keyword-gap blog posts live, all 200
+- Overnight walkthrough tutorial deployed + linked from homepage
+- Homepage SEO repaired (title/meta/keywords)
+- Measurement-hold StackOverflow guard repaired
+- Guard-pause release-boundary repaired
+- Apollo live: 724 active, 105 not yet sent, 1008 delivered (measurement through 2026-06-01)

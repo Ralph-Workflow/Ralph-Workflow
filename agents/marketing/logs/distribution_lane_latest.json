@@ -4,7 +4,7 @@
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "4 live external marketing action(s) already shipped in the last 6 hours.",
-    "If no new outcome lands first, this short-window congestion clears at 2026-05-28T15:28:00. Before then, another live outbound action would mostly blur measurement.",
+    "If no new outcome lands first, this short-window congestion clears at 2026-05-28T17:38:00. Before then, another live outbound action would mostly blur measurement.",
     "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
     "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
     "Apollo already has an active measurement window until 2026-06-01T23:11:13.732870+02:00, so do not spend this run repackaging the same outbound lane.",
@@ -38,7 +38,7 @@
     "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
   ],
   "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_distribution_action_brief.md",
-  "short_review_window_release_at": "2026-05-28T15:28:00",
+  "short_review_window_release_at": "2026-05-28T17:38:00",
   "skip_directory_submissions": false,
   "skip_curator_outreach": false
 }

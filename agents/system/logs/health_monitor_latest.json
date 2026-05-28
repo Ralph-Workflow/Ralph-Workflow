@@ -1,5 +1,5 @@
 {
-  "ts": "2026-05-28T15:03:18.421568",
+  "ts": "2026-05-28T15:42:44.036861",
   "jobs_checked": 26,
   "issues_found": 7,
   "issues": [
@@ -9,10 +9,10 @@
       "category": "timeout",
       "consecutive_errors": 1,
       "last_status": "error",
-      "last_error": "FailoverError: Internal Server Error",
+      "last_error": "Internal Server Error",
       "timeout_seconds": 3600,
       "last_duration_ms": 868523,
-      "likely_cause": "UNKNOWN: FailoverError: Internal Server Error"
+      "likely_cause": "UNKNOWN: Internal Server Error"
     },
     {
       "job_id": "50578fdf-ea83-46bd-8580-36d2bae7ba54",
@@ -21,7 +21,7 @@
       "consecutive_errors": 4,
       "last_status": "error",
       "last_error": "cron: job execution timed out",
-      "timeout_seconds": 2400,
+      "timeout_seconds": 3600,
       "last_duration_ms": 2086682,
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls"
     },
@@ -41,7 +41,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 287.04,
+      "artifact_age_minutes": 326.47,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -49,12 +49,12 @@
       "job_id": "6a9e1bbe-a907-4e13-bc94-e44bc31170ea",
       "name": "reddit-monitor_escalation",
       "category": "escalation_required",
-      "last_error": "FailoverError: Internal Server Error",
-      "likely_cause": "Incident escalation level=owner: reddit-monitor:timeout repeat_count=4",
-      "repeats_in_recent_history": 4,
+      "last_error": "Internal Server Error",
+      "likely_cause": "Incident escalation level=critical: reddit-monitor:timeout repeat_count=14",
+      "repeats_in_recent_history": 14,
       "owner_domain": null,
       "incident_key": "reddit-monitor::timeout",
-      "escalation_level": "owner",
+      "escalation_level": "critical",
       "blocked_by": []
     },
     {
@@ -62,8 +62,8 @@
       "name": "marketing-workflow-audit_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:timeout repeat_count=14",
-      "repeats_in_recent_history": 14,
+      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:timeout repeat_count=24",
+      "repeats_in_recent_history": 24,
       "owner_domain": "marketing",
       "incident_key": "marketing-workflow-audit::timeout",
       "escalation_level": "critical",
@@ -74,8 +74,8 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=16",
-      "repeats_in_recent_history": 16,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=26",
+      "repeats_in_recent_history": 26,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
@@ -84,18 +84,10 @@
   ],
   "repairs_attempted": [
     {
-      "type": "increase_timeout",
-      "job": "marketing-workflow-audit",
-      "from": 1200,
-      "to": 2400,
-      "ok": true,
-      "detail": "{\n  \"id\": \"50578fdf-ea83-46bd-8580-36d2bae7ba54\",\n  \"agentId\": \"main\",\n  \"sessionKey\": \"agent:main:matrix:direct:@mistlight_oriroris:matrix.org\",\n  \"name\": \"marketing-workflow-audit\",\n  \"enabled\": true,\n  \"createdAtMs\": 1778966679523,\n  \"schedule\": {\n    \"kind\": \"cron\",\n    \"expr\": \"20 */6 * * *\",\n "
-    },
-    {
       "type": "rerun_job",
       "job": "marketing-workflow-audit",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:50578fdf-ea83-46bd-8580-36d2bae7ba54:1779973388039:44\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:50578fdf-ea83-46bd-8580-36d2bae7ba54:1779975751916:51\"\n}"
     },
     {
       "type": "rerun_independent_architecture_verification",
@@ -107,7 +99,7 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T15:03:10.233070+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T15:42:34.078226+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
@@ -117,9 +109,15 @@
     },
     {
       "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779975757788:52\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779973394177:45\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779975759711:53\"\n}"
     }
   ]
 }

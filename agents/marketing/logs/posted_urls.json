@@ -539,7 +539,19 @@
       "error": null,
       "draft_hash": "5294f7da2f22ef3f2896648db18a8f83ab2925da577b516563ab13133bac5201",
       "source_path": "/home/mistlight/.openclaw/workspace/content/guides/good_unattended_task.md"
+    },
+    {
+      "date": "2026-05-28",
+      "draft": "2026-05-28_ai-coding-tools-comparison-2026_telegraph.md",
+      "title": "AI Coding Tools Compared 2026: A Practical Guide to What Each One Actually Does",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/AI-Coding-Tools-Compared-2026-A-Practical-Guide-to-What-Each-One-Actually-Does-05-28",
+      "error": null,
+      "draft_hash": "991235da4f8695d89807217f1b3af5dd88d70c91e9caa3c48c52a85656f2e92a",
+      "experiment_id": "comparison-matrix-telegraph-20260528"
     }
   ],
-  "last_run": "2026-05-28T10:20:51.739405"
+  "last_run": "2026-05-28T15:47:51.510232"
 }

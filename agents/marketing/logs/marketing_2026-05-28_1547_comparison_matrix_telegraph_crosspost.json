@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-05-28T15:47:51+02:00",
+  "run_type": "marketing-active-loop",
+  "chosen_action": {
+    "type": "comparison_matrix_telegraph_cross_post",
+    "channel": "telegraph",
+    "title": "Cross-posted AI Coding Tools Comparison Matrix 2026 to Telegraph",
+    "source_asset": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-tools-comparison-2026.md",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_ai-coding-tools-comparison-2026_telegraph.md",
+    "telegraph_url": "https://telegra.ph/AI-Coding-Tools-Compared-2026-A-Practical-Guide-to-What-Each-One-Actually-Does-05-28"
+  },
+  "why_this_action": {
+    "shared_findings_used": [
+      "marketing_execution_board_latest.md: comparison matrix just shipped at 15:38 with zero distribution — genuinely new non-saturated lane",
+      "distribution_lane_latest.json: short-window congestion cleared at 15:28 (PASSED) — execution window is open",
+      "marketing_workflow_audit_latest.json: should push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations",
+      "market_intelligence_latest.json: 8 comparison pages exist, positioning truths reusable",
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate"
+    ],
+    "reasoning": "The comparison matrix is a fresh 217-line asset covering 11 tools with strong Codeberg-primary positioning and CTAs. It was published on the Ralph Site at 15:38 with zero distribution. Cross-posting to Telegraph was the highest-leverage executable distribution action — the congestion window just cleared, the asset is genuinely new, and the Telegraph post has been verified live with the CTA footer included.",
+    "supporting_reasons": [
+      "Execution board explicitly identifies comparison matrix as a new non-saturated lane",
+      "Short-window congestion cleared at 15:28 — lane is now open",
+      "All curator/outreach lanes have active review windows — another outreach packet would be fake progress",
+      "StackOverflow returned 0 candidates in this slot",
+      "HN/Lobsters remains a confirmed structural ceiling",
+      "Dev.to is blocked (login/auth gap)",
+      "Reddit is fail-closed from this environment",
+      "Telegraph cross-post is legitimate distribution of an existing asset, not same-family content creation",
+      "The Telegraph post includes the repo_cta_footer with Codeberg-primary CTA"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": true,
+    "outcome_ready": true,
+    "telegraph_url": "https://telegra.ph/AI-Coding-Tools-Compared-2026-A-Practical-Guide-to-What-Each-One-Actually-Does-05-28",
+    "draft_hash": "991235da4f8695d89807217f1b3af5dd88d70c91e9caa3c48c52a85656f2e92a",
+    "experiment_id": "comparison-matrix-telegraph-20260528"
+  },
+  "measurement": {
+    "expected_outcome": "Codeberg traffic from Telegraph comparison readers — people who read the matrix and click through to Codeberg via the primary CTA",
+    "measurement_window_days": 14,
+    "kill_condition": "No Codeberg delta after 14 days (but matrix also serves long-tail SEO, so measurement should be patient)",
+    "success_metric": "Any Codeberg star/watch/fork delta within 14 days"
+  },
+  "remaining_lanes_status": {
+    "apollo": "active measurement window until 2026-06-01",
+    "curator_outreach": "all targets in active review windows",
+    "publisher_outreach": "all targets in active review windows",
+    "stackoverflow": "0 fresh candidates, lane exhausted for this window",
+    "hn_lobsters": "structural ceiling confirmed",
+    "dev_to": "blocked (auth gap)",
+    "reddit": "fail-closed from this environment",
+    "directory_secondary_surface_repair": "already shipped in current review window",
+    "comparison_backlink_outreach": "already manually delivered in current window",
+    "seo_content_authority": "comparison matrix is first asset in this lane — live and now distributed"
+  }
+}

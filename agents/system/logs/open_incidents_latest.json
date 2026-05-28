@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-28T13:03:18.418054+00:00",
+  "updated_at": "2026-05-28T13:42:44.028876+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 192,
+      "repeat_count": 193,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -681,15 +681,23 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=191"
+        },
+        {
+          "at": "2026-05-28T13:42:37.818060+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779975757788:52\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=193"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T12:07:19.840128+00:00",
+      "last_seen": "2026-05-28T13:42:30.038811+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-05-28T12:07:12.885198+00:00"
+      "closed_at": "2026-05-28T13:42:37.818077+00:00"
     },
     "marketing_independent_verification::loop_verification_fail": {
       "key": "marketing_independent_verification::loop_verification_fail",
@@ -2669,7 +2677,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 365,
+      "repeat_count": 368,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4341,15 +4349,31 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779973394177:45\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T14:27:06.686566+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=365"
+        },
+        {
+          "at": "2026-05-28T13:41:50.740789+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779975710712:47\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T15:03:10.233070+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=366"
+        },
+        {
+          "at": "2026-05-28T13:42:39.739740+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779975759711:53\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T15:41:46.756648+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=368"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T13:03:03.981411+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T14:27:06.686566+02:00\"\n}",
+      "last_seen": "2026-05-28T13:42:30.038818+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-28T15:41:46.756648+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-05-28T13:03:14.208202+00:00"
+      "closed_at": "2026-05-28T13:42:39.739754+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -8197,7 +8221,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 71,
+      "repeat_count": 81,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -8401,7 +8425,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-28T13:03:18.418042+00:00",
+      "last_seen": "2026-05-28T13:42:44.028845+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -13183,7 +13207,7 @@
       "name": "marketing-workflow-audit",
       "category": "timeout",
       "first_seen": "2026-05-27T13:20:48.439614+00:00",
-      "repeat_count": 14,
+      "repeat_count": 24,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -13234,15 +13258,55 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "marketing-workflow-audit_escalation::escalation_required::cron: job execution timed out::Incident escalation level=critical: marketing-workflow-audit:timeout repeat_count=13"
+        },
+        {
+          "at": "2026-05-28T13:41:48.721129+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::cron: job execution timed out::Incident escalation level=critical: marketing-workflow-audit:timeout repeat_count=15"
+        },
+        {
+          "at": "2026-05-28T13:41:57.619103+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::cron: job execution timed out::Incident escalation level=critical: marketing-workflow-audit:timeout repeat_count=16"
+        },
+        {
+          "at": "2026-05-28T13:42:08.721450+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::cron: job execution timed out::Incident escalation level=critical: marketing-workflow-audit:timeout repeat_count=19"
+        },
+        {
+          "at": "2026-05-28T13:42:21.068309+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::cron: job execution timed out::Incident escalation level=critical: marketing-workflow-audit:timeout repeat_count=21"
+        },
+        {
+          "at": "2026-05-28T13:42:35.970876+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::cron: job execution timed out::Incident escalation level=critical: marketing-workflow-audit:timeout repeat_count=23"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T13:03:18.418035+00:00",
+      "last_seen": "2026-05-28T13:42:44.028830+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null,
-      "closed_at": "2026-05-28T13:03:12.315858+00:00"
+      "closed_at": "2026-05-28T13:42:35.970892+00:00"
     },
     "docs_agentic_review_mustFix_repetitive-identical-opening-sentence-on-every-d::review_followup_required": {
       "key": "docs_agentic_review_mustFix_repetitive-identical-opening-sentence-on-every-d::review_followup_required",
@@ -13691,13 +13755,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 16,
+      "repeat_count": 26,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-05-28T13:03:18.418039+00:00",
+      "last_seen": "2026-05-28T13:42:44.028838+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null
@@ -13733,15 +13797,15 @@
       "name": "reddit-monitor",
       "category": "timeout",
       "first_seen": "2026-05-28T12:27:17.769072+00:00",
-      "repeat_count": 4,
+      "repeat_count": 14,
       "owner_domain": null,
-      "escalation_level": "owner",
+      "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-05-28T13:03:18.418023+00:00",
-      "last_error": "FailoverError: Internal Server Error",
-      "likely_cause": "UNKNOWN: FailoverError: Internal Server Error",
+      "last_seen": "2026-05-28T13:42:44.028807+00:00",
+      "last_error": "Internal Server Error",
+      "likely_cause": "UNKNOWN: Internal Server Error",
       "path": null
     }
   }
