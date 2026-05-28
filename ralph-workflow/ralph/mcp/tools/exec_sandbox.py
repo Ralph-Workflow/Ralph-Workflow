@@ -19,10 +19,11 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.tools._exec_sandbox_busy_error import ExecSandboxBusyError
 from ralph.mcp.tools.exec_overlay import (
+    _current_process_identity,
     _ensure_git_isolation,
     _mirror_workspace,
-    _overlay_owner_pid,
-    _pid_is_running,
+    _overlay_owner_metadata,
+    _process_identity_matches,
     _write_overlay_owner_metadata,
 )
 
@@ -35,6 +36,7 @@ _LOCK_FILE = ".ralph-sandbox.lock"
 _POOL_STATE_FILE = ".ralph-sandbox-pool.json"
 _POOL_LOCK_FILE = ".ralph-sandbox-pool.lock"
 _DEFAULT_LOCK_TIMEOUT_S = 0.1
+_MIN_POOL_LOCK_TIMEOUT_S = 0.05
 _LOCK_POLL_INTERVAL_S = 0.005
 _KEY_LENGTH = 16
 _MIN_SLOTS = 1
@@ -63,11 +65,10 @@ class ExecSandboxManager:
         workspace_key = _workspace_key(workspace_root)
         pool_root = self._base_dir / workspace_key
         pool_root.mkdir(parents=True, exist_ok=True)
-        sandbox_root, slot_index = self._lease_slot(pool_root, workspace_key)
+        sandbox_root, _slot_index = self._lease_slot(pool_root, workspace_key)
         try:
             worktree = sandbox_root / "ws"
             self._reset(workspace_root, sandbox_root, worktree)
-            self._record_slot_usage(pool_root, slot_index)
             try:
                 yield worktree
             finally:
@@ -139,22 +140,25 @@ class ExecSandboxManager:
     def _pool_lock_path(self, pool_root: Path) -> Path:
         return pool_root / _POOL_LOCK_FILE
 
-    def _lock_owner_pid(self, lock_path: Path) -> int | None:
+    def _lock_owner_metadata(self, lock_path: Path) -> tuple[int | None, float | None]:
         if not lock_path.is_file():
-            return None
+            return None, None
         try:
             raw = cast("object", json.loads(lock_path.read_text(encoding="utf-8")))
         except Exception:
-            return None
+            return None, None
         if not isinstance(raw, dict):
-            return None
+            return None, None
         payload = cast("dict[str, object]", raw)
         pid = payload.get("pid")
-        return pid if isinstance(pid, int) else None
+        started_at = payload.get("started_at")
+        normalized_pid = pid if isinstance(pid, int) else None
+        normalized_started_at = float(started_at) if isinstance(started_at, (int, float)) else None
+        return normalized_pid, normalized_started_at
 
     def _reclaim_stale_lock(self, lock_path: Path) -> bool:
-        owner_pid = self._lock_owner_pid(lock_path)
-        if owner_pid is None or _pid_is_running(owner_pid):
+        owner_pid, owner_started_at = self._lock_owner_metadata(lock_path)
+        if owner_pid is None or _process_identity_matches(owner_pid, owner_started_at):
             return False
         lock_path.unlink(missing_ok=True)
         return True
@@ -214,8 +218,10 @@ class ExecSandboxManager:
         self._pool_state_path(pool_root).write_text(json.dumps(state), encoding="utf-8")
 
     def _lease_slot(self, pool_root: Path, workspace_key: str) -> tuple[Path, int]:
+        stale_slot_dirs: list[Path] = []
+        leased_slot: tuple[Path, int] | None = None
         with self._pool_lock(pool_root):
-            self._prune_stale_slot_dirs(pool_root)
+            stale_slot_dirs = self._stale_slot_dirs(pool_root)
             state = self._load_pool_state(pool_root)
             target_slots = int(state["target_slots"])
             existing_indices = self._slot_indices(pool_root, workspace_key)
@@ -223,35 +229,45 @@ class ExecSandboxManager:
             for slot_index in range(1, warm_slots + 1):
                 slot_root = self._slot_root(pool_root, workspace_key, slot_index)
                 if self._try_acquire_lock(slot_root):
-                    return slot_root, slot_index
-            slot_index = warm_slots + 1
-            while True:
-                slot_root = self._slot_root(pool_root, workspace_key, slot_index)
-                if self._try_acquire_lock(slot_root):
-                    return slot_root, slot_index
-                slot_index += 1
+                    leased_slot = (slot_root, slot_index)
+                    break
+            if leased_slot is None:
+                slot_index = warm_slots + 1
+                while True:
+                    slot_root = self._slot_root(pool_root, workspace_key, slot_index)
+                    if self._try_acquire_lock(slot_root):
+                        leased_slot = (slot_root, slot_index)
+                        break
+                    slot_index += 1
+            assert leased_slot is not None
+            self._record_slot_usage_locked(pool_root, leased_slot[1])
 
-    def _record_slot_usage(self, pool_root: Path, slot_index: int) -> None:
-        with self._pool_lock(pool_root):
-            state = self._load_pool_state(pool_root)
-            average_slots = float(state["average_slots"])
-            updated_average = (average_slots + slot_index) / 2.0
-            updated_target = max(_MIN_SLOTS, round(updated_average), slot_index)
-            low_usage_streak = int(state["low_usage_streak"])
-            if slot_index == 1:
-                low_usage_streak += 1
-            else:
-                low_usage_streak = 0
-            self._save_pool_state(
-                pool_root,
-                {
-                    "average_slots": updated_average,
-                    "target_slots": updated_target,
-                    "low_usage_streak": low_usage_streak,
-                },
-            )
+        leased_root, leased_index = leased_slot
+        stale_slot_dirs = [path for path in stale_slot_dirs if path != leased_root]
+        self._delete_slot_dirs(stale_slot_dirs)
+        return leased_root, leased_index
+
+    def _record_slot_usage_locked(self, pool_root: Path, slot_index: int) -> None:
+        state = self._load_pool_state(pool_root)
+        average_slots = float(state["average_slots"])
+        updated_average = (average_slots + slot_index) / 2.0
+        updated_target = max(_MIN_SLOTS, round(updated_average), slot_index)
+        low_usage_streak = int(state["low_usage_streak"])
+        if slot_index == 1:
+            low_usage_streak += 1
+        else:
+            low_usage_streak = 0
+        self._save_pool_state(
+            pool_root,
+            {
+                "average_slots": updated_average,
+                "target_slots": updated_target,
+                "low_usage_streak": low_usage_streak,
+            },
+        )
 
     def _shrink_idle_slots(self, pool_root: Path, workspace_key: str) -> None:
+        slot_dirs_to_delete: list[Path] = []
         with self._pool_lock(pool_root):
             state = self._load_pool_state(pool_root)
             target_slots = int(state["target_slots"])
@@ -273,32 +289,32 @@ class ExecSandboxManager:
                 slot_root = self._slot_root(pool_root, workspace_key, slot_index)
                 if self._lock_path(slot_root).exists():
                     continue
-                shutil.rmtree(slot_root, ignore_errors=True)
+                slot_dirs_to_delete.append(slot_root)
 
-    def _prune_stale_slot_dirs(self, pool_root: Path) -> None:
+        self._delete_slot_dirs(slot_dirs_to_delete)
+
+    def _stale_slot_dirs(self, pool_root: Path) -> list[Path]:
+        stale_slot_dirs: list[Path] = []
         for child in pool_root.iterdir():
             if not child.is_dir():
                 continue
-            owner_pid = _overlay_owner_pid(child)
-            if owner_pid is None or _pid_is_running(owner_pid):
+            owner_pid, owner_started_at = _overlay_owner_metadata(child)
+            if owner_pid is None or _process_identity_matches(owner_pid, owner_started_at):
                 continue
-            self._release_lock(child)
-            shutil.rmtree(child, ignore_errors=True)
+            stale_slot_dirs.append(child)
+        return stale_slot_dirs
 
-    def _acquire_lock(self, sandbox_root: Path) -> None:
-        lock_path = self._lock_path(sandbox_root)
-        sandbox_root.mkdir(parents=True, exist_ok=True)
-        deadline = time.monotonic() + self._lock_timeout_s
-        while True:
-            try:
-                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            except FileExistsError:
-                if time.monotonic() >= deadline:
-                    raise ExecSandboxBusyError(f"sandbox busy: {sandbox_root}") from None
-                time.sleep(_LOCK_POLL_INTERVAL_S)
+    def _delete_slot_dirs(self, slot_dirs: list[Path]) -> None:
+        for slot_dir in slot_dirs:
+            if not slot_dir.exists():
                 continue
-            os.close(fd)
-            return
+            if not self._try_acquire_lock(slot_dir):
+                continue
+            try:
+                shutil.rmtree(slot_dir, ignore_errors=True)
+            finally:
+                if slot_dir.exists():
+                    self._release_lock(slot_dir)
 
     def _release_lock(self, sandbox_root: Path) -> None:
         self._lock_path(sandbox_root).unlink(missing_ok=True)
@@ -321,7 +337,10 @@ class ExecSandboxManager:
                 return self._try_acquire_lock(sandbox_root)
             return False
         try:
-            payload: dict[str, int] = {"pid": os.getpid()}
+            payload: dict[str, int | float] = {"pid": os.getpid()}
+            _, started_at = _current_process_identity()
+            if started_at is not None:
+                payload["started_at"] = started_at
             os.write(fd, json.dumps(payload).encode("utf-8"))
         finally:
             os.close(fd)
@@ -329,7 +348,7 @@ class ExecSandboxManager:
 
     def _acquire_named_lock(self, lock_path: Path) -> None:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        deadline = time.monotonic() + self._lock_timeout_s
+        deadline = time.monotonic() + max(self._lock_timeout_s, _MIN_POOL_LOCK_TIMEOUT_S)
         while True:
             try:
                 fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -341,7 +360,10 @@ class ExecSandboxManager:
                 time.sleep(_LOCK_POLL_INTERVAL_S)
                 continue
             try:
-                payload: dict[str, int] = {"pid": os.getpid()}
+                payload: dict[str, int | float] = {"pid": os.getpid()}
+                _, started_at = _current_process_identity()
+                if started_at is not None:
+                    payload["started_at"] = started_at
                 os.write(fd, json.dumps(payload).encode("utf-8"))
             finally:
                 os.close(fd)

@@ -327,6 +327,7 @@ def test_overlay_cwd_is_not_in_system_temp_dir(tmp_path: Path) -> None:
         "scanning the system temp dir finds nothing during exec."
     )
 
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.subprocess_e2e
 def test_overlay_worktree_is_cleaned_up_after_exec(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
@@ -443,6 +444,7 @@ def test_overlay_keeps_source_workspace_unchanged(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert (workspace / "marker.txt").read_text(encoding="utf-8") == "source"
 
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.subprocess_e2e
 def test_overlay_can_run_git_status_without_touching_source(tmp_git_repo: Path) -> None:
     before = (tmp_git_repo / "README.md").read_text(encoding="utf-8")
@@ -517,6 +519,7 @@ def test_background_process_is_killed_after_exec_returns(tmp_path: Path) -> None
     except psutil.NoSuchProcess:
         pass
 
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.subprocess_e2e
 def test_new_session_background_process_is_killed_after_exec_returns(tmp_path: Path) -> None:
     psutil = pytest.importorskip("psutil")

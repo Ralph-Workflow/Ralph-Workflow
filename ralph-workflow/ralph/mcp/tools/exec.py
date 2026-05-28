@@ -11,6 +11,7 @@ import os
 import shlex
 import signal
 import subprocess
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 
@@ -497,11 +498,16 @@ def _cleanup_exec_orphans(pgid: int, root_pid: int, psutil_mod: _PsutilModuleLik
 
 class _SandboxManagerCache:
     instance: ClassVar[ExecSandboxManager | None] = None
+    lock: ClassVar[threading.Lock] = threading.Lock()
 
 
 def _get_sandbox_manager() -> ExecSandboxManager:
     if _SandboxManagerCache.instance is None:
-        _SandboxManagerCache.instance = ExecSandboxManager(base_dir=_get_private_exec_base())
+        with _SandboxManagerCache.lock:
+            if _SandboxManagerCache.instance is None:
+                _SandboxManagerCache.instance = ExecSandboxManager(
+                    base_dir=_get_private_exec_base()
+                )
     return _SandboxManagerCache.instance
 
 

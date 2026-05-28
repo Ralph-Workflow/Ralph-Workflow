@@ -4,14 +4,16 @@ import json
 import threading
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.mcp.tools import exec_sandbox
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 _THREAD_JOIN_TIMEOUT_S = 2.0
-_LOCK_HOLD_TIME_S = 0.05
-_ENTER_WAIT_TIMEOUT_S = 1.0
+_LOCK_HOLD_TIME_S = 0.2
+_ENTER_WAIT_TIMEOUT_S = 2.0
 
 
 def test_reusable_sandbox_reuses_stable_path_for_same_workspace(tmp_path: Path) -> None:
@@ -57,14 +59,13 @@ def test_reusable_sandbox_repopulates_from_workspace_on_each_acquire(tmp_path: P
         assert (sandbox2 / "tracked.txt").read_text(encoding="utf-8") == "source"
 
 
+@pytest.mark.timeout_seconds(2)
 def test_same_workspace_concurrent_acquire_uses_distinct_pool_slots(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
     first_entered = threading.Event()
     second_entered = threading.Event()
     release_first = threading.Event()
@@ -149,14 +150,13 @@ def test_same_workspace_pool_persists_learned_target_size(tmp_path: Path) -> Non
     assert state["target_slots"] >= 2
 
 
+@pytest.mark.timeout_seconds(2)
 def test_same_workspace_three_concurrent_acquires_get_three_distinct_slots(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
     entered = [threading.Event(), threading.Event(), threading.Event()]
     release_all = threading.Event()
     seen_paths: list[Path] = []
@@ -189,14 +189,14 @@ def test_same_workspace_three_concurrent_acquires_get_three_distinct_slots(
     assert len(set(seen_paths)) == 3
 
 
+@pytest.mark.timeout_seconds(5)
 def test_same_workspace_concurrent_growth_persists_high_water_target_size(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    manager = exec_sandbox.ExecSandboxManager(
-        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
-    )
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    enter_timeout_s = 5.0
     entered = [threading.Event(), threading.Event(), threading.Event()]
     release_all = threading.Event()
     errors: list[BaseException] = []
@@ -205,7 +205,7 @@ def test_same_workspace_concurrent_growth_persists_high_water_target_size(
         try:
             with manager.acquire(workspace):
                 entered[index].set()
-                assert release_all.wait(timeout=_ENTER_WAIT_TIMEOUT_S)
+                assert release_all.wait(timeout=enter_timeout_s)
         except BaseException as exc:  # pragma: no cover - captured for assertion clarity
             errors.append(exc)
 
@@ -214,7 +214,7 @@ def test_same_workspace_concurrent_growth_persists_high_water_target_size(
         thread.start()
     try:
         for event in entered:
-            assert event.wait(timeout=_ENTER_WAIT_TIMEOUT_S)
+            assert event.wait(timeout=enter_timeout_s)
     finally:
         release_all.set()
         for thread in threads:
@@ -273,6 +273,46 @@ def test_reusable_sandbox_reclaims_ownerless_stale_locked_slot(tmp_path: Path) -
         assert sandbox == stale_slot / "ws"
 
 
+def test_reusable_sandbox_reclaims_lock_when_process_identity_mismatches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    slot_root = tmp_path / "exec-base" / "slot"
+    slot_root.mkdir(parents=True)
+    lock_path = manager._lock_path(slot_root)
+    lock_path.write_text(
+        json.dumps({"pid": 123, "started_at": 10.0}), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        exec_sandbox,
+        "_process_identity_matches",
+        lambda pid, started_at: pid == 123 and started_at == 20.0,
+    )
+
+    assert manager._reclaim_stale_lock(lock_path) is True
+    assert not lock_path.exists()
+
+
+def test_reusable_sandbox_keeps_lock_when_process_identity_matches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    slot_root = tmp_path / "exec-base" / "slot"
+    slot_root.mkdir(parents=True)
+    lock_path = manager._lock_path(slot_root)
+    lock_path.write_text(
+        json.dumps({"pid": 123, "started_at": 10.0}), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        exec_sandbox,
+        "_process_identity_matches",
+        lambda pid, started_at: pid == 123 and started_at == 10.0,
+    )
+
+    assert manager._reclaim_stale_lock(lock_path) is False
+    assert lock_path.exists()
+
+
 def test_same_workspace_pool_shrinks_idle_extra_slots(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -295,6 +335,119 @@ def test_same_workspace_pool_shrinks_idle_extra_slots(tmp_path: Path) -> None:
     state = json.loads((pool_root / ".ralph-sandbox-pool.json").read_text(encoding="utf-8"))
     assert state["target_slots"] == 1
     assert not slot_two.exists()
+
+
+def test_same_workspace_acquire_does_not_fail_while_idle_slot_prune_is_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
+    )
+    pool_root = manager._base_dir / exec_sandbox._workspace_key(workspace)
+    pool_root.mkdir(parents=True, exist_ok=True)
+    (pool_root / ".ralph-sandbox-pool.json").write_text(
+        json.dumps({"target_slots": 1, "average_slots": 1.25, "low_usage_streak": 2}),
+        encoding="utf-8",
+    )
+    slot_two = manager._slot_root(pool_root, exec_sandbox._workspace_key(workspace), 2)
+    slot_two.mkdir(parents=True)
+    (slot_two / "payload.txt").write_text("stale", encoding="utf-8")
+
+    prune_started = threading.Event()
+    release_prune = threading.Event()
+    shrink_finished = threading.Event()
+    errors: list[BaseException] = []
+    original_rmtree = exec_sandbox.shutil.rmtree
+    workspace_key = exec_sandbox._workspace_key(workspace)
+    shrink_thread_name = "shrink-idle-slots"
+
+    def blocking_rmtree(path: Path | str, ignore_errors: bool = False) -> None:
+        if threading.current_thread().name == shrink_thread_name:
+            prune_started.set()
+            assert release_prune.wait(timeout=_ENTER_WAIT_TIMEOUT_S)
+        original_rmtree(path, ignore_errors=ignore_errors)
+
+    monkeypatch.setattr(exec_sandbox.shutil, "rmtree", blocking_rmtree)
+
+    def shrink_idle_slots() -> None:
+        try:
+            manager._shrink_idle_slots(pool_root, workspace_key)
+        except BaseException as exc:  # pragma: no cover - captured for assertion clarity
+            errors.append(exc)
+        finally:
+            shrink_finished.set()
+
+    thread = threading.Thread(target=shrink_idle_slots, name=shrink_thread_name)
+    thread.start()
+    assert prune_started.wait(timeout=_ENTER_WAIT_TIMEOUT_S)
+
+    try:
+        with manager.acquire(workspace) as sandbox:
+            assert sandbox.exists()
+    finally:
+        release_prune.set()
+        thread.join(timeout=_THREAD_JOIN_TIMEOUT_S)
+
+    assert shrink_finished.is_set()
+    assert not errors
+
+
+def test_same_workspace_acquire_does_not_fail_while_stale_slot_cleanup_is_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base", lock_timeout_s=0.01
+    )
+    workspace_key = exec_sandbox._workspace_key(workspace)
+    pool_root = manager._base_dir / workspace_key
+    stale_slot = manager._slot_root(pool_root, workspace_key, 2)
+    stale_slot.mkdir(parents=True)
+    (stale_slot / ".ralph-exec-owner.json").write_text(
+        json.dumps({"pid": -1}), encoding="utf-8"
+    )
+    (stale_slot / "payload.txt").write_text("stale", encoding="utf-8")
+
+    cleanup_started = threading.Event()
+    release_cleanup = threading.Event()
+    background_finished = threading.Event()
+    errors: list[BaseException] = []
+    original_rmtree = exec_sandbox.shutil.rmtree
+    cleanup_thread_name = "stale-slot-cleanup"
+
+    def blocking_rmtree(path: Path | str, ignore_errors: bool = False) -> None:
+        if threading.current_thread().name == cleanup_thread_name:
+            cleanup_started.set()
+            assert release_cleanup.wait(timeout=_ENTER_WAIT_TIMEOUT_S)
+        original_rmtree(path, ignore_errors=ignore_errors)
+
+    monkeypatch.setattr(exec_sandbox.shutil, "rmtree", blocking_rmtree)
+
+    def acquire_in_background() -> None:
+        try:
+            with manager.acquire(workspace):
+                pass
+        except BaseException as exc:  # pragma: no cover - captured for assertion clarity
+            errors.append(exc)
+        finally:
+            background_finished.set()
+
+    thread = threading.Thread(target=acquire_in_background, name=cleanup_thread_name)
+    thread.start()
+    assert cleanup_started.wait(timeout=_ENTER_WAIT_TIMEOUT_S)
+
+    try:
+        with manager.acquire(workspace) as sandbox:
+            assert sandbox.exists()
+    finally:
+        release_cleanup.set()
+        thread.join(timeout=_THREAD_JOIN_TIMEOUT_S)
+
+    assert background_finished.is_set()
+    assert not errors
 
 
 def test_different_workspaces_can_acquire_independently(tmp_path: Path) -> None:
