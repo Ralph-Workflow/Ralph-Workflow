@@ -11,7 +11,7 @@
 
 ## What it does
 
-Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and turns it into a **composable loop framework** where each phase can loop independently and hand off to the next. A single `ralph run` spawns planning, development iteration, review, and fix cycles across multiple agents, then produces a finished artifact bundle you can inspect in the morning.
+Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and turns it into a **composable loop framework** where each phase can loop independently and hand off to the next. A single `ralph` command spawns planning, development iteration, review, and fix cycles across multiple agents, then produces finished git commits you can review in the morning.
 
 **This is not a chat window or a prompt tool.** It's an orchestrator that runs real engineering pipelines unattended — overnight, while you sleep.
 
@@ -38,20 +38,12 @@ It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
 ## What you wake up to
 
 ```
-$ ralph run --spec plan.md --output ./done/
+$ ralph --init
+$ $EDITOR PROMPT.md
+$ ralph
 ```
 
-The next morning:
-
-```bash
-ls ./done/
-plan_final.md       # what it decided to build
-build_artifacts/    # the actual code
-test_report.md      # integration + unit test results
-review_findings.md  # what the review agent flagged and fixed
-```
-
-Runnable, testable, ready to evaluate. Not a chat log — finished work.
+Write your task in `PROMPT.md` before you sleep. Ralph reads it, runs planning → development → review cycles, and produces git commits you can inspect in the morning.
 
 ## Install
 
@@ -65,10 +57,11 @@ Requires Python 3.12+. Full docs at [ralphworkflow.com](https://ralphworkflow.co
 
 ## Quick start
 
-1. Write a spec in `plan.md` — what you want built, with acceptance criteria
-2. Run `ralph run --spec plan.md`
-3. Go to sleep. Wake up to finished artifacts in `./done/`
-4. Read `done/review_findings.md` to decide: merge, iterate, or discard
+1. `pipx install ralph-workflow`
+2. `ralph --init` then `ralph --diagnose` to confirm healthy helpers
+3. Write your task in `PROMPT.md` in your project root
+4. Run `ralph`
+5. Go to sleep. Wake up to finished git commits you can review
 
 That's it. The default workflow is already strong enough to start with. Customize later when you need more control.
 
