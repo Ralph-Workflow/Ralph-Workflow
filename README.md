@@ -1,30 +1,13 @@
-# Ralph Workflow
+# Ralph Workflow (Python)
 
-> **The operating system for autonomous coding.**
+**⭐ Star on Codeberg:** [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — _primary repo_
+**GitHub mirror:** [github.com/Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow)
 
-[![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
-[![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
-[![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+Ralph Workflow is a **free and open-source** Python 3.12+ CLI for **AI agent orchestration** on your own machine.
+It extends the simple Ralph loop into a **composable loop framework** for real software engineering, and the default workflow is already strong enough to start with before you customize anything.
 
-> **⭐ Star on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> GitHub is the mirror. Codeberg is the primary repo where you should inspect, star, watch, fork, and open issues.
-
-Ralph Workflow is a free and open-source **AI agent orchestrator** for substantial, well-specified software engineering on your own machine.
-
-It takes the simple Ralph-loop idea and turns it into a **composable workflow system** for planning, implementation, verification, review, and agent routing.
-The core stays simple. That simplicity is what makes more complex workflows easier to build, easier to configure, and easier to extend.
-
-Ralph Workflow also ships with a **strong default workflow for writing software**.
-You can use that default as-is, or build on top of it when you need something more advanced.
-
-Bring your existing coding agents. Keep your existing setup. Keep your keys to yourself.
-
-## The route to use
-
-1. [START_HERE.md](START_HERE.md) — shortest honest first run
-2. [docs/README.md](docs/README.md) — curated docs switchboard
-3. [ralph-workflow/docs/sphinx/index.rst](ralph-workflow/docs/sphinx/index.rst) — operator manual and configuration reference
+This README is the **install + operator entrypoint**, not the main product pitch.
+The full docs, first-task guide, and developer material live on [ralphworkflow.com](https://ralphworkflow.com/docs).
 
 ## Install
 
@@ -33,13 +16,29 @@ pipx install ralph-workflow
 ralph --help
 ```
 
-Requires Python 3.12+.
+## Verification
 
-## Before your first run
+When you change Ralph Workflow itself, the canonical repo-level verification command is:
 
-Make sure the agent CLIs you want Ralph Workflow to call are already installed and authenticated.
-Ralph Workflow does not replace those coding agents. It orchestrates them.
+```bash
+make verify
+```
 
-## License
+## Operator docs
 
-[AGPL-3.0-or-later](LICENSE).
+- [Getting Started](https://ralphworkflow.com/docs/getting-started.html)
+- [Quickstart](https://ralphworkflow.com/docs/quickstart.html)
+- [Configuration](https://ralphworkflow.com/docs/configuration.html)
+- [Reference](https://ralphworkflow.com/docs/reference.html)
+- [User stories](https://ralphworkflow.com/docs/user-stories.html)
+
+## Baseline capabilities
+
+Ralph Workflow ships a built-in local work surface for workspace and file operations, git read/status/diff/log operations, artifact submission, plan-reading, and media-read support. `ralph --init` sets up or repairs the baseline capability bundle so the default workflow is ready on first run and can recover from degraded helpers. `ralph --diagnose` reports capability health before you start work so you can spot missing, unreachable, degraded, or outdated pieces early.
+
+It also ships DuckDuckGo-backed web search, built-in `visit_url` single-page retrieval with SSRF-safe defaults, mirrored upstream skill bundles installed by `ralph --init`, and docs-aware guidance that turns on when `arabold/docs-mcp-server` is reachable on `localhost:6280`. When docs-mcp is absent, prompts show a short setup hint instead of pretending docs lookup is available. See [Web Search](https://ralphworkflow.com/docs/mcp/web-search.html), [Web Visit](https://ralphworkflow.com/docs/mcp/web-visit.html), and [MCP Servers](https://ralphworkflow.com/docs/mcp/mcp-servers.html).
+
+## Deeper material
+
+- [Developer Reference](https://ralphworkflow.com/docs/developer-reference.html)
+- [Modules index](https://ralphworkflow.com/docs/modules/index.html)
