@@ -155,6 +155,34 @@ POST_HOLD_RELEASE_SYNC_LANES = {
 }
 
 
+def _resolved_measurement_hold_log_release_at(distribution_lane: Any, now: datetime) -> str:
+    short_review_window_release_at = str(getattr(distribution_lane, 'short_review_window_release_at', '') or '').strip()
+    candidate_dts: list[datetime] = []
+
+    release_dt = parse_iso_date(short_review_window_release_at)
+    if release_dt is not None:
+        candidate_dts.append(release_dt)
+
+    try:
+        latest_distribution_lane = json.loads((LOG_DIR / 'distribution_lane_latest.json').read_text(encoding='utf-8'))
+    except (json.JSONDecodeError, OSError):
+        latest_distribution_lane = {}
+    latest_lane_release_dt = parse_iso_date(str(latest_distribution_lane.get('short_review_window_release_at') or '').strip())
+    if latest_lane_release_dt is not None:
+        candidate_dts.append(latest_lane_release_dt)
+
+    hold_window = shared_latest_measurement_hold_window(now, LOG_DIR)
+    hold_until = hold_window.get('hold_until') if isinstance(hold_window, dict) else None
+    if isinstance(hold_until, datetime):
+        candidate_dts.append(hold_until)
+    if not candidate_dts:
+        candidate_dts.append(now + timedelta(minutes=MEASUREMENT_HOLD_COOLDOWN_MINUTES))
+
+    latest = max(candidate_dts) if candidate_dts else None
+    return latest.isoformat(timespec='seconds') if latest is not None else short_review_window_release_at
+
+
+
 def _write_distribution_execution_log(
     *,
     distribution_lane: Any,
@@ -203,11 +231,12 @@ def _write_distribution_execution_log(
         payload['verification'] = verification
     short_review_window_release_at = str(getattr(distribution_lane, 'short_review_window_release_at', '') or '').strip()
     if short_review_window_release_at and getattr(execution, 'action_type', '') in {'measurement_hold_execution', 'measurement_hold_follow_through'}:
+        hold_release_at = _resolved_measurement_hold_log_release_at(distribution_lane, now)
         payload['review_window'] = {
-            'scheduled_run_at': short_review_window_release_at,
+            'scheduled_run_at': hold_release_at,
         }
         why_this_action = payload.get('why_this_action') if isinstance(payload.get('why_this_action'), dict) else {}
-        why_this_action['hold_until'] = short_review_window_release_at
+        why_this_action['hold_until'] = hold_release_at
         payload['why_this_action'] = why_this_action
     path.write_text(json.dumps(payload, indent=2, default=str), encoding='utf-8')
     return path
@@ -1577,6 +1606,8 @@ def _distribution_architecture_guard_execution_is_stale(
         return True
     if lane in {"distribution_architecture_guard_follow_through", "distribution_architecture_guard_pause"} and now is not None:
         release_at = parse_iso_date(str(short_review_window_release_at or ""))
+        if release_at is not None and release_at <= now:
+            return True
         short_window_started_at = (
             release_at - timedelta(hours=distribution_lane_selector.SHORT_REVIEW_WINDOW_HOURS)
             if release_at is not None

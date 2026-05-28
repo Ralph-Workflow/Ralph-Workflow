@@ -1459,6 +1459,27 @@ class RunRepairModeTests(unittest.TestCase):
 
         self.assertTrue(stale)
 
+    def test_guard_pause_reuse_is_stale_after_short_window_release_passes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_path = tmp / 'guard-pause.json'
+            log_path.write_text('{}', encoding='utf-8')
+            artifact_path = tmp / 'guard-pause.md'
+            artifact_path.write_text('guard', encoding='utf-8')
+
+            stale = run._distribution_architecture_guard_execution_is_stale(
+                {
+                    'timestamp': datetime(2026, 5, 27, 21, 57, 54),
+                    'log_path': str(log_path),
+                    'artifact_path': str(artifact_path),
+                },
+                lane='distribution_architecture_guard_pause',
+                now=datetime(2026, 5, 28, 3, 16, 0),
+                short_review_window_release_at='2026-05-28T03:03:00',
+            )
+
+        self.assertTrue(stale)
+
     def test_latest_distribution_architecture_guard_execution_reuses_same_window_reason_match_when_fingerprint_drifted(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             original_log_dir = run.LOG_DIR
@@ -1892,6 +1913,10 @@ class RunRepairModeTests(unittest.TestCase):
             original_log_dir = run.LOG_DIR
             run.LOG_DIR = Path(tmpdir)
             try:
+                (run.LOG_DIR / 'distribution_lane_latest.json').write_text(
+                    json.dumps({'short_review_window_release_at': '2026-05-25T02:05:05'}),
+                    encoding='utf-8',
+                )
                 lane = LaneDecision(
                     lane='measurement_hold',
                     reason='Hold for truthful re-entry after the short review window clears.',
@@ -1922,6 +1947,47 @@ class RunRepairModeTests(unittest.TestCase):
 
                 self.assertEqual(payload['review_window']['scheduled_run_at'], '2026-05-25T02:05:05')
                 self.assertEqual(payload['why_this_action']['hold_until'], '2026-05-25T02:05:05')
+            finally:
+                run.LOG_DIR = original_log_dir
+
+    def test_write_distribution_execution_log_prefers_active_hold_until_over_stale_short_window_release(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_log_dir = run.LOG_DIR
+            try:
+                run.LOG_DIR = Path(tmpdir)
+                lane = LaneDecision(
+                    lane='measurement_hold',
+                    reason='hold',
+                    reasons=[],
+                    owned_content_posts_last_36h=0,
+                    unsubmitted_directory_channels=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    artifact_path='',
+                    short_review_window_release_at='2026-05-28T03:03:00',
+                )
+                execution = SimpleNamespace(
+                    action_type='measurement_hold_follow_through',
+                    status='executed',
+                    artifact_path='/tmp/hold.md',
+                    summary='Hold follow-through.',
+                    targets_prepared=[],
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    live_external_action=False,
+                    blocking_factors=[],
+                )
+
+                with patch.object(run, 'shared_latest_measurement_hold_window', return_value={
+                    'hold_until': datetime(2026, 5, 28, 3, 34, 26),
+                }):
+                    log_path = run._write_distribution_execution_log(
+                        distribution_lane=lane,
+                        execution=execution,
+                        now=datetime(2026, 5, 28, 2, 54, 49),
+                    )
+                payload = json.loads(log_path.read_text(encoding='utf-8'))
+
+                self.assertEqual(payload['review_window']['scheduled_run_at'], '2026-05-28T03:34:26')
+                self.assertEqual(payload['why_this_action']['hold_until'], '2026-05-28T03:34:26')
             finally:
                 run.LOG_DIR = original_log_dir
 

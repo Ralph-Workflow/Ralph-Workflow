@@ -258,6 +258,28 @@ class OutcomeExecutionBoardRunnerTests(unittest.TestCase):
         self.assertEqual(persisted_lane.lane, 'distribution_architecture_repair')
         self.assertEqual(persisted_lane.short_review_window_release_at, '2026-05-26T20:55:18')
 
+    def test_distribution_architecture_guard_pause_reuse_is_stale_after_short_window_release(self):
+        now = datetime(2026, 5, 28, 3, 16, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_path = tmp / 'guard-pause.json'
+            log_path.write_text('{}', encoding='utf-8')
+            artifact_path = tmp / 'guard-pause.md'
+            artifact_path.write_text('guard', encoding='utf-8')
+
+            stale = outcome_execution_board_runner._distribution_architecture_execution_is_stale(
+                {
+                    'timestamp': datetime(2026, 5, 27, 21, 57, 54),
+                    'log_path': str(log_path),
+                    'artifact_path': str(artifact_path),
+                },
+                lane='distribution_architecture_guard_pause',
+                now=now,
+                short_review_window_release_at='2026-05-28T03:03:00',
+            )
+
+        self.assertTrue(stale)
+
     def test_run_persists_latest_lane_after_standalone_execution_board_action(self):
         now = datetime(2026, 5, 26, 11, 10, 6)
         decision = LaneDecision(

@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-05-28T04:04:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "primary_repo_flat_delivery_guard_repair",
+    "channel": "marketing_runtime",
+    "title": "Stop measurement-hold packet refresh after same-window primary-repo-flat manual delivery"
+  },
+  "why_this_action": {
+    "summary": "The current bottleneck is still Codeberg-flat primary-repo conversion, and the live hold window had already delivered the primary-repo-flat handoff once. Refreshing that same packet again during the same review window is fake progress, so the highest-leverage truthful action was to fail closed in the manual-asset refresh path.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg remains flat and is still the primary success gate",
+      "marketing_workflow_audit_latest.json: same-family publisher overlap is still an active failure",
+      "drafts/marketing_execution_board_latest.md: no truthful do-now packet exists in the current review window",
+      "agents/marketing/logs/marketing_2026-05-28_025600_primary_repo_flat_manual_delivery.json: the primary-repo-flat packet was already delivered in this review window"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched the measurement-hold manual-asset refresher to suppress primary-repo-flat status-packet rewrites while a same-window manual delivery is still active, added regression coverage, and reran the full measurement-hold executor suite.",
+    "verification": {
+      "files_changed": [
+        "agents/marketing/distribution_lane_executor.py",
+        "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+      ],
+      "tests": [
+        "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_refresh_manual_execution_assets_omits_primary_status_when_truth_unchanged agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_refresh_manual_execution_assets_skips_primary_status_after_current_window_manual_delivery -v",
+        "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold -q"
+      ]
+    }
+  }
+}

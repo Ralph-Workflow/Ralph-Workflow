@@ -19372,3 +19372,167 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs journey is coherent and positioning-aligned. No hard failures. Main weaknesses are boilerplate repetition in page openings and the borderline existence of reviewable-output.md as a secondary surface that could drift.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Each public page opens with nearly identical boilerplate ('Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core\u2026'). Readers who hit multiple pages will feel the repetition. Differentiate openings per page role.",
+    "reviewable-output.md exists as a deep page that is technically subordinated but its very title and framing ('What Good Ralph Workflow Output Looks Like', 'morning-after handoff') could drift toward being promoted or read as the main value prop. Either deprioritize it further or tighten its framing to remove handoff/output-first language.",
+    "docs/README.md lists internal contributor doc folders (docs/agents/, docs/code-style/, docs/tooling/, docs/performance/) under a public switchboard. This creates mild link anxiety and mixes public and maintainer audiences. Consider moving those references to a separate contributor doc map."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Best top-level page. Tagline, simple-core/composition contrast, default-workflow promise, Codeberg-primary framing, and result-oriented install path all present. No internal plumbing leakage."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run done right. Clear good/bad task guidance, result-first success criteria, and minimal copy. Successfully avoids drift into process/receipt language."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Strongest product-framing page. The 'useful question is not whether a tool can call an agent' framing reinforces the positioning in a way that is marketable but not hype-y."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with the positioning document and forms a coherent, trustworthy journey. No hard failures found.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with the correct tagline, frames as orchestrator + composable loop, calls out simple-core/composition/strong-default, routes cleanly to START_HERE, and explicitly marks Codeberg as primary."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Leads with the core story, gives result-first evaluation framing ('judge by what the software does now and what checks ran'), lists good/bad first tasks, routes to docs/README."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Reinforces the product story on every entry, then routes cleanly to task help, manual, or product-framing pages. Explicitly directs proof-oriented pages to secondary status."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Correctly self-positions as supporting proof, not the main pitch. Result-first evaluation order. No internal plumbing language despite being the closest page to internal detail."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent and aligned with positioning. README \u2192 START_HERE \u2192 docs/README works as one clean route. No internal process leakage, no artifact-first framing, no generic-Ralph collapse. Promoted next-click pages consistently reinforce the same core narrative.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Correctly leads with tagline, simple-core/composition/default-workflow framing, explicit Codeberg-primary/GitHub-mirror gate, and a clean route to START_HERE. No internal mechanics."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Opens with core story, provides excellent good/bad first-task discrimination, and ties evaluation to result-first criteria (what software does, what checks ran). No logs/artifacts/workflow-plumbing language."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Includes a 'Keep proof secondary' section that directly operationalizes the positioning requirement. Routing categories are clear and the opening paragraph reinforces the core message before routing the reader."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system has fully internalized the positioning. README\u2192START_HERE\u2192docs/README journey is coherent, each page stays in its lane, no internal plumbing leaks onto top-level surfaces, and the simple-core\u2192composable\u2192default-workflow narrative is consistent across all promoted pages.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with the correct tagline, positions Codeberg as primary and GitHub as mirror, delivers the simple-core/composable/default-workflow narrative in one paragraph, and routes to START_HERE without trying to be the full pitch."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Concrete install-and-run section, clear audience fit/non-fit, result-first success criteria ('real repo change that matches the written task', 'meaningful checks that ran'), and explicit Codeberg-primary banner."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Routes by user intent, does not link reviewable-output.md from the main route, includes a deliberate 'Keep proof secondary' section, and ends by pointing to Codeberg as primary."
+    },
+    {
+      "path": "reviewable-output.md",
+      "reason": "Self-frames as supporting proof, not main pitch. Content puts working behavior and real checks before transcripts/logs. Correctly kept off the main docs/README route so it doesn't pollute the product story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.

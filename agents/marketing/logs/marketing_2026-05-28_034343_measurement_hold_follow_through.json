@@ -1,21 +1,14 @@
 {
-  "timestamp": "2026-05-28T04:11:00",
-  "run_type": "marketing-distribution-lane",
+  "timestamp": "2026-05-28T03:43:43.128124",
+  "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "distribution_lane_switch",
+    "type": "measurement_hold_follow_through",
     "channel": "measurement_hold",
-    "title": "Distribution lane decision: measurement_hold",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_distribution_action_brief.md"
+    "title": "Distribution lane execution: measurement_hold",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_034343_measurement_hold_follow_through.md"
   },
   "why_this_action": {
-    "shared_findings_used": [
-      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
-      "channel_discovery.json: validated easy-submit directory lanes",
-      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
-      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
-    ],
-    "reasoning": "The primary-repo-flat publisher lane is stuck in prepared-only packet churn, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet.",
+    "summary": "The primary-repo-flat publisher lane is stuck in prepared-only packet churn, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
@@ -45,10 +38,26 @@
       "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.",
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
-    ]
+    ],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "targets_prepared": [],
+    "hold_until": "2026-05-28T09:12:15"
   },
   "result": {
-    "status": "prepared",
-    "ok": true
+    "status": "executed",
+    "ok": true,
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
+    "targets_prepared": [],
+    "live_external_action": false,
+    "blocking_factors": []
+  },
+  "review_window": {
+    "scheduled_run_at": "2026-05-28T09:12:15"
   }
 }

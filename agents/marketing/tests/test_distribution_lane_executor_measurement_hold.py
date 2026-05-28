@@ -15,6 +15,116 @@ from agents.marketing import run_posting
 
 
 class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
+    def test_primary_repo_flat_status_packet_reuse_skips_duplicate_rewrite(self):
+        now = datetime(2026, 5, 28, 3, 50, 0)
+        recent_targets = ['Dupple', 'SitePoint']
+        non_executable_targets = ['ComputingForGeeks']
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            drafts_dir = Path(tmpdir)
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir):
+                artifact, wrote_packet = distribution_lane_executor._write_primary_repo_flat_contact_status_packet(
+                    now,
+                    recent_targets=recent_targets,
+                    non_executable_targets=non_executable_targets,
+                )
+                original_text = artifact.read_text(encoding='utf-8')
+                artifact.write_text(original_text.replace('Generated: 2026-05-28T03:50:00', 'Generated: keep-me'), encoding='utf-8')
+                latest_path = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
+                latest_path.write_text(original_text.replace('Generated: 2026-05-28T03:50:00', 'Generated: keep-me'), encoding='utf-8')
+
+                reused_artifact, rewrote_packet = distribution_lane_executor._write_primary_repo_flat_contact_status_packet(
+                    now,
+                    recent_targets=recent_targets,
+                    non_executable_targets=non_executable_targets,
+                )
+
+            self.assertTrue(wrote_packet)
+            self.assertEqual(reused_artifact, artifact)
+            self.assertFalse(rewrote_packet)
+            self.assertIn('Generated: keep-me', artifact.read_text(encoding='utf-8'))
+
+    def test_refresh_manual_execution_assets_omits_primary_status_when_truth_unchanged(self):
+        now = datetime(2026, 5, 28, 3, 55, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            drafts_dir = Path(tmpdir)
+            status_path = drafts_dir / '2026-05-28_primary_repo_flat_contact_handoff_packet.md'
+            latest_path = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
+            seeded_text = '\n'.join([
+                '# Ralph Workflow Primary-Repo-Flat Publisher Contact Packet',
+                'Generated: keep-me',
+                f"<!-- status_fingerprint: {distribution_lane_executor._primary_repo_flat_contact_status_fingerprint(recent_targets=['Dupple'], non_executable_targets=['ComputingForGeeks'])} -->",
+                '',
+                '## Current state',
+                '- Recently contacted executable targets already inside the active review window: Dupple',
+                '- Remaining discovered targets are not runtime-sendable here: ComputingForGeeks',
+            ]) + '\n'
+            status_path.write_text(seeded_text, encoding='utf-8')
+            latest_path.write_text(seeded_text, encoding='utf-8')
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_curator_contact_discovery', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_primary_repo_flat_contact_discovery', return_value=[
+                    {'target': 'ComputingForGeeks', 'channels': [{'type': 'website', 'value': 'https://computingforgeeks.com/contact'}]},
+                ]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_recent_contact_targets', return_value=['Dupple']))
+
+                refreshed_assets, targets_prepared = distribution_lane_executor._refresh_manual_execution_assets(now)
+
+            self.assertEqual(refreshed_assets, [])
+            self.assertEqual(targets_prepared, [])
+            self.assertIn('Generated: keep-me', status_path.read_text(encoding='utf-8'))
+
+    def test_refresh_manual_execution_assets_skips_primary_status_after_current_window_manual_delivery(self):
+        now = datetime(2026, 5, 28, 4, 4, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            drafts_dir = Path(tmpdir)
+            status_path = drafts_dir / '2026-05-28_primary_repo_flat_contact_handoff_packet.md'
+            latest_path = drafts_dir / 'primary_repo_flat_contact_handoff_packet_latest.md'
+            seeded_text = '\n'.join([
+                '# Ralph Workflow Primary-Repo-Flat Publisher Contact Packet',
+                'Generated: keep-me',
+                f"<!-- status_fingerprint: {distribution_lane_executor._primary_repo_flat_contact_status_fingerprint(recent_targets=['Dupple'], non_executable_targets=['ComputingForGeeks'])} -->",
+                '',
+                '## Current state',
+                '- Recently contacted executable targets already inside the active review window: Dupple',
+                '- Remaining discovered targets are not runtime-sendable here: ComputingForGeeks',
+            ]) + '\n'
+            status_path.write_text(seeded_text, encoding='utf-8')
+            latest_path.write_text(seeded_text, encoding='utf-8')
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_curator_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_comparison_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_manual_contact_queue_rows', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_curator_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_comparison_handoff_targets', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_curator_contact_discovery', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_current_primary_repo_flat_actionable_findings', return_value=[]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_load_primary_repo_flat_contact_discovery', return_value=[
+                    {'target': 'ComputingForGeeks', 'channels': [{'type': 'website', 'value': 'https://computingforgeeks.com/contact'}]},
+                ]))
+                stack.enter_context(patch.object(distribution_lane_executor, '_recent_contact_targets', return_value=['Dupple']))
+                stack.enter_context(patch.object(distribution_lane_executor, '_primary_repo_flat_packet_delivery_still_active', return_value=True))
+                write_status = stack.enter_context(patch.object(distribution_lane_executor, '_write_primary_repo_flat_contact_status_packet'))
+
+                refreshed_assets, targets_prepared = distribution_lane_executor._refresh_manual_execution_assets(now)
+
+            write_status.assert_not_called()
+            self.assertEqual(refreshed_assets, [])
+            self.assertEqual(targets_prepared, [])
+            self.assertIn('Generated: keep-me', status_path.read_text(encoding='utf-8'))
+
     def test_execution_board_lists_manual_review_asset_when_only_manual_channels_remain(self):
         now = datetime(2026, 5, 27, 16, 20, 0)
 
@@ -1367,6 +1477,54 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
 
         self.assertIn('- Hold release at: 2026-05-26T13:22:23', contract_text)
 
+    def test_active_measurement_hold_follow_through_uses_later_hold_until_for_reentry_and_schedule(self):
+        now = datetime(2026, 5, 28, 2, 54, 49)
+        decision = LaneDecision(
+            lane='measurement_hold',
+            reason='hold for truthful follow-through',
+            reasons=[],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/brief.md',
+            short_review_window_release_at='2026-05-28T03:03:00',
+        )
+        active_hold = {
+            'hold_started_at': datetime(2026, 5, 28, 2, 34, 26, 62117),
+            'hold_until': datetime(2026, 5, 28, 3, 34, 26, 62117),
+            'source_log': '/tmp/hold.json',
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            board_path = drafts_dir / 'board.md'
+            board_path.write_text('# board\n', encoding='utf-8')
+            contract_path = drafts_dir / 'contract.md'
+            contract_path.write_text('# contract\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(board_path, [])), \
+                 patch.object(distribution_lane_executor, '_refresh_manual_execution_assets', return_value=([], [])), \
+                 patch.object(distribution_lane_executor, '_current_manual_demand_capture_hint', return_value={}), \
+                 patch.object(distribution_lane_executor, '_current_stackoverflow_scheduled_run', return_value=''), \
+                 patch.object(distribution_lane_executor.distribution_lane_selector, '_stack_overflow_post_cooldown_surface_exhausted', return_value=False), \
+                 patch.object(distribution_lane_executor, '_measurement_hold_window_repeat_state', return_value={'current_window_repeat_count': 0}), \
+                 patch.object(distribution_lane_executor, 'latest_measurement_hold_window', return_value=active_hold), \
+                 patch.object(distribution_lane_executor, '_write_post_hold_reentry_contract', return_value=contract_path) as write_contract, \
+                 patch.object(distribution_lane_executor, '_schedule_measurement_hold_release_run', return_value={'status': 'scheduled', 'scheduled_run_at': '2026-05-28T03:34:26'}) as schedule_release, \
+                 patch.object(distribution_lane_executor, '_append_post_hold_schedule_note'), \
+                 patch.object(distribution_lane_executor, '_write_action_log'):
+                distribution_lane_executor.execute_distribution_lane(decision, now)
+
+        expected_release = '2026-05-28T03:34:26'
+        self.assertEqual(write_contract.call_args.kwargs['release_at'], expected_release)
+        self.assertEqual(schedule_release.call_args.kwargs['release_at'], expected_release)
+
     def test_reddit_discussion_handoff_asset_regenerates_when_current_opportunities_changed(self):
         now = datetime(2026, 5, 27, 4, 21, 0)
 
@@ -2684,6 +2842,60 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertEqual(add_call[add_call.index('--at') + 1], '2026-05-26T13:22:23+02:00')
         self.assertEqual(cron_log['review_window']['scheduled_run_at'], '2026-05-26T13:22:23')
 
+    def test_measurement_hold_scheduler_replaces_matching_job_when_payload_is_stale(self):
+        now = datetime(2026, 5, 28, 4, 18, 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.side_effect = [
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'jobs': [
+                        {
+                            'id': 'matching-stale-cron',
+                            'name': 'marketing-measurement-hold-release',
+                            'enabled': True,
+                            'status': 'idle',
+                            'schedule': {'kind': 'at', 'at': '2026-05-28T07:12:15.000Z'},
+                        }
+                    ]}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({
+                        'payload': {'message': 'Act as the always-on RalphWorkflow marketer.\n\nold prompt'}
+                    }), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'ok': True}), stderr=''),
+                    SimpleNamespace(returncode=0, stdout=json.dumps({'job': {'id': 'fresh-cron', 'name': 'marketing-measurement-hold-release'}}), stderr=''),
+                ]
+
+                schedule = distribution_lane_executor._schedule_measurement_hold_release_run(
+                    now=now,
+                    release_at='2026-05-28T09:12:15',
+                    shared_findings_used=['adoption_metrics_latest.json'],
+                    reentry_contract_path=str(drafts_dir / 'post_hold_distribution_reentry_latest.md'),
+                )
+
+                show_call = mock_run.call_args_list[1].args[0]
+                rm_call = mock_run.call_args_list[2].args[0]
+                add_call = mock_run.call_args_list[3].args[0]
+
+            cron_log = json.loads((log_dir / 'marketing_2026-05-28_041800_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(schedule['status'], 'scheduled')
+        self.assertEqual(schedule['job_id'], 'fresh-cron')
+        self.assertEqual(schedule['removed_stale_jobs'][0]['job_id'], 'matching-stale-cron')
+        self.assertEqual(show_call[:4], ['openclaw', 'cron', 'show', 'matching-stale-cron'])
+        self.assertEqual(rm_call[:4], ['openclaw', 'cron', 'rm', 'matching-stale-cron'])
+        message = add_call[add_call.index('--message') + 1]
+        self.assertIn('Required context before acting:', message)
+        self.assertIn('/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md', message)
+        self.assertIn('/home/mistlight/.openclaw/workspace/agents/marketing/logs/adoption_metrics_latest.json', message)
+        self.assertEqual(cron_log['cleanup']['removed_stale_jobs'][0]['job_id'], 'matching-stale-cron')
+
     def test_current_measurement_hold_release_run_prefers_future_job_over_overdue_idle_one(self):
         now = datetime(2026, 5, 26, 12, 56, 0)
 
@@ -2824,6 +3036,71 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('2026-05-24T11:30:00+02:00', artifact_text)
         self.assertNotIn('Best human-executable demand-capture asset still waiting', artifact_text)
 
+    def test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_after_current_window_manual_delivery(self):
+        now = datetime(2026, 5, 28, 3, 43, 43)
+        decision = LaneDecision(
+            lane='measurement_hold',
+            reason='Hold for follow-through.',
+            reasons=['current-window StackOverflow delivery already happened'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'marketing_2026-05-28_measurement_hold_execution.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-28T03:22:11',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'why_this_action': {'summary': 'Existing short review window hold.'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }),
+                encoding='utf-8',
+            )
+            (log_dir / 'stackoverflow_answer_lane_latest.json').write_text(
+                json.dumps({
+                    'cooldown_active': False,
+                    'top_questions': [
+                        {
+                            'title': 'Autonomous mode / wrapper for Claude Code?',
+                            'url': 'https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code',
+                        }
+                    ],
+                    'drafts': [
+                        {
+                            'question_title': 'Autonomous mode / wrapper for Claude Code?',
+                            'question_url': 'https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code',
+                        }
+                    ],
+                }),
+                encoding='utf-8',
+            )
+            (drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md').write_text('# packet\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'STACKOVERFLOW_LATEST_PATH', log_dir / 'stackoverflow_answer_lane_latest.json'), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_executor.distribution_lane_selector, '_stack_overflow_manual_delivery_current', return_value=True), \
+                 patch.object(distribution_lane_executor.distribution_lane_selector, '_stack_overflow_post_cooldown_run_current', return_value=False), \
+                 patch.object(distribution_lane_executor.subprocess, 'run') as mock_run:
+                mock_run.return_value.returncode = 1
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+
+        self.assertEqual(execution.action_type, 'measurement_hold_follow_through')
+        self.assertNotIn('StackOverflow handoff asset', execution.summary)
+        self.assertIn('StackOverflow demand-capture packet already delivered in this review window', artifact_text)
+        self.assertNotIn('Best human-executable demand-capture asset still waiting', artifact_text)
 
     def test_primary_repo_flat_packet_skips_recently_contacted_publishers(self):
         now = datetime(2026, 5, 24, 5, 55, 0)
@@ -4027,7 +4304,9 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'STACKOVERFLOW_LATEST_PATH', log_dir / 'stackoverflow_answer_lane_latest.json'), \
                  patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
-                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'):
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', log_dir / 'comparison_backlink_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, '_current_measurement_hold_release_run', return_value=''), \
+                 patch.object(distribution_lane_executor.distribution_lane_selector, '_stack_overflow_post_cooldown_run_current', return_value=False):
                 board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
 
             board_text = board_path.read_text(encoding='utf-8')

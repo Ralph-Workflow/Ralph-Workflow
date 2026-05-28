@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-28T02:35:22.681649",
+  "generated_at": "2026-05-28T03:56:29.611338",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -60,11 +60,11 @@
   ],
   "repetitive": [
     "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.",
-    "4 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.",
-    "The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 5 times inside the last 48 hours."
+    "5 publisher contact attempts shipped inside the last 24 hours, which is overlapping the same family.",
+    "The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 2 times inside the last 48 hours."
   ],
   "low_signal": [
-    "Recent live external action exists (apollo_outbound_verification), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
+    "Recent live external action exists (publisher_email_outreach), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution.",
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
@@ -111,9 +111,9 @@
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "4 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
-    "The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains apollo_outbound_verification; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (apollo_outbound_verification), so the system is still shipping output even though outcome movement is not visible yet.",
+    "5 publisher contact attempts already shipped in the last 24 hours; another same-family publisher burst now would mostly blur reply measurement instead of creating a clearer Codeberg adoption read.",
+    "The most recent runtime activity was primary_repo_flat_status_churn_guard_repair, but the latest meaningful external/replacement execution remains publisher_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (publisher_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
@@ -148,21 +148,21 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28.json",
-    "type": "measurement_hold_execution",
-    "title": "Distribution lane execution: measurement_hold",
-    "status": "prepared",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_035845_primary_repo_flat_status_churn_guard_repair.json",
+    "type": "primary_repo_flat_status_churn_guard_repair",
+    "title": "Stop duplicate primary-repo-flat status-packet churn during active hold windows",
+    "status": "executed",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_023426_measurement_hold.md"
+    "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_092656_apollo_outbound_verification.json",
-    "type": "apollo_outbound_verification",
-    "title": "Apollo outbound verification",
-    "status": "verified_live_sequence",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_dupple_publisher_outreach.json",
+    "type": "publisher_email_outreach",
+    "title": "publisher email outreach",
+    "status": "executed",
     "ok": true,
     "live_external_action": true,
     "outcome_ready": true,
@@ -170,7 +170,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-28T02:34:39.138563+02:00",
+    "generated_at": "2026-05-28T03:39:42.446440+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",

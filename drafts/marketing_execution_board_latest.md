@@ -10,6 +10,7 @@ Generated: 2026-05-25T18:53:00
 - Apollo next review: 2026-06-01T23:11:13.732870+02:00
 - Apollo launch review: 2026-06-01T23:11:13.732870+02:00
 - Short review-window congestion clears at: 2026-05-25T23:07:41
+- Post-hold marketer rerun scheduled: 2026-05-28T09:12:15
 - StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.

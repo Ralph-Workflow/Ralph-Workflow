@@ -1,5 +1,25 @@
 # Outreach Log
 
+## 2026-05-28 (Thursday) — Measurement-hold StackOverflow delivery guard repair (01:59 UTC / 03:59 CEST)
+- **What I executed:** patched `agents/marketing/distribution_lane_executor.py` so measurement-hold follow-through no longer re-surfaces the StackOverflow packet after it was already manually delivered in the same review window, and also suppresses it when a current-window post-cooldown rerun is already logged.
+- **Why this action:** the latest audit is still pointing at flat Codeberg adoption and same-family publisher overlap, but the hold executor could still overstate the next do-now lane by reviving an already-used StackOverflow packet. That is fake-green queue truth, not fresh distribution.
+- **Regression gate added:** `agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py` now covers both current-window manual delivery and already-scheduled rerun suppression.
+- **Verification:** targeted `unittest` coverage passed (**2 tests, OK**), and `python3 agents/marketing/marketing_workflow_audit.py` still reports the same real business failures after the repair.
+- **Current truthful status:** Codeberg is still flat, Reddit is still execution-blocked, Apollo is still measurement-pending until **2026-06-01T23:11:13.732870+02:00**, and there is still **no truthful do-now packet** in the current short review window.
+- **Shared findings reused:** `marketing_workflow_audit_latest.json`, `marketing_execution_board_latest.md`, `marketing_2026-05-28_stackoverflow_manual_delivery.json`, and `reddit_execution_status_latest.json`.
+- **Expected outcome:** future hold-window runs stop pretending an already-delivered StackOverflow packet is fresh work, which keeps the execution board honest until the next real lane opens.
+- **Type:** **REPAIRED / RUNTIME_TRUTH**
+
+## 2026-05-28 (Thursday) — Guard-pause release-boundary repair + live board refresh (01:22 UTC / 03:22 CEST)
+- **What I executed:** patched `agents/marketing/outcome_execution_board_runner.py` and `agents/marketing/run.py` so `distribution_architecture_guard_pause` / `distribution_architecture_guard_follow_through` reuse expires once the configured short review-window release time has passed, then re-ran the live execution-board runner.
+- **Why this action:** the latest truth surfaces were still pinned to a **May 25** guard-pause artifact even though that pause window ended at **2026-05-28 03:03 CEST**. That made the current slot look blocked by an already-expired guard instead of the actual May 28 hold truth.
+- **Regression gates added:** `agents/marketing/tests/test_run_repair_mode.py` and `agents/marketing/tests/test_outcome_execution_board_runner.py` now assert that post-release guard-pause reuse is stale while same-window reuse still works.
+- **Verification:** targeted `unittest` coverage passed (**3 tests, OK**), and `python3 agents/marketing/outcome_execution_board_runner.py` refreshed the live board at **2026-05-28T03:22:11** onto the current truthful state: `measurement_hold` with the next review window at **2026-05-28 09:12 CEST**.
+- **Current truthful status:** there is still **no truthful do-now packet** right now; the board is empty because the primary-repo-flat lane is still stuck in prepared-only churn and the proof asset shipped too recently to regenerate honestly.
+- **Shared findings reused:** `outcome_execution_board_latest.json`, `distribution_lane_latest.json`, `adoption_metrics_latest.json`, `apollo_sequence_status_latest.json`, and `outreach-log.md`.
+- **Expected outcome:** post-release runs now stop inheriting expired guard-pause truth and should surface the next real lane promptly instead of hiding behind stale architecture state.
+- **Type:** **REPAIRED / RUNTIME_TRUTH**
+
 ## 2026-05-27 (Wednesday) — Reddit monitoring (20:48 UTC / 22:48 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-27_2248.md`
 - **Scan summary:** forced-refresh local monitor degraded to **12 scanned / 2 shortlisted** with **ok=1 / reddit_ip_blocked=3 / time_budget_exceeded=1**.
@@ -7362,3 +7382,7 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-28 03:13:16
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T03:34:26.062117.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-28 04:11:40
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit monitoring coverage is degraded; measurement hold is active until 2026-05-28T09:12:15.

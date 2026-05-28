@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-28T03:22:11+02:00",
+  "type": "guard_pause_release_boundary_repair",
+  "summary": "Patched the marketing runners so distribution_architecture_guard_pause / guard_follow_through reuse expires once the short review-window release time has passed, then refreshed the live board onto current truth.",
+  "why_this_action": {
+    "problem": "The latest board/lane surfaces were still stuck on a May 25 guard-pause artifact even though that pause window ended at 2026-05-28T03:03:00+02:00.",
+    "why_now": "The active marketer slot landed after the listed blocker cleared. Reusing the expired guard artifact would have hidden the real May 28 truth and risked more fake-progress hold churn.",
+    "shared_findings_used": [
+      "outcome_execution_board_latest.json: stale selected_lane=distribution_architecture_guard_pause with short_review_window_release_at=2026-05-28T03:03:00",
+      "distribution_lane_latest.json: stale guard-pause latest lane",
+      "adoption_metrics_latest.json: Codeberg remains flat and is still the primary success gate",
+      "apollo_sequence_status_latest.json: Apollo is already live and in a measurement window",
+      "outreach-log.md: avoid repeating already-delivered packet families"
+    ]
+  },
+  "changes": {
+    "files": [
+      "agents/marketing/outcome_execution_board_runner.py",
+      "agents/marketing/run.py",
+      "agents/marketing/tests/test_outcome_execution_board_runner.py",
+      "agents/marketing/tests/test_run_repair_mode.py"
+    ],
+    "behavior": "Guard-pause and guard-follow-through reuse now goes stale at or after the configured short_review_window_release_at instead of surviving indefinitely inside later runs."
+  },
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_guard_pause_reuse_is_stale_after_short_window_release_passes agents.marketing.tests.test_outcome_execution_board_runner.OutcomeExecutionBoardRunnerTests.test_distribution_architecture_guard_pause_reuse_is_stale_after_short_window_release agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_main_reuses_existing_distribution_architecture_guard_pause_when_truth_is_unchanged -v",
+    "live_refresh": "python3 agents/marketing/outcome_execution_board_runner.py",
+    "live_result": {
+      "selected_lane": "measurement_hold",
+      "selected_action_type": "truth_snapshot_only",
+      "short_review_window_release_at": "2026-05-28T09:12:15",
+      "summary": "Execution board refreshed, but no truthful do-now lane was available; the board itself is the structural truth source."
+    }
+  },
+  "expected_outcome": "Post-release marketer runs stop inheriting expired guard-pause truth and instead surface the current board/hold state, improving the odds that the next truthful lane at or after 2026-05-28T09:12:15+02:00 is acted on promptly.",
+  "type_label": "REPAIRED / RUNTIME_TRUTH"
+}

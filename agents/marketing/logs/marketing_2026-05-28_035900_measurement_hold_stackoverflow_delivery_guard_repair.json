@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-05-28T03:59:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "measurement_hold_stackoverflow_delivery_guard_repair",
+    "channel": "marketing_runtime",
+    "title": "Stop measurement-hold follow-through from resurfacing already-delivered StackOverflow packets"
+  },
+  "why_this_action": {
+    "summary": "The audit still showed primary-repo-flat and same-family overlap as the live failures, but the hold executor could misstate the next do-now lane by re-surfacing a StackOverflow packet that had already been manually delivered in the current review window.",
+    "shared_findings_used": [
+      "marketing_workflow_audit_latest.json: active failures are still primary_repo_flat and same_family_publisher_overlap",
+      "drafts/marketing_execution_board_latest.md: no truthful do-now packet currently exists in this review window",
+      "agents/marketing/logs/marketing_2026-05-28_stackoverflow_manual_delivery.json: StackOverflow packet already delivered in the current window",
+      "agents/marketing/logs/reddit_execution_status_latest.json: Reddit remains execution-blocked, so false StackOverflow resurfacing can distort the only honest follow-through surface"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched measurement-hold follow-through so it suppresses StackOverflow resurfacing when the packet was already manually delivered or a current-window post-cooldown rerun is already logged, added regression coverage, and re-ran the audit.",
+    "verification": {
+      "files_changed": [
+        "agents/marketing/distribution_lane_executor.py",
+        "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+      ],
+      "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_after_current_window_manual_delivery agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_when_post_cooldown_run_is_already_scheduled -v",
+      "audit": "python3 agents/marketing/marketing_workflow_audit.py"
+    }
+  }
+}
