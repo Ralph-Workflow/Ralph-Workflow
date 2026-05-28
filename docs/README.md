@@ -26,13 +26,13 @@ This page routes you to the next page that best matches your question.
 ### I need the repo-root docs families mapped clearly
 
 These repo-root docs are a **map of the surrounding documentation system**, not the main operator manual.
-The maintained day-to-day Python/operator path is the Sphinx manual above.
-Some repo-root families are current Python guidance, while others are historical or mixed-status reference.
+The maintained day-to-day operator path is the Sphinx manual above.
+Use these folders only when you know you need contributor guidance or deeper background.
 
-- `docs/agents/` — current Python contributor and verification guidance for agents, testing, type-ignore policy, and verification workflow
-- `docs/code-style/` — current Python documentation rubric and maintained style/process guidance; some older code-style pages may still reflect the retired Rust-era system
-- `docs/tooling/` — mixed-status tooling notes; prefer current Python-specific guidance like `python-tooling.md`, treat Rust-only tooling pages as archival unless explicitly referenced
-- `docs/performance/` — primarily archival / historical Rust-era performance material, not the maintained Python operator path
+- `docs/agents/` — contributor and verification guidance for agents, testing, type-ignore policy, and verification workflow
+- `docs/code-style/` — documentation rubric plus maintained style/process guidance
+- `docs/tooling/` — tooling setup and support notes, including Python-specific guidance like `python-tooling.md`
+- `docs/performance/` — deeper performance notes and supporting background
 
 ### I want product framing before I go deeper
 

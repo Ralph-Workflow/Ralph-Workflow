@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import shutil
+import hashlib
 import signal
 import threading
 from typing import TYPE_CHECKING
 
 import pytest
-from git import Repo
-from typer.testing import CliRunner
 
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -72,25 +70,46 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_user_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    fake_home = tmp_path / "autouse-home"
-    fake_home.mkdir(exist_ok=True)
+def _isolate_process_home(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """Redirect user-level config lookups to a unique lightweight sandbox per test.
+
+    The sandbox path is derived from the test node id under the worker's base temp dir,
+    but the directories are not created eagerly. That keeps per-test isolation for HOME /
+    XDG config lookups without paying the cost of materializing a fresh tmp_path tree for
+    every test in the full parallel suite.
+    """
+
+    worker_root = tmp_path_factory.getbasetemp() / "autouse-home"
+    unique_suffix = hashlib.sha1(request.node.nodeid.encode("utf-8")).hexdigest()
+    fake_home = worker_root / unique_suffix / "home"
     fake_xdg = fake_home / ".config"
-    fake_xdg.mkdir(exist_ok=True)
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_xdg))
+    monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
+
+
+def _configure_repo_identity(repo):
+    writer = repo.config_writer()
+    try:
+        writer.set_value("user", "name", "Test User")
+        writer.set_value("user", "email", "test@example.com")
+    finally:
+        writer.release()
 
 
 @pytest.fixture(scope="session")
 def _git_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Create a reusable template git repository for fast per-test copies."""
+    """Create a reusable template git repository for fast per-test clones."""
+    from git import Repo
+
     template_root = tmp_path_factory.mktemp("git-template")
     repo = Repo.init(template_root)
     try:
-        writer = repo.config_writer()
-        writer.set_value("user", "name", "Test User")
-        writer.set_value("user", "email", "test@example.com")
-        writer.release()
+        _configure_repo_identity(repo)
 
         readme = template_root / "README.md"
         readme.write_text("test")
@@ -112,8 +131,19 @@ def tmp_git_repo(tmp_path: Path, _git_repo_template: Path) -> Path:
     Returns:
         Path to the temporary git repository.
     """
-    shutil.copytree(str(_git_repo_template), str(tmp_path), dirs_exist_ok=True)
-    return tmp_path
+    from git import Repo
+
+    repo_path = tmp_path / "repo"
+    repo = Repo.clone_from(
+        str(_git_repo_template),
+        str(repo_path),
+        multi_options=["--local"],
+    )
+    try:
+        _configure_repo_identity(repo)
+    finally:
+        repo.close()
+    return repo_path
 
 
 @pytest.fixture
@@ -293,20 +323,6 @@ def mock_agent_invoker(
     return MockAgentInvoker(memory_workspace)
 
 
-@pytest.fixture(autouse=True)
-def _isolate_global_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Redirect XDG_CONFIG_HOME to a temp dir and clear upstream MCP env for every test.
-
-    Prevents bootstrap helpers from writing to the real ~/.config during tests.
-    Clears RALPH_UPSTREAM_MCP_CONFIG so tests don't inherit real upstream server
-    configs from the parent process, which would cause real network I/O.
-    Tests that need specific upstream configs must set them explicitly via monkeypatch.
-    """
-    config_dir = tmp_path / "xdg-config"
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
-    monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
-
-
 @pytest.fixture
 def temp_workspace(tmp_path: Path) -> Path:
     """Provide a temporary workspace directory for integration tests."""
@@ -388,8 +404,10 @@ def default_policy() -> tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy]:
 
 
 @pytest.fixture
-def cli_runner() -> CliRunner:
+def cli_runner():
     """Provide a Typer CLI test runner."""
+    from typer.testing import CliRunner
+
     return CliRunner()
 
 

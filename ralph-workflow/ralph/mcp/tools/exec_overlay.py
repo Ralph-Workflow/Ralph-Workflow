@@ -11,11 +11,12 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.process.manager._process_manager_runtime import load_psutil_module
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 _GENERATED_DIR_NAMES = (
-    ".git",
     ".venv",
     ".mypy_cache",
     ".pytest_cache",
@@ -27,6 +28,13 @@ _GENERATED_DIR_NAMES = (
 
 _OVERLAY_OWNER_FILE = ".ralph-exec-owner.json"
 _LEGACY_PRUNE_MAX_AGE_SECONDS = 60 * 60 * 24
+_START_TIME_TOLERANCE_S = 1e-6
+_PSUTIL = load_psutil_module()
+_CURRENT_PROCESS_IDENTITY: list[tuple[int, float | None]] = []
+
+
+def _relative_path_sort_key(path: Path) -> tuple[int, str]:
+    return len(path.parts), str(path)
 
 
 def _compute_exec_base_str(
@@ -81,19 +89,66 @@ def _pid_is_running(pid: int) -> bool:
     return True
 
 
-def _overlay_owner_pid(overlay_dir: Path) -> int | None:
-    marker = overlay_dir / _OVERLAY_OWNER_FILE
-    if not marker.is_file():
+def _current_process_start_time(pid: int) -> float | None:
+    if _CURRENT_PROCESS_IDENTITY and _CURRENT_PROCESS_IDENTITY[0][0] == pid:
+        return _CURRENT_PROCESS_IDENTITY[0][1]
+    if _PSUTIL is None or pid <= 0:
         return None
+    try:
+        process = _PSUTIL.process_from_pid(pid)
+        return float(process.create_time())
+    except Exception:
+        return None
+
+
+def _current_process_identity() -> tuple[int, float | None]:
+    pid = os.getpid()
+    if not _CURRENT_PROCESS_IDENTITY or _CURRENT_PROCESS_IDENTITY[0][0] != pid:
+        _CURRENT_PROCESS_IDENTITY[:] = [(pid, _current_process_start_time(pid))]
+    return _CURRENT_PROCESS_IDENTITY[0]
+
+
+def _process_identity_matches(pid: int, started_at: float | None) -> bool:
+    current_pid, current_started_at = _current_process_identity()
+    if pid == current_pid:
+        if started_at is None:
+            return True
+        if current_started_at is not None:
+            return abs(current_started_at - started_at) <= _START_TIME_TOLERANCE_S
+        return _pid_is_running(pid)
+
+    is_running = _pid_is_running(pid)
+    matches = False
+    if is_running:
+        if started_at is None:
+            matches = True
+        else:
+            live_started_at = _current_process_start_time(pid)
+            matches = live_started_at is None or abs(
+                live_started_at - started_at
+            ) <= _START_TIME_TOLERANCE_S
+    return matches
+
+
+def _read_owner_metadata(marker: Path) -> tuple[int | None, float | None]:
+    if not marker.is_file():
+        return None, None
     try:
         raw_payload = cast("object", json.loads(marker.read_text(encoding="utf-8")))
     except Exception:
-        return None
+        return None, None
     if not isinstance(raw_payload, dict):
-        return None
+        return None, None
     payload = cast("dict[str, object]", raw_payload)
     pid = payload.get("pid")
-    return pid if isinstance(pid, int) else None
+    started_at = payload.get("started_at")
+    normalized_pid = pid if isinstance(pid, int) else None
+    normalized_started_at = float(started_at) if isinstance(started_at, (int, float)) else None
+    return normalized_pid, normalized_started_at
+
+
+def _overlay_owner_metadata(overlay_dir: Path) -> tuple[int | None, float | None]:
+    return _read_owner_metadata(overlay_dir / _OVERLAY_OWNER_FILE)
 
 
 def _prune_stale_exec_dirs(base: Path) -> None:
@@ -101,9 +156,9 @@ def _prune_stale_exec_dirs(base: Path) -> None:
     for child in base.iterdir():
         if not child.is_dir():
             continue
-        owner_pid = _overlay_owner_pid(child)
+        owner_pid, owner_started_at = _overlay_owner_metadata(child)
         if owner_pid is not None:
-            if _pid_is_running(owner_pid):
+            if _process_identity_matches(owner_pid, owner_started_at):
                 continue
             with suppress(Exception):
                 shutil.rmtree(child, ignore_errors=True)
@@ -115,15 +170,40 @@ def _prune_stale_exec_dirs(base: Path) -> None:
 
 
 def _write_overlay_owner_metadata(overlay_dir: Path) -> None:
-    payload: dict[str, int] = {"pid": os.getpid()}
-    (overlay_dir / _OVERLAY_OWNER_FILE).write_text(json.dumps(payload), encoding="utf-8")
+    pid, started_at = _current_process_identity()
+    payload: dict[str, int | float] = {"pid": pid}
+    if started_at is not None:
+        payload["started_at"] = started_at
+    (overlay_dir / _OVERLAY_OWNER_FILE).write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
 
 
 def _mirror_workspace(source_root: Path, overlay_root: Path) -> None:
     """Copy the workspace into a private overlay, dereferencing symlinks."""
 
+    ignored_relative_paths = _ignored_workspace_relative_paths(source_root)
+    resolved_source_root = source_root.resolve()
+
     def _ignore(_directory: str, names: list[str]) -> set[str]:
-        return {name for name in names if name in _GENERATED_DIR_NAMES}
+        ignored = {name for name in names if name in _GENERATED_DIR_NAMES}
+        try:
+            relative_directory = Path(_directory).resolve().relative_to(resolved_source_root)
+        except ValueError:
+            relative_directory = Path()
+        for name in names:
+            relative_candidate = (
+                relative_directory / name
+                if relative_directory != Path()
+                else Path(name)
+            )
+            if any(
+                relative_candidate == ignored_path
+                or ignored_path.is_relative_to(relative_candidate)
+                for ignored_path in ignored_relative_paths
+            ):
+                ignored.add(name)
+        return ignored
 
     shutil.copytree(
         source_root,
@@ -132,6 +212,42 @@ def _mirror_workspace(source_root: Path, overlay_root: Path) -> None:
         ignore=_ignore,
         ignore_dangling_symlinks=True,
     )
+
+
+def _resolve_gitdir_reference(gitdir_file: Path) -> Path | None:
+    try:
+        gitdir_text = gitdir_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    gitdir_value = gitdir_text
+    if gitdir_text.startswith("gitdir:"):
+        gitdir_value = gitdir_text.split(":", 1)[1].strip()
+    gitdir_path = Path(gitdir_value)
+    if not gitdir_path.is_absolute():
+        gitdir_path = (gitdir_file.parent / gitdir_path).resolve()
+    return gitdir_path
+
+
+def _ignored_workspace_relative_paths(source_root: Path) -> tuple[Path, ...]:
+    ignored_paths: set[Path] = {Path(".git")}
+    source_git = source_root / ".git"
+    if source_git.is_dir():
+        worktrees_dir = source_git / "worktrees"
+        if worktrees_dir.is_dir():
+            resolved_source_root = source_root.resolve()
+            for entry in worktrees_dir.iterdir():
+                if not entry.is_dir():
+                    continue
+                gitdir_path = _resolve_gitdir_reference(entry / "gitdir")
+                if gitdir_path is None:
+                    continue
+                worktree_root = gitdir_path.parent.resolve()
+                if worktree_root == resolved_source_root:
+                    continue
+                if not worktree_root.is_relative_to(resolved_source_root):
+                    continue
+                ignored_paths.add(worktree_root.relative_to(resolved_source_root))
+    return tuple(sorted(ignored_paths, key=_relative_path_sort_key))
 
 
 def _resolve_gitdir_pointer(source_git: Path) -> Path:

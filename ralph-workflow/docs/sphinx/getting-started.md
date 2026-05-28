@@ -71,6 +71,6 @@ If your first run goes sideways, use [Troubleshooting](troubleshooting.md).
 ## Recommended next clicks after your first run
 
 - Need the shortest operator checklist? Use [Quickstart](quickstart.md).
-- Need to inspect what trustworthy output looks like? Use [What Good Ralph Workflow Output Looks Like](../../../docs/reviewable-output.md).
+- Need to inspect what trustworthy output looks like? Use [What Good Ralph Workflow Output Looks Like](reviewable-output.md).
 - Need to change settings or file locations? Use [Configuration Reference](configuration.md).
 - Need docs by goal instead of by section? Use [End-User Stories](user-stories.md).

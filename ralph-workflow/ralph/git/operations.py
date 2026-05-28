@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 _LOCK_PATH_PATTERN = re.compile(r"Unable to create '([^']+\.lock)'")
 _RECOVERABLE_GIT_LOCK_FILES = frozenset({"index.lock", "HEAD.lock", "packed-refs.lock"})
 _STALE_GIT_LOCK_AGE_SECONDS = 10.0
+_RALPH_WORKFLOW_COAUTHOR_TRAILER = (
+    "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
+)
 
 
 class GitOperationError(Exception):
@@ -102,6 +105,16 @@ def _run_git_operation_with_stale_lock_recovery[T](
         if not _recover_stale_git_lock(operation, exc):
             raise
         return action()
+
+
+def _append_ralph_workflow_coauthor_trailer(message: str) -> str:
+    stripped_message = message.rstrip()
+    if not stripped_message:
+        return message
+    lowered_lines = {line.strip().lower() for line in stripped_message.splitlines()}
+    if _RALPH_WORKFLOW_COAUTHOR_TRAILER.lower() in lowered_lines:
+        return stripped_message
+    return f"{stripped_message}\n\n{_RALPH_WORKFLOW_COAUTHOR_TRAILER}"
 
 
 def find_repo_root(start: Path | str = Path()) -> Path:
@@ -305,6 +318,7 @@ def create_commit(
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
+        message = _append_ralph_workflow_coauthor_trailer(message)
 
         if not author_name or not author_email:
             try:

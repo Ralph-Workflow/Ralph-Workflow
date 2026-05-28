@@ -33,6 +33,7 @@ If instructions conflict, follow the stricter one.
 - All code **must** be testable in a black box way. If you cannot test it easily, it strongly suggests you have to refactor.
 - If there is a test failure, either the tests is implemented wrong, the code behavior is wrong, or the test is testing the wrong behavior. DO NOT change the test to match the current implementation. A test may never make any assumptions about the underlying implementation of the code.
 - All tests must complete in 30s or less, no exceptions.
+- This 30-second limit is the COMBINED TOTAL wall-clock budget for ALL test suites running sequentially under `make verify`. It is ABSOLUTE and IMMUTABLE — enforced by `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`. Individual suite timeouts (PYTEST_SUITE_TIMEOUT_SECONDS, DEFAULT_SUITE_TIMEOUT_SECONDS) are per-suite caps only; the combined budget cannot be circumvented by splitting tests, adding suites, or changing per-suite limits. A timeout failure is a test design defect — fix the test, not the budget.
 
 ## Required workflows
 
@@ -64,6 +65,8 @@ Verification passes only when all required checks succeed with no ERROR/WARNING 
 If verification fails, fix the issue and rerun it.
 
 Run the extra smoke checks or focused tests from `docs/agents/verification.md` whenever the touched area requires them.
+
+The 30s combined test budget is absolute; see `docs/agents/verification.md` for the full policy.
 
 ## Documentation and file hygiene
 

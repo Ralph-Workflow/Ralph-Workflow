@@ -8,6 +8,9 @@ import threading
 import time as _time
 from typing import IO, TYPE_CHECKING
 
+from ralph.process.manager._managed_process_output_limit_exceeded_error import (
+    ManagedProcessOutputLimitExceededError,
+)
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
@@ -138,6 +141,7 @@ class ManagedProcess:
         input: bytes | None = None,
         timeout: float | None = None,
         cleanup_grace_period_s: float = 0.0,
+        output_limit_bytes: int | None = None,
     ) -> tuple[bytes | None, bytes | None]:
         """Drain output and clean up any descendant processes with psutil."""
         psutil_mod = self._manager._psutil
@@ -152,8 +156,16 @@ class ManagedProcess:
         )
 
         try:
-            stdout, stderr = self.communicate(input=input, timeout=timeout)
-        except subprocess.TimeoutExpired:
+            if output_limit_bytes is None:
+                stdout, stderr = self.communicate(input=input, timeout=timeout)
+            else:
+                stdout, stderr = self._communicate_with_output_limit(
+                    input=input,
+                    timeout=timeout,
+                    output_limit_bytes=output_limit_bytes,
+                    cleanup_grace_period_s=cleanup_grace_period_s,
+                )
+        except (subprocess.TimeoutExpired, ManagedProcessOutputLimitExceededError):
             with contextlib.suppress(Exception):
                 self.terminate(grace_period_s=cleanup_grace_period_s)
             if psutil_mod is not None:
@@ -188,6 +200,125 @@ class ManagedProcess:
             )
             if live_descendants:
                 self._cleanup_descendant_waves(psutil_mod, live_descendants, cleanup_grace_period_s)
+        return stdout, stderr
+
+    def _write_input_and_close_stdin(self, input: bytes | None) -> None:
+        if input is None or self.stdin is None:
+            return
+        with contextlib.suppress(Exception):
+            self.stdin.write(input)
+            self.stdin.flush()
+        with contextlib.suppress(Exception):
+            self.stdin.close()
+
+    def _append_output_tail(
+        self, buffer: bytearray, chunk: bytes, output_limit_bytes: int
+    ) -> None:
+        if output_limit_bytes <= 0:
+            return
+        buffer.extend(chunk)
+        overflow = len(buffer) - output_limit_bytes
+        if overflow > 0:
+            del buffer[:overflow]
+
+    def _close_output_pipes(self) -> None:
+        for pipe in (self.stdout, self.stderr):
+            if pipe is not None:
+                with contextlib.suppress(Exception):
+                    pipe.close()
+
+    def _read_output_stream(
+        self,
+        stream: IO[bytes] | None,
+        buffer: bytearray,
+        output_limit_bytes: int,
+        limit_exceeded: threading.Event,
+        output_lock: threading.Lock,
+        total_output_bytes_ref: list[int],
+    ) -> None:
+        if stream is None:
+            return
+        while True:
+            chunk = stream.read(8_192)
+            if not chunk:
+                break
+            with output_lock:
+                total_output_bytes_ref[0] += len(chunk)
+                self._append_output_tail(buffer, chunk, output_limit_bytes)
+                if total_output_bytes_ref[0] > output_limit_bytes:
+                    limit_exceeded.set()
+
+    def _communicate_with_output_limit(
+        self,
+        *,
+        input: bytes | None,
+        timeout: float | None,
+        output_limit_bytes: int,
+        cleanup_grace_period_s: float,
+    ) -> tuple[bytes, bytes]:
+        stdout_buffer = bytearray()
+        stderr_buffer = bytearray()
+        total_output_bytes_ref = [0]
+        output_lock = threading.Lock()
+        limit_exceeded = threading.Event()
+
+        self._write_input_and_close_stdin(input)
+
+        stdout_thread = threading.Thread(
+            target=self._read_output_stream,
+            args=(
+                self.stdout,
+                stdout_buffer,
+                output_limit_bytes,
+                limit_exceeded,
+                output_lock,
+                total_output_bytes_ref,
+            ),
+            daemon=True,
+        )
+        stderr_thread = threading.Thread(
+            target=self._read_output_stream,
+            args=(
+                self.stderr,
+                stderr_buffer,
+                output_limit_bytes,
+                limit_exceeded,
+                output_lock,
+                total_output_bytes_ref,
+            ),
+            daemon=True,
+        )
+        stdout_thread.start()
+        stderr_thread.start()
+
+        deadline = _time.monotonic() + timeout if timeout is not None else None
+        try:
+            while stdout_thread.is_alive() or stderr_thread.is_alive():
+                if limit_exceeded.is_set():
+                    with contextlib.suppress(Exception):
+                        self.terminate(grace_period_s=cleanup_grace_period_s)
+                    break
+                if deadline is not None and _time.monotonic() >= deadline:
+                    assert timeout is not None
+                    raise subprocess.TimeoutExpired([], timeout)
+                stdout_thread.join(timeout=0.05)
+                stderr_thread.join(timeout=0.05)
+        finally:
+            stdout_thread.join(timeout=0.5)
+            stderr_thread.join(timeout=0.5)
+            self._close_output_pipes()
+
+        rc = self.wait(timeout=0.5)
+        stdout = bytes(stdout_buffer)
+        stderr = bytes(stderr_buffer)
+        if limit_exceeded.is_set():
+            raise ManagedProcessOutputLimitExceededError(
+                output_limit_bytes=output_limit_bytes,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        if self._record.status not in _TERMINAL_STATUSES:
+            self._manager._mark_exited(self._record, rc)
         return stdout, stderr
 
     def _snapshot_live_descendants(self) -> list[_PsutilProcessLike]:

@@ -113,6 +113,8 @@ ralph -T
 
 These flags support Ralph Workflow's commit-message generation flow and the `ralph --generate-commit` command that agents may be instructed to call.
 
+Commits created through this generated-commit path keep the active git author identity unless you override it, and Ralph Workflow appends a `Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>` trailer so automated commits stay attributable.
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--generate-commit-msg` | `False` | Generate a commit message from the current repo changes |

@@ -12,19 +12,16 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
-from ralph.executor.process import (
-    TIMEOUT_EXIT_CODE,
-    ProcessResult,
-    ProcessRunOptions,
-    run_process,
-)
+from ralph.executor.process import ProcessResult, ProcessRunOptions, run_process
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 
-DEFAULT_TEST_TIMEOUT_SECONDS = 1.0
-DEFAULT_SUITE_TIMEOUT_SECONDS = 120.0
+DEFAULT_TEST_TIMEOUT_SECONDS: Final = 1.0
+DEFAULT_SUITE_TIMEOUT_SECONDS: Final = 30.0
 TEST_TIMEOUT_ENV = "RALPH_PYTEST_TEST_TIMEOUT_SECONDS"
 SUITE_TIMEOUT_ENV = "RALPH_PYTEST_SUITE_TIMEOUT_SECONDS"
+_VERIFY_TIMEOUT_PM = ProcessManager(policy=ProcessManagerPolicy(log_events=False))
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -40,8 +37,25 @@ _POLICY_FIX_MESSAGE = (
     "quarantine to hide the problem. A slow test is a design defect.\n"
     "\n"
     "Limits:\n"
-    "  Per-test  : 1 second   (RALPH_PYTEST_TEST_TIMEOUT_SECONDS)\n"
-    "  Full suite: 30 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
+    "  Per-test                         : 1 second   (RALPH_PYTEST_TEST_TIMEOUT_SECONDS)\n"
+    "  Per-suite invocation             : 30 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
+    "  ALL test suites combined (total): 30 seconds\n"
+    "    (ABSOLUTE and IMMUTABLE — enforced by\n"
+    "     ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS = 30.0,\n"
+    "     tracked cumulatively across ALL test steps via time.monotonic())\n"
+    "\n"
+    "These limits are ABSOLUTE. You CANNOT avoid them by:\n"
+    "- Splitting tests into more suites (adds process overhead,\n"
+    "  risks combined total breach, tracked cumulatively\n"
+    "  by ralph/verify.py — N suites does NOT give N × 30s)\n"
+    "- Moving slow tests to a different suite or target\n"
+    "- Raising DEFAULT_SUITE_TIMEOUT_SECONDS (this is exactly\n"
+    "  the violation that was committed—do NOT repeat it)\n"
+    "- Changing PYTEST_SUITE_TIMEOUT_SECONDS in the Makefile\n"
+    "The combined wall-clock time of ALL suites running\n"
+    "  sequentially must stay within 30 seconds when make verify is run.\n"
+    "A slow test is a design defect—fix the production coupling,\n"
+    "  not the timeout.\n"
     "\n"
     "HOW TO FIX\n"
     "----------\n"
@@ -69,6 +83,7 @@ _POLICY_FIX_MESSAGE = (
     "  [ ] No test calls sleep() or polls real wall-clock time\n"
     "  [ ] No test crosses a real I/O boundary\n"
     "  [ ] Every assertion targets observable behavior\n"
+    "  [ ] Splitting into more suites does not increase total budget\n"
     "\n"
     "Full policy: ralph/verify_timeout.py module docstring\n"
     "         or: docs/agents/testing-guide.md  §'Test Performance Policy'\n"
@@ -120,8 +135,9 @@ def run_command_with_timeout(
             timeout=suite_timeout_seconds,
             capture_output=capture_output,
         ),
+        _pm=_VERIFY_TIMEOUT_PM,
     )
-    if result.returncode == TIMEOUT_EXIT_CODE:
+    if result.returncode == 124:
         raise SuiteTimeoutError(suite_timeout_seconds)
     return result
 

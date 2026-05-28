@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ralph.executor.process import (
     TIMEOUT_EXIT_CODE,
@@ -30,7 +31,47 @@ if TYPE_CHECKING:
         ) -> ProcessResult: ...
 
 
-_VERIFY_STEP_TIMEOUT_SECONDS = 30.0
+# --- Test budget constants --- ABSOLUTE and IMMUTABLE ---
+#
+# These constants define the hard time limits for `make verify`.
+# They are ABSOLUTE and IMMUTABLE — do NOT change them to work
+# around slow tests or to "adjust" budget allocations.
+#
+# _TOTAL_TEST_BUDGET_SECONDS: ABSOLUTE and IMMUTABLE combined
+# wall-clock budget for ALL test suites. NOT a per-suite limit.
+# Cannot be circumvented by adding/splitting/moving suites. The
+# total elapsed time of every test suite running sequentially under
+# `make verify` must not exceed this value.
+#
+# Enforcement mechanism: run_verify() tracks cumulative wall-clock
+# time via time.monotonic() across ALL test-budget-tracked steps.
+# Splitting tests across N suites does NOT give you N × 30s — the
+# combined time of every track-tested step is summed and compared
+# against this cap. The per-step timeout passed to each runner() call
+# is min(per_suite_limit, remaining_budget), so an early suite that
+# consumes most of the budget leaves less for later suites.
+#
+# _VERIFY_STEP_TIMEOUT_SECONDS is the per-step timeout for
+# individual verification steps (ruff, mypy). The test step uses
+# the combined budget.
+#
+# If tests are too slow, fix the test design (remove I/O, use
+# MemoryWorkspace, inject fake clocks). Do NOT raise these constants.
+_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
+_TOTAL_TEST_BUDGET_SECONDS: Final = 30.0
+
+# --- Verification step definitions ---
+#
+# Each entry: (label, command, args, per_step_timeout)
+# The per_step_timeout is the MAX timeout passed to the runner for
+# that single step. For test-budget-tracked steps, the actual timeout
+# is further capped by the remaining cumulative budget.
+#
+# _BUDGET_TRACKED_STEPS: the indices within _VERIFY_STEPS whose
+# elapsed wall-clock time counts against _TOTAL_TEST_BUDGET_SECONDS.
+# Currently only index 2 (make test) counts. Adding more test-related
+# steps here does NOT increase the combined budget — the cumulative
+# tracker sums time across ALL tracked indices.
 _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     (
         "ruff check ralph/ tests/",
@@ -44,8 +85,10 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "mypy", "ralph/"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
-    ("make test", "make", ("test",), None),
+    ("make test", "make", ("test",), _TOTAL_TEST_BUDGET_SECONDS),
 )
+
+_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
 
 
 def _default_runner(
@@ -95,26 +138,89 @@ def format_verify_failure_banner(*, failed_command: str) -> str:
     return _VERIFY_FAILURE_BANNER_TEMPLATE.format(failed_command=failed_command)
 
 
-def _failed_command_label(label: str, returncode: int) -> str:
+def _failed_command_label(
+    label: str,
+    returncode: int,
+    *,
+    cumulative_exhausted: bool = False,
+) -> str:
+    """Format the failure label for the verification banner.
+
+    Args:
+        label: The human-readable step label (e.g. ``"make test"``).
+        returncode: The exit code returned by the step runner.
+        cumulative_exhausted: True when the cumulative test time across
+            ALL budget-tracked steps has exceeded _TOTAL_TEST_BUDGET_SECONDS,
+            even if this individual step did not itself time out.
+    """
+    if cumulative_exhausted:
+        return f"{label} (budget exhausted — cumulative test time exceeded)"
     if returncode == TIMEOUT_EXIT_CODE:
         return f"{label} (budget exhausted)"
     return label
 
 
 def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
-    """Run all verification steps and return the first non-zero exit code, or 0."""
+    """Run all verification steps and return the first non-zero exit code, or 0.
+
+    Cumulative test budget enforcement:
+      - Elapsed wall-clock time (``time.monotonic()``) is tracked across all
+        steps whose indices are in ``_BUDGET_TRACKED_STEPS``.
+      - Before each tracked step, the remaining budget is computed. If it is
+        <= 0 the step is skipped and TIMEOUT_EXIT_CODE is returned immediately.
+      - The timeout passed to ``runner()`` for a tracked step is
+        ``min(step_timeout, remaining_budget)``.
+      - After a tracked step completes (including on timeout) the actual
+        elapsed time is added to cumulative_test_elapsed.
+      - Splitting tests across N suites does NOT give N × 30 s — the
+        combined time of EVERY budget-tracked step is summed and enforced.
+    """
     print("Running full verification...", flush=True)
 
-    for label, command, args, timeout in _VERIFY_STEPS:
-        result = runner(command, args, cwd=cwd, timeout=timeout, capture_output=False)
+    cumulative_test_elapsed = 0.0
+
+    for i, (label, command, args, timeout) in enumerate(_VERIFY_STEPS):
+        step_timeout = timeout
+        is_tracked = i in _BUDGET_TRACKED_STEPS
+
+        if is_tracked:
+            step_timeout = timeout if timeout is not None else _TOTAL_TEST_BUDGET_SECONDS
+            remaining_budget = _TOTAL_TEST_BUDGET_SECONDS - cumulative_test_elapsed
+            if remaining_budget <= 0.0:
+                print(
+                    format_verify_failure_banner(
+                        failed_command=_failed_command_label(
+                            label, 0, cumulative_exhausted=True
+                        ),
+                    ),
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return TIMEOUT_EXIT_CODE
+            effective_timeout = min(step_timeout, remaining_budget) if step_timeout > 0 else step_timeout
+        else:
+            effective_timeout = step_timeout
+
+        step_start = time.monotonic()
+        result = runner(command, args, cwd=cwd, timeout=effective_timeout, capture_output=False)
+        step_elapsed = time.monotonic() - step_start
+
+        if is_tracked:
+            cumulative_test_elapsed += step_elapsed
+
         if result.stdout:
             print(result.stdout, end="", flush=True)
         if result.stderr:
             print(result.stderr, end="", file=sys.stderr, flush=True)
         if result.returncode != 0:
+            cumulative_exhausted = is_tracked and cumulative_test_elapsed > _TOTAL_TEST_BUDGET_SECONDS
             print(
                 format_verify_failure_banner(
-                    failed_command=_failed_command_label(label, result.returncode),
+                    failed_command=_failed_command_label(
+                        label,
+                        result.returncode,
+                        cumulative_exhausted=cumulative_exhausted,
+                    ),
                 ),
                 file=sys.stderr,
                 flush=True,

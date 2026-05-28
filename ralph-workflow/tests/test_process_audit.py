@@ -53,6 +53,12 @@ TEST_PY_FILES = tuple(
         py_file for py_file in TESTS_ROOT.rglob("*.py") if not py_file.is_relative_to(RALPH_ROOT)
     )
 )
+RALPH_PY_CONTENTS = tuple(
+    (py_file, py_file.read_text(encoding="utf-8")) for py_file in RALPH_PY_FILES
+)
+TEST_PY_CONTENTS = tuple(
+    (py_file, py_file.read_text(encoding="utf-8")) for py_file in TEST_PY_FILES
+)
 
 
 def _allowed(rel_path: str) -> bool:
@@ -62,11 +68,10 @@ def _allowed(rel_path: str) -> bool:
 def test_no_direct_subprocess_calls_outside_process_manager() -> None:
     """Assert no production file under ralph/ uses subprocess directly except manager.py."""
     violations: list[str] = []
-    for py_file in RALPH_PY_FILES:
+    for py_file, content in RALPH_PY_CONTENTS:
         rel = py_file.relative_to(RALPH_ROOT).as_posix()
         if rel == "process/manager/__init__.py" or _allowed(rel):
             continue
-        content = py_file.read_text(encoding="utf-8")
         violations.extend(
             f"{rel}: contains '{pattern}'" for pattern in FORBIDDEN_PATTERNS if pattern in content
         )
@@ -85,12 +90,11 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
     """
     all_patterns = FORBIDDEN_PATTERNS + POSIX_FORBIDDEN
     violations: list[str] = []
-    for py_file in TEST_PY_FILES:
+    for py_file, content in TEST_PY_CONTENTS:
         if py_file.is_relative_to(RALPH_ROOT):
             continue
         if py_file.name in TESTS_ALLOWLIST:
             continue
-        content = py_file.read_text(encoding="utf-8")
         rel = py_file.relative_to(TESTS_ROOT).as_posix()
         violations.extend(
             f"{rel}: contains '{pattern}'" for pattern in all_patterns if pattern in content

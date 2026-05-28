@@ -78,6 +78,7 @@ _EXCLUDED: dict[str, str] = {
     "recovery.fallover_event": "internal recovery type, not public API",
     "recovery.recovery_controller_options": "internal recovery type, not public API",
     "testing.fake_run": "test infrastructure, not public API",
+    "test_suites": "internal test runner helper, not public API",
 }
 
 _TOP_LEVEL_SECTION_HEADERS = frozenset(

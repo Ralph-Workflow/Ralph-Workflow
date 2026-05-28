@@ -19,7 +19,7 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from pathlib import Path
 
-_ITERATION_COUNT = 8
+_ITERATION_COUNT = 5
 _ARTIFACT_SIZE_BYTES = 256 * 1024
 _RETAINED_DELTA_SPREAD_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 6_000_000

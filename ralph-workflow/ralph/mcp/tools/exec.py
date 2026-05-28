@@ -11,6 +11,7 @@ import os
 import shlex
 import signal
 import subprocess
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 
@@ -29,6 +30,9 @@ from ralph.mcp.tools.coordination import (
 from ralph.mcp.tools.exec_overlay import _get_private_exec_base
 from ralph.mcp.tools.exec_sandbox import ExecSandboxManager
 from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager._managed_process_output_limit_exceeded_error import (
+    ManagedProcessOutputLimitExceededError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -38,6 +42,7 @@ if TYPE_CHECKING:
 
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
 DEFAULT_TIMEOUT_MS = 30_000
+_MAX_OUTPUT_BYTES = 1 * 1024 * 1024
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
 _KILL_SIGNAL_ARG_COUNT = 2
 _ARCHIVE_EXTENSIONS = (".tar", ".zip", ".gz", ".bz2", ".xz")
@@ -493,11 +498,16 @@ def _cleanup_exec_orphans(pgid: int, root_pid: int, psutil_mod: _PsutilModuleLik
 
 class _SandboxManagerCache:
     instance: ClassVar[ExecSandboxManager | None] = None
+    lock: ClassVar[threading.Lock] = threading.Lock()
 
 
 def _get_sandbox_manager() -> ExecSandboxManager:
     if _SandboxManagerCache.instance is None:
-        _SandboxManagerCache.instance = ExecSandboxManager(base_dir=_get_private_exec_base())
+        with _SandboxManagerCache.lock:
+            if _SandboxManagerCache.instance is None:
+                _SandboxManagerCache.instance = ExecSandboxManager(
+                    base_dir=_get_private_exec_base()
+                )
     return _SandboxManagerCache.instance
 
 
@@ -558,10 +568,21 @@ def _run_subprocess(
     stdout: bytes | None = b""
     stderr: bytes | None = b""
     try:
-        stdout, stderr = handle.communicate_and_cleanup(timeout=timeout_seconds)
+        stdout, stderr = handle.communicate_and_cleanup(
+            timeout=timeout_seconds,
+            output_limit_bytes=_MAX_OUTPUT_BYTES,
+        )
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
         raise
+    except ManagedProcessOutputLimitExceededError as exc:
+        stdout_text = exc.stdout.decode("utf-8", errors="replace")
+        stderr_text = exc.stderr.decode("utf-8", errors="replace")
+        raise ExecutionError(
+            f"Failed to execute '{command[0]}': killed after output exceeded "
+            f"{exc.output_limit_bytes} bytes.\n\n"
+            f"Last stdout:\n{stdout_text}\n\nLast stderr:\n{stderr_text}"
+        ) from exc
     finally:
         _cleanup_exec_orphans(handle.record.pgid, handle.record.pid, effective_pm._psutil)
     return _CompletedProcessAdapter(

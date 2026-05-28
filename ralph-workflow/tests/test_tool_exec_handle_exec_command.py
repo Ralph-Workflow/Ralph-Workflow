@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import ralph.mcp.tools._exec_completed_process as exec_completed_process
+import ralph.mcp.tools.exec as exec_tool
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     ToolContent,
@@ -70,6 +72,14 @@ class TestHandleExecCommand:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
         params: dict[str, object] = {"command": "false", "args": [], "timeout_ms": 5000}
+
+        monkeypatch.setattr(
+            exec_tool,
+            "run_command",
+            lambda *args, **kwargs: exec_completed_process._CompletedProcessAdapter(
+                stdout=b"", stderr=b"", returncode=1
+            ),
+        )
 
         result = handle_exec_command(session, workspace, params)
         assert result.is_error is True

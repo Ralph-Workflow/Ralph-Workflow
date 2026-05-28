@@ -35,7 +35,7 @@ The maintained Python package enforces strict type checking:
 - **Zero test suppressions**: `test_type_ignore_policy.py` validates no `# type: ignore` in tests
 - **No-plugin Pydantic contract**: `ralph-workflow/mypy.ini` intentionally does not enable the upstream Pydantic mypy plugin; solve Pydantic Any leaks with first-party typed helpers/adapters instead
 - **Policy-compliant runtime suppressions**: See `docs/agents/type-ignore-policy.md`; first prefer a typed helper, guard, adapter, or `cast(...)`
-- **Verification**: `cd ralph-workflow && make verify` runs strict type checking as one of five stages (`make lint`, `make typecheck`, `make docs`, `make test-cov`, `make test-subprocess-e2e`)
+- **Verification**: `cd ralph-workflow && make verify` runs three stages: `make lint` (ruff check), `make typecheck` (mypy --strict), and `make test` (`uv run python -m ralph.test_suites`, which runs one 30-second-capped parallel pytest invocation over `tests/` excluding `subprocess_e2e`, with the same 30-second total budget enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS`)
 
 These requirements are non-negotiable and enforced by CI/CD gates.
 

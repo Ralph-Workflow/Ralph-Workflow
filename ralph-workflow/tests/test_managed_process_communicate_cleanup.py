@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import itertools
 import subprocess
 import sys
@@ -10,9 +11,24 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ralph.process.manager import ManagedProcess, ProcessManager, ProcessManagerPolicy, SpawnOptions
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessManager,
+    ProcessManagerPolicy,
+    SpawnOptions,
+)
+from ralph.process.manager._managed_process_output_limit_exceeded_error import (
+    ManagedProcessOutputLimitExceededError,
+)
 from ralph.process.manager._process_status import ProcessStatus
-from ralph.testing.fake_process import FakePsutil, FakePsutilProcess, make_sync_process_factory
+from ralph.testing._process_state import ProcessState
+from ralph.testing._process_streams import ProcessStreams
+from ralph.testing.fake_process import (
+    FakePopen,
+    FakePsutil,
+    FakePsutilProcess,
+    make_sync_process_factory,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -262,6 +278,44 @@ def test_handles_no_psutil_gracefully() -> None:
     assert stdout == b"ok"
     assert stderr == b""
     assert handle.record.status == ProcessStatus.EXITED
+
+
+def test_output_limit_cleanup_kills_descendants_and_returns_tail() -> None:
+    child = TreeProcess(pid=1001, stubborn=True)
+    root = TreeProcess(pid=1, direct_children=[child], recursive_children=[child])
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {1: root, 1001: child}
+
+    class StreamingFakePopen(FakePopen):
+        def __init__(self) -> None:
+            super().__init__(
+                pid=1,
+                state=ProcessState(returncode=None),
+                streams=ProcessStreams(
+                    stdout=io.BytesIO(b"abcdef123456"),
+                    stderr=io.BytesIO(b"stderr-tail"),
+                ),
+            )
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            if self._returncode is None:
+                self._returncode = 137 if (self._terminated or self._killed) else 0
+            return self._returncode
+
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=lambda command, opts: StreamingFakePopen(),
+        psutil=cast("typing.Any", fake_psutil),
+    )
+    handle = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="test:managed-process"))
+
+    with pytest.raises(ManagedProcessOutputLimitExceededError) as excinfo:
+        handle.communicate_and_cleanup(output_limit_bytes=8)
+
+    assert excinfo.value.stdout == b"ef123456"
+    assert excinfo.value.stderr == b"err-tail"
+    assert child._killed is True
 
 
 def test_already_dead_descendants_are_ignored() -> None:

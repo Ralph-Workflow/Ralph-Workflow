@@ -1,12 +1,11 @@
 # Quickstart
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph loop core.
-That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything. If you need config answers, open [Configuration Reference](configuration.md). If you want docs routed by use case, open [End-User Stories](user-stories.md).
+Ralph Workflow is an AI agent orchestrator built around a simple Ralph loop core.
+That simple core composes into more complex workflows for substantial repo work, but this page is the shortest default-workflow path.
+Use it when you already understand the product story and want one honest first run with minimal explanation or detours.
+If you need fuller context, task-selection help, or the reasons behind each step, go back to [Getting Started](getting-started.md).
 
-
-Use this page when you already understand the product story and want the shortest path to one honest first run in a real repository.
-Ralph Workflow gives you a strong default unattended coding workflow built from a simple Ralph loop core; the point of this page is to use that default safely before you customize anything.
-If you need fuller explanation, task-selection help, or more context for why the default flow works, go back to [Getting Started](getting-started.md).
+If you need config answers, open [Configuration Reference](configuration.md). If you want docs routed by use case, open [End-User Stories](user-stories.md).
 
 ## Quickstart checklist
 
@@ -61,4 +60,4 @@ A good first quickstart run should leave you with:
 - Need the fuller first-run walkthrough? Open [Getting Started](getting-started.md).
 - Need config answers? Open [Configuration Reference](configuration.md).
 - Need docs routed by use case? Open [End-User Stories](user-stories.md).
-- Need to inspect trustworthy output? Open [What Good Ralph Workflow Output Looks Like](../../../docs/reviewable-output.md).
+- Need to inspect trustworthy output? Open [What Good Ralph Workflow Output Looks Like](reviewable-output.md).

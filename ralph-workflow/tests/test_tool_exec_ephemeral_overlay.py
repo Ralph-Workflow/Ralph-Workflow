@@ -136,6 +136,45 @@ def test_excludes_generated_dirs(tmp_path: Path) -> None:
             assert not (overlay / directory / filename).exists()
 
 
+def test_keeps_nested_submodule_like_content_while_skipping_worktree_dirs(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    source_git = workspace / ".git"
+    linked_admin = source_git / "worktrees" / "feature-a"
+    linked_admin.mkdir(parents=True)
+    (workspace / ".worktrees" / "feature-a").mkdir(parents=True)
+    (workspace / ".worktrees" / "feature-a" / ".git").write_text(
+        f"gitdir: {linked_admin}\n", encoding="utf-8"
+    )
+    (linked_admin / "gitdir").write_text(
+        str(workspace / ".worktrees" / "feature-a" / ".git"), encoding="utf-8"
+    )
+    (workspace / ".worktrees" / "feature-a" / "draft.txt").write_text(
+        "skip me", encoding="utf-8"
+    )
+
+    submodule_root = workspace / "vendor" / "submodule"
+    submodule_root.mkdir(parents=True)
+    (submodule_root / ".git").write_text(
+        "gitdir: ../.git/modules/vendor/submodule\n", encoding="utf-8"
+    )
+    (submodule_root / "tracked.txt").write_text("keep me", encoding="utf-8")
+
+    overlay = tmp_path / "overlay"
+    exec_overlay._mirror_workspace(workspace, overlay)
+
+    assert not (overlay / ".worktrees" / "feature-a").exists()
+    assert not (overlay / ".worktrees").exists()
+    assert (overlay / "vendor" / "submodule" / "tracked.txt").read_text(
+        encoding="utf-8"
+    ) == "keep me"
+    assert (overlay / "vendor" / "submodule" / ".git").read_text(
+        encoding="utf-8"
+    ) == "gitdir: ../.git/modules/vendor/submodule\n"
+
+
 def test_cleanup_removes_temporary_overlay(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -339,7 +378,7 @@ def test_overlay_cwd_is_not_in_system_temp_dir(tmp_path: Path) -> None:
         "scanning the system temp dir finds nothing during exec."
     )
 
-
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.subprocess_e2e
 def test_overlay_worktree_is_cleaned_up_after_exec(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
@@ -447,7 +486,7 @@ def test_overlay_keeps_source_workspace_unchanged(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert (workspace / "marker.txt").read_text(encoding="utf-8") == "source"
 
-
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.subprocess_e2e
 def test_overlay_can_run_git_status_without_touching_source(tmp_git_repo: Path) -> None:
     before = (tmp_git_repo / "README.md").read_text(encoding="utf-8")
@@ -523,7 +562,7 @@ def test_background_process_is_killed_after_exec_returns(tmp_path: Path) -> None
     except psutil.NoSuchProcess:
         pass
 
-
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.subprocess_e2e
 def test_new_session_background_process_is_killed_after_exec_returns(tmp_path: Path) -> None:
     psutil = pytest.importorskip("psutil")
