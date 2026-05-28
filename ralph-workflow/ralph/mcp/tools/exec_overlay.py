@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 _GENERATED_DIR_NAMES = (
-    ".git",
     ".venv",
     ".mypy_cache",
     ".pytest_cache",
@@ -32,6 +31,10 @@ _LEGACY_PRUNE_MAX_AGE_SECONDS = 60 * 60 * 24
 _START_TIME_TOLERANCE_S = 1e-6
 _PSUTIL = load_psutil_module()
 _CURRENT_PROCESS_IDENTITY: list[tuple[int, float | None]] = []
+
+
+def _relative_path_sort_key(path: Path) -> tuple[int, str]:
+    return len(path.parts), str(path)
 
 
 def _compute_exec_base_str(
@@ -179,8 +182,28 @@ def _write_overlay_owner_metadata(overlay_dir: Path) -> None:
 def _mirror_workspace(source_root: Path, overlay_root: Path) -> None:
     """Copy the workspace into a private overlay, dereferencing symlinks."""
 
+    ignored_relative_paths = _ignored_workspace_relative_paths(source_root)
+    resolved_source_root = source_root.resolve()
+
     def _ignore(_directory: str, names: list[str]) -> set[str]:
-        return {name for name in names if name in _GENERATED_DIR_NAMES}
+        ignored = {name for name in names if name in _GENERATED_DIR_NAMES}
+        try:
+            relative_directory = Path(_directory).resolve().relative_to(resolved_source_root)
+        except ValueError:
+            relative_directory = Path()
+        for name in names:
+            relative_candidate = (
+                relative_directory / name
+                if relative_directory != Path()
+                else Path(name)
+            )
+            if any(
+                relative_candidate == ignored_path
+                or ignored_path.is_relative_to(relative_candidate)
+                for ignored_path in ignored_relative_paths
+            ):
+                ignored.add(name)
+        return ignored
 
     shutil.copytree(
         source_root,
@@ -189,6 +212,42 @@ def _mirror_workspace(source_root: Path, overlay_root: Path) -> None:
         ignore=_ignore,
         ignore_dangling_symlinks=True,
     )
+
+
+def _resolve_gitdir_reference(gitdir_file: Path) -> Path | None:
+    try:
+        gitdir_text = gitdir_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    gitdir_value = gitdir_text
+    if gitdir_text.startswith("gitdir:"):
+        gitdir_value = gitdir_text.split(":", 1)[1].strip()
+    gitdir_path = Path(gitdir_value)
+    if not gitdir_path.is_absolute():
+        gitdir_path = (gitdir_file.parent / gitdir_path).resolve()
+    return gitdir_path
+
+
+def _ignored_workspace_relative_paths(source_root: Path) -> tuple[Path, ...]:
+    ignored_paths: set[Path] = {Path(".git")}
+    source_git = source_root / ".git"
+    if source_git.is_dir():
+        worktrees_dir = source_git / "worktrees"
+        if worktrees_dir.is_dir():
+            resolved_source_root = source_root.resolve()
+            for entry in worktrees_dir.iterdir():
+                if not entry.is_dir():
+                    continue
+                gitdir_path = _resolve_gitdir_reference(entry / "gitdir")
+                if gitdir_path is None:
+                    continue
+                worktree_root = gitdir_path.parent.resolve()
+                if worktree_root == resolved_source_root:
+                    continue
+                if not worktree_root.is_relative_to(resolved_source_root):
+                    continue
+                ignored_paths.add(worktree_root.relative_to(resolved_source_root))
+    return tuple(sorted(ignored_paths, key=_relative_path_sort_key))
 
 
 def _resolve_gitdir_pointer(source_git: Path) -> Path:

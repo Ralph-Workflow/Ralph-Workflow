@@ -9,7 +9,7 @@ export PYTHONPATH := $(shell realpath .)
 # design instead.
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 30
 RUN_PYTHON = $(if $(VIRTUAL_ENV),python,uv run python)
-
+PYTEST_WORKERS ?= 10
 help:
 	@echo "Ralph Workflow - Makefile commands"
 	@echo ""
@@ -63,7 +63,7 @@ test:
 	$(RUN_PYTHON) -m ralph.test_suites
 
 test-unit:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal --ignore=tests/integration -m "not subprocess_e2e"
+	$(RUN_PYTHON) -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal --ignore=tests/integration -m "not subprocess_e2e"
 
 test-integration:
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"

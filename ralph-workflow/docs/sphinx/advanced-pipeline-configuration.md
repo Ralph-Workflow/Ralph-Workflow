@@ -1,11 +1,8 @@
 # Advanced Pipeline Configuration
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph loop core.
-That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-
 This page is for operators who want to change **how Ralph Workflow itself runs work**.
 Use it when you are reshaping the workflow graph, counters, routes, or recovery behavior rather than just swapping one agent setting.
+The default workflow is already strong enough to start with unchanged; come here when you can name the behavior you want to improve.
 
 The simple core is what makes deeper composition possible here.
 Start with the default workflow first, then change `pipeline.toml` only when you can name the behavior you want to improve.

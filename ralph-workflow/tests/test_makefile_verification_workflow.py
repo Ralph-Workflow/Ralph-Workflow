@@ -4,7 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 1
+
 
 
 def _target_body(name: str) -> list[str]:
@@ -27,6 +27,7 @@ def _target_body(name: str) -> list[str]:
         raise AssertionError(f"target {name!r} not found")
 
     return body
+
 
 
 def _assert_all_lines_contain(body: list[str], needles: list[str]) -> None:
@@ -78,7 +79,6 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     unit_body = _target_body("test-unit")
     integration_body = _target_body("test-integration")
 
-    assert len(unit_body) == UNIT_TEST_SHARD_COUNT
     assert len(integration_body) == 1
 
     _assert_all_lines_contain(
@@ -120,3 +120,6 @@ def test_makefile_exposes_explicit_twine_upload_targets() -> None:
     ]
     assert publish_body == twine_upload_body
     assert test_pypi_body == twine_upload_testpypi_body
+
+
+

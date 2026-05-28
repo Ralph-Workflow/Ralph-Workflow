@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -17,6 +18,10 @@ from ralph.mcp.tools.exec import (
     ExecutionError,
     run_command,
 )
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy
+from ralph.testing._process_state import ProcessState
+from ralph.testing._process_streams import ProcessStreams
+from ralph.testing.fake_process import FakePopen
 from tests.mock_workspace_root import MockWorkspaceRoot
 
 if TYPE_CHECKING:
@@ -24,6 +29,11 @@ if TYPE_CHECKING:
 
 CUSTOM_TIMEOUT_MS = 5000
 EXPECTED_TIMEOUT_SECONDS = 2.5
+_FAST_POLICY = ProcessManagerPolicy(
+    default_grace_period_s=0.0,
+    kill_followup_timeout_s=0.0,
+    log_events=False,
+)
 
 
 @contextmanager
@@ -265,3 +275,46 @@ def test_run_command_uses_distinct_pool_slots_for_same_workspace_concurrent_call
     assert len(results) == 2
     assert len(seen_cwds) == 2
     assert seen_cwds[0] != seen_cwds[1]
+
+
+def test_run_command_kills_process_when_output_exceeds_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class StreamingFakePopen(FakePopen):
+        def __init__(self) -> None:
+            super().__init__(
+                pid=101,
+                state=ProcessState(returncode=None),
+                streams=ProcessStreams(
+                    stdout=io.BytesIO(b"prefix-1234567890-suffix"),
+                    stderr=io.BytesIO(b"err-tail"),
+                ),
+            )
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            if self._returncode is None:
+                self._returncode = 137 if (self._terminated or self._killed) else 0
+            return self._returncode
+
+    monkeypatch.setattr(exec_tool, "_MAX_OUTPUT_BYTES", 12)
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=lambda command, opts: StreamingFakePopen(),
+    )
+
+    with pytest.raises(ExecutionError, match="killed after output exceeded 12 bytes") as excinfo:
+        run_command(
+            "python",
+            ["-c", "print('boom')"],
+            tmp_path,
+            5_000,
+            deps=ExecRunDeps(
+                process_manager=pm,
+                overlay_factory=_passthrough_overlay,
+            ),
+        )
+
+    message = str(excinfo.value)
+    assert "67890-suffix" in message
+    assert "err-tail" in message

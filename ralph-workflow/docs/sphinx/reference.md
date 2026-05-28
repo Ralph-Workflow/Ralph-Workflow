@@ -1,14 +1,8 @@
 # Operator Reference
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph loop core.
-That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-
 This section is for people running Ralph Workflow in real projects.
 Use it when you need commands, config, tool behavior, or web-access details rather than the product pitch.
-
-Ralph Workflow keeps the core loop simple so the operating details stay teachable.
-It works best when you plug it into coding agents you already trust instead of rebuilding your setup or handing over provider secrets by default.
+Ralph Workflow keeps the core loop simple so the operating details stay teachable, and it works best when you plug it into coding agents you already trust instead of rebuilding your setup or handing over provider secrets by default.
 If you need runtime internals or Python implementation details, use [Developer Reference](developer-reference.md) instead.
 
 ## What lives here
