@@ -1,11 +1,11 @@
-# Reddit monitor — RalphWorkflow — 2026-05-27 22:48 Europe/Berlin
+# Reddit monitor — RalphWorkflow — 2026-05-28 11:19 Europe/Berlin
 
 ## Snapshot
-- **Threads/posts scanned:** 12
-- **Shortlisted:** 2
-- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 10
-- **Query attempts:** 5
-- **Search diagnostics:** ok=1, reddit_ip_blocked=3, time_budget_exceeded=1
+- **Threads/posts scanned:** 42
+- **Shortlisted:** 4
+- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 38
+- **Query attempts:** 8
+- **Search diagnostics:** ok=4, reddit_ip_blocked=3, time_budget_exceeded=1
 - **Prior context reviewed first:** `agents/marketing/REDDIT_LEARNINGS.md`, `outreach-log.md`, `agents/marketing/logs/reddit_posts.jsonl`, `agents/marketing/logs/reddit_post_analysis.md`
 - **Messaging ground truth used:** <https://ralphworkflow.com>
 - **Search mode:** content-first across Reddit via broad query families; subreddit is a weak secondary hint only
@@ -34,25 +34,45 @@ Broad content-first search across Reddit around:
 ## Best current discussion opportunities (reply-worthiness first, product-fit second)
 - Credible discussion opportunities and honest RalphWorkflow mention fits are tracked separately on purpose.
 
-### 1) Reddit reddit.com › r/cybersecurity › the 12 ways ai agents fail in production. a taxonomy for security teams reviewing agent deployments r/cybersecurity
-- URL: <https://www.reddit.com/r/cybersecurity/comments/1t67bly/the_12_ways_ai_agents_fail_in_production_a>
-- Community: `r/cybersecurity`
+### 1) Reddit reddit.com › r/ai_agents › genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1sysynd/genuine_question_for_people_who_have_built>
+- Community: `r/AI_Agents`
 - Freshness: during this pass
 - Direct reply fit: **high**
 - Mention fit: **medium-low**
 - Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
 - Best RalphWorkflow angle: **content-family match: production_failure**
-- Why it fits: content-first match from `production_failure` query family; query=`AI agents failing in production reddit`
+- Why it fits: content-first match from `production_failure` query family; query=`workflow continuity ai agents reddit`
 
-### 2) Reddit reddit.com › r/ai_agents › after 6 months of agent failures in production, i stopped blaming the model r/AI_Agents
-- URL: <https://www.reddit.com/r/AI_Agents/comments/1s8p2qc/after_6_months_of_agent_failures_in_production_i>
+### 2) Reddit reddit.com › r/ai_agents › tried 12+ agentic ai workflow builders this year — these 5 actually work in production r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1tcptqt/tried_12_agentic_ai_workflow_builders_this_year>
+- Community: `r/AI_Agents`
+- Freshness: during this pass
+- Direct reply fit: **high**
+- Mention fit: **medium-low**
+- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
+- Best RalphWorkflow angle: **content-family match: production_failure**
+- Why it fits: content-first match from `production_failure` query family; query=`what breaks first ai agents production reddit`
+
+### 3) Reddit reddit.com › r/ai_agents › why coding ai agents work and all other workflows do not work r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1r9tpji/why_coding_ai_agents_work_and_all_other_workflows>
 - Community: `r/AI_Agents`
 - Freshness: during this pass
 - Direct reply fit: **medium-high**
 - Mention fit: **medium-low**
 - Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
-- Best RalphWorkflow angle: **content-family match: production_failure**
-- Why it fits: content-first match from `production_failure` query family; query=`AI agents failing in production reddit`
+- Best RalphWorkflow angle: **content-family match: visible_finish_state**
+- Why it fits: content-first match from `visible_finish_state` query family; query=`what changed AI coding workflow reddit`
+
+### 4) Reddit reddit.com › r/claudeai › fully switched my entire coding workflow to ai driven development r/ClaudeAI
+- URL: <https://www.reddit.com/r/ClaudeAI/comments/1o90n6b/fully_switched_my_entire_coding_workflow_to_ai>
+- Community: `r/ClaudeAI`
+- Freshness: during this pass
+- Direct reply fit: **medium-high**
+- Mention fit: **medium-low**
+- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
+- Best RalphWorkflow angle: **content-family match: visible_finish_state**
+- Why it fits: content-first match from `visible_finish_state` query family; query=`what changed AI coding workflow reddit`
 
 ## Strong current rejects
 - Rejected items are usually tactical setup threads, launch/showcase posts, already-used threads, or weak-fit mentions where the answer should stay thread-native with no product mention.
@@ -63,10 +83,10 @@ Broad content-first search across Reddit around:
 - If providers challenge or under-return, that is a monitor fault and should not be treated as a clean “no opportunities” day.
 
 ## Today’s bottom line
-- **Yes**, I found **2** credible discussion opportunities through content-first Reddit search.
+- **Yes**, I found **4** credible discussion opportunities through content-first Reddit search.
 - The search space is **not** bounded to a fixed subreddit list anymore; subreddit only affects tie-breaking after content scoring.
 - A thread can win even in a broader dev or AI community if the post itself matches the real workflow pain strongly enough.
-- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=3**), but other queries still returned usable results (**ok=1**). Treat this as partial coverage, not a total Reddit outage.
+- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=3**), but other queries still returned usable results (**ok=4**). Treat this as partial coverage, not a total Reddit outage.
 
 ## Next self-improving adjustment
 - Keep expanding query families when new pain clusters appear; do not solve search coverage by hardcoding more subreddit names.

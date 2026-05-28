@@ -1,0 +1,60 @@
+{
+  "run_id": "2026-05-28T08:49:00Z_marketing-active-loop_pypi_conversion_repair",
+  "timestamp": "2026-05-28T08:49:00Z",
+  "cron_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
+  "type": "distribution_architecture_conversion_repair",
+  "status": "partial_executed_pypi_token_blocked",
+  "title": "PyPI README conversion repair: add Codeberg star CTA to 1,498 monthly downloaders",
+  "summary": "Wrote and pushed a conversion-optimized PyPI-facing README to the primary Codeberg repo (commit d7cdc101). Built sdist+wheel packages ready for PyPI release. PyPI publish blocked by missing token.",
+
+  "findings": {
+    "gap": "PyPI v0.8.7 README body had ZERO Codeberg links. 1,498 downloads/month (10/day) with no visible star/watch/fork CTA anywhere in the page body — only sidebar project_urls had Repository and Issues links.",
+    "root_cause": "The marketing-seo-cta-fix branch contained a 199-line conversion-optimized README since May 19 but it was never applied to ralph-workflow/README.md (the PyPI-facing file). Only the repo-root README.md was previously touched (eb5ab122).",
+    "prior_art": "eb5ab122 commit only changed repo-root README.md (adds PyPI badge, stronger star CTA) — did NOT touch ralph-workflow/README.md",
+    "impact": "1,498 monthly pip installers see install instructions but zero Codeberg engagement CTAs"
+  },
+
+  "action": {
+    "description": "Applied full 199-line conversion-optimized README to ralph-workflow/README.md from marketing-seo-cta-fix branch content",
+    "commit": "d7cdc101",
+    "version": "0.8.8",
+    "changes": [
+      "Added prominent ⭐ Star on Codeberg CTA block at top",
+      "Added GitHub mirror mention for secondary tracking",
+      "Expanded install section: PyPI, pipx, from-source (Codeberg clone URL)",
+      "Added Before your first run, Quick start, What to expect sections",
+      "Added product positioning: What you get, When it fits/doesn't fit, Good first tasks, Depth presets",
+      "Added Proof before you install section with Example Review Bundle link",
+      "Added After Your First Run link for conversion loop closure",
+      "Added Where the name comes from section",
+      "All 19 referenced doc paths verified to exist on main"
+    ],
+    "codeberg_push": "success (d7cdc101)",
+    "github_push": "success (d7cdc101)",
+    "build": "success — sdist + wheel built at dist/ralph_workflow-0.8.8*",
+    "pypi_publish": "blocked — no PYPI_TOKEN in environment, no .pypirc, no keyring, no twine"
+  },
+
+  "publish_path": {
+    "built_assets": [
+      "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/dist/ralph_workflow-0.8.8.tar.gz",
+      "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/dist/ralph_workflow-0.8.8-py3-none-any.whl"
+    ],
+    "publish_command": "cd /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow && hatch publish",
+    "blocker": "PyPI token required. Either set PYPI_TOKEN env var or configure hatch auth."
+  },
+
+  "next_steps": [
+    "User or operator publishes v0.8.8 to PyPI with the token",
+    "After publish, verify pypi.org/project/ralph-workflow shows Codeberg star CTA in body",
+    "Monitor Codeberg star delta after 7 days to measure conversion improvement"
+  ],
+
+  "why_this_action": {
+    "assessment": "The distribution_architecture_guard_pause had released (2026-05-28T09:12 vs current 10:49). All curator/comparison/StackOverflow lanes were exhausted or in cooldown. The single highest-leverage genuinely executable action was closing the PyPI→Codeberg conversion gap — 1,498 monthly downloaders seeing zero repo engagement CTAs.",
+    "bottleneck": "distribution_and_message_to_primary_repo_conversion",
+    "lever": "PyPI body text → Codeberg star CTA (0→1 visible CTA, 1,498 downloads/month exposed)"
+  },
+
+  "ok": true
+}

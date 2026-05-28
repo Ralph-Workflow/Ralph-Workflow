@@ -10294,3 +10294,126 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independent verifier failed signoff
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-structured and consistent. Every surface tells the same story \u2014 simple Ralph-loop core composing into serious workflows, strong default, result-first evaluation. No internal leakage, no positioning drift, no stale framing on any promoted page.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with tagline and three-sentence core positioning (orchestrator / simple core that composes / strong default). Routes to START_HERE. No artifact or plumbing language. Codeberg primary, GitHub mirror framing is correct."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run. Good/bad task examples match positioning. Result-first evaluation ('what the software does now and what checks ran'). Routes to docs map. Zero internal leakage."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Curated switchboard with clear audience routing. 'Keep proof secondary' section shows deliberate design against drift. All linked pages reinforce the same simple-core story."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Correctly scoped as secondary proof page ('not the main product pitch'). Explicitly tells readers to start with the product story first. Orders evidence by working behavior > real checks > written scope > supporting artifacts."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independent verifier failed signoff
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs cleanly satisfy the rubric. The README \u2192 START_HERE \u2192 docs/README route works as one coherent journey. All top-level surfaces lead with product positioning (operating system, AI agent orchestrator, simple Ralph-loop core, composable, strong default). No internal leakage. Next-click pages reinforce rather than fight the story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding', AI agent orchestrator, simple-core/strong-default framing. Refuses to be a competing pitch. Routes cleanly to Codeberg primary."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Mirror acknowledged up front. Good/bad first-task examples align with positioning. Success criteria emphasize result-first evaluation. No internal plumbing."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Docs map that maintains the positioning thread. 'Keep proof secondary' section explicitly enforces the result-first hierarchy when routing to pages like reviewable-output.md."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Self-positions as supporting proof for after the product story is understood. Explicitly orders evidence: working behavior \u2192 real checks \u2192 scope \u2192 logs. Directly states 'logs should not be the main promise.' This is the kind of page the old docs got wrong; this version gets right."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Clean system. README \u2192 START_HERE \u2192 docs/README works as one coherent route. Promoted pages reinforce the same story \u2014 simple Ralph-loop core, strong default workflow, result-first evaluation. No internal leakage, no stale framing, no link anxiety. `reviewable-output.md` is the only page that could drift (it's about output), but it correctly keeps artifacts secondary and positions itself as supporting proof. The architecture prevents the failure patterns that needed correction before.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Correctly narrow; routes to Codeberg primary \u2192 START_HERE \u2192 docs/README without competing for attention."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Leads with result-first evaluation language (what the software does now, what checks ran), good/bad first-task framing, no internal plumbing. Cleanest first-run page in the system."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Well-organized switchboard with explicit 'Keep proof secondary' gate and product-framing route. Each path has a distinct job."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Highest-risk page handled correctly \u2014 puts working behavior first, real checks second, artifacts fourth, and positions itself as supporting proof."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
