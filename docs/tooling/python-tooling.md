@@ -272,9 +272,9 @@ make verify
 This executes:
 1. `make lint` — ruff check (zero violations required)
 2. `make typecheck` — mypy strict mode (zero type errors required)
-3. `make docs` — Sphinx build with warnings treated as errors
-4. `make test-cov` — pytest with coverage (80% minimum branch coverage), run as separate 30-second timeout-guarded shards for grouped package directories, root-level test files, and integration tests
-5. `make test-subprocess-e2e` — subprocess/network-marked end-to-end checks, also wrapped in the 30-second suite timeout guard
+3. `make test` — `test-unit` (single parallel pytest invocation over all of `tests/` excluding `tests/integration/`, wrapped in 30-second suite timeout) and `test-integration` (single parallel pytest invocation over `tests/integration/`, wrapped in 30-second suite timeout). Combined total is capped at 30 s when `make verify` calls `make test` via `ralph.verify`.
+
+`make test-cov` and `make test-subprocess-e2e` are separate make targets available for deeper analysis but are **not** part of `make verify`.
 
 **Type Checking Requirements:**
 - All public functions and exported APIs must be typed

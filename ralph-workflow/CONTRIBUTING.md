@@ -60,6 +60,23 @@ make verify
 
 `make verify` now emits a high-visibility failure banner that cites `AGENTS.md` and `CLAUDE.md` so AI agents are explicitly told to stop and fix the failing check immediately.
 
+### Test budget policy — 30 seconds, combined total
+
+`make verify` enforces an **immutable 30-second combined test budget** across all test suites:
+
+| Scope | Limit | Enforcer |
+|-------|-------|----------|
+| Per individual test | 1 s | `conftest.py` SIGALRM watchdog |
+| Per suite invocation | 30 s | `python -m ralph.verify_timeout --suite-timeout 30` |
+| All test suites combined (`make test`) | 30 s | `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 30.0` |
+
+This 30-second combined budget is **absolute** and cannot be circumvented by:
+- Splitting tests into more suites or shards
+- Moving slow tests to a different target
+- Raising `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS`
+
+A slow test is a design defect. Fix the production coupling (extract I/O behind `MemoryWorkspace`, use `FakeAgentExecutor`). See `docs/agents/testing-guide.md` for the full no-I/O test policy.
+
 The dead-code audit is available separately while the existing dead-code backlog is still being cleaned up:
 
 ```bash

@@ -92,7 +92,7 @@ def test_main_runs_all_verify_steps_when_successful(
     ]
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[2][3] is None
+    assert runner.calls[2][3] == verify_module._TOTAL_TEST_BUDGET_SECONDS
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
@@ -173,3 +173,10 @@ def test_main_rejects_positional_arguments(tmp_path: Path) -> None:
         raise AssertionError("expected SystemExit")
 
     assert runner.calls == []
+
+
+def test_total_test_budget_matches_suite_timeout_policy() -> None:
+    from ralph.verify_timeout import DEFAULT_SUITE_TIMEOUT_SECONDS
+    assert verify_module._TOTAL_TEST_BUDGET_SECONDS == DEFAULT_SUITE_TIMEOUT_SECONDS, (
+        "_TOTAL_TEST_BUDGET_SECONDS and DEFAULT_SUITE_TIMEOUT_SECONDS must stay in sync"
+    )

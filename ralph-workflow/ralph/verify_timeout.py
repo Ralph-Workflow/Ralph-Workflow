@@ -22,7 +22,7 @@ from ralph.executor.process import (
 )
 
 DEFAULT_TEST_TIMEOUT_SECONDS = 1.0
-DEFAULT_SUITE_TIMEOUT_SECONDS = 120.0
+DEFAULT_SUITE_TIMEOUT_SECONDS = 30.0
 TEST_TIMEOUT_ENV = "RALPH_PYTEST_TEST_TIMEOUT_SECONDS"
 SUITE_TIMEOUT_ENV = "RALPH_PYTEST_SUITE_TIMEOUT_SECONDS"
 
@@ -40,8 +40,22 @@ _POLICY_FIX_MESSAGE = (
     "quarantine to hide the problem. A slow test is a design defect.\n"
     "\n"
     "Limits:\n"
-    "  Per-test  : 1 second   (RALPH_PYTEST_TEST_TIMEOUT_SECONDS)\n"
-    "  Full suite: 30 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
+    "  Per-test                         : 1 second   (RALPH_PYTEST_TEST_TIMEOUT_SECONDS)\n"
+    "  Per-suite invocation             : 30 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
+    "  ALL test suites combined (total): 30 seconds\n"
+    "    (enforced by ralph/verify.py _TOTAL_TEST_BUDGET_SECONDS\n"
+    "     when running make verify)\n"
+    "\n"
+    "These limits are ABSOLUTE. You CANNOT avoid them by:\n"
+    "- Splitting tests into more suites (adds process overhead,\n"
+    "  risks combined total breach)\n"
+    "- Moving slow tests to a different suite or target\n"
+    "- Raising DEFAULT_SUITE_TIMEOUT_SECONDS (this is exactly\n"
+    "  the violation that was committed\u2014do NOT repeat it)\n"
+    "The combined wall-clock time of ALL suites running\n"
+    "  sequentially must stay within 30 seconds when make verify is run.\n"
+    "A slow test is a design defect\u2014fix the production coupling,\n"
+    "  not the timeout.\n"
     "\n"
     "HOW TO FIX\n"
     "----------\n"

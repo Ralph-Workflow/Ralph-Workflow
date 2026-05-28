@@ -15,7 +15,9 @@ Read before writing or modifying any test.
 
 ### The Rule
 
-**Every test must finish within 1 second.** `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
+**Every test must finish within 1 second.**
+
+**Combined budget (enforced by `make verify`):** When `make verify` runs `make test`, the combined wall-clock time of all test suites must stay within 30 seconds total, enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 30.0`. You cannot circumvent this by adding suites, renaming targets, or redistributing tests — the combined wall-clock time of ALL test suites is subject to the 30-second cap when verification runs. Running `make test` directly is only guarded by per-suite caps. `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
 
 Override only when genuinely required:
 
@@ -46,7 +48,8 @@ If changing the implementation (without changing behavior) would break a test, *
 
 ### Agent checklist
 
-- [ ] All tests in the affected tier pass in < 1 s total wall-clock
+- [ ] Every test in the affected area finishes in < 1 s individually
+- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 30 s total (enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS`)
 - [ ] No test calls `time.sleep(N)` with `N > 0` or polls real wall-clock time
 - [ ] No test reaches through a boundary into real I/O (filesystem, subprocess, network)
 - [ ] Every test asserts on observable behavior, not internal state

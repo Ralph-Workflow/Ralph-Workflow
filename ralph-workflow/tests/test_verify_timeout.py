@@ -8,6 +8,7 @@ import pytest
 
 from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.runtime import (
+    DEFAULT_SUITE_TIMEOUT_SECONDS,
     DEFAULT_TEST_TIMEOUT_SECONDS,
     SUITE_TIMEOUT_ENV,
     TEST_TIMEOUT_ENV,
@@ -29,6 +30,13 @@ def test_timeout_seconds_from_env_uses_default_when_missing(
     monkeypatch.delenv(TEST_TIMEOUT_ENV, raising=False)
 
     assert timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS) == 1.0
+
+
+def test_default_suite_timeout_is_thirty_seconds() -> None:
+    assert DEFAULT_SUITE_TIMEOUT_SECONDS == 30.0, (
+        "Policy violation: DEFAULT_SUITE_TIMEOUT_SECONDS must be 30.0. "
+        "Raising this limit masks slow tests rather than fixing them."
+    )
 
 
 def test_build_timeout_env_sets_timeout_values() -> None:

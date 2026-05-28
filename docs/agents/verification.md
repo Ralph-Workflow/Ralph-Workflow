@@ -16,6 +16,22 @@ make verify
 2. `make typecheck` (`mypy --strict`)
 3. pytest (parallel, excludes `subprocess_e2e`)
 
+### Total test budget — 30 seconds, immutable
+
+`make verify` runs `make test`, which executes `test-unit` (all non-integration tests in parallel) then `test-integration`.
+
+Budget enforcement:
+- **Per-suite cap** (applies to any `make test` invocation): each `python -m ralph.verify_timeout --suite-timeout 30` call is killed after 30 s.
+- **Combined-total cap** (enforced by `make verify` only): `ralph.verify` wraps `make test` with `timeout=_TOTAL_TEST_BUDGET_SECONDS` (30 s). If the combined wall-clock time of both suites running sequentially exceeds 30 s, `make verify` fails with `(budget exhausted)`.
+
+This combined limit is **immutable** regardless of:
+- How many test suites exist or how they are organized
+- What order suites run in
+- Whether tests are moved between suites
+
+Do **not** raise `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS`
+to mask a slow test. Fix the test instead (remove I/O, use `MemoryWorkspace`).
+
 Verification passes only when all checks complete with **no ERROR/WARNING diagnostics**. If any step fails, fix the issue immediately and rerun. `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and `CLAUDE.md`.
 
 If the change touches README, docs, START_HERE, the manual, or any public-doc route, read `docs/code-style/documentation-rubric.md` first and check the edited surface against it before calling the docs work done.
@@ -48,7 +64,7 @@ python -m ralph --help
 python -m ralph --version
 ```
 
-`make test` runs the full non-`subprocess_e2e` suite in timeout-guarded shards. `make test-unit` excludes `tests/integration/`. `make test-cov` enforces an 80% coverage gate. `make docs` builds Sphinx HTML with warnings as errors.
+`make test` runs `test-unit` (single parallel invocation over all of `tests/` excluding `tests/integration/`, wrapped in 30-second suite timeout) then `test-integration` (single parallel invocation over `tests/integration/`, wrapped in 30-second suite timeout), each with a 30-second per-suite cap; combined total capped at 30 s when run via `make verify`. `make test-unit` excludes `tests/integration/`. `make test-cov` enforces an 80% coverage gate. `make docs` builds Sphinx HTML with warnings as errors.
 
 ---
 

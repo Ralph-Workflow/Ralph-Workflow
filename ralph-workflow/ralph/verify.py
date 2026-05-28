@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 
 _VERIFY_STEP_TIMEOUT_SECONDS = 30.0
+_TOTAL_TEST_BUDGET_SECONDS: float = 30.0
 _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     (
         "ruff check ralph/ tests/",
@@ -44,7 +45,7 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "mypy", "ralph/"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
-    ("make test", "make", ("test",), None),
+    ("make test", "make", ("test",), _TOTAL_TEST_BUDGET_SECONDS),
 )
 
 
