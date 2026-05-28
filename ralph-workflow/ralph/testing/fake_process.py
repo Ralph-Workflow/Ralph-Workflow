@@ -11,11 +11,9 @@ from typing import TYPE_CHECKING
 
 from ralph.testing._async_process_streams import AsyncProcessStreams
 from ralph.testing._fake_async_process import FakeAsyncProcess
-from ralph.testing._fake_immortal_popen import FakeImmortalPopen
-from ralph.testing._fake_popen import FakePopen
+from ralph.testing._fake_popen import FakeImmortalPopen, FakePopen, FakeStubbornPopen
 from ralph.testing._fake_psutil import FakePsutil
 from ralph.testing._fake_psutil_process import FakePsutilProcess
-from ralph.testing._fake_stubborn_popen import FakeStubbornPopen
 from ralph.testing._fake_timeout_popen import FakeTimeoutPopen
 from ralph.testing._process_state import ProcessState
 from ralph.testing._process_streams import ProcessStreams

@@ -15,7 +15,6 @@ from ralph.testing.fake_process import (
     FakeImmortalPopen,
     FakePsutil,
     FakePsutilProcess,
-    FakeStubbornPopen,
     make_async_process_factory,
     make_sync_process_factory,
 )
@@ -238,49 +237,3 @@ def test_process_phase_scope_raises_on_termination_error() -> None:
         process_phase_scope("test-phase"),
     ):
         pass
-
-
-def test_ec4_sigterm_timeout_escalates_to_sigkill() -> None:
-    """Graceful terminate times out; force kill succeeds via root-only escalation."""
-
-    def stubborn_factory(command: object, opts: object) -> FakeStubbornPopen:
-        del command, opts
-        return FakeStubbornPopen(pid=1, final_returncode=-9)
-
-    pm = ProcessManager(
-        policy=_FAST_POLICY,
-        sync_process_factory=stubborn_factory,
-        async_process_factory=make_async_process_factory(itertools.count(100)),
-        psutil=None,
-    )
-    handle = pm.spawn([sys.executable, "-c", "pass"])
-
-    handle.terminate(grace_period_s=0.01)
-
-    assert handle.record.status == ProcessStatus.KILLED
-    assert handle.record.returncode == -9
-    assert handle.record.cause == "killed"
-
-
-def test_ec9_root_only_force_kill_still_alive_raises_error() -> None:
-    """Force kill failure must stay terminal without reporting a successful kill."""
-
-    def immortal_factory(command: object, opts: object) -> FakeImmortalPopen:
-        del command, opts
-        return FakeImmortalPopen(pid=1)
-
-    pm = ProcessManager(
-        policy=_FAST_POLICY,
-        sync_process_factory=immortal_factory,
-        async_process_factory=make_async_process_factory(itertools.count(100)),
-        psutil=None,
-    )
-    handle = pm.spawn([sys.executable, "-c", "pass"])
-
-    with pytest.raises(ProcessTerminationError):
-        handle.terminate(grace_period_s=0.01)
-
-    assert handle.record.status == ProcessStatus.FAILED
-    assert handle.record.cause == "termination_failed"
-    assert handle.record.failure_message == "Process still alive after kill"
-    assert pm.list_active() == []
