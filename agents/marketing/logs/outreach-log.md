@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-29 07:30 UTC — Nested Analysis Loops Catch Bugs Before They Commit
+
+**Action:** Published blog post `content/blog/nested-analysis-loops-catch-bugs-before-commit.md` (commit `f785097`). Deployed to live at https://ralphworkflow.com/blog/nested-analysis-loops-catch-bugs-before-commit/
+
+**What:** Explains how nested phase-level analysis loops (separate from the program loop) catch bugs before the commit. Distinct from the existing loop-structure post — this drills into the mechanical difference between phase loops and program loops, and why that separation matters for unattended runs.
+
+**Why:** Hold window (09:57 CEST clearance). Execution board empty. All distribution lanes permanently blocked. This was the single autonomous lane capable of producing a real external artifact. Creates fresh search surface for "unattended AI coding" keyword.
+
+**Keyword:** unattended ai coding
+
+**CTAs:** 5 Codeberg links, 1 GitHub mirror link
+
+**Self-improvement:** This was not a stale packet refresh — the technical_draft.md existed as a completed Write.as draft but had no Hugo conversion. Converted and deployed in the same run instead of logging another idle hold.
+
 ## 2026-05-28 15:38 UTC — AI Coding Tools Comparison Matrix 2026
 
 **Action:** Published comprehensive AI coding tools comparison blog post: `content/blog/ai-coding-tools-comparison-2026.md`. Committed and pushed to Ralph-Site (`436a613`).
