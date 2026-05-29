@@ -11916,3 +11916,169 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with positioning. README\u2192START_HERE\u2192docs/README is coherent, promoted pages reinforce the same story, and the simple-core/composability/default-workflow framing is consistent throughout. Minor boilerplate repetition across 7+ pages (same opening sentence) and very minor internal leakage in the README capabilities table ('artifact handoff') are present but not hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with the tagline, immediately contrasts orchestrator vs chat-wrapper, has a clear comparison table, explicitly states engineering-practice dependency, correctly frames Codeberg primary / GitHub mirror, and routes to START_HERE and docs/README in order."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first-run path with no internal plumbing, good/bad task selection guidance, result-first success criteria, and explicit mirror reminder before any content."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Intent-based routing with clear categories, 'keep proof secondary' guardrail, Codeberg-primary framing, and no competing onboarding paths."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean, coherent, and structurally guarded against regression. The positioning line lands in the first sentence of every surface, the README\u2192START_HERE\u2192docs/README journey routes cleanly without role collapse, and the promoted next-click pages (first-task-guide, ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent, reviewable-output) all reinforce the same simple-core/composable-workflow story instead of fighting it. No internal plumbing leaked onto top-level surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with 'operating system for autonomous coding', keeps the comparison table factual, frames artifact handoff as a secondary bullet not a headline, and ends with the default-workflow-first message."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run without product fluff. Clear task-fit guidance, result-first success criteria, and directs to next pages only when needed."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Curated switchboard with clean user-intent routing, explicitly demotes proof pages to secondary, and restates Codeberg primary."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Clean, internally consistent docs system. Each page knows its role, the journey flows README \u2192 START_HERE \u2192 docs/README coherently, and promoted sub-pages reinforce the same simple-core/compositional-power/strong-default framing. No page leads with internal plumbing or artifacts as the main story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Strongest product pitch in the system. Hits every positioning requirement: operating system framing, composable loop framework, not-a-chat-window, good-fit/bad-fit, strong default workflow, engineering-practice dependency, Codeberg-primary callout. The comparison table is the most effective explainer in the whole docs set."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first-run page succeeds at being practical without drifting into product pitch. Correctly mirrors Codeberg-primary note. Task selection guidance is grounded and honest."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard. Routes by user intent, has a 'Keep proof secondary' section, and the promoted routes (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent, first-task-guide) all reinforce positioning instead of fighting it."
+    },
+    {
+      "path": "source-tree README.md (RalphWithReviewer/README.md)",
+      "reason": "Exemplary constrained README. Opens with the operating-system tagline, then explicitly says 'this is not the main first-run guide' and points to the canonical route. The 'what this file is deliberately not doing' section shows intentional discipline."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Correctly positioned as supporting proof (not main pitch). Evidence ordering \u2014 working behavior first, real checks second, logs/artifacts last \u2014 matches the positioning doc exactly. Good model of how a secondary page should behave."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with the positioning reference. The README \u2192 START_HERE \u2192 docs/README journey is coherent with clear role separation, the promoted next-click pages consistently reinforce the core product story, and internal plumbing language is confined to minor descriptive feature bullets rather than lead positioning.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "README 'Built-in capabilities' lists 'Phase routing' and 'Artifact handoff' \u2014 internal plumbing terms. Acceptable as minor feature bullets below the fold, but worth monitoring if they drift upward in prominence."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/README.md",
+      "reason": "Leads with OS-for-coding tagline and orchestrator framing, not artifacts or logs. Comparison table, audience-fit section, and engineering-practice requirements all reinforce positioning. Codeberg primary / GitHub mirror correctly distinguished."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Disciplined first-run page that mirrors the core story, gives concrete install steps, clear success criteria, and routes to next pages without role-creep."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Clean documentation map with intent-based routing, explicit ordering after README and START_HERE, and a 'Keep proof secondary' section that correctly subordinates evaluation detail to product story."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted next-click page that reinforces the composable-loop-framework story instead of pivoting to internal mechanics."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md",
+      "reason": "Correctly self-positions as supporting proof, not the main pitch. Not on the critical journey path."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

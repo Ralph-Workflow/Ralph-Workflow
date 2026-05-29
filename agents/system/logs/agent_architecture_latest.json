@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-29T04:39:23.428697+02:00",
+    "checked_at": "2026-05-29T06:30:02.843620+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 24,
     "live_jobs_enabled": 24,
@@ -43,10 +43,10 @@
     "live_running_job_names": [
       "Push research findings to git repo",
       "agent-architecture-watchdog",
-      "apollo-channel-monitor",
-      "codeberg-github-mirror-sync",
-      "marketing-churn-watchdog",
-      "ralph-site-owner-loop",
+      "marketing-distribution-hunter",
+      "marketing-measurement-hold-release",
+      "ralph-docs-supervisor-precheck",
+      "reddit-pipeline-watchdog",
       "repo-adoption-tracker",
       "system-health-monitor"
     ],
@@ -170,9 +170,9 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-29T04:39:38.313840+02:00",
+    "checked_at": "2026-05-29T06:30:11.997557+02:00",
     "verdict": "qualified_pass",
-    "previous_artifact_checked_at": "2026-05-29T04:32:45.723114+02:00",
+    "previous_artifact_checked_at": "2026-05-29T06:28:42.594111+02:00",
     "previous_artifact_verdict": "qualified_pass",
     "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
@@ -192,18 +192,20 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-05-29T04:39:38.313840+02:00",
+    "architecture_verifier_checked_at": "2026-05-29T06:30:11.997557+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
     },
-    "health_monitor_issues_found": 5,
+    "health_monitor_issues_found": 7,
     "health_monitor_issue_names": [
+      "apollo-channel-monitor",
       "marketing-research-daily",
       "blocked-channel-recovery",
       "marketing_independent_verification"
     ],
     "health_monitor_issue_categories": [
+      "apollo-channel-monitor:timeout_risk",
       "marketing-research-daily:timeout_risk",
       "blocked-channel-recovery:timeout",
       "marketing_independent_verification:stale_artifact"
@@ -215,10 +217,10 @@
     "live_running_job_names": [
       "Push research findings to git repo",
       "agent-architecture-watchdog",
-      "apollo-channel-monitor",
-      "codeberg-github-mirror-sync",
-      "marketing-churn-watchdog",
-      "ralph-site-owner-loop",
+      "marketing-distribution-hunter",
+      "marketing-measurement-hold-release",
+      "ralph-docs-supervisor-precheck",
+      "reddit-pipeline-watchdog",
       "repo-adoption-tracker",
       "system-health-monitor"
     ],
@@ -239,11 +241,13 @@
     "independent_architecture_verdict": "qualified_pass",
     "docs_blocker_localized": false,
     "external_watch_issue_names": [
+      "apollo-channel-monitor",
       "marketing-research-daily",
       "blocked-channel-recovery",
       "marketing_independent_verification"
     ],
     "external_watch_issue_categories": [
+      "apollo-channel-monitor:timeout_risk",
       "marketing-research-daily:timeout_risk",
       "blocked-channel-recovery:timeout",
       "marketing_independent_verification:stale_artifact"

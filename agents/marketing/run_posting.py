@@ -437,12 +437,23 @@ def main() -> int:
     # ── Spidering guard — prevent rapid-fire Telegraph hits ──────────
     status, reason, remaining = guard_check("telegraph")
     if not status:
-        print(json.dumps({
+        # Do a dry-run discovery pass so the system knows *what* is queued.
+        # This prevents the blind-spot where the guard silences not just posting
+        # but also content discovery, leaving the scheduler blind about pending work.
+        posted = load_posted()
+        dry_run_results = crosspost_blog_content(posted, today, dry_run=True)
+        discovery = {
             "timestamp": now.isoformat(),
             "guard_blocked": True,
             "reason": reason,
-            "cooldown_remaining_h": round(remaining, 1) if remaining else None
-        }, indent=2))
+            "cooldown_remaining_h": round(remaining, 1) if remaining else None,
+            "pending_crossposts": [
+                {"title": r["title"], "source_path": r.get("source_path", "")}
+                for r in dry_run_results
+            ],
+        }
+        save_posted(posted)
+        print(json.dumps(discovery, indent=2))
         return 0
 
     posted = load_posted()

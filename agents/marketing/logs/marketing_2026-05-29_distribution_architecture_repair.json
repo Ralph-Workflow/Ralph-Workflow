@@ -1,19 +1,21 @@
 {
   "timestamp": "2026-05-29T06:55:01.358655",
-  "repair_types_seen": [],
-  "selected_lane": "distribution_architecture_repair",
-  "selected_action_type": "distribution_architecture_churn_guard_repair",
-  "execution_status": "executed",
-  "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_065501_distribution_architecture_repair.md",
-  "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window. Refreshed stale manual execution packets so the next truthful slot can reuse current assets. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
-  "expected_outcome": "Advance distribution via lane distribution_architecture_repair without defaulting back to monitoring-only work.",
-  "measurement_window": "Review outcome movement within 7 days.",
-  "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
-  "decision": {
-    "lane": "distribution_architecture_repair",
-    "reason": "The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; perform another concrete distribution-architecture repair now instead of logging another guard pause.",
-    "reasons": [
+  "run_type": "marketing-distribution-lane",
+  "chosen_action": {
+    "type": "distribution_lane_switch",
+    "channel": "distribution_architecture_repair",
+    "title": "Distribution lane decision: distribution_architecture_repair",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_distribution_action_brief.md"
+  },
+  "why_this_action": {
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+    ],
+    "reasoning": "The short review window already cleared and a newer concrete repair ran for this guarded empty-board fingerprint, but the board is still empty; perform another concrete distribution-architecture repair now instead of logging another guard pause.",
+    "supporting_reasons": [
       "4 live external marketing action(s) already shipped in the last 6 hours.",
       "If no new outcome lands first, this short-window congestion clears at 2026-05-29T09:57:11. Before then, another live outbound action would mostly blur measurement.",
       "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
@@ -38,34 +40,14 @@
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.",
       "2 prior distribution-architecture repair run(s) already hit this same empty-board window.",
       "A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint."
-    ],
-    "owned_content_posts_last_36h": 0,
-    "unsubmitted_directory_channels": [],
-    "shared_findings_used": [
-      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
-      "channel_discovery.json: validated easy-submit directory lanes",
-      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
-    ],
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_distribution_action_brief.md",
-    "short_review_window_release_at": "2026-05-29T09:57:11",
-    "skip_directory_submissions": false,
-    "skip_curator_outreach": false
+    ]
   },
-  "execution": {
-    "lane": "distribution_architecture_repair",
-    "action_type": "distribution_architecture_churn_guard_repair",
-    "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_065501_distribution_architecture_repair.md",
-    "summary": "Escalated the repeated empty-board architecture failure into a third-strike churn guard tied to the current review window. Refreshed stale manual execution packets so the next truthful slot can reuse current assets. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
-    "targets_prepared": [],
-    "shared_findings_used": [
-      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
-      "channel_discovery.json: validated easy-submit directory lanes",
-      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
-    ],
-    "live_external_action": false,
-    "blocking_factors": []
+  "result": {
+    "status": "prepared",
+    "ok": true
+  },
+  "verification": {
+    "execution_board_fingerprint": "ee9c06d72daeb4df9e1934fada4ce7a12ff6136c",
+    "short_review_window_release_at": "2026-05-29T09:57:11"
   }
 }

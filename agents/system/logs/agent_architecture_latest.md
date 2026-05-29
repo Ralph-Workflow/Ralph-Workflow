@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-29T04:39:23.428697+02:00
+- Checked: 2026-05-29T06:30:02.843620+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
 - Most urgent fix: Do not certify green until the external owner loop clears its live residue and independent signoff stays current.
@@ -10,7 +10,7 @@
 ## Live topology
 
 - Live Gateway jobs: 24 total / 24 enabled / 0 disabled
-- Live running jobs now: Push research findings to git repo, agent-architecture-watchdog, apollo-channel-monitor, codeberg-github-mirror-sync, marketing-churn-watchdog, ralph-site-owner-loop, repo-adoption-tracker, system-health-monitor
+- Live running jobs now: Push research findings to git repo, agent-architecture-watchdog, marketing-distribution-hunter, marketing-measurement-hold-release, ralph-docs-supervisor-precheck, reddit-pipeline-watchdog, repo-adoption-tracker, system-health-monitor
 - Live last-error residue: blocked-channel-recovery
 - Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-momentum-watchdog, marketing-reflection, marketing-workflow-audit-precheck, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
 - User crontab ownership: ok
