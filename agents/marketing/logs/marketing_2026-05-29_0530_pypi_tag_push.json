@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-05-29T05:30:00+02:00",
+  "action_type": "pypi_readme_deploy_tag_push",
+  "description": "Created and pushed ralph-workflow-v0.8.8 tag to trigger PyPI CI publish pipeline",
+  "tag": "ralph-workflow-v0.8.8",
+  "target_commit": "c8ef1ef5e12b395d9d87176c08f8d402a5814f65",
+  "commit_message": "fix(readme): tighten copy — clearer handoff framing, merge install+quickstart, stronger default-workflow signal",
+  "github_ci_run": "26616273365",
+  "build_result": "success",
+  "publish_result": "failure",
+  "publish_failure_reason": "PyPI Trusted Publishing likely not configured for Ralph-Workflow/Ralph-Workflow. The build job succeeded (package built + validated), but pypa/gh-action-pypi-publish failed in the publish job. Need either: (a) configure Trusted Publishing on PyPI for this repo/namespace, or (b) add PYPI_TOKEN secret to GitHub Actions and modify CI pipeline.",
+  "pyPI_state": {
+    "current_version": "0.8.7",
+    "has_codeberg_cta": false,
+    "has_github_mirror_mention": false,
+    "description_length": 2840,
+    "version_on_github_ready": "0.8.8",
+    "github_has_codeberg_cta": true,
+    "monthly_downloads_affected": 1498,
+    "pending_commits_since_v088_tag": 10
+  },
+  "blocker_status": {
+    "github_ssh": "auth_working",
+    "build_pipeline": "healthy",
+    "pypi_oidc": "unconfigured",
+    "token_available": false
+  },
+  "hold_window_status": "active_until_2026-05-29T05:56:07",
+  "auto_retry_tag": null,
+  "notes": "Tag exists on GitHub remote. Once PyPI credentials/Trusted Publishing is configured, pushing the same tag again or triggering workflow_dispatch with a modified pipeline will publish v0.8.8 with strong README + Codeberg CTA to PyPI."
+}

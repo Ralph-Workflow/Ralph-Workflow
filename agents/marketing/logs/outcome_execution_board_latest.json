@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-05-29T04:27:20.218784",
+  "timestamp": "2026-05-29T06:11:03.050344",
   "type": "outcome_execution_board_runner",
   "status": "executed",
-  "repair_needed_at_start": false,
+  "repair_needed_at_start": true,
   "selected_lane": "distribution_architecture_guard_pause",
   "selected_action_type": "truth_snapshot_only",
   "executed_lane": null,
@@ -10,13 +10,13 @@
   "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md",
   "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md",
   "execution_board_targets": [],
-  "execution_board_fingerprint": "0a9d7818712599ca53122c24f88a4fbc332ff6d1",
-  "short_review_window_release_at": "2026-05-29T05:56:07",
+  "execution_board_fingerprint": "ee9c06d72daeb4df9e1934fada4ce7a12ff6136c",
+  "short_review_window_release_at": "2026-05-29T06:41:28",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.",
   "summary": "Execution board refreshed, but no truthful do-now lane was available; the board itself is the structural truth source.",
   "next_truthful_checkpoint": {
-    "at": "2026-05-29T05:56:07",
+    "at": "2026-05-29T06:41:28",
     "source": "short_review_window_release",
     "reason": "Current short review window clears."
   },

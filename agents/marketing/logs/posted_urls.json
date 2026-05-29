@@ -602,18 +602,6 @@
     },
     {
       "date": "2026-05-29",
-      "draft": "ai-cost-model-routing-smart-agent-orchestration.md",
-      "title": ".ralph/config.yml",
-      "platform": "telegraph",
-      "ok": true,
-      "status": "crossposted_blog",
-      "url": "https://telegra.ph/ralphconfigyml-05-29",
-      "error": null,
-      "draft_hash": "65a06a2223bedb22b7e11ac986e17ca8a868cb16572bbc7e57240fed2b64e12d",
-      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-cost-model-routing-smart-agent-orchestration.md"
-    },
-    {
-      "date": "2026-05-29",
       "draft": "autonomous-ai-coding-tools-compared.md",
       "title": "Autonomous AI Coding Tools Compared: What Actually Works for Unattended Work",
       "platform": "telegraph",
@@ -851,6 +839,18 @@
       "error": null,
       "draft_hash": "4536cd525dc42a2fce6492b83f67c4b9b750dc8e49ebac1970a218c0b24728ca",
       "source_path": "Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md"
+    },
+    {
+      "date": "2026-05-29",
+      "draft": "ai-cost-model-routing-smart-agent-orchestration.md",
+      "title": "AI Cost Model Routing: Stop Paying Frontier Prices for Grunt Work",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog_title_fix",
+      "url": "https://telegra.ph/AI-Cost-Model-Routing-Stop-Paying-Frontier-Prices-for-Grunt-Work-05-29",
+      "error": null,
+      "draft_hash": "65a06a2223bedb22b7e11ac986e17ca8a868cb16572bbc7e57240fed2b64e12d",
+      "source_path": "Ralph-Site/content/blog/ai-cost-model-routing-smart-agent-orchestration.md"
     }
   ],
   "last_run": "2026-05-29T03:56:34.337165"

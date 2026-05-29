@@ -81,15 +81,44 @@ def parse_front_matter(content: str) -> tuple[dict, str]:
 
 def extract_title_and_body(content: str) -> tuple[str, str, dict]:
     metadata, body = parse_front_matter(content)
+    # Frontmatter title is the canonical source of truth — always prefer it
+    fm_title = metadata.get("title") or metadata.get("angle")
+    if fm_title and isinstance(fm_title, str):
+        title = fm_title.strip().strip('"')
+        if title:
+            return title, body.strip(), metadata
+    # Fallback: first H1 heading in body
     title_m = re.search(r"^#\s+(.+)$", body, re.MULTILINE)
     if title_m:
-        title = title_m.group(1).strip()
+        raw_title = title_m.group(1).strip()
+        # Guard against code-block headings masquerading as titles
+        if _looks_like_code_heading(raw_title):
+            title = "Untitled"
+        else:
+            title = raw_title
     else:
-        # Fallback: frontmatter title (Hugo-style "title:") > angle (legacy) > Untitled
-        title = metadata.get("title") or metadata.get("angle") or "Untitled"
-        if isinstance(title, str):
-            title = title.strip().strip('"')
+        title = "Untitled"
     return title, body.strip(), metadata
+
+
+def _looks_like_code_heading(text: str) -> bool:
+    """Heuristic: check if an H1 heading is actually a code snippet, not a title."""
+    import os
+    # File paths, config files, code references
+    code_patterns = [
+        r'\.\w+/',           # .git/config or .ralph/
+        r'^(?:\w+)?\.(?:yml|toml|yaml|json|cfg|conf|ini|env|py|js|ts|sh)$',  # config.yml
+        r'^[~/.]',            # starts with ~, /, or . (paths)
+        r'\$\s',             # $ command
+        r'^[<>&|]',           # shell operators
+    ]
+    for pat in code_patterns:
+        if re.search(pat, text, re.IGNORECASE):
+            return True
+    # Also treat very short (<10 chars) or all-lowercase camelCase as suspect
+    if len(text) < 10 and not any(c.isupper() for c in text[1:]):
+        return True
+    return False
 
 
 def digest_text(text: str) -> str:

@@ -4,7 +4,7 @@
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
   "repeated_openings": [
-    "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+    "Which of the five made the most difference for your team? Worth thinking about explicitly \u2014 most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "adoption_metrics": [
     {
@@ -57,7 +57,7 @@
     "findings": [
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
-      "PyPI has 1498 downloads/month (10/day) — real usage signal that repo metrics don't capture."
+      "PyPI has 1498 downloads/month (10/day) \u2014 real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [],
     "next_focus": [
@@ -74,14 +74,14 @@
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
-    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly \u2014 most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
   ],
   "should_change_now": [
-    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
+    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving."
   ],
   "dormant_risks": [
     "reddit_style_repetition_suspended_while_channel_blocked"
@@ -91,7 +91,7 @@
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
-      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
+      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving.",
       "kill_condition": "N/A (mirror, not primary)",
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
@@ -197,5 +197,16 @@
     "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md",
     "execution_board_targets": [],
     "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json"
+  },
+  "github_auth_status": {
+    "git_ssh": "authenticated",
+    "gh_cli": "unauthenticated",
+    "can_push_tags": true,
+    "can_push_branches": true,
+    "can_submit_prs": false,
+    "can_create_issues": false,
+    "verified_at": "2026-05-29T05:37:41.972252+02:00",
+    "verified_by": "pushed ralph-workflow-v0.8.8 tag to GitHub via SSH",
+    "note": "Git SSH fully operational. gh CLI unauthenticated \u2014 blocks API operations (PR creation, issue management) but NOT git push/pull/tag operations."
   }
 }
