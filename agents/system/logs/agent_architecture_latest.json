@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-29T14:07:09.641650+02:00",
+    "checked_at": "2026-05-29T14:45:54.184789+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 24,
     "live_jobs_enabled": 24,
@@ -42,7 +42,6 @@
       "stackoverflow-post-cooldown-run-check"
     ],
     "live_running_job_names": [
-      "Push research findings to git repo",
       "agent-architecture-watchdog"
     ],
     "live_last_error_job_names": [
@@ -87,7 +86,7 @@
     {
       "severity": "medium",
       "title": "Live Gateway topology matches the current runtime state",
-      "mechanism": "Direct live cron inspection shows 24 enabled/total-visible jobs, 0 disabled jobs, 2 running jobs, and 6 live last-error jobs.",
+      "mechanism": "Direct live cron inspection shows 24 enabled/total-visible jobs, 0 disabled jobs, 1 running jobs, and 6 live last-error jobs.",
       "source_layer": "runtime cron topology",
       "root_cause": "Architecture/runtime topology remains coherent while owner-loop work is in flight.",
       "evidence_refs": [
@@ -144,7 +143,7 @@
     {
       "status": "refreshed_live_topology",
       "target": "live cron topology snapshot",
-      "change": "Refreshed the audit against the current live view: 24 enabled jobs, 0 disabled jobs, 2 running jobs, and 6 live last-error jobs.",
+      "change": "Refreshed the audit against the current live view: 24 enabled jobs, 0 disabled jobs, 1 running jobs, and 6 live last-error jobs.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ]
@@ -175,9 +174,9 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-29T14:07:17.483718+02:00",
+    "checked_at": "2026-05-29T14:46:02.243519+02:00",
     "verdict": "qualified_pass",
-    "previous_artifact_checked_at": "2026-05-29T14:03:31.708621+02:00",
+    "previous_artifact_checked_at": "2026-05-29T14:45:12.806359+02:00",
     "previous_artifact_verdict": "qualified_pass",
     "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
@@ -197,12 +196,12 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-05-29T14:07:17.483718+02:00",
+    "architecture_verifier_checked_at": "2026-05-29T14:46:02.243519+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
     },
-    "health_monitor_issues_found": 3,
+    "health_monitor_issues_found": 4,
     "health_monitor_issue_names": [
       "blocked-channel-recovery",
       "marketing_independent_verification"
@@ -216,7 +215,6 @@
     "marketing_workflow_audit_timeout_headroom_seconds": 1316.2440000000001,
     "marketing_workflow_audit_timeout_repaired_pending_clean_rerun": false,
     "live_running_job_names": [
-      "Push research findings to git repo",
       "agent-architecture-watchdog"
     ],
     "live_last_error_job_names": [
@@ -265,7 +263,7 @@
   "notes": [
     "Architecture green here means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.",
     "Persisted disabled jobs remain history only; live disabled jobs are 0.",
-    "Independent live inspection in this snapshot saw 24 total jobs, 24 enabled, 0 disabled, 2 running, and 6 live last-error jobs.",
+    "Independent live inspection in this snapshot saw 24 total jobs, 24 enabled, 0 disabled, 1 running, and 6 live last-error jobs.",
     "The remaining blocker is external marketing outcome evidence, not architecture runtime drift.",
     "No live timeout-budget repair was applied in this watchdog run."
   ]

@@ -10,7 +10,6 @@ Generated: 2026-05-25T18:53:00
 - Apollo next review: 2026-05-29T09:00:01.629178+02:00
 - Apollo launch review: 2026-06-05T09:00:01.629178+02:00
 - Short review-window congestion clears at: 2026-05-25T23:07:41
-- Post-hold marketer rerun scheduled: 2026-05-29T15:01:24
 - StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
@@ -32,7 +31,7 @@ Generated: 2026-05-25T18:53:00
 - stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
 
 ## Verified infrastructure state (programmatic, not fabricated)
-- **Telegraph guard**: cooldown (cooldown_active) — clears ~23:05 UTC
+- **Telegraph guard**: cooldown (cooldown_active) — clears ~22:03 UTC
 - **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
 - **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
 - **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED

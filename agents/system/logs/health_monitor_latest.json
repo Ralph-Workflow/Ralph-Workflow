@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-29T14:04:09.223066",
+  "ts": "2026-05-29T15:00:12.161653",
   "jobs_checked": 24,
-  "issues_found": 3,
+  "issues_found": 4,
   "issues": [
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
@@ -19,7 +19,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 1132.64,
+      "artifact_age_minutes": 1188.69,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -28,38 +28,25 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=169",
-      "repeats_in_recent_history": 169,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=180",
+      "repeats_in_recent_history": 180,
+      "owner_domain": null,
+      "incident_key": "blocked-channel-recovery::timeout",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
+      "name": "blocked-channel-recovery_escalation",
+      "category": "escalation_required",
+      "last_error": "cron: job execution timed out",
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=181",
+      "repeats_in_recent_history": 181,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
-  "repairs_attempted": [
-    {
-      "type": "rerun_docs_verifier",
-      "job": "docs_agentic_review",
-      "ok": true,
-      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is clean, consistent, and faithful to positioning. No hard failures. Journey flows well. The only borderline element (reviewable-output.md) correctly self-positio"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "docs_agentic_review_mustFix_docs-readme-md-lists-reviewable-output-md-under",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-05-29T12:03:28.411934+00:00"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_mustFix_docs-readme-md-lists-reviewable-output-md-under_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    }
-  ]
+  "repairs_attempted": []
 }
