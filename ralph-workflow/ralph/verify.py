@@ -87,6 +87,18 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     ),
     ("make test", "make", ("test",), _TOTAL_TEST_BUDGET_SECONDS),
     (
+        "lint bypass audit (audit_lint_bypass)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_lint_bypass"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        "typecheck bypass audit (audit_typecheck_bypass)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_typecheck_bypass"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "policy audit (audit_test_policy)",
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_test_policy"),

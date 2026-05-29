@@ -42,6 +42,13 @@ If instructions conflict, follow the stricter one.
   - Setting environment variables (`RALPH_PYTEST_SUITE_TIMEOUT_SECONDS`, `RALPH_PYTEST_TEST_TIMEOUT_SECONDS`)
   - Raising `_TOTAL_TEST_BUDGET_SECONDS` in `ralph/verify.py`
   - Modifying `_BUDGET_TRACKED_STEPS` to exclude slow steps from tracking
+- **Non-circumvention rule — lint and typecheck** — the following do **NOT** circumvent lint/typecheck enforcement:
+  - Adding `per-file-ignores`, `extend-per-file-ignores`, or any ruff config to weaken lint enforcement — detected by `ralph/testing/audit_lint_bypass.py`
+  - Adding `ignore_missing_imports`, `follow_imports = silent`, `exclude` patterns, or `ignore_errors` to mypy config — detected by `ralph/testing/audit_typecheck_bypass.py`
+  - Using bare `# noqa` without a specific error code, or `# noqa: CODE` where CODE is not in the allowlist — detected by `ralph/testing/audit_lint_bypass.py`
+  - Using blanket `# type: ignore` without a specific mypy error code, or `# type: ignore[CODE]` without a policy-compliant reason marker — detected by `ralph/testing/audit_typecheck_bypass.py` and enforced by `../docs/agents/type-ignore-policy.md` (mandatory reading)
+  - Using `# type: ignore` in test files — tests must be fully typed (no exceptions)
+  - Any weakening of any check requires a documented justification and an entry in the audit allowlist — there is NO other path to bypass
 - **How to fix a slow test** (do NOT work around the budget):
   - Replace real I/O with fakes (MemoryWorkspace, tmp_path, MockProcessExecutor)
   - Eliminate sleep() and real wall-clock waits — inject a clock abstraction instead

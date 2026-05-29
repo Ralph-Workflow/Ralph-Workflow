@@ -14,7 +14,10 @@ make verify
 `make verify` runs:
 1. `make lint` (`ruff check`)
 2. `make typecheck` (`mypy --strict`)
-3. pytest (parallel, excludes `subprocess_e2e`)
+3. `make test` (pytest, parallel, excludes `subprocess_e2e`)
+4. Lint bypass audit (`ralph/testing/audit_lint_bypass.py`) — detects forbidden noqa, per-file-ignores
+5. Typecheck bypass audit (`ralph/testing/audit_typecheck_bypass.py`) — detects non-compliant type:ignore, mypy config weakening
+6. Policy audit (`ralph/testing/audit_test_policy.py`) — detects slow test patterns, I/O in tests
 
 ### Total test budget — 30 seconds, ABSOLUTE and IMMUTABLE
 
@@ -37,9 +40,42 @@ This combined limit is **IMMUTABLE** — the following do **NOT** circumvent it:
 
 **Example:** splitting your test suite into 3 separate test steps does NOT give you 3 × 30 s = 90 s of total budget. The cumulative tracker sums the elapsed time of every budget-tracked step, so all 3 suites together must still finish within the single 30 s combined cap.
 
+| Attempted Circumvention | Why It Fails |
+|---|---|
+| Splitting tests into N suites | Cumulative tracker sums time across ALL tracked steps — NOT per-suite |
+| Moving slow tests to a different suite/target | All test-budget-tracked steps count toward the same combined budget |
+| Adding new test-related Makefile targets | `_BUDGET_TRACKED_STEPS` frozen set stays at `{2}` — new targets don't get budget tracking |
+| Raising `PYTEST_SUITE_TIMEOUT_SECONDS` | Per-suite cap only; combined budget is enforced separately by `_TOTAL_TEST_BUDGET_SECONDS` |
+| Modifying `_BUDGET_TRACKED_STEPS` frozenset | Blocked by `ralph/verify.py` import-time assertions |
+| Raising `_TOTAL_TEST_BUDGET_SECONDS` | ABSOLUTE and IMMUTABLE — documented in `AGENTS.md` and `ralph/verify.py` |
+| Adding `per-file-ignores` to pyproject.toml | Detected by `ralph/testing/audit_lint_bypass.py` (part of `make verify`) |
+| Adding `ignore_missing_imports = true` to mypy config | Detected by `ralph/testing/audit_typecheck_bypass.py` (part of `make verify`) |
+| Using bare `# noqa` or blanket `# type: ignore` | Detected by bypass audit modules with file:line reporting |
+
 A timeout failure is a test design defect. Fix the production coupling — never adjust the budget. Remove I/O, use `MemoryWorkspace`, inject fake clocks. Do **not** raise `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS` to mask a slow test.
 
 Verification passes only when all checks complete with **no ERROR/WARNING diagnostics**. If any step fails, fix the issue immediately and rerun. `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and `CLAUDE.md`.
+
+### Bypass Audit Policy
+
+The `make verify` pipeline includes automated bypass audits that scan the entire codebase for lint and typecheck circumvention. These audits are **non-optional** — they run as mandatory steps and cannot be skipped.
+
+**Lint bypass audit** (`ralph/testing/audit_lint_bypass.py`):
+- Detects bare `# noqa` without a specific error code (must use `# noqa: CODE`)
+- Detects `# noqa: CODE` where CODE is not in the allowlist
+- Detects `per-file-ignores` and `extend-per-file-ignores` in `pyproject.toml`
+- Violations produce output: `file:line: [LINT-BYPASS] category: detail`
+
+**Typecheck bypass audit** (`ralph/testing/audit_typecheck_bypass.py`):
+- Detects blanket `# type: ignore` without a specific mypy error code
+- Detects `# type: ignore[CODE]` without a policy-compliant reason marker (see `../docs/agents/type-ignore-policy.md` for exact format requirements)
+- Detects `# type: ignore` in test files (tests must be fully typed — no exceptions)
+- Detects ALL mypy config that weakens type checking: `ignore_missing_imports = true`, `follow_imports = silent`, `exclude` patterns, `ignore_errors = true`
+- Violations produce output: `file:line: [TYPECHECK-BYPASS] category: detail`
+
+**Both audits** scan both `ralph/` and `tests/` directories. Each uses an allowlist of known-legitimate suppressions. Any new suppression that does not match the allowlist IS a violation. To add a legitimate suppression, the code must be added to the allowlist with a documented justification.
+
+Reference: `AGENTS.md` §'Non-negotiables' for the full non-circumvention rules.
 
 If the change touches README, docs, START_HERE, the manual, or any public-doc route, read `docs/code-style/documentation-rubric.md` first and check the edited surface against it before calling the docs work done.
 
