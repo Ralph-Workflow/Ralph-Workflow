@@ -93,7 +93,7 @@ When T9 implements the Rust deserializer for this JSON Schema, verify:
 
 6. **Kebab-case normalized to snake_case**: `file-change` -> `file_change`, `estimated-changes` -> `estimated_changes`, `expected-outcome` -> `expected_outcome`, etc.
 
-7. **`skills_mcp` simplified**: `SkillsMcpType` with mixed content, `<skill>` and `<mcp>` children each having `@reason` attributes, simplified to two flat string arrays. The `reason` attribute is dropped — it is not consumed by downstream executor logic.
+7. **`skills_mcp` simplified**: `SkillsMcpType` with mixed content, `<skill>` and `<mcp>` children each having `@reason` attributes, simplified to two flat string arrays. The `reason` attribute is dropped. Downstream rendering and development prompts consume `skills_mcp.skills`; MCP names are rendered in plan handoffs when present.
 
 8. **`step.type` renamed to `step_type`**: Avoids collision with the JSON Schema keyword `type`.
 

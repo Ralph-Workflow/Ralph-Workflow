@@ -65,6 +65,13 @@ def _seed_plan_draft(tmp_path: Path) -> None:
                     {"text": "Three", "count": "1", "category": "prompt"},
                 ],
             },
+            "skills_mcp": {
+                "skills": [
+                    "test-driven-development",
+                    "verification-before-completion",
+                ],
+                "mcps": [],
+            },
             "steps": [
                 {"number": 1, "title": "First", "content": "first", "depends_on": []},
                 {"number": 2, "title": "Second", "content": "second", "depends_on": [1]},

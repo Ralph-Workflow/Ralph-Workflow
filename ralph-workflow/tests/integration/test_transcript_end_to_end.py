@@ -155,6 +155,13 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
                 {"text": "step 3"},
             ],
         },
+        "skills_mcp": {
+            "skills": [
+                "test-driven-development",
+                "verification-before-completion",
+            ],
+            "mcps": [],
+        },
         "steps": [{"number": 1, "title": "Validate", "content": "Do the work"}],
         "critical_files": {
             "primary_files": [{"path": "ralph/pipeline/runner.py", "action": "modify"}],

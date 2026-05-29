@@ -107,6 +107,13 @@ def _write_minimal_plan_artifacts(
                             {"text": "three"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
                     "critical_files": {
                         "primary_files": [{"path": "src/plan.py", "action": "modify"}],

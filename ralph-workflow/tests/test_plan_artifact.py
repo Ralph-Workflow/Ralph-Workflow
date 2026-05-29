@@ -9,6 +9,7 @@ import pytest
 from ralph.mcp.artifacts.plan import (
     PlanArtifactValidationError,
     delete_plan_draft,
+    extract_plan_skill_names,
     finalize_plan_draft,
     insert_plan_step,
     is_noop_plan,
@@ -17,6 +18,7 @@ from ralph.mcp.artifacts.plan import (
     new_plan_draft,
     normalize_plan_artifact_content,
     remove_plan_step,
+    render_plan_markdown,
     replace_plan_step,
     save_plan_draft,
     validate_plan_section,
@@ -53,6 +55,16 @@ class FakeFileBackend:
         return []
 
 
+def _valid_skills_mcp() -> dict[str, object]:
+    return {
+        "skills": [
+            "test-driven-development",
+            "verification-before-completion",
+        ],
+        "mcps": [],
+    }
+
+
 def _valid_plan() -> dict[str, object]:
     return {
         "summary": {
@@ -67,6 +79,7 @@ def _valid_plan() -> dict[str, object]:
                 {"text": "Tighten prompt contract", "count": "1 template", "category": "prompt"},
             ],
         },
+        "skills_mcp": _valid_skills_mcp(),
         "steps": [
             {
                 "number": 1,
@@ -468,3 +481,40 @@ def test_is_noop_plan_returns_false_for_plan_with_steps() -> None:
 def test_noop_plan_normalizes_to_noop_only() -> None:
     normalized = normalize_plan_artifact_content({"noop": True})
     assert normalized == {"noop": True}
+
+
+def test_normalize_plan_artifact_content_rejects_missing_skills_mcp() -> None:
+    invalid = _valid_plan()
+    invalid.pop("skills_mcp")
+
+    with pytest.raises(PlanArtifactValidationError, match="skills_mcp"):
+        normalize_plan_artifact_content(invalid)
+
+
+def test_normalize_plan_artifact_content_rejects_unknown_skill_names() -> None:
+    invalid = _valid_plan()
+    invalid["skills_mcp"] = {"skills": ["not-a-real-skill"], "mcps": []}
+
+    with pytest.raises(PlanArtifactValidationError, match="unknown skill names"):
+        normalize_plan_artifact_content(invalid)
+
+
+def test_render_plan_markdown_includes_skills_mcp_section() -> None:
+    markdown = render_plan_markdown(_valid_plan())
+
+    assert "## Skills and MCPs" in markdown
+    assert "### Skills" in markdown
+    assert "`test-driven-development`" in markdown
+    assert "`verification-before-completion`" in markdown
+
+
+def test_extract_plan_skill_names_reads_enveloped_plan_payload() -> None:
+    payload = {
+        "type": "plan",
+        "content": _valid_plan(),
+    }
+
+    assert extract_plan_skill_names(payload) == (
+        "test-driven-development",
+        "verification-before-completion",
+    )

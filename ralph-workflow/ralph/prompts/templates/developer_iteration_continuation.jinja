@@ -10,17 +10,7 @@ You are continuing a DEVELOPMENT iteration. Resume from the prior work, follow t
 
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
-{% if SKILLS_INLINE_CONTENT %}
-## SHIPPED SKILL BUNDLE
-
-{{ SKILLS_INLINE_CONTENT }}
-{% else %}
-## BASELINE WORKFLOW SKILLS
-
-The following skills from the Ralph Workflow shipped skill bundle apply to this development continuation task. Read and apply the relevant ones before proceeding:
-
-{{ DEVELOPMENT_SKILL_REFERENCES }}
-{% endif %}
+{% include 'shared/_development_skills.j2' %}
 
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt did not complete successfully.

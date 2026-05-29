@@ -114,6 +114,18 @@ def development_skill_references_text() -> str:
     return _render_references(_DEVELOPMENT_REFERENCES)
 
 
+def plan_skill_references_text(skill_names: tuple[str, ...]) -> str:
+    if not skill_names:
+        return ""
+    baseline_names = set(BASELINE_SKILL_NAMES)
+    unknown = [name for name in skill_names if name not in baseline_names]
+    if unknown:
+        msg = f"Prompt skill reference names unknown shipped skill: {unknown[0]}"
+        raise ValueError(msg)
+    lines = [f"- **`{name}`** — recommended by the planner for this task" for name in skill_names]
+    return "\n".join(lines)
+
+
 def referenced_skill_names() -> tuple[str, ...]:
     seen: list[str] = []
     for reference in (*_PLANNING_REFERENCES, *_DEVELOPMENT_REFERENCES):
@@ -125,6 +137,7 @@ def referenced_skill_names() -> tuple[str, ...]:
 
 __all__ = [
     "development_skill_references_text",
+    "plan_skill_references_text",
     "planning_skill_references_text",
     "referenced_skill_names",
 ]

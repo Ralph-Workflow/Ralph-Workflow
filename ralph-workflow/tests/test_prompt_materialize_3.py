@@ -347,6 +347,13 @@ def test_development_analysis_prompt_renders_without_development_result(
                             {"text": "item three"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [{"number": 1, "title": "step", "content": "do it"}],
                     "critical_files": {"primary_files": [{"path": "src/a.py", "action": "modify"}]},
                     "risks_mitigations": [{"risk": "r", "mitigation": "m"}],
@@ -474,6 +481,13 @@ def test_planning_loopback_from_analysis_preserves_history(
             "summary": {
                 "context": "ctx",
                 "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+            },
+            "skills_mcp": {
+                "skills": [
+                    "test-driven-development",
+                    "verification-before-completion",
+                ],
+                "mcps": [],
             },
             "steps": [
                 {

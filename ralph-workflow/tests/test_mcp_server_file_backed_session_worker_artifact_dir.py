@@ -544,6 +544,13 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
                 {"text": "Validate the plan in the planning phase"},
             ],
         },
+        "skills_mcp": {
+            "skills": [
+                "test-driven-development",
+                "verification-before-completion",
+            ],
+            "mcps": [],
+        },
         "steps": [{"number": 1, "title": "Submit the plan", "content": "Persist it."}],
         "critical_files": {
             "primary_files": [{"path": "ralph/mcp/tool_artifact.py", "action": "modify"}]

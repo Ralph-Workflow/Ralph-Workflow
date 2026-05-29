@@ -68,6 +68,57 @@ def _workspace_key(workspace_root: Path) -> str:
     return digest[:_KEY_LENGTH]
 
 
+def _compute_sandbox_limits(workspace_size_bytes: int) -> tuple[int, int, int]:
+    """Return (max_total_bytes, max_pool_bytes, max_workspace_bytes) scaled to workspace size.
+
+    Each workspace instance gets its own sandbox manager with limits proportional
+    to the repository size, rather than contending for a single shared global cap.
+    Small repos keep the existing defaults; large repos scale up to avoid eviction
+    pressure when sandbox slots each carry a full workspace mirror.
+    """
+    if workspace_size_bytes <= 0:
+        workspace_size_bytes = _DEFAULT_MAX_TOTAL_BYTES
+    # Minimum slot count we want to support without LRU eviction of idle slots.
+    min_desired_slots = 4
+    # Estimate per-slot overhead: full workspace mirror + git isolation (~20% overhead).
+    slot_bytes = int(workspace_size_bytes * 1.2)
+    pool_bytes = max(
+        _DEFAULT_MAX_POOL_BYTES,
+        slot_bytes * min_desired_slots,
+    )
+    total_bytes = max(
+        _DEFAULT_MAX_TOTAL_BYTES,
+        pool_bytes * 2,  # allow at least 2 full pools
+    )
+    workspace_safety_bytes = max(
+        _DEFAULT_MAX_WORKSPACE_BYTES,
+        workspace_size_bytes * 6,
+    )
+    return total_bytes, pool_bytes, workspace_safety_bytes
+
+
+def _compute_workspace_size_bytes(workspace_root: Path) -> int:
+    """Calculate the on-disk size of a workspace, excluding generated directories."""
+    total = 0
+    ignored_relative_paths = _ignored_workspace_relative_paths(workspace_root)
+    for child in workspace_root.rglob("*"):
+        relative_path = child.relative_to(workspace_root)
+        relative_parts = relative_path.parts
+        if any(part in _GENERATED_DIR_NAMES for part in relative_parts):
+            continue
+        if any(
+            relative_path == ignored_path or relative_path.is_relative_to(ignored_path)
+            for ignored_path in ignored_relative_paths
+        ):
+            continue
+        try:
+            if child.is_file():
+                total += child.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
 @dataclass(frozen=True)
 class _IdleSlotCandidate:
     slot_root: Path
@@ -479,24 +530,7 @@ class ExecSandboxManager:
         return self._path_size_bytes(path)
 
     def _workspace_size_bytes(self, workspace_root: Path) -> int:
-        total = 0
-        ignored_relative_paths = _ignored_workspace_relative_paths(workspace_root)
-        for child in workspace_root.rglob("*"):
-            relative_path = child.relative_to(workspace_root)
-            relative_parts = relative_path.parts
-            if any(part in _GENERATED_DIR_NAMES for part in relative_parts):
-                continue
-            if any(
-                relative_path == ignored_path or relative_path.is_relative_to(ignored_path)
-                for ignored_path in ignored_relative_paths
-            ):
-                continue
-            try:
-                if child.is_file():
-                    total += child.stat().st_size
-            except OSError:
-                continue
-        return total
+        return _compute_workspace_size_bytes(workspace_root)
 
     def _slot_owner_is_collectible(self, slot_root: Path) -> bool:
         marker = slot_root / ".ralph-exec-owner.json"
