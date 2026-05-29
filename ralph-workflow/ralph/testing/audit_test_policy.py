@@ -34,9 +34,17 @@ _SLEEP_ALLOWLIST: set[str] = set()  # none currently — all sleep() in tests is
 # Files that legitimately do real I/O (e.g., test infrastructure,
 # memory regression tests requiring real filesystem allocations).
 _IO_ALLOWLIST: set[str] = {
-    # Memory regression test requires real filesystem allocations for
-    # valid tracemalloc measurements. MemoryWorkspace would alter the
-    # allocation profile and invalidate the regression assertions.
+    # Memory regression test (test_multimodal_session_memory_regression) is
+    # intrinsically coupled to FsWorkspace for valid tracemalloc measurements.
+    # The test measures the production code path through handle_read_media
+    # and collect_media_entries_for_phase, which in production use FsWorkspace.
+    # Switching to MemoryWorkspace would:
+    #   (a) change the call graph (different Workspace subclass),
+    #   (b) alter object allocations (in-memory dict vs filesystem ops),
+    #   (c) invalidate the calibrated regression thresholds.
+    # The tracemalloc snapshot MUST match the production code path exactly —
+    # a fake workspace would measure a DIFFERENT code path and produce
+    # meaningless regression assertions. This is a legitimate allowlist entry.
     "test_multimodal_session_memory_regression",
 }
 
@@ -317,11 +325,11 @@ def _collect_subprocess_e2e_files(tests_root: Path) -> set[str]:
             tree = ast.parse(content, filename=str(py_file))
         except SyntaxError:
             # If we cannot parse, fall back to string-based (conservative).
-            e2e_files.add(py_file.name)
+            e2e_files.add(py_file.stem)
             continue
         has_marker = _has_subprocess_e2e_marker_ast(tree)
         if has_marker:
-            e2e_files.add(py_file.name)
+            e2e_files.add(py_file.stem)
     return e2e_files
 
 
@@ -333,10 +341,13 @@ def _has_subprocess_e2e_marker_ast(tree: ast.AST) -> bool:
             for decorator in getattr(node, "decorator_list", []):
                 if _is_subprocess_e2e_decorator(decorator):
                     return True
-        # Check for module-level pytestmark = [pytest.mark.subprocess_e2e]
+        # Check for module-level pytestmark = pytest.mark.subprocess_e2e
+        # or pytestmark = [pytest.mark.subprocess_e2e]
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == "pytestmark":
+                    if _is_subprocess_e2e_decorator(node.value):
+                        return True
                     if isinstance(node.value, ast.List):
                         for elt in node.value.elts:
                             if _is_subprocess_e2e_decorator(elt):
@@ -369,21 +380,23 @@ def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0
         return []
 
     # Skip subprocess_e2e marked files.
-    if file_path.name in _SUBPROCESS_E2E_FILES:
+    file_stem = file_path.stem
+
+    if file_stem in _SUBPROCESS_E2E_FILES:
         return []
 
     # Skip files in the sleep allowlist.
-    if file_path.name in _SLEEP_ALLOWLIST:
+    if file_stem in _SLEEP_ALLOWLIST:
         return []
 
     # Skip files in the I/O allowlist.
-    if file_path.name in _IO_ALLOWLIST:
+    if file_stem in _IO_ALLOWLIST:
         return []
 
     # Skip files in the wall-clock allowlist (legitimate time.monotonic()/
     # time.perf_counter() for single-point measurements, FakeClock
     # comparison, or timing correctness assertions).
-    if file_path.name in _WALL_CLOCK_ALLOWLIST:
+    if file_stem in _WALL_CLOCK_ALLOWLIST:
         return []
 
     try:
