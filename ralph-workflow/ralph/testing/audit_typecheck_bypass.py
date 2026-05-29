@@ -71,7 +71,7 @@ _TYPE_IGNORE_ALLOWLIST: set[tuple[str, str]] = {
 }
 
 # Policy-compliant reason markers (must appear on the same logical line
-# as the # type: ignore annotation).
+# as the type-ignore annotation).
 _VALID_REASON_MARKERS: tuple[str, ...] = (
     "# reason: external library has no type support, see "
     "docs/agents/type-ignore-policy.md#external-library",
@@ -92,10 +92,10 @@ _SKIP_DIRS: frozenset[str] = frozenset({
     "dist",
 })
 
-# Regex: blanket # type: ignore (no error code in brackets).
+# Regex: blanket type-ignore (no error code in brackets).
 _BLANKET_TYPE_IGNORE_RE = re.compile(r"#\s*type\s*:\s*ignore\s*(?:$|[^\[#])")
 
-# Regex: # type: ignore[CODE] with error code.
+# Regex: type-ignore[CODE] with error code.
 _CODE_TYPE_IGNORE_RE = re.compile(r"#\s*type\s*:\s*ignore\s*\[([^\]]+)\]")
 
 # Mypy config keys that weaken type checking.

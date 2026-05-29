@@ -43,6 +43,7 @@ if TYPE_CHECKING:
         Process: Callable[[int], _PsutilProcessLike]
 
         def process_from_pid(self, pid: int) -> _PsutilProcessLike: ...
+        def pid_exists(self, pid: int) -> bool: ...
 
         def process_iter(
             self, attrs: Sequence[str] | None = None

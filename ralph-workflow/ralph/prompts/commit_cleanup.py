@@ -5,7 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL
+from ralph.prompts._commit_diff import commit_cleanup_diff
 from ralph.prompts.commit import _format_submit_artifact_tool_instructions
+from ralph.prompts.materialize_support import (
+    current_prompt_variables as _current_prompt_variables,
+    merged_variables as _merged_variables,
+)
 from ralph.prompts.payload_refs import (
     build_prompt_payload_variables,
     write_payload_to_directory,
@@ -30,14 +35,6 @@ def render_commit_cleanup_prompt(
     session_caps: SessionCapabilities,
 ) -> str:
     """Render the commit cleanup prompt using the commit_cleanup.jinja template."""
-    from ralph.prompts.materialize import (  # noqa: PLC0415
-        _merged_variables,
-        commit_cleanup_diff,
-    )
-    from ralph.prompts.materialize_support import (  # noqa: PLC0415
-        current_prompt_variables as _current_prompt_variables,
-    )
-
     diff = commit_cleanup_diff(workspace_root)
     output_dir = workspace_root / ".agent/tmp/prompt_payloads"
     if worker_namespace:

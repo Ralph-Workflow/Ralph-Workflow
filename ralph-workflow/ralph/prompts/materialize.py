@@ -56,7 +56,12 @@ from ralph.prompts.materialize_support import (
     persist_current_prompt as _persist_current_prompt,
 )
 from ralph.prompts.materialize_support import (
+    merged_variables as _merged_variables,
     phase_payload_variables,
+)
+from ralph.pipeline.phase_entry_cleaner import (
+    clear_phase_entry_drains as _clear_phase_entry_drains,
+    is_fresh_phase_entry,
 )
 from ralph.prompts.payload_refs import (
     sanitize_surrogates as _sanitize_surrogates,
@@ -119,7 +124,7 @@ class PromptPhaseOptions:
 
 def __getattr__(name: str) -> object:
     if name == "MultimodalSidecarEntry":
-        from ralph.prompts._multimodal_sidecar_entry import (  # noqa: PLC0415
+        from ralph.prompts._multimodal_sidecar_entry import (
             MultimodalSidecarEntry as _Entry,
         )
 
@@ -533,17 +538,6 @@ def _render_template_based_prompt(
     )
 
 
-def _merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -> dict[str, str]:
-    return {
-        **base,
-        **capability_template_variables(
-            session_caps.capabilities,
-            session_caps.policy_flags,
-            tool_name_prefix=session_caps.tool_name_prefix,
-        ),
-    }
-
-
 def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolicy) -> str:
     """Render the isolated developer prompt for a single parallel work unit."""
     del policy
@@ -656,13 +650,6 @@ def _prepare_planning_prompt_context(
     # Preserve planning context for loopbacks and resumed passes.
     if not preserve_planning_context:
         # Clear drain artifacts for a genuine fresh planning entry.
-        from ralph.pipeline.phase_entry_cleaner import (  # noqa: PLC0415
-            clear_phase_entry_drains as _clear_phase_entry_drains,
-        )
-        from ralph.pipeline.phase_entry_cleaner import (  # noqa: PLC0415
-            is_fresh_phase_entry,
-        )
-
         if (
             is_fresh_phase_entry(phase, previous_phase, pipeline_policy)
             and artifacts_policy is not None
@@ -1108,6 +1095,3 @@ def _commit_phase_diff(workspace_root: Path) -> str:
     return combined or "(no diff available)"
 
 
-def commit_cleanup_diff(workspace_root: Path) -> str:
-    """Return only the pending commit diff for commit cleanup."""
-    return _pending_diff(workspace_root)

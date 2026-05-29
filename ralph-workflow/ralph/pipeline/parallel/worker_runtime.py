@@ -177,11 +177,9 @@ def execute_agent_effect(
     **opts: object,
 ) -> PipelineEvent:
     """Delegate worker-mode agent execution through the standard runner seam."""
-
     from ralph.pipeline.runner import (  # noqa: PLC0415
         execute_agent_effect as runner_execute_agent_effect,
     )
-
     return runner_execute_agent_effect(effect, config, deps, workspace_scope, **opts)
 
 

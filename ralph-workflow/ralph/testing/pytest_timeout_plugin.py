@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import types
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -24,6 +25,12 @@ from ralph.verify_timeout import (
 if TYPE_CHECKING:
     import pytest
 
+_psutil: types.ModuleType | None
+try:
+    import psutil as _psutil_imported
+    _psutil = _psutil_imported
+except ImportError:
+    _psutil = None
 
 _WATCHDOG_ATTR = "_ralph_suite_watchdog"
 _TIMEOUT_EXIT_CODE = 124
@@ -47,30 +54,29 @@ def _emit_timeout_message(timeout_seconds: float) -> None:
 
 
 def _terminate_descendants() -> None:
-    try:
-        import psutil  # noqa: PLC0415
-    except ImportError:
+    psutil_mod = _psutil
+    if psutil_mod is None:
         return  # psutil not available — cannot terminate descendants
 
     try:
-        current_process = psutil.Process(os.getpid())
+        current_process = psutil_mod.Process(os.getpid())
         descendants = current_process.children(recursive=True)
-    except psutil.Error:
+    except psutil_mod.Error:
         return
 
     for descendant in descendants:
         try:
             descendant.terminate()
-        except psutil.Error:
+        except psutil_mod.Error:
             continue
 
-    _gone, alive = psutil.wait_procs(descendants, timeout=0.2)
+    _gone, alive = psutil_mod.wait_procs(descendants, timeout=0.2)
     for descendant in alive:
         try:
             descendant.kill()
-        except psutil.Error:
+        except psutil_mod.Error:
             continue
-    psutil.wait_procs(alive, timeout=0.2)
+    psutil_mod.wait_procs(alive, timeout=0.2)
 
 
 def _watchdog_main(timeout_seconds: float, cancel_event: threading.Event) -> None:

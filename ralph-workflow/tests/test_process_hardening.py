@@ -17,8 +17,13 @@ from unittest.mock import patch
 
 import pytest
 
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessTerminationError
-from ralph.process.manager._process_manager import LivenessResult, _verify_process_liveness
+from ralph.process.manager import (
+    LivenessResult,
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessTerminationError,
+    verify_process_liveness,
+)
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing.fake_process import (
     FakeImmortalPopen,

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import enum
 import os
 import subprocess
 import threading
@@ -18,6 +17,7 @@ from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
 from ralph.process.manager._process_event import ProcessEvent
+from ralph.process.manager._process_liveness import LivenessResult, verify_process_liveness
 from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
 from ralph.process.manager._process_manager_runtime import loguru_event_listener
 from ralph.process.manager._process_manager_types import (
@@ -40,74 +40,6 @@ from ralph.process.manager._spawn_options import SpawnOptions
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
-
-
-class LivenessResult(enum.Enum):
-    """Result of a process liveness check."""
-
-    ALIVE = "alive"
-    GONE = "gone"
-    ZOMBIE = "zombie"
-    UNKNOWN = "unknown"
-
-
-def _verify_process_liveness(
-    pid: int,
-    *,
-    psutil_mod: object | None = None,
-) -> LivenessResult:
-    """Check whether a PID is still alive, gone, zombie, or unknown.
-
-    On POSIX, uses os.kill(pid, 0) to probe process existence.
-    On Windows, falls back to psutil.pid_exists() if available.
-    Uses psutil for zombie detection when available.
-
-    Does NOT use _SuppressMissingProcess — each exception type is handled
-    explicitly to avoid conflating "process gone" with "no permission".
-
-    Args:
-        pid: Process ID to check.
-        psutil_mod: Optional psutil module-like object for extended checks.
-
-    Returns:
-        LivenessResult indicating the process state.
-    """
-    # Zombie detection via psutil (highest priority — check before os.kill)
-    if psutil_mod is not None:
-        try:
-            proc = psutil_mod.process_from_pid(pid)  # type: ignore[union-attr]
-            status = proc.status()  # type: ignore[union-attr]
-            if status == "zombie":
-                return LivenessResult.ZOMBIE
-        except Exception:
-            # process_from_pid failed — try POSIX fallback below
-            pass
-
-    # POSIX: use os.kill(pid, 0) to check existence
-    if hasattr(os, "kill"):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return LivenessResult.GONE
-        except PermissionError:
-            # Process exists but we lack permission to signal it
-            return LivenessResult.ALIVE
-        except OSError:
-            return LivenessResult.UNKNOWN
-        else:
-            return LivenessResult.ALIVE
-
-    # Windows fallback: use psutil if available
-    if psutil_mod is not None:
-        try:
-            exists = psutil_mod.pid_exists(pid)  # type: ignore[union-attr]
-            if exists:
-                return LivenessResult.ALIVE
-            return LivenessResult.GONE
-        except Exception:
-            return LivenessResult.UNKNOWN
-
-    return LivenessResult.UNKNOWN
 
 
 class ProcessManager:
@@ -476,7 +408,7 @@ class ProcessManager:
             record = self._records.get(pid)
             if record is None or record.status in _TERMINAL_STATUSES:
                 continue
-            liveness = _verify_process_liveness(pid, psutil_mod=self._psutil)
+            liveness = verify_process_liveness(pid, psutil_mod=self._psutil)
             if liveness in (LivenessResult.GONE, LivenessResult.UNKNOWN):
                 self._mark_killed(record, returncode=None, cause="stale_entry_reconciled")
                 logger.debug(f"Stale tracking entry reconciled: PID {pid} no longer exists")
@@ -550,7 +482,7 @@ class ProcessManager:
         grace_period_s: float,
     ) -> None:
         # Pre-kill liveness check
-        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, None, cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -572,7 +504,7 @@ class ProcessManager:
             try:
                 rc = proc.wait(timeout=self.policy.kill_followup_timeout_s)
             except (subprocess.TimeoutExpired, TimeoutError):
-                post_liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+                post_liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
                 if post_liveness == LivenessResult.ZOMBIE:
                     logger.warning(
                         f"Process {record.pid} is zombie after force kill — parent must reap"
@@ -598,7 +530,7 @@ class ProcessManager:
         grace_period_s: float,
     ) -> None:
         # Pre-kill liveness check
-        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.returncode, cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -622,7 +554,7 @@ class ProcessManager:
                     proc.wait(), timeout=self.policy.kill_followup_timeout_s
                 )
             except TimeoutError:
-                post_liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+                post_liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
                 if post_liveness == LivenessResult.ZOMBIE:
                     logger.warning(
                         f"Process {record.pid} is zombie after force kill — parent must reap"
@@ -647,7 +579,7 @@ class ProcessManager:
             return
 
         # Pre-kill liveness check
-        liveness = _verify_process_liveness(record.pid, psutil_mod=psutil_mod)
+        liveness = verify_process_liveness(record.pid, psutil_mod=psutil_mod)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -684,7 +616,7 @@ class ProcessManager:
         if still_alive:
             # Post-kill zombie/liveness check on survivors
             for p in still_alive:
-                pid_liveness = _verify_process_liveness(p.pid, psutil_mod=psutil_mod)
+                pid_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
                 if pid_liveness == LivenessResult.ZOMBIE:
                     logger.warning(
                         f"Process {p.pid} is zombie after force kill — parent must reap"
@@ -710,7 +642,7 @@ class ProcessManager:
             return
 
         # Pre-kill liveness check
-        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.poll(), cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -755,7 +687,7 @@ class ProcessManager:
         if still_alive:
             # Post-kill zombie/liveness check on survivors
             for p in still_alive:
-                pid_liveness = _verify_process_liveness(p.pid, psutil_mod=psutil_mod)
+                pid_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
                 if pid_liveness == LivenessResult.ZOMBIE:
                     logger.warning(
                         f"Process {p.pid} is zombie after force kill — parent must reap"
@@ -780,7 +712,7 @@ class ProcessManager:
         if record.status in _TERMINAL_STATUSES:
             return
         # Pre-kill liveness check
-        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.poll(), cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -801,7 +733,7 @@ class ProcessManager:
             return
 
         # Pre-kill liveness check
-        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.returncode, cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -842,7 +774,7 @@ class ProcessManager:
         rc = proc.returncode
         if still_alive:
             # Post-kill zombie/liveness check
-            post_liveness = _verify_process_liveness(record.pid, psutil_mod=psutil_mod)
+            post_liveness = verify_process_liveness(record.pid, psutil_mod=psutil_mod)
             if post_liveness == LivenessResult.ZOMBIE:
                 logger.warning(
                     f"Process {pid} is zombie after force kill — parent must reap"
@@ -868,7 +800,7 @@ class ProcessManager:
             return
 
         # Pre-kill liveness check
-        liveness = _verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.returncode, cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -906,7 +838,7 @@ class ProcessManager:
             if still_alive:
                 # Post-kill zombie/liveness check
                 for p in still_alive:
-                    post_liveness = _verify_process_liveness(p.pid, psutil_mod=psutil_mod)
+                    post_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
                     if post_liveness == LivenessResult.ZOMBIE:
                         logger.warning(
                             f"Process {p.pid} is zombie after force kill — parent must reap"
@@ -928,7 +860,7 @@ class ProcessManager:
         with contextlib.suppress(ProcessLookupError, OSError):
             proc.kill()
         # Liveness probe: os.kill(pid, 0) raises ProcessLookupError if process is gone
-        probe_result = _verify_process_liveness(record.pid, psutil_mod=None)
+        probe_result = verify_process_liveness(record.pid, psutil_mod=None)
         if probe_result == LivenessResult.GONE:
             # Process is gone - mark killed
             self._mark_killed(record, None)

@@ -1,4 +1,4 @@
-"""Liveness verification tests for _verify_process_liveness helper.
+"""Liveness verification tests for verify_process_liveness helper.
 
 Tests cover all four LivenessResult states (ALIVE, GONE, ZOMBIE, UNKNOWN)
 across POSIX, Windows, and psutil-based detection paths with monkeypatched
@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ralph.process.manager._process_manager import LivenessResult, _verify_process_liveness
+from ralph.process.manager import LivenessResult, verify_process_liveness
 from ralph.testing.fake_process import FakePsutil, FakePsutilProcess
 
 
@@ -23,7 +23,7 @@ from ralph.testing.fake_process import FakePsutil, FakePsutilProcess
 
 def test_liveness_check_alive_process() -> None:
     """os.kill(pid, 0) succeeds → returns ALIVE."""
-    result = _verify_process_liveness(os.getpid(), psutil_mod=None)
+    result = verify_process_liveness(os.getpid(), psutil_mod=None)
     assert result == LivenessResult.ALIVE
 
 
@@ -34,7 +34,7 @@ def test_liveness_check_gone_process() -> None:
         raise ProcessLookupError(pid, sig)
 
     with patch("os.kill", _kill_raises_lookup):
-        result = _verify_process_liveness(99999, psutil_mod=None)
+        result = verify_process_liveness(99999, psutil_mod=None)
     assert result == LivenessResult.GONE
 
 
@@ -44,7 +44,7 @@ def test_liveness_check_zombie_process() -> None:
     fake_psutil = FakePsutil()
     fake_psutil._processes = {1: zombie}
 
-    result = _verify_process_liveness(1, psutil_mod=fake_psutil)
+    result = verify_process_liveness(1, psutil_mod=fake_psutil)
     assert result == LivenessResult.ZOMBIE
 
 
@@ -55,7 +55,7 @@ def test_liveness_check_no_permission() -> None:
         raise PermissionError(pid, sig)
 
     with patch("os.kill", _kill_raises_permission):
-        result = _verify_process_liveness(99999, psutil_mod=None)
+        result = verify_process_liveness(99999, psutil_mod=None)
     assert result == LivenessResult.ALIVE
 
 
@@ -66,13 +66,13 @@ def test_liveness_check_other_os_error() -> None:
         raise OSError("some other error")
 
     with patch("os.kill", _kill_raises_other):
-        result = _verify_process_liveness(99999, psutil_mod=None)
+        result = verify_process_liveness(99999, psutil_mod=None)
     assert result == LivenessResult.UNKNOWN
 
 
 def test_liveness_check_no_psutil_fallback() -> None:
     """psutil=None falls back to os.kill only."""
-    result = _verify_process_liveness(os.getpid(), psutil_mod=None)
+    result = verify_process_liveness(os.getpid(), psutil_mod=None)
     assert result == LivenessResult.ALIVE
 
 
@@ -94,7 +94,7 @@ def test_liveness_check_windows_no_kill() -> None:
 
         with patch("builtins.hasattr", _fake_hasattr):
             # Without psutil, fallback to UNKNOWN
-            result = _verify_process_liveness(1, psutil_mod=None)
+            result = verify_process_liveness(1, psutil_mod=None)
             assert result == LivenessResult.UNKNOWN
 
     # With psutil that has pid_exists
@@ -113,7 +113,7 @@ def test_liveness_check_windows_no_kill() -> None:
         return _orig_hasattr(obj, name)
 
     with patch("builtins.hasattr", _fake_hasattr2):
-        result = _verify_process_liveness(1, psutil_mod=fake_psutil)
+        result = verify_process_liveness(1, psutil_mod=fake_psutil)
         assert result == LivenessResult.ALIVE
 
 
@@ -126,5 +126,5 @@ def test_liveness_check_zombie_takes_priority_over_posix() -> None:
     # Even though os.kill(1, 0) would succeed (process technically exists),
     # zombie status should be returned
     with patch("os.kill", return_value=None):
-        result = _verify_process_liveness(1, psutil_mod=fake_psutil)
+        result = verify_process_liveness(1, psutil_mod=fake_psutil)
     assert result == LivenessResult.ZOMBIE

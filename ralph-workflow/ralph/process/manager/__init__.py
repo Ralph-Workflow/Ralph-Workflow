@@ -10,6 +10,7 @@ from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
 from ralph.process.manager._process_event import ProcessEvent
+from ralph.process.manager._process_liveness import LivenessResult, verify_process_liveness
 from ralph.process.manager._process_manager import ProcessManager
 from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
 from ralph.process.manager._process_manager_types import (
@@ -93,11 +94,13 @@ _set_defaults(
 )
 
 __all__ = [
+    "LivenessResult",
     "ManagedAsyncProcess",
     "ManagedProcess",
     "ManagedPtyProcess",
     "ProcessEvent",
     "ProcessManager",
+    "verify_process_liveness",
     "ProcessManagerPolicy",
     "ProcessRecord",
     "ProcessStatus",

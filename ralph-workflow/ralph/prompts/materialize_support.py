@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
+from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -60,3 +61,15 @@ def current_prompt_variables(
     """Return the prompt variables for the current prompt path."""
     del prompt_content
     return {"PROMPT": "", "PROMPT_PATH": current_prompt_path}
+
+
+def merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -> dict[str, str]:
+    """Merge base template variables with session capability variables."""
+    return {
+        **base,
+        **capability_template_variables(
+            session_caps.capabilities,
+            session_caps.policy_flags,
+            tool_name_prefix=session_caps.tool_name_prefix,
+        ),
+    }
