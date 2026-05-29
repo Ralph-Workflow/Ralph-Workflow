@@ -1,15 +1,15 @@
 # Outcome Execution Board Runner
 
-- Generated: `2026-05-29T23:14:46.402404`
-- Repair needed at start: `True`
-- Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md`
-- Selected lane: `measurement_hold`
+- Generated: `2026-05-30T00:31:27.704864`
+- Repair needed at start: `False`
+- Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md`
+- Selected lane: `manual_outreach_asset_follow_through`
 - Action type: `truth_snapshot_only`
 - Executed lane: `None`
 - Truthful do-now lane available: `False`
-- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md`
+- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
-- Measurement window: Review Codeberg-linked movement within 7 days.
+- Measurement window: Review reply/backlink movement and Codeberg deltas within 7 days.
 - Next truthful checkpoint: `2026-05-31T00:00:00` (directory_secondary_surface_followup)
 - Checkpoint reason: Live directory secondary-surface repair reaches its next review checkpoint.
 
