@@ -1,5 +1,21 @@
 # Outreach Log
 
+## 2026-05-29 18:11 UTC — 2 Telegraph cross-posts + comparison_backlink lane suppression
+
+**Action:** Cross-posted 2 pending blog posts from Ralph-Site to Telegraph:
+1. [The AI Agent Orchestration Category Most Comparison Articles Miss](https://telegra.ph/The-AI-Agent-Orchestration-Category-Most-Comparison-Articles-Miss-05-29) — from `ai-agent-orchestration-landscape-gap-2026.md`
+2. [Multi-Agent Orchestration Patterns: Getting AI Agents to Actually Cooperate](https://telegra.ph/Multi-Agent-Orchestration-Patterns-Getting-AI-Agents-to-Actually-Cooperate-05-29) — from `multi-agent-orchestration-patterns.md`
+
+**Telegraph stats:** 81 total posted records, 2 fresh today. Guard clear, cooldown satisfied. Both URLs return HTTP 200.
+
+**Process repair applied (same run):**
+- Added `comparison_backlink` to `PERMANENTLY_BLOCKED` in `channel_spidering_guard.py` with stop file. 8 prepared PRs, 0 delivery path (no `gh auth login`). This was flagged in the 2026-05-29 18:20 CEST addendum as an unfixed process gap — now closed.
+- Removed `comparison_backlink_outreach` and `stackoverflow_answer` from `ALLOWED_LANES` in `outcome_capability_runner.py`. StackOverflow removed because DDG search is 100% collapsed — no discovery path exists.
+- Changed default fallback from `comparison_backlink_outreach` to `distribution_confirmation_follow_through`.
+- Cleaned all `__pycache__/` bytecode under `agents/marketing/` to prevent silent stale-bytecode crashes.
+
+**Why this lane:** Telegraph cross-post is the sole autonomous distribution lane not permanently blocked. The 2 posts were discovered via the dry-run pass during the last guard check and were confirmed pending. Material distribution, not idle hold.
+
 ## 2026-05-29 07:30 UTC — Nested Analysis Loops Catch Bugs Before They Commit
 
 **Action:** Published blog post `content/blog/nested-analysis-loops-catch-bugs-before-commit.md` (commit `f785097`). Deployed to live at https://ralphworkflow.com/blog/nested-analysis-loops-catch-bugs-before-commit/

@@ -1,6 +1,6 @@
 {
-  "lane": "owned_content",
-  "reason": "No stronger autonomous lane detected.",
+  "lane": "measurement_hold",
+  "reason": "No unpublished repo-native guide remains for owned-content publication, so do not let the selector drift into an owned-content noop; hold for the next truthful execution window instead.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "2 live external marketing action(s) already shipped in the last 6 hours.",

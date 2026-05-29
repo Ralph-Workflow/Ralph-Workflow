@@ -1,0 +1,1 @@
+8 prepared comparison PRs, 0 delivery path. gh auth login missing — cannot submit PRs to GitHub. Prepared-but-undeliverable across 3+ consecutive execution cycles. Structurally identical to the directory submission flood pattern fixed on 2026-05-28. Must not be selected as a default distribution lane until gh auth succeeds.
