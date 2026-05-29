@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""ARCHITECTURALLY RETIRED 2026-05-28 — prepares packets for a permanently-blocked channel.
+No-op.
+"""
 from __future__ import annotations
 
 import json
@@ -6,6 +9,10 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+if __name__ == '__main__':
+    print(json.dumps({'status': 'retired', 'reason': 'Reddit pipeline architecturally retired 2026-05-28'}))
+    sys.exit(0)
 
 ROOT = Path("/home/mistlight/.openclaw/workspace")
 if str(ROOT) not in sys.path:
@@ -232,6 +239,17 @@ def output_path(now: datetime | None = None) -> Path:
 
 
 def main() -> int:
+    # ── Spidering guard: Reddit is permanently blocked — no packet generation ──
+    try:
+        from agents.marketing.channel_spidering_guard import guard_check, guard_record
+        allowed, reason, remaining = guard_check("reddit")
+        if not allowed:
+            guard_record("reddit", ok=False, fingerprint="spidering_guard_rejected")
+            print(json.dumps({"ok": False, "status": "spidering_blocked", "reason": reason, "live_external_action": False}))
+            return 1
+    except ImportError:
+        pass
+
     report = reddit_autopost.latest_report()
     packet, entries = build_packet(report)
     DRAFTS_DIR.mkdir(parents=True, exist_ok=True)

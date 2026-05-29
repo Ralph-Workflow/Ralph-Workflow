@@ -44,17 +44,32 @@ MATERIAL_FILES = [
     "market_intelligence_latest.json",
     "marketing_workflow_audit_latest.json",
     "backlink_status_latest.json",
+    "github_discussions_outreach_state.json",
+    "pypi_conversion_lane_latest.json",
+    "outcome_execution_board_latest.json",
+    "outcome_capability_latest.json",
 ]
+# We also hash the distribution_architecture_guard_pause log count
+# to detect churn loops (same empty board, same guard-pause, no change).
+GUARD_PAUSE_PATTERN = "distribution_architecture_guard_pause"
 
 
 def compute_fingerprint() -> str:
-    """Hash the latest marketing log files to detect material changes."""
+    """Hash the latest marketing log files to detect material changes.
+    Also includes the count of guard-pause logs to detect churn loops."""
     hasher = hashlib.sha256()
     for fname in sorted(MATERIAL_FILES):
         fp = LOG_DIR / fname
         if fp.exists():
             hasher.update(fname.encode())
             hasher.update(fp.read_bytes())
+    # Include guard-pause log count to detect churn (same empty board, same pause, no change)
+    guard_logs = sorted(LOG_DIR.glob("marketing_*-distribution_architecture_guard_pause.json"))
+    hasher.update(f"guard_pause_count={len(guard_logs)}".encode())
+    # Include channel spidering guard state — prevents churn when blocked channels trigger
+    spidering_state = LOG_DIR / "channel_spidering_state.json"
+    if spidering_state.exists():
+        hasher.update(spidering_state.read_bytes())
     return hasher.hexdigest()
 
 

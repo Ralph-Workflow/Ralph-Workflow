@@ -1,5 +1,5 @@
 # Apollo Runtime-Blocker Review Packet
-Generated: 2026-05-29T12:10:12
+Generated: 2026-05-29T12:17:43
 
 ## Why this exists now
 - Apollo follow-up is already due, but the current runtime is blocked before the loop can verify or launch the prepared Codeberg-first sequence.

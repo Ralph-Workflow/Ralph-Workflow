@@ -62,6 +62,7 @@ ALL_MARKETING_CRON_IDS = [
 NON_DISTRIBUTION_EXECUTION_TYPES = {
     'distribution_architecture_repair',
     'distribution_architecture_churn_guard_repair',
+    'distribution_architecture_guard_pause',
     'measurement_hold_follow_through',
     'measurement_hold_churn_guard_repair',
     'measurement_hold_release_reschedule_repair',
@@ -72,7 +73,49 @@ NON_DISTRIBUTION_EXECUTION_TYPES = {
     'independent_verification_hold',
     'self_improvement_verification',
     'churn_guard_follow_through',
+    # Extended from May 28 repair-spike analysis
+    'primary_repo_flat_contact_discovery_repair',
+    'primary_repo_flat_status_churn_guard_repair',
+    'primary_repo_flat_delivery_guard_repair',
+    'measurement_hold_stackoverflow_delivery_guard_repair',
+    'measurement_hold_release_payload_guard_repair',
+    'measurement_hold_truth_fingerprint_repair',
+    'stackoverflow_lane_runtime_repair',
+    'guard_pause_release_boundary_repair',
+    'truth_snapshot_alias_self_heal_repair',
+    'distribution_architecture_guard_pause_truth_repair',
+    'distribution_architecture_conversion_repair',
+    'distribution_lane_latest_truth_repair',
+    'readme_repo_conversion_repair',
+    'reddit_latest_truth_repair',
+    'process_repair_and_new_asset',
+    'apollo_truthfulness_repair',
+    'apollo_cloudflare_truthfulness_repair',
+    'apollo_runtime_truth_repair',
+    'apollo_followup_truth_repair',
 }
+
+# Suffix-based catch-all for any repair not explicitly listed
+_REPAIR_ACTION_SUFFIXES = (
+    "_repair",
+    "_guard_pause",
+    "_churn_guard",
+    "_truth_repair",
+)
+
+
+def _is_non_distribution_action(action_type: str) -> bool:
+    """Return True for any action that is a system repair, not a distribution action.
+
+    Shares logic with run.py's _is_self_repair_action.
+    """
+    action_type = str(action_type).strip()
+    if not action_type:
+        return False
+    if action_type in NON_DISTRIBUTION_EXECUTION_TYPES:
+        return True
+    return any(action_type.endswith(suffix) for suffix in _REPAIR_ACTION_SUFFIXES) or \
+        "_churn_guard_" in action_type
 
 
 def load_state() -> dict:
@@ -124,7 +167,7 @@ def count_artifacts(now: datetime) -> dict[str, int]:
         
         if 'measurement_hold' in action_type or 'measurement_hold' in path.name:
             counts['measurement_hold'] += 1
-        elif action_type in NON_DISTRIBUTION_EXECUTION_TYPES:
+        elif _is_non_distribution_action(action_type):
             counts['non_distribution_execution'] += 1
         elif 'outreach' in action_type or 'submission' in action_type or 'backlink' in action_type or 'apollo' in action_type.lower():
             counts['distribution'] += 1
@@ -157,7 +200,7 @@ def rate_exceeded(counts: dict[str, int]) -> tuple[bool, list[str]]:
 
 
 def churn_ratio_danger(counts: dict[str, int]) -> bool:
-    """Return True if churn artifacts dominate distribution."""
+    """Return True if churn artifacts dominate distribution in either recent or daily windows."""
     if counts['total'] == 0:
         return False
     churn = counts['measurement_hold'] + counts['non_distribution_execution']
@@ -165,6 +208,49 @@ def churn_ratio_danger(counts: dict[str, int]) -> bool:
     if dist == 0 and churn >= 6:
         return True
     if churn > 0 and dist > 0 and (churn / max(dist, 1)) >= 5:
+        return True
+    # Daily cumulative check: even if the 6h window looks fine, the full day
+    # may show a repair-to-distribution imbalance.
+    return _daily_churn_ratio_danger()
+
+
+def _daily_churn_ratio_danger(hours: float = 24) -> bool:
+    """Check 24h cumulative repair-to-distribution ratio.
+
+    Even if the 6h sliding window passes, 30 repairs and 0 distribution actions
+    in a 24h period is a silent failure.
+    """
+    now = datetime.now()
+    cutoff = now.timestamp() - (hours * 3600)
+    churn_24h = 0
+    dist_24h = 0
+    for path in LOG_DIR.glob('marketing_2026-*.json'):
+        if any(t in path.name for t in ('latest', 'workflow_audit', 'loop_runner',
+                'loop_verifier', 'independent_verification', 'momentum_watchdog',
+                'positioning_audit', 'adoption_metrics')):
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime < cutoff:
+            continue
+        try:
+            payload = json.loads(path.read_text())
+            action_type = (
+                (payload.get('chosen_action') or {}).get('type', '')
+                or payload.get('type', '')
+                or payload.get('action_type', '')
+            )
+        except Exception:
+            action_type = ''
+        if 'measurement_hold' in action_type or _is_non_distribution_action(action_type):
+            churn_24h += 1
+        elif 'outreach' in action_type or 'submission' in action_type or 'backlink' in action_type or 'apollo' in action_type.lower():
+            dist_24h += 1
+    if dist_24h == 0 and churn_24h >= 8:
+        return True
+    if churn_24h > 0 and dist_24h > 0 and (churn_24h / max(dist_24h, 1)) >= 4:
         return True
     return False
 
@@ -178,7 +264,7 @@ def pause_crons(cron_ids: list[str], dry_run: bool = False) -> dict:
             continue
         try:
             result = subprocess.run(
-                ['openclaw', 'cron', 'pause', cid],
+                ['/home/mistlight/.bun/bin/openclaw', 'cron', 'disable', cid],
                 capture_output=True, text=True, timeout=10
             )
             results[cid] = 'paused' if result.returncode == 0 else f'error: {result.stderr.strip()[:100]}'
@@ -196,7 +282,7 @@ def kill_crons(cron_ids: list[str], dry_run: bool = False) -> dict:
             continue
         try:
             result = subprocess.run(
-                ['openclaw', 'cron', 'rm', cid],
+                ['/home/mistlight/.bun/bin/openclaw', 'cron', 'rm', cid],
                 capture_output=True, text=True, timeout=10
             )
             results[cid] = 'removed' if result.returncode == 0 else f'error: {result.stderr.strip()[:100]}'

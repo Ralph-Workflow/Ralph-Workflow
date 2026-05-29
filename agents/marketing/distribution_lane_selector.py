@@ -52,12 +52,25 @@ STACKOVERFLOW_LATEST_PATH = LOG_DIR / 'stackoverflow_answer_lane_latest.json'
 STACKOVERFLOW_HANDOFF_LATEST_PATH = DRAFTS_DIR / 'stackoverflow_answer_handoff_packet_latest.md'
 DIRECTORY_CONFIRMATION_EXECUTION_LATEST_PATH = DRAFTS_DIR / 'directory_confirmation_execution_latest.md'
 BACKLINK_STATUS_LATEST_PATH = LOG_DIR / 'backlink_status_latest.json'
-OWNED_CONTENT_SOURCE_CANDIDATES = [
+OWNED_CONTENT_BLOG_DIR = ROOT / 'Ralph-Site' / 'content' / 'blog'
+OWNED_CONTENT_GUIDE_PATHS = [
     ROOT / 'content/guides/good_unattended_task.md',
     ROOT / 'docs/first-task-guide.md',
     ROOT / 'content/guides/review_ai_coding_output_before_merge.md',
     ROOT / 'content/guides/autonomous_ai_workflows_production_reliability.md',
 ]
+
+
+def _owned_content_source_candidates() -> list[Path]:
+    """Discover owned-content source candidates — guides + live blog posts.
+
+    Replaces the old hardcoded OWNED_CONTENT_SOURCE_CANDIDATES so blog posts
+    on the live Ralph-Site are visible to the marketing loop for cross-posting.
+    """
+    candidates: list[Path] = [p for p in OWNED_CONTENT_GUIDE_PATHS if p.exists()]
+    if OWNED_CONTENT_BLOG_DIR.is_dir():
+        candidates.extend(sorted(OWNED_CONTENT_BLOG_DIR.glob('*.md')))
+    return candidates
 LOW_SIGNAL_APOLLO_MARKERS = {
     'record count was 0',
     '0 right after creation',
@@ -1164,7 +1177,7 @@ def _cron_show_payload(job_id: str) -> dict[str, Any]:
         return {}
     try:
         result = subprocess.run(
-            ['openclaw', 'cron', 'show', job_id, '--json'],
+            ['/home/mistlight/.bun/bin/openclaw', 'cron', 'show', job_id, '--json'],
             capture_output=True,
             text=True,
             timeout=5,
@@ -1384,7 +1397,7 @@ def _recent_owned_content_posts(now: datetime, hours: int = 36) -> list[dict[str
 
 def _owned_content_publication_available() -> bool:
     posted = load_posted()
-    for source_path in OWNED_CONTENT_SOURCE_CANDIDATES:
+    for source_path in _owned_content_source_candidates():
         if not source_path.exists():
             continue
         raw = source_path.read_text(encoding='utf-8')

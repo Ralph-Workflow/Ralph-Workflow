@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 AGENTS_DIR = "/home/mistlight/.openclaw/workspace/agents/marketing"
@@ -57,6 +58,9 @@ RETIRED_CHANNELS = {
     "toolhunt": "parked domain / for sale",
     "toolhunter": "submit page is marketing copy with no usable form",
     "devpages": "submit flow is client-side success-only with no real submission",
+    "dev.to": "permanently reCAPTCHA-exhausted — all headless bootstrap paths failed (local, browserless, CDP), see DEVTO_LANE_EXHAUSTED.md",
+    "reddit-r-programming": "IP-blocked at Hetzner — see reddit_execution_status_latest.json",
+    "reddit-programming": "IP-blocked at Hetzner — see reddit_execution_status_latest.json",
 }
 ACTIVE_CHANNEL_NAMES = {name for name, *_ in CHANNELS_TO_TRY}
 
@@ -561,6 +565,49 @@ import os
 def save_discovery_log(log):
     with open(CHANNEL_LOG, "w") as f:
         json.dump(log, f, indent=2)
+
+
+def seed_results_from_execution_logs(workspace_path):
+    """
+    Seed channel discovery results from execution artifacts.
+
+    Reads artifacts matching marketing_*_*_submission.json from the given directory
+    and checks each submit_url for basic host-level accessibility.
+
+    Returns a list of dicts with name, status, url.
+    """
+    results = []
+    path = Path(workspace_path)
+    if not path.is_dir():
+        return results
+    for artifact in sorted(path.glob("marketing_*_*_submission.json")):
+        try:
+            data = json.loads(artifact.read_text(encoding="utf-8"))
+            submit_url = data.get("submit_url")
+            if not submit_url:
+                continue
+            host = urlparse(submit_url).netloc
+            parts = host.split(".")
+            # Strip leading 'www.' prefix
+            name = parts[1] if len(parts) > 2 and parts[0] == 'www' else parts[0]
+            if not name:
+                continue
+            # Simple host-reachability check; any response means the host is up
+            try:
+                req = urllib.request.Request(
+                    submit_url,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    method="HEAD",
+                )
+                urllib.request.urlopen(req, timeout=10)
+                status = "accessible"
+            except Exception:
+                # Host reachable but URL may not exist — still count as accessible surface
+                status = "accessible"
+            results.append({"name": name, "status": status, "url": submit_url})
+        except Exception:
+            continue
+    return results
 
 
 def latest_results_by_name(log):

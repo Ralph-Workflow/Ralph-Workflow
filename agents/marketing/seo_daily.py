@@ -457,28 +457,97 @@ def serp_features_for_keyword(keyword: str) -> dict:
 
 # ── Content gap analysis ─────────────────────────────────────────────────────
 
+def _fetch_sitemap_urls() -> list[str]:
+    """Retrieve all URLs from the site sitemap (cached per run)."""
+    # Per-run cache to avoid repeated HTTP calls
+    if _fetch_sitemap_urls._cache is not None:
+        return _fetch_sitemap_urls._cache
+    urls: list[str] = []
+    try:
+        status, body = http_get(f"{SITE_URL}/sitemap.xml")
+        if status == 200:
+            urls = list(set(re.findall(r"<loc>\s*(https?://[^<]+)\s*</loc>", body, re.I)))
+    except Exception:
+        pass
+    _fetch_sitemap_urls._cache = urls
+    return urls
+_fetch_sitemap_urls._cache = None
+
+
+def _check_url_for_keywords(url: str, keywords_lower: list[str]) -> set[str]:
+    """Fetch a URL and return which keywords appear in its content (title + meta + H1 + H2 + body text)."""
+    found: set[str] = set()
+    try:
+        status, body = http_get(url)
+        if status != 200:
+            return found
+        # Extract all searchable text: title, meta description, H1, H2, and first 8KB of body
+        text_parts = [
+            _extract_title(body),
+            _extract_meta(body, "description"),
+        ]
+        for tag in ("h1", "h2"):
+            for m in re.finditer(rf"<{tag}[^>]*>(.*?)</{tag}>", body, re.I | re.S):
+                text_parts.append(m.group(1))
+        # Strip HTML tags from body for keyword matching
+        body_text = re.sub(r"<[^>]+>", " ", body[:8192])
+        text_parts.append(body_text)
+        combined = " ".join(text_parts).lower()
+        for kw in keywords_lower:
+            if kw in combined:
+                found.add(kw)
+    except Exception:
+        pass
+    return found
+
+
 def content_gap_analysis(keywords: list[str], competitors: list[str]) -> dict:
-    """Identify content gaps: keywords competitors rank for that we don't."""
-    # We can't do full content gap without APIs, so we do a lightweight version:
-    # check which priority keywords our site does/doesn't mention in title
+    """Identify content gaps: keywords our site doesn't cover anywhere.
+
+    Scans the homepage plus all sitemap URLs (blog posts, pages, docs) to
+    determine which priority keywords are covered by at least one page.
+    Falls back to homepage-only scan if sitemap is unreachable.
+    """
+    keywords_lower = [kw.lower() for kw in keywords]
+    covered: set[str] = set()
+
+    # Always scan homepage first (fast, always available)
     homepage_status, homepage_body = http_get(SITE_URL)
-    gaps = []
-    covered = []
     if homepage_status == 200:
         title = _extract_title(homepage_body).lower()
         desc = _extract_meta(homepage_body, "description").lower()
         h1_match = re.search(r"<h1[^>]*>(.*?)</h1>", homepage_body, re.I | re.S)
         h1_text = h1_match.group(1).lower() if h1_match else ""
         combined = f"{title} {desc} {h1_text}"
-        for kw in keywords:
-            if kw.lower() in combined:
-                covered.append(kw)
-            else:
-                gaps.append(kw)
-    else:
-        gaps = keywords
-        covered = []
-    return {"gaps": gaps, "covered": covered, "coverage_pct": round(len(covered) / len(keywords) * 100, 1) if keywords else 0}
+        for kw in keywords_lower:
+            if kw in combined:
+                covered.add(kw)
+
+    # Scan sitemap URLs — prioritize blog posts (highest keyword relevance), cap at 50 fetches
+    sitemap_urls = _fetch_sitemap_urls()
+    # Sort: blog URLs first (highest keyword density), then everything else
+    sitemap_urls_sorted = sorted(sitemap_urls, key=lambda u: 0 if '/blog/' in u else 1)
+    remaining = {kw for kw in keywords_lower if kw not in covered}
+    scanned = 0
+    for url in sitemap_urls_sorted[:50]:
+        if not remaining:
+            break
+        found = _check_url_for_keywords(url, list(remaining))
+        covered |= found
+        remaining -= found
+        scanned += 1
+
+    gaps = [kw for kw in keywords if kw.lower() not in covered]
+    covered_list = [kw for kw in keywords if kw.lower() in covered]
+    coverage_pct = round(len(covered_list) / len(keywords) * 100, 1) if keywords else 0
+
+    return {
+        "gaps": gaps,
+        "covered": covered_list,
+        "coverage_pct": coverage_pct,
+        "scan_method": "homepage+sitemap" if sitemap_urls else "homepage-only",
+        "urls_scanned": 1 + scanned,
+    }
 
 
 # ── Write daily SEO report ────────────────────────────────────────────────────

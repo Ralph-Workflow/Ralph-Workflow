@@ -395,7 +395,7 @@ def generate_comparison_page(competitor_slug: str, competitor_info: dict, monito
     else:
         lines.extend([
             f"{competitor_info['name']} focuses on {competitor_info['positioning']}.",
-            f"Ralph Workflow's focus is **multi-agent phase routing with cost arbitrage and policy-defined orchestration**.",
+            f"Ralph Workflow's focus is **multi-agent phase routing with Cost arbitrage and policy-defined orchestration**.",
             "",
             "Ralph Workflow's key differentiator is the ability to compose multiple agents (Claude, Codex,",
             "OpenCode) into a single unattended pipeline where each phase uses the most cost-effective model.",

@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
+"""ARCHITECTURALLY RETIRED 2026-05-28."""
 from __future__ import annotations
 
 import json
 import re
+import sys
+
+if __name__ == '__main__':
+    print(json.dumps({'status': 'retired', 'reason': 'Reddit pipeline architecturally retired 2026-05-28'}))
+    sys.exit(0)
 import subprocess
 import sys
 from datetime import datetime, timedelta

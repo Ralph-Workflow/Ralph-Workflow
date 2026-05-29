@@ -90,7 +90,8 @@ def log_result(result: dict, api_key: str | None) -> None:
     log_path = LOG_DIR / f"marketing_{ts}_devto_bootstrap.json"
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log = {"timestamp": datetime.now().isoformat(), "action_type": "devto_lane_bootstrap",
-           "status": "executed", "ok": result.get("ok", False), "live_external_action": True,
+           "status": "executed", "ok": result.get("ok", False),
+           "live_external_action": bool(result.get("ok", False)),
            "article_url": result.get("url"), "error": result.get("error"),
            "api_key_stored": bool(api_key), "codeberg_cta": True, "github_cta": True}
     log_path.write_text(json.dumps(log, indent=2, default=str))
@@ -158,6 +159,17 @@ async def try_login(page, email, username, password):
 
 
 async def main():
+    # ── Spidering guard: dev.to is permanently blocked (reCAPTCHA) ──
+    try:
+        from agents.marketing.channel_spidering_guard import guard_check, guard_record
+        allowed, reason, remaining = guard_check("dev.to")
+        if not allowed:
+            print(f"[Dev.to Local Bootstrap] BLOCKED: {reason}")
+            guard_record("dev.to", ok=False, fingerprint="spidering_guard_rejected")
+            return
+    except ImportError:
+        pass
+
     async with async_playwright() as p:
         # Stealth browser context
         browser = await p.chromium.launch(

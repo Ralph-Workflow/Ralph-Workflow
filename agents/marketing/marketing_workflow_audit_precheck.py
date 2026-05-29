@@ -151,7 +151,7 @@ def cooldown_allows_trigger(decision: Decision, now_ts: float | None = None) -> 
 
 
 def find_job_id(job_name: str) -> str:
-    payload = json.loads(subprocess.check_output(['openclaw', 'cron', 'list', '--json'], text=True))
+    payload = json.loads(subprocess.check_output(['/home/mistlight/.bun/bin/openclaw', 'cron', 'list', '--json'], text=True))
     for job in payload.get('jobs', []):
         if job.get('name') == job_name:
             return str(job['id'])
@@ -160,7 +160,7 @@ def find_job_id(job_name: str) -> str:
 
 def trigger_target(job_name: str) -> tuple[bool, str]:
     job_id = find_job_id(job_name)
-    proc = subprocess.run(['openclaw', 'cron', 'run', job_id], capture_output=True, text=True)
+    proc = subprocess.run(['/home/mistlight/.bun/bin/openclaw', 'cron', 'run', job_id], capture_output=True, text=True)
     detail = ((proc.stdout or '') + '\n' + (proc.stderr or '')).strip()
     ok = proc.returncode == 0 or 'already-running' in detail or '"ok": true' in detail
     return ok, detail[:1200]

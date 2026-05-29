@@ -35,6 +35,15 @@
       "description": "Refreshes the Codeberg-primary Apollo launch packet only when a non-zero list is verified, keeping launch gates separate from live-send proof.",
       "schedule_hint": "After each successful Apollo list verification refresh",
       "command": "python3 agents/marketing/apollo_sequence_launcher.py"
+    },
+    {
+      "name": "marketing-telegraph-crosspost-oneshot-20260529",
+      "description": "One-shot: cross-post 2 remaining uncrossposted Ralph-Site blogs to Telegraph after 6h spidering cooldown clears (2026-05-29 04:00 \u2192 10:00 UTC). Posts: ai-agent-tool-loop-debugging-guide, offline-ai-coding-local-llm-guide.",
+      "schedule": "2026-05-29T10:10:00+00:00",
+      "kind": "oneshot",
+      "command": "python3 agents/marketing/run_posting.py",
+      "auto_remove_after_run": true,
+      "transient": true
     }
   ]
 }

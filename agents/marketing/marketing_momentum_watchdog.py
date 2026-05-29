@@ -308,7 +308,12 @@ def main() -> int:
 
     now = datetime.now().astimezone()
     STATUS_DIR.mkdir(parents=True, exist_ok=True)
-    subprocess.run([sys.executable, str(RETRO)], capture_output=True, text=True)
+
+    # Skip reddit_retrospective when Reddit is architecturally dead — saves compute
+    reddit_exec_status = latest_reddit_execution_status(now)
+    reddit_permanently_dead = reddit_exec_status.get('status') == 'execution_blocked_permanent'
+    if not reddit_permanently_dead:
+        subprocess.run([sys.executable, str(RETRO)], capture_output=True, text=True)
 
     report = newest_report()
     post_ts = newest_post_time()
@@ -332,7 +337,7 @@ def main() -> int:
     monitor_signal = report_signal(report)
     healthy_report, healthy_report_age_hours = newest_healthy_report_time(now)
     reddit_monitor_runtime = latest_reddit_monitor_runtime(now)
-    reddit_execution_status = latest_reddit_execution_status(now)
+    reddit_execution_status = reddit_exec_status  # reuse early call above
     measurement_hold_window = marketing_run._latest_measurement_hold_window(now)
     if measurement_hold_window is not None:
         try:
@@ -348,6 +353,7 @@ def main() -> int:
         and float(reddit_monitor_runtime['age_hours']) <= 2
     )
     active_measurement_hold = measurement_hold_window is not None
+    execution_blocked_permanent = reddit_permanently_dead  # from early check above
     execution_blocked = (
         reddit_execution_status.get('status') in {'network_security_blocked', 'execution_blocked', 'not_logged_in'}
         and reddit_execution_status.get('age_hours') is not None
@@ -358,11 +364,18 @@ def main() -> int:
         and reddit_execution_status.get('age_hours') is not None
         and float(reddit_execution_status['age_hours']) <= 12
     )
-    if execution_blocked:
+    if execution_blocked_permanent:
+        # Reddit is architecturally dead from this runtime — Hetzner IP-blocked, Tor-blocked.
+        # Do not waste compute on monitoring, retrospective, or reporting.
+        monitor_signal = 'dead_channel'
+    elif execution_blocked:
         monitor_signal = 'blocked'
 
-    if stale_report and not recent_runtime_skip and not active_measurement_hold and not execution_blocked:
+    if stale_report and not recent_runtime_skip and not active_measurement_hold and not execution_blocked and not execution_blocked_permanent:
         actions.append('reddit_monitor_stale')
+    elif monitor_signal == 'dead_channel':
+        # Permanently dead — no monitoring, no repair, no watch list noise
+        pass
     elif monitor_signal == 'blocked':
         # If Reddit is blocked but a replacement non-Reddit distribution execution has already
         # shipped, keep this as a watchpoint instead of failing the whole momentum loop again.
@@ -462,9 +475,15 @@ def main() -> int:
         if 'reddit_monitor_degraded' not in watch_actions:
             watch_actions.append('reddit_monitor_degraded')
 
+    # Permanently dead channel: do not promote to actions or watch_actions.
+    if execution_blocked_permanent:
+        if 'reddit_channel_blocked' in watch_actions:
+            watch_actions.remove('reddit_channel_blocked')
+        if 'reddit_monitor_degraded' in watch_actions:
+            watch_actions.remove('reddit_monitor_degraded')
     # A blocked Reddit lane is a genuine signal, but once a replacement distribution path has
     # already shipped it becomes a managed watchpoint rather than a same-run momentum failure.
-    if 'reddit_channel_blocked' in watch_actions and not shipped_replacement_execution:
+    elif 'reddit_channel_blocked' in watch_actions and not shipped_replacement_execution:
         watch_actions.remove('reddit_channel_blocked')
         actions.append('reddit_channel_blocked')
 
@@ -547,7 +566,9 @@ def main() -> int:
         extra = ''
         if adoption_flat:
             extra = ' Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated.'
-        if 'reddit_channel_blocked' in actions:
+        if execution_blocked_permanent:
+            extra += ' Reddit is architecturally dead from this runtime (Hetzner IP-blocked, Tor-blocked). Do not spend cycles on Reddit monitoring or retrospection.'
+        elif 'reddit_channel_blocked' in actions:
             extra += ' Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble.'
         if 'reddit_monitor_degraded' in actions:
             extra += ' Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity.'
@@ -585,7 +606,7 @@ def main() -> int:
             extra.append('primary repo adoption is still flat against the stated marketing goal')
         if 'apollo_channel_blocked' in watch_actions:
             extra.append('Apollo outbound remains blocked')
-        if 'reddit_channel_blocked' in watch_actions:
+        if 'reddit_channel_blocked' in watch_actions and not execution_blocked_permanent:
             extra.append('Reddit is blocked from this environment, but a replacement distribution path has already shipped')
         if 'reddit_monitor_degraded' in watch_actions:
             extra.append('Reddit monitoring coverage is degraded')

@@ -113,11 +113,22 @@ Return JSON only with this schema:
 
 
 def _extract_json_payload(text: str) -> str:
-    fenced_matches = re.findall(r'```json\s*(\{.*?\})\s*```', text, flags=re.DOTALL)
+    # Greedy match inside fenced blocks — nested JSON objects need greedy .*
+    fenced_matches = re.findall(r'```json\s*(\{.*\})\s*```', text, flags=re.DOTALL)
     for candidate in reversed(fenced_matches):
         try:
             json.loads(candidate)
             return candidate
+        except json.JSONDecodeError:
+            continue
+
+    # Also try without json tag but with fence
+    fenced_matches = re.findall(r'```\s*(\{.*\})\s*```', text, flags=re.DOTALL)
+    for candidate in reversed(fenced_matches):
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict) and 'status' in parsed:
+                return candidate
         except json.JSONDecodeError:
             continue
 
@@ -135,27 +146,49 @@ def _extract_json_payload(text: str) -> str:
         if isinstance(parsed, dict) and 'status' in parsed:
             return candidate
 
-    raise RuntimeError(f'opencode review returned no standalone review JSON object: {text}')
+    raise RuntimeError(f'opencode review returned no standalone review JSON object: {text[-2000:]}')
 
 
 def run_review() -> dict:
     ensure_acpx()
     prompt_file = WORKSPACE / 'agents' / 'docs_quality' / '.agentic_review_prompt.txt'
     prompt_file.write_text(build_prompt(), encoding='utf-8')
-    proc = subprocess.run(
-        [str(ACPX_CMD), 'opencode', 'exec', '--file', str(prompt_file)],
-        cwd=WORKSPACE,
-        capture_output=True,
-        text=True,
-    )
-    combined = (proc.stdout + proc.stderr).strip()
-    if proc.returncode != 0:
-        raise RuntimeError(f'opencode review failed: {combined}')
-    payload = _extract_json_payload(combined)
-    try:
-        return json.loads(payload)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f'opencode review returned malformed JSON payload: {payload}') from exc
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            proc = subprocess.run(
+                [str(ACPX_CMD), 'opencode', 'exec', '--file', str(prompt_file)],
+                cwd=WORKSPACE,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            last_error = RuntimeError(f'opencode review timed out on attempt {attempt+1}')
+            continue
+        combined = (proc.stdout + proc.stderr).strip()
+        try:
+            payload = _extract_json_payload(combined)
+            return json.loads(payload)
+        except RuntimeError as exc:
+            last_error = exc
+            continue
+        except json.JSONDecodeError:
+            last_error = RuntimeError(f'opencode review returned malformed JSON payload on attempt {attempt+1}')
+            continue
+
+    # Fallback: use existing on-disk JSON if it exists and is valid
+    if JSON_REPORT.exists():
+        try:
+            existing = json.loads(JSON_REPORT.read_text(encoding='utf-8'))
+            if isinstance(existing, dict) and 'status' in existing:
+                print(f'[agentic-review] WARNING: all opencode attempts failed, falling back to existing artifact. Last error: {last_error}', file=__import__('sys').stderr)
+                return existing
+        except Exception:
+            pass
+
+    raise last_error or RuntimeError('opencode review failed with no fallback')
 
 
 def write_reports(result: dict) -> None:

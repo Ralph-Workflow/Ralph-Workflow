@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
+"""ARCHITECTURALLY RETIRED 2026-05-28."""
 from __future__ import annotations
 
 import json
 import re
+import sys as _sys
+
+if __name__ == '__main__':
+    print(json.dumps({'status': 'retired', 'reason': 'Reddit pipeline architecturally retired 2026-05-28'}))
+    _sys.exit(0)
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -86,6 +92,18 @@ def load_rows() -> tuple[list[dict], int]:
 
 
 def main() -> int:
+    # ── Spidering guard: Reddit is permanently blocked (IP at Hetzner) ──
+    try:
+        from agents.marketing.channel_spidering_guard import guard_check, guard_record
+        allowed, reason, remaining = guard_check("reddit")
+        if not allowed:
+            guard_record("reddit", ok=False, fingerprint="spidering_guard_rejected")
+            payload = {"ok": False, "status": "spidering_blocked", "reason": reason, "live_external_action": False}
+            print(json.dumps(payload))
+            return 1
+    except ImportError:
+        pass
+
     rows, filtered_structural = load_rows()
     OUT_MD.parent.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.now().isoformat()

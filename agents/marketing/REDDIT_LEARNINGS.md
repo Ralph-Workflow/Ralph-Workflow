@@ -14,7 +14,7 @@ Use this as required context before drafting, recommending, or posting anything 
 - Obvious test-post language makes the account look robotic.
 - Overexplaining the system in abstract terms makes the post sound promotional.
 - Browserless/headless Reddit flows are unreliable and trigger blocks.
-- Repeating the same opening across different subreddits — detectable as templatespam.
+- Repeating the same opening across different subreddits - detectable as templatespam.
 
 ## ⚠️ Openings to never reuse (2026-05-19)
 The following opening has been used verbatim across multiple subreddits and is now stale:
@@ -23,19 +23,19 @@ The following opening has been used verbatim across multiple subreddits and is n
 This phrase or its close variants must NOT be used as a comment opener. If you are drafting a new comment and catch yourself reaching for this phrasing, pivot immediately to one of the fresh openings below.
 
 ## Fresh opening templates (use one per subreddit, rotate)
-Use these as starting points — adapt to the specific thread, but do not reuse the same opening across subreddits.
+Use these as starting points - adapt to the specific thread, but do not reuse the same opening across subreddits.
 
-**Opening A — scope/review angle (good for r/ClaudeCode, r/AItools):**
+**Opening A - scope/review angle (good for r/ClaudeCode, r/AItools):**
 > "What I kept getting wrong early on was treating 'the agent said it was done' as the same thing as 'the job is actually done.' The distinction matters most when you come back to the result the next morning."
 
-**Opening B — phase boundaries angle (good for r/programming, r/Python, r/devops):**
-> "The part that bites me most is not choosing which tool to run — it is deciding who reviews what the tool produced. Phase boundaries matter more than model choice in any multi-agent setup."
+**Opening B - phase boundaries angle (good for r/programming, r/Python, r/devops):**
+> "The part that bites me most is not choosing which tool to run - it is deciding who reviews what the tool produced. Phase boundaries matter more than model choice in any multi-agent setup."
 
-**Opening C — drift/trust angle (good for r/entrepreneur, r/startups, r/webdev):**
-> "The overnight run problem is usually not the agent — it is the lack of a clear stop condition. Without a bounded definition of done, you wake up to either nothing or something you cannot trust."
+**Opening C - drift/trust angle (good for r/entrepreneur, r/startups, r/webdev):**
+> "The overnight run problem is usually not the agent - it is the lack of a clear stop condition. Without a bounded definition of done, you wake up to either nothing or something you cannot trust."
 
-**Opening D — mixed-tool handoff (good for r/codex, r/ClaudeCode):**
-> "Switching between Claude Code and Codex sounds like a workflow upgrade until you realize the real bottleneck is never the tool switch — it is knowing when to stop and what you are handing off."
+**Opening D - mixed-tool handoff (good for r/codex, r/ClaudeCode):**
+> "Switching between Claude Code and Codex sounds like a workflow upgrade until you realize the real bottleneck is never the tool switch - it is knowing when to stop and what you are handing off."
 
 Rule: no opening from this list may appear in more than one subreddit in the same audit window.
 
@@ -288,14 +288,14 @@ After each Reddit monitoring pass or live post:
 - Before posting, compare against the last 3 logged bodies for **opening move**, **concept cadence**, and **product-mention placement**.
 - Treat Reddit as selective distribution, not quota work: if only 2-3 current threads are true RalphWorkflow mention fits, say that clearly.
 
-## New lessons — 2026-05-18 (15:15 CEST)
+## New lessons - 2026-05-18 (15:15 CEST)
 ### What worked
 - Threads about **cleanup noise**, **visible finish state**, and **bounded autonomy** still map best to RalphWorkflow when the answer stays plain and useful first.
 - Re-reading full prior comment bodies continues to catch repetition that title-only review misses.
 - The site's plain-language frame still fits best: **no babysitting**, **what changed**, **would you merge it?**, **reviewable result**.
 
 ### What did not work
-- The search pool is now saturated enough that 5–10 shortlist-worthy threads can exist while only 2–3 are real RalphWorkflow mention fits.
+- The search pool is now saturated enough that 5-10 shortlist-worthy threads can exist while only 2-3 are real RalphWorkflow mention fits.
 - Worktree/setup threads keep surfacing as strong market signal but weak outreach targets.
 - Repetition risk still comes from **body logic rhythm** as much as wording reuse.
 
@@ -305,25 +305,25 @@ After each Reddit monitoring pass or live post:
 - Keep product mentions out of tactical git/worktree/help threads unless the workflow-value case is unusually natural.
 - Before posting, compare against the last 3 logged bodies for **opening move**, **paragraph order**, **concept cadence**, and **where the product mention lands**.
 
-## Site language additions — 2026-05-18 (16:15 CEST)
+## Site language additions - 2026-05-18 (16:15 CEST)
 Reviewing live ralphworkflow.com against REDDIT_LEARNINGS shows the site has sharpened some marketing language that is not yet reflected in learnings. The direction is unchanged, but these specific phrases should be adopted in future Reddit drafting:
 
-- **"finishes the job"** — stronger than "reviewable result" alone; direct promise of completion
-- **"Plan → Build → Verify"** — named three-phase flow; useful shorthand when describing the architecture
-- **"Other AI tools give you a start. Ralph Workflow gives you a finish."** — the comparison frame; effective in trust/review threads
-- **"Start the job and close the laptop"** — visceral "no babysitting" variant; captures the unattended promise in four words
-- **"What you can ship tonight"** — action-oriented "tonight" framing; tighter than "first finished result tonight"
-- **"Install in under five minutes — first finished result ready tonight"** — speed + overnight promise combined
+- **"finishes the job"** - stronger than "reviewable result" alone; direct promise of completion
+- **"Plan → Build → Verify"** - named three-phase flow; useful shorthand when describing the architecture
+- **"Other AI tools give you a start. Ralph Workflow gives you a finish."** - the comparison frame; effective in trust/review threads
+- **"Start the job and close the laptop"** - visceral "no babysitting" variant; captures the unattended promise in four words
+- **"What you can ship tonight"** - action-oriented "tonight" framing; tighter than "first finished result tonight"
+- **"Install in under five minutes - first finished result ready tonight"** - speed + overnight promise combined
 
-Site positioning is consistent with May 17 findings: core pain (babysitting, midnight sessions), three-phase flow, PR-review framing, and "would you merge it?" evaluation all intact. No directional shift — only refinement.
+Site positioning is consistent with May 17 findings: core pain (babysitting, midnight sessions), three-phase flow, PR-review framing, and "would you merge it?" evaluation all intact. No directional shift - only refinement.
 
-## Site language update — 2026-05-18 (22:15 CEST)
+## Site language update - 2026-05-18 (22:15 CEST)
 Second review tonight confirms May 18 16:15 findings are live. Additionally observed:
 
-- **New problem statement block** — "Sound familiar? You write a task. The AI starts. You answer a prompt. Then another. It hallucinates. You correct it. You're still there at midnight babysitting a tool that was supposed to save you time." — more visceral failure framing than prior versions; good for skeptical or pain-led threads.
-- **"What you can ship tonight" examples** — nine specific task types (feature, testing, refactor, internal tool, cleanup, API, documentation, migration, bug fix) now listed on the page; concrete and actionable framing worth mirroring.
-- **Three phases now numbered and explicit** — Sharpen → Build/verify/fix → Land reviewable result. The "Plan → Build → Verify" shorthand from the earlier update is now confirmed live with numbered phases.
-- **"Ralph Workflow does not replace your AI tool — it gives it a clearer finish line"** — useful clarification that counters the "another tool to learn" objection.
+- **New problem statement block** - "Sound familiar? You write a task. The AI starts. You answer a prompt. Then another. It hallucinates. You correct it. You're still there at midnight babysitting a tool that was supposed to save you time." - more visceral failure framing than prior versions; good for skeptical or pain-led threads.
+- **"What you can ship tonight" examples** - nine specific task types (feature, testing, refactor, internal tool, cleanup, API, documentation, migration, bug fix) now listed on the page; concrete and actionable framing worth mirroring.
+- **Three phases now numbered and explicit** - Sharpen → Build/verify/fix → Land reviewable result. The "Plan → Build → Verify" shorthand from the earlier update is now confirmed live with numbered phases.
+- **"Ralph Workflow does not replace your AI tool - it gives it a clearer finish line"** - useful clarification that counters the "another tool to learn" objection.
 
 No directional change. Core positioning, three-phase flow, overnight promise, PR-review framing, and "would you merge it?" evaluation remain intact and consistent with all prior learnings.
 
@@ -394,26 +394,26 @@ No directional change. Core positioning, three-phase flow, overnight promise, PR
 - Add **approval drag / double-confirmation** and **archaeology after long runs** as explicit scan lenses next to trust, cleanup, handoff, and fail-closed behavior.
 - Treat **credible discussion opportunities** and **credible RalphWorkflow mention fits** as separate numbers every pass; today there can be 5-10 worth reading and only 0-2 worth mentioning RalphWorkflow in.
 - Skip product mentions by default in threads that are mainly about **approval UX**, **mobile approvals**, or **checkpoint cleanup** unless the finish-state value case is unusually natural.
-- Before posting, compare against the last 3 logged bodies for **opening move**, **mini-template cadence**, and **product-mention placement** — not just exact phrase reuse.
+- Before posting, compare against the last 3 logged bodies for **opening move**, **mini-template cadence**, and **product-mention placement** - not just exact phrase reuse.
 - Favor fresh replies built around **what stops the loop**, **what changed**, **what passed**, and **what would you merge** over builder/reviewer framing by default.
 
-## Fresh openings — REPLACE stale handoff/diff cadence (2026-05-19)
+## Fresh openings - REPLACE stale handoff/diff cadence (2026-05-19)
 
 The current short-comment shape is dead: **handoff opener → phase ownership → readable diff/checks → stale assumptions → finish state**. Every recent comment uses it. Replace with one of these per subreddit, adapted to the thread:
 
-**Opening E — visceral failure story (good for approval/stall threads in r/ClaudeCode, r/AI_Agents):**
-> "The pattern I see most is: you write a task, the agent starts, you answer a prompt, then another, it hallucinates, you correct it, and you are still there at midnight babysitting a tool that was supposed to save you time. The fix is not a better prompt — it is a clearer finish line."
+**Opening E - visceral failure story (good for approval/stall threads in r/ClaudeCode, r/AI_Agents):**
+> "The pattern I see most is: you write a task, the agent starts, you answer a prompt, then another, it hallucinates, you correct it, and you are still there at midnight babysitting a tool that was supposed to save you time. The fix is not a better prompt - it is a clearer finish line."
 
-**Opening F — "what did you actually ship?" challenge (good for r/programming, r/Python, r/devops):**
-> "The overnight run question is usually not 'which agent should run longer' — it is 'what will I actually be able to review in the morning.' Most setups answer the first question and completely skip the second."
+**Opening F - "what did you actually ship?" challenge (good for r/programming, r/Python, r/devops):**
+> "The overnight run question is usually not 'which agent should run longer' - it is 'what will I actually be able to review in the morning.' Most setups answer the first question and completely skip the second."
 
-**Opening G — finish-line contrast, soft (good for r/codex, r/ClaudeCode):**
-> "Most tooling talk focuses on the start — which model, which context window, which parallel branch. The part that actually determines whether you close the laptop is the finish: what changed, what ran, what still looks off. That is where the real workflow problem lives."
+**Opening G - finish-line contrast, soft (good for r/codex, r/ClaudeCode):**
+> "Most tooling talk focuses on the start - which model, which context window, which parallel branch. The part that actually determines whether you close the laptop is the finish: what changed, what ran, what still looks off. That is where the real workflow problem lives."
 
-**Opening H — bounded-cost / fail-closed (good for r/entrepreneur, r/startups, r/AI_Agents):**
-> "The overnight run I regret most was not the one that failed — it was the one that seemed to succeed. No visible diff, no clear receipt, just a quiet feeling that something had happened. Bounded cost with a reviewable result would have caught it."
+**Opening H - bounded-cost / fail-closed (good for r/entrepreneur, r/startups, r/AI_Agents):**
+> "The overnight run I regret most was not the one that failed - it was the one that seemed to succeed. No visible diff, no clear receipt, just a quiet feeling that something had happened. Bounded cost with a reviewable result would have caught it."
 
-Rule: no opening from this list may appear in more than one subreddit in the same audit window. Do not mix E/F/G/H into the old handoff/diff skeleton — these are replacements, not supplements.
+Rule: no opening from this list may appear in more than one subreddit in the same audit window. Do not mix E/F/G/H into the old handoff/diff skeleton - these are replacements, not supplements.
 
 ## New lessons - 2026-05-19 (09:42 CEST)
 ### What worked
@@ -612,7 +612,7 @@ Rule: no opening from this list may appear in more than one subreddit in the sam
 - If a later forced rerun is materially thinner than an earlier same-day pass, treat it as **degraded telemetry**, not as a fresh signal that opportunities disappeared.
 - Keep the hard fail-closed rule on posting whenever blocked-query count rises and the rerun breadth drops below the healthier same-day baseline.
 
-## Structural changes — 2026-05-28 (10:30 CEST)
+## Structural changes - 2026-05-28 (10:30 CEST)
 
 ### Telegraph pipeline retired
 - All 20 live Telegraph posts across 10+ days show 0-1 views each. The channel is dead.
@@ -629,9 +629,51 @@ Rule: no opening from this list may appear in more than one subreddit in the sam
   - spec-driven AI agent
 - All 5 return 200 on the live site. Sitemap grew from 81 → 86 URLs.
 
-### Reddit cadence — state confirmed
+## New lessons — 2026-05-29 (09:50 CEST)
+### What worked (or held)
+- The preserved shortlist from the May 28 11:19 CEST pass (42 scanned / 4 shortlisted) correctly survived three subsequent passes without false-positive opportunities being invented — the fail-closed rule is structurally effective.
+- Competitor analysis ran and updated independently today (May 29), and the market intelligence surface (8 competitors monitored, comparison pages live) has not drifted.
+- The shortlist is correctly aging: threads #3 and #4 are now 8+ days old and should be dropped from future passes on freshness grounds.
+
+### What did not work
+- Total provider collapse continues into its second day. DuckDuckGo web_search 100% blocked (all 4+ queries returned bot-detection). Reddit direct fetch 403-blocked (same IP block since May 23). Local `reddit_monitor.py` remains unimportable.
+- No fresh retrieval in 48+ hours. The last usable pass was 2026-05-28 11:19 CEST. Both subsequent May 28 passes and this May 29 pass produced exactly 0 usable results.
+- The surviving shortlist is now stale enough that even restored coverage tomorrow would probably surface the same 4 aging threads as the best available.
+
+### Wording and selection lessons
+- Drop threads from the shortlist when age exceeds 5 days for question-led threads, 7 days for discussion threads. Threads #3 (11 days) and #4 (8 days) should not be carried forward.
+- After 48+ hours of zero retrieval, the monitor should admit that Reddit is structurally inaccessible rather than pretending partial coverage. The research value of the preserved shortlist is now negligible.
+- Add a hard age-eviction rule: if a thread has been in the shortlist for 3+ consecutive passes without fresh activity, drop it rather than carrying it indefinitely.
+
+### New process rule
+- When search provider collapse exceeds 48 hours, the monitor should produce a brief report confirming the outage and stop re-reporting the same stale shortlist verbatim. If retrieval is fully blocked for 72+ hours, the monitor should self-suspend and flag a structural block for review.
+
+## New lessons - 2026-05-28 (15:42 CEST)
+### What worked
+- Preserving the healthier earlier same-day pass (11:19 CEST, ok=4) as the fallback truth instead of letting a total-coverage-collapse later pass (ok=0) overwrite the day's market picture - this is the correct pattern when telemetry degrades mid-day.
+- Cross-search of non-Reddit sources surfaced valuable adjacent market intelligence: Cloudflare's AI Code Review orchestration (validates orchestration-first approach for review), agent-guardrails MCP merge-gate project (validates pre-merge check demand), and multiple unattended Claude Code blog posts (category language hardening fast).
+- GitHub Discussions remains the only identified autonomous lane that is still unused and unblocked - worth scoping.
+
+### What did not work
+- Search coverage reached the worst point so far: **DuckDuckGo fully blocked on 6/6 queries** and Reddit **403 on 4/4 direct fetches**. Earlier partial passes are now the only usable source, and they are hours stale.
+- The local `reddit_monitor.py --force-refresh` remains OOM-killed and unrecoverable from this runtime.
+- No new shortlist threads were added this pass; the surviving 4 are all carried forward from the 11:19 CEST pass.
+
+### Wording and selection lessons
+- The four shortlist threads from the earlier pass are holding steady as discussion opportunities but remain **medium-low** mention-fit. No thread justifies forcing a RalphWorkflow mention even if posting were operational.
+- Cloudflare's AI Code Review blog is directly adjacent to RalphWorkflow's positioning (CI-native orchestration for AI code review) - worth citing in future positioning if the thread is about review orchestration.
+- agent-guardrails (GitHub MCP merge-gate) validates market demand for what RalphWorkflow already does in the verify phase - useful positioning defensive when threads compare merge-gate features.
+- davidloor.com + openhelm.ai unattended Claude Code content posts are category competitors - the market language around "unattended Claude Code" is hardening with competitor content. RalphWorkflow should differentiate on the finish-state/merge-review angle rather than pure "unattended Claude Code" SEO.
+- GitHub Discussions should be scoped next cycle as the next autonomous distribution lane. Current state: available, unblocked, completely unused.
+
+### New process rule
+- When web_search provider coverage fully collapses mid-day, preserve the healthier earlier-same-day pass as the market truth and do **not** let a zero-result pass overwrite it.
+- Add a non-Reddit market-intelligence scan to the monitor pass: competitor blog posts, GitHub projects, and adjacent tool announcements that validate or challenge RalphWorkflow positioning.
+- Keep the hard fail-closed posting gate even when coverage is temporarily restored - mention-fit across the surviving shortlist did not improve, so a hypothetical posting pass would still produce low-quality distribution.
+
+### Reddit cadence - state confirmed
 - Structural cadence confirmed broken across all recent posts (4-paragraph shape: contrast opener → handoff framing → proof bundle → product close)
-- Posting suspended — fail-closed enforced. Monitoring continues degraded (1-3 blocked queries per pass).
+- Posting suspended - fail-closed enforced. Monitoring continues degraded (1-3 blocked queries per pass).
 - Reddit recovery path: structural rewrite package exists at `drafts/2026-05-22_reddit_structural_rewrite.md` but no autonomous execution path exists without browserless access.
 
 ### Remaining blocked lanes (2026-05-28)

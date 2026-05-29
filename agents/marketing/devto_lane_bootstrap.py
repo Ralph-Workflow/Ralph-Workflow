@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-Create a new Dev.to account (email-based) and publish the first RalphWorkflow article.
+Dev.to lane bootstrap — create account and publish first article.
 
-This creates a genuinely new autonomous distribution lane that:
-1. Creates a fresh Dev.to account via email
-2. Verifies the email (Mailnesia)
-3. Publishes a RalphWorkflow article
-4. Stores the API key for future use
+HARD GUARDRAILS (May 28 audit):
+- reCAPTCHA blocks headless signup from this IP. This script exists for
+  the day a human solves the CAPTCHA or the runtime IP clears.
+- MAX 3 lifetime attempts; then write a permanent stop file.
+- MIN 6 hours between attempts.
+- Credentials loaded from accounts/devto_creds.json; NEVER hardcoded.
+- If called from a cron job: bail immediately unless --force with a
+  verified unblocked IP.
 
-Run: python3 agents/marketing/devto_lane_bootstrap.py [--dry-run]
+Run: python3 agents/marketing/devto_lane_bootstrap.py [--dry-run|--status]
 """
 
 import json
@@ -17,17 +20,84 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 ROOT = Path('/home/mistlight/.openclaw/workspace')
 CREDS_PATH = ROOT / 'accounts' / 'devto_creds.json'
 OUTPUT_PATH = Path('/tmp/devto_bootstrap_result.json')
+ATTEMPT_LOG_PATH = ROOT / 'agents/marketing/logs/devto_bootstrap_attempts.json'
+STOP_FILE_PATH = ROOT / 'agents/marketing/logs/devto_permanently_blocked.txt'
 
-# New email-based account credentials (fresh, not Apple OAuth)
-DEVTO_EMAIL = 'ralphworkflow+dev26@mailnesia.com'
-DEVTO_USERNAME = 'ralphworkflow'
-DEVTO_PASSWORD = 'jO9mo1UiIXw1Fm7R!X'  # Same password as existing account attempt
-DEVTO_DISPLAY_NAME = 'Ralph Workflow'
+MAX_LIFETIME_ATTEMPTS = 3
+ATTEMPT_COOLDOWN_HOURS = 6
+
+
+def _load_creds() -> dict | None:
+    """Load Dev.to credentials from file. Never return hardcoded credentials."""
+    if CREDS_PATH.exists():
+        try:
+            return json.loads(CREDS_PATH.read_text(encoding='utf-8'))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return None
+
+
+def _check_stop_file() -> bool:
+    """Return True if Dev.to bootstrapping is permanently blocked."""
+    if STOP_FILE_PATH.exists():
+        content = STOP_FILE_PATH.read_text().strip()
+        if content:
+            return True
+    return False
+
+
+def _load_attempt_log() -> dict:
+    if ATTEMPT_LOG_PATH.exists():
+        try:
+            return json.loads(ATTEMPT_LOG_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {'attempts': [], 'total': 0, 'last_result': None}
+
+
+def _save_attempt_log(log: dict) -> None:
+    ATTEMPT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ATTEMPT_LOG_PATH.write_text(json.dumps(log, indent=2, default=str))
+
+
+def _can_attempt() -> tuple[bool, str]:
+    """Return (can_proceed, reason)."""
+    if _check_stop_file():
+        return False, 'permanently_blocked_by_stop_file'
+    log = _load_attempt_log()
+    if log['total'] >= MAX_LIFETIME_ATTEMPTS:
+        reason = f'lifetime_attempts_exhausted ({log["total"]}/{MAX_LIFETIME_ATTEMPTS})'
+        STOP_FILE_PATH.write_text(
+            f'Dev.to bootstrapping permanently stopped after {log["total"]} failed attempts. '
+            f'ReCAPTCHA blocks headless signup from this IP. Human intervention required.\n'
+            f'Stopped at: {datetime.now(timezone.utc).isoformat()}\n'
+        )
+        return False, reason
+    if log['attempts']:
+        last_ts = datetime.fromisoformat(log['attempts'][-1]['timestamp'].replace('Z', '+00:00'))
+        if datetime.now(timezone.utc) - last_ts < timedelta(hours=ATTEMPT_COOLDOWN_HOURS):
+            remaining = ATTEMPT_COOLDOWN_HOURS - (datetime.now(timezone.utc) - last_ts).total_seconds() / 3600
+            return False, f'cooldown_active ({remaining:.1f}h remaining)'
+    return True, 'ok'
+
+
+def _record_attempt(result: dict) -> None:
+    log = _load_attempt_log()
+    log['attempts'].append({
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'ok': result.get('ok', False),
+        'error': result.get('error', ''),
+    })
+    log['total'] = len(log['attempts'])
+    log['last_result'] = result.get('ok', False)
+    _save_attempt_log(log)
+
 
 # Article content
 ARTICLE_TITLE = 'How to Know When Your AI Coding Agent Is Actually Done'
@@ -393,30 +463,71 @@ const fs = require('fs');
 """
 
 
+def _show_status() -> int:
+    """Show current Dev.to bootstrap status."""
+    log = _load_attempt_log()
+    creds = _load_creds()
+    can, reason = _can_attempt()
+    print('=== Dev.to Bootstrap Status ===')
+    print(f'Attempts used: {log["total"]}/{MAX_LIFETIME_ATTEMPTS}')
+    print(f'Permanently blocked: {_check_stop_file()}')
+    print(f'Can attempt now: {can} ({reason})')
+    print(f'API key exists: {bool(creds and creds.get("api_key"))}')
+    if log['attempts']:
+        print('Recent attempts:')
+        for a in log['attempts'][-3:]:
+            ok_str = 'OK' if a['ok'] else 'FAIL'
+            print(f'  [{a["timestamp"][:19]}] {ok_str}: {a.get("error", "")[:80]}')
+    return 0
+
+
 def main() -> int:
+    if '--status' in sys.argv:
+        return _show_status()
+
     dry_run = '--dry-run' in sys.argv
 
     if dry_run:
         print('[DRY RUN] Would bootstrap Dev.to lane with new account')
-        return 0
+        can, reason = _can_attempt()
+        print(f'Guard check: can={can}, reason={reason}')
+        return 0 if can else 1
 
-    # Check if we already have a working API key
-    existing_creds = {}
-    if CREDS_PATH.exists():
-        existing_creds = json.loads(CREDS_PATH.read_text(encoding='utf-8'))
-    
-    if existing_creds.get('api_key') and '--force' not in sys.argv:
-        print(f"API key already exists: {existing_creds['api_key'][:8]}...{existing_creds['api_key'][-4:]}")
+    # ── Guardrails ──────────────────────────────────────────────────
+    can, reason = _can_attempt()
+    if not can:
+        print(f'BLOCKED: {reason}')
+        print('Dev.to headless signup is blocked by reCAPTCHA from this IP.')
+        print('Human intervention required: solve the CAPTCHA manually,')
+        print('or run from an unblocked IP with --force to bypass cooldown.')
+        return 1
+
+    if _check_stop_file():
+        print('FATAL: Dev.to bootstrapping is permanently blocked. See:')
+        print(f'  {STOP_FILE_PATH}')
+        return 1
+
+    # Load credentials from file only
+    creds = _load_creds()
+    if creds and creds.get('api_key'):
+        print(f"API key already exists: {creds['api_key'][:8]}...{creds['api_key'][-4:]}")
         print('Use --force to re-create')
-        return 0
+        if '--force' not in sys.argv:
+            return 0
 
+    if not creds:
+        print('ERROR: No Dev.to credentials found at', CREDS_PATH)
+        print('Create accounts/devto_creds.json with: email, username, password, display_name')
+        return 1
+
+    # ── Execute bootstrap ───────────────────────────────────────────
     cookies_path = Path('/tmp/devto_cookies.json')
     script = JS_BOOTSTRAP.replace('OUTPUT', json.dumps(str(OUTPUT_PATH)))
     script = script.replace('COOKIES_FILE', json.dumps(str(cookies_path)))
-    script = script.replace('EMAIL', json.dumps(DEVTO_EMAIL))
-    script = script.replace('USERNAME', json.dumps(DEVTO_USERNAME))
-    script = script.replace('NAME', json.dumps(DEVTO_DISPLAY_NAME))
-    script = script.replace('PASS', json.dumps(DEVTO_PASSWORD))
+    script = script.replace('EMAIL', json.dumps(creds.get('email', '')))
+    script = script.replace('USERNAME', json.dumps(creds.get('username', '')))
+    script = script.replace('NAME', json.dumps(creds.get('display_name', '')))
+    script = script.replace('PASS', json.dumps(creds.get('password', '')))
     script = script.replace('TITLE', json.dumps(ARTICLE_TITLE))
     script = script.replace('BODY', json.dumps(ARTICLE_BODY))
     script = script.replace('TAGS', json.dumps(ARTICLE_TAGS))
@@ -435,6 +546,7 @@ def main() -> int:
 
     if OUTPUT_PATH.exists():
         data = json.loads(OUTPUT_PATH.read_text())
+        _record_attempt(data)
         print(f'\nResult: ok={data.get("ok")}, step={data.get("step")}')
         if data.get('api_key'):
             print(f'API key: {data["api_key"][:8]}...{data["api_key"][-4:]}')
@@ -444,17 +556,15 @@ def main() -> int:
             print(f'Error: {data["error"]}')
 
         if data.get('ok') and data.get('api_key'):
-            # Save updated creds
-            creds = {
-                'email': DEVTO_EMAIL,
-                'username': DEVTO_USERNAME,
-                'password': DEVTO_PASSWORD,
-                'api_key': data['api_key'],
-                'created_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
-            }
+            # Save updated creds (keep existing, add api_key)
+            creds['api_key'] = data['api_key']
+            creds['created_at'] = datetime.now(timezone.utc).isoformat()
             CREDS_PATH.parent.mkdir(parents=True, exist_ok=True)
             CREDS_PATH.write_text(json.dumps(creds, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
             print(f'\nSUCCESS: Saved Dev.to credentials with API key')
+            # Clear stop file if we somehow succeeded
+            if STOP_FILE_PATH.exists():
+                STOP_FILE_PATH.unlink()
             return 0
         elif data.get('ok'):
             print(f'\nPartial success: account created/used but no API key or article yet')
@@ -463,6 +573,7 @@ def main() -> int:
             print(f'\nFAILED: {data.get("error", "Unknown error")}')
             return 1
 
+    _record_attempt({'ok': False, 'error': 'No output file produced'})
     print('\nFAILED: No result file')
     return 1
 

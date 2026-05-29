@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""ARCHITECTURALLY RETIRED 2026-05-28."""
+import json as _json
+import sys as _sys
+
+if __name__ == '__main__':
+    print(_json.dumps({'status': 'retired', 'reason': 'Reddit pipeline architecturally retired 2026-05-28'}))
+    _sys.exit(0)
+
 """
 reddit_praw_reply.py — PRAW reply helper for reddit_autopost.py
 

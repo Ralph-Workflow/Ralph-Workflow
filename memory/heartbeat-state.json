@@ -1,0 +1,14 @@
+{
+  "lastChecks": {
+    "marketing_outcome_runner": 1748437265
+  },
+  "lastCronRuns": {
+    "marketing_outcome_capability_runner": {
+      "time": "2026-05-28T12:17:00Z",
+      "lane": "manual_outreach_asset_follow_through",
+      "artifact": "drafts/2026-05-28_manual_outreach_asset_follow_through.md",
+      "fresh_targets_prepared": ["ComputingForGeeks"],
+      "comparison_queue_prepared_count": 8
+    }
+  }
+}

@@ -88,8 +88,23 @@ def is_docs_owned_issue(issue: dict) -> bool:
     )
 
 
+def is_unblocker_owned_issue(issue: dict) -> bool:
+    name = str(issue.get('name') or '')
+    job_id = str(issue.get('job_id') or '')
+    path = str(issue.get('path') or '')
+    owner_domain = str(issue.get('owner_domain') or '')
+    blocked_by = [str(item) for item in (issue.get('blocked_by') or [])]
+    return (
+        owner_domain == 'unblocker'
+        or 'blocked-channel-recovery' in name
+        or 'blocked-channel-recovery' in job_id
+        or '/agents/unblocker/' in path
+        or any('unblocker' in str(item) for item in blocked_by)
+    )
+
+
 def is_external_owned_issue(issue: dict) -> bool:
-    return is_marketing_owned_issue(issue) or is_docs_owned_issue(issue)
+    return is_marketing_owned_issue(issue) or is_docs_owned_issue(issue) or is_unblocker_owned_issue(issue)
 
 
 def architecture_runtime_health_blockers(payload: dict) -> tuple[list[dict], list[dict]]:

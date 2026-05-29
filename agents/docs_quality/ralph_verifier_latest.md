@@ -3,7 +3,7 @@
 Status: independently verified pass
 
 Timestamp:
-- 2026-05-28 10:07 UTC
+- 2026-05-29 10:07 UTC
 
 ## Pre-verification results
 ```
@@ -16,7 +16,7 @@ DOCS_EDITORIAL_OK
 AGENTIC
 {
   "status": "pass",
-  "summary": "Clean positioning throughout the canonical route. Each surface has a clear job, no internal mechanics leak onto top-level pages, the README\u2192START_HERE\u2192docs/README journey is coherent, and promoted next-click pages reinforce the same story instead of fighting it.",
+  "summary": "Docs system is clean, focused, and aligned with positioning. README \u2192 START_HERE \u2192 docs/README works as one coherent route. No top-level surfaces leak internal plumbing. Promoted next-click pages reinforce the same story. The user should not need to repeat these instructions.",
   "loopHealthy": true,
   "criteria": {
     "positioning": "pass",
@@ -29,24 +29,16 @@ AGENTIC
   "mustFix": [],
   "strongestEvidence": [
     {
-      "path": "README.md (repo root)",
-      "reason": "Leads with 'operating system for autonomous coding' tagline, positions as AI agent orchestrator with simple-yet-composable core, ships strong default, cleanly defers to public route. Exactly what the positioning doc asks for."
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'operating system for autonomous coding', frames as orchestrator, explains simple-core/complex-composition, defines clear audience fit/non-fit, comparison table differentiates without internal plumbing, includes engineering-practice dependency section."
     },
     {
-      "path": "START_HERE.md",
-      "reason": "Result-first framing ('judge by what software does now and what checks ran'), good/bad task list, clean install steps, no internal plumbing. Perfect first-run page."
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Opens with Codeberg primary notice, shortest honest first run, clean good/bad task framing, result-oriented success criteria, routes naturally into docs map."
     },
     {
-      "path": "docs/README.md",
-      "reason": "Proper switchboard with three clear routes, explicitly tells users 'keep proof secondary,' links to product-framing pages that reinforce the same central positioning. No stale framing."
-    },
-    {
-      "path": "docs/reviewable-output.md",
-      "reason": "Explicitly scopes itself as 'supporting proof... not the main product pitch.' Evidence hierarchy (working behavior \u2192 real checks \u2192 written scope \u2192 supporting artifacts) matches the positioning doc's evaluation order exactly."
-    },
-    {
-      "path": "docs/ai-agent-orchestration-cli.md",
-      "reason": "Cleanly frames the comparison question around workflow comprehensibility at scale. 'Simple at the center, stronger in composition, useful before customization.' Reinforces rather than competes with the main journey."
+      "path": "github-mirror/docs/README.md",
+      "reason": "Curated switchboard with clear user-oriented routing, explicit 'keep proof secondary' section self-aware about positioning risk, routes to pages that reinforce the same story."
     }
   ],
   "shouldUserNeedToRepeatThis": false
@@ -67,7 +59,7 @@ DOCS_EDITORIAL_OK
 AGENTIC
 {
   "status": "pass",
-  "summary": "Clean positioning throughout the canonical route. Each surface has a clear job, no internal mechanics leak onto top-level pages, the README\u2192START_HERE\u2192docs/README journey is coherent, and promoted next-click pages reinforce the same story instead of fighting it.",
+  "summary": "Docs system is clean, focused, and aligned with positioning. README \u2192 START_HERE \u2192 docs/README works as one coherent route. No top-level surfaces leak internal plumbing. Promoted next-click pages reinforce the same story. The user should not need to repeat these instructions.",
   "loopHealthy": true,
   "criteria": {
     "positioning": "pass",
@@ -80,24 +72,16 @@ AGENTIC
   "mustFix": [],
   "strongestEvidence": [
     {
-      "path": "README.md (repo root)",
-      "reason": "Leads with 'operating system for autonomous coding' tagline, positions as AI agent orchestrator with simple-yet-composable core, ships strong default, cleanly defers to public route. Exactly what the positioning doc asks for."
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'operating system for autonomous coding', frames as orchestrator, explains simple-core/complex-composition, defines clear audience fit/non-fit, comparison table differentiates without internal plumbing, includes engineering-practice dependency section."
     },
     {
-      "path": "START_HERE.md",
-      "reason": "Result-first framing ('judge by what software does now and what checks ran'), good/bad task list, clean install steps, no internal plumbing. Perfect first-run page."
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Opens with Codeberg primary notice, shortest honest first run, clean good/bad task framing, result-oriented success criteria, routes naturally into docs map."
     },
     {
-      "path": "docs/README.md",
-      "reason": "Proper switchboard with three clear routes, explicitly tells users 'keep proof secondary,' links to product-framing pages that reinforce the same central positioning. No stale framing."
-    },
-    {
-      "path": "docs/reviewable-output.md",
-      "reason": "Explicitly scopes itself as 'supporting proof... not the main product pitch.' Evidence hierarchy (working behavior \u2192 real checks \u2192 written scope \u2192 supporting artifacts) matches the positioning doc's evaluation order exactly."
-    },
-    {
-      "path": "docs/ai-agent-orchestration-cli.md",
-      "reason": "Cleanly frames the comparison question around workflow comprehensibility at scale. 'Simple at the center, stronger in composition, useful before customization.' Reinforces rather than competes with the main journey."
+      "path": "github-mirror/docs/README.md",
+      "reason": "Curated switchboard with clear user-oriented routing, explicit 'keep proof secondary' section self-aware about positioning risk, routes to pages that reinforce the same story."
     }
   ],
   "shouldUserNeedToRepeatThis": false

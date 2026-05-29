@@ -300,6 +300,40 @@ def build_verification(now: datetime | None = None) -> dict:
 
 def main() -> int:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    # Guard short-circuit: Apollo portal is Cloudflare-blocked in this environment. The
+    # Playwright login always fails. Weekly Monday check still runs, but if the blocker
+    # condition is unchanged (and it is — Cloudflare auth is a permanent structural
+    # blocker), produce a minimal payload and exit without a browser attempt.
+    # If APOLLO_PASSWORD is set in the future, resume full verification.
+    import os
+    if not os.environ.get('APOLLO_PASSWORD'):
+        payload = {
+            'timestamp': datetime.now().astimezone().replace(microsecond=0).isoformat(),
+            'result': {
+                'status': 'apollo_cloudflare_blocked',
+                'outcome_ready': False,
+                'live_external_action': False,
+                'record_count': 0,
+                'sequence_name': None,
+                'needs_live_verification': False,
+                'runtime_blocker_status': 'Cloudflare auth blocks Apollo portal access; APOLLO_PASSWORD not set',
+                'final_url': None,
+                'notes': ['Guard short-circuit: APOLLO_PASSWORD not set — Cloudflare-blocked, skipping browser attempt. Set APOLLO_PASSWORD to resume full verification.'],
+                'evidence': [],
+                'ok': False,
+            },
+            'post_verification_refresh': {'ok': True, 'refreshed': [], 'errors': []},
+        }
+        log_path = LOG_DIR / f"marketing_{datetime.now().astimezone().strftime('%Y-%m-%d_%H%M%S')}_apollo_outbound_verification.json"
+        log_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+        OUTPUT_MD.write_text(
+            '# Apollo Outbound Verification\n\n'
+            f'- Timestamp: `{payload["timestamp"]}`\n'
+            '- Status: `apollo_cloudflare_blocked` (guard short-circuit)\n'
+            '- APOLLO_PASSWORD not set — skipping browser attempt\n',
+            encoding='utf-8',
+        )
+        return 0
     payload = build_verification()
     log_path = LOG_DIR / f"marketing_{datetime.now().astimezone().strftime('%Y-%m-%d_%H%M%S')}_apollo_outbound_verification.json"
     log_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')

@@ -6,13 +6,13 @@
   "escalationRequired": false,
   "currentIncidentId": null,
   "consecutiveVerifierFailures": 0,
-  "totalVerifierFailures": 49,
-  "lastFailureAtUtc": "2026-05-28T09:37:58.622515+00:00",
+  "totalVerifierFailures": 67,
+  "lastFailureAtUtc": "2026-05-29T08:48:59.000915+00:00",
   "lastFailureReason": "candidate pass reached but independent stop approval is still missing: signoff fingerprint does not match current docs state",
-  "lastFailureDocsStateFingerprint": "53a01fb5bc936b96",
-  "lastHealthyAtUtc": "2026-05-28T10:07:29.177105+00:00",
-  "lastHealthyDocsStateFingerprint": "53a01fb5bc936b96",
-  "lastIndependentStopApprovedAtUtc": "2026-05-28T09:38:26Z",
-  "lastIndependentStopApprovedFingerprint": "53a01fb5bc936b96",
-  "lastIndependentStopApprovedBy": "ralph-independent-stop-approver (independent subagent)"
+  "lastFailureDocsStateFingerprint": "909617ed2f3a76e6",
+  "lastHealthyAtUtc": "2026-05-29T10:07:05.458993+00:00",
+  "lastHealthyDocsStateFingerprint": "af4eacd0e6b425ca",
+  "lastIndependentStopApprovedAtUtc": "2026-05-29T08:55:00.000000+00:00",
+  "lastIndependentStopApprovedFingerprint": "909617ed2f3a76e6",
+  "lastIndependentStopApprovedBy": "ralph-independent-stop-approver (isolated subagent)"
 }

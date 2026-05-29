@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
+"""ARCHITECTURALLY RETIRED 2026-05-28."""
 from __future__ import annotations
 
 import argparse
 import base64
+import json as _json
+import sys as _sys
+
+if __name__ == '__main__':
+    print(_json.dumps({'status': 'retired', 'reason': 'Reddit pipeline architecturally retired 2026-05-28'}))
+    _sys.exit(0)
 import json
 import os
 import re
@@ -779,6 +786,17 @@ def post_comment(thread_url: str, body: str, note: str, dry_run: bool = False, m
 
 
 def main() -> int:
+    # ── Spidering guard: Reddit is permanently blocked ──
+    try:
+        from agents.marketing.channel_spidering_guard import guard_check, guard_record
+        allowed, reason, remaining = guard_check("reddit")
+        if not allowed:
+            guard_record("reddit", ok=False, fingerprint="spidering_guard_rejected")
+            print(json.dumps({"ok": False, "status": "spidering_blocked", "reason": reason, "live_external_action": False}))
+            return 1
+    except ImportError:
+        pass
+
     parser = argparse.ArgumentParser()
     parser.add_argument("url")
     parser.add_argument("--body-file", required=True)

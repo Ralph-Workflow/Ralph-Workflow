@@ -5868,6 +5868,7 @@ class MarketingLoopRunnerTests(unittest.TestCase):
         }
         script_results['marketing_loop_independent_verify.py'] = SimpleNamespace(returncode=1, stdout='{"verdict":"fail"}', stderr='')
         script_results['marketing_loop_verifier.py'] = SimpleNamespace(returncode=1, stdout='{"ok":false}', stderr='')
+        script_results['outcome_execution_board_runner.py'] = SimpleNamespace(returncode=0, stdout='{}', stderr='')
 
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir) / 'runner.json'
@@ -5947,10 +5948,11 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
                  patch.object(marketing_momentum_watchdog, 'ADOPTION_PATH', adoption_path), \
                  patch.object(marketing_momentum_watchdog, 'AUDIT_PATH', audit_path), \
                  patch.object(marketing_momentum_watchdog, 'APOLLO_STATUS_PATH', apollo_status), \
-                 patch.object(marketing_momentum_watchdog, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_status), \
                  patch.object(marketing_momentum_watchdog, 'RUNNER_PATH', runner_path), \
                  patch.object(marketing_momentum_watchdog, 'LOG_JSONL', reddit_jsonl), \
-                 patch.object(marketing_momentum_watchdog, 'RETRO', retro_path):
+                 patch.object(marketing_momentum_watchdog, 'RETRO', retro_path), \
+                 patch('agents.marketing.material_change_gate.should_run', return_value=(True, None)), \
+                 patch.object(marketing_momentum_watchdog.subprocess, 'run', return_value=None):
                 rc = marketing_momentum_watchdog.main()
 
             return rc, json.loads(status_path.read_text(encoding='utf-8'))

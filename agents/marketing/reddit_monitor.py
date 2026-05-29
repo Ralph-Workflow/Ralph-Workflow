@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""ARCHITECTURALLY RETIRED 2026-05-28 — Reddit is IP-blocked at Hetzner Helsinki.
+Tor also blocked. No proxy path exists from this runtime.
+
+This script is kept for reference but should not be run from this host.
+All cron/scheduled invocations should route through GitHub Discussions instead.
+"""
 from __future__ import annotations
 
 import argparse
@@ -15,6 +21,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
+
+# Hard retire from this runtime — no proxy path exists
+_REDDIT_RETIRED = True
+if __name__ == '__main__' and _REDDIT_RETIRED:
+    print(json.dumps({'status': 'retired', 'reason': 'IP-blocked at Hetzner Helsinki, no proxy path', 'retired': '2026-05-28'}, indent=2))
+    sys.exit(0)
 
 ROOT = Path('/home/mistlight/.openclaw/workspace')
 if str(ROOT) not in sys.path:
@@ -851,9 +863,48 @@ def render_report(shortlisted: list[Candidate], rejected: list[Candidate], attem
     return '\n'.join(lines) + '\n'
 
 
-def _is_globally_cooled_down() -> bool:
-    """Check if a recent post was made — skip monitor if within GLOBAL_COOLDOWN_MINUTES."""
+REDDIT_MONITOR_MIN_INTERVAL_MINUTES = 45
+REDDIT_MONITOR_BLOCKED_INTERVAL_MINUTES = 480  # 8h when last report was IP-blocked
+
+
+def _last_monitor_was_blocked() -> bool:
+    """Return True if the most recent monitor report shows IP-blocked status."""
     try:
+        report_path = SEARCH_DIR / 'reddit_monitor_latest.md'
+        if not report_path.exists():
+            return False
+        text = report_path.read_text(encoding='utf-8').lower()
+        return any(m in text for m in [
+            'reddit is ip-blocked',
+            'search collapse',
+            'fully blocked via bot-detection',
+            'ok=0',
+            'coverage collapsed',
+        ])
+    except OSError:
+        return False
+
+
+def _is_globally_cooled_down() -> bool:
+    """Check if a recent post was made — skip monitor if within cooldown.
+
+    Uses 45min cooldown normally, 8h when the last report was IP-blocked.
+    When IP-blocked, uses the monitor report mtime (not the autopost state
+    file) because blocked monitors never trigger autopost state updates.
+    """
+    from datetime import datetime, timezone
+    try:
+        # First check the monitor report mtime — this is the authoritative
+        # cooldown source, especially when IP-blocked (no autopost updates).
+        report_path = SEARCH_DIR / 'reddit_monitor_latest.md'
+        if report_path.exists():
+            report_mtime = datetime.fromtimestamp(report_path.stat().st_mtime, tz=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - report_mtime).total_seconds() / 60
+            if _last_monitor_was_blocked():
+                return elapsed < REDDIT_MONITOR_BLOCKED_INTERVAL_MINUTES
+            return elapsed < REDDIT_MONITOR_MIN_INTERVAL_MINUTES
+
+        # Fallback: use autopost state file
         state_path = Path(__file__).parent / "logs/reddit_autopost_state.json"
         if not state_path.exists():
             return False
@@ -862,17 +913,16 @@ def _is_globally_cooled_down() -> bool:
         last_str = state.get("last_attempt_at", "")
         if not last_str:
             return False
-        # cooldown_skip means the autoposter itself was in cooldown
         if state.get("last_attempt_status") == "cooldown_skip":
             return True
-        # If last post was recent, skip to avoid redundant zero-output runs
-        from datetime import datetime, timezone
         last_ts = last_str.replace("Z", "+00:00")
         last_dt = datetime.fromisoformat(last_ts)
         if last_dt.tzinfo is None:
             last_dt = last_dt.replace(tzinfo=timezone.utc)
         elapsed_minutes = (datetime.now(timezone.utc) - last_dt).total_seconds() / 60
-        return elapsed_minutes < 45
+        if _last_monitor_was_blocked():
+            return elapsed_minutes < REDDIT_MONITOR_BLOCKED_INTERVAL_MINUTES
+        return elapsed_minutes < REDDIT_MONITOR_MIN_INTERVAL_MINUTES
     except Exception:
         return False
 
@@ -980,6 +1030,17 @@ def _force_refresh_requested(argv: list[str] | None = None) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # ── Spidering guard: Reddit is permanently blocked (IP at Hetzner) ──
+    try:
+        from agents.marketing.channel_spidering_guard import guard_check, guard_record
+        allowed, reason, remaining = guard_check("reddit-watchdog")
+        if not allowed:
+            guard_record("reddit-watchdog", ok=False, fingerprint="spidering_guard_rejected")
+            print(json.dumps({"ok": False, "status": "spidering_blocked", "reason": reason, "live_external_action": False}))
+            return 1
+    except ImportError:
+        pass
+
     shared_market_intelligence = load_market_intelligence('agents/marketing/reddit_monitor.py')
     force_refresh = _force_refresh_requested(argv)
     # Always try to reuse a fresh usable report first — a recent good report is better

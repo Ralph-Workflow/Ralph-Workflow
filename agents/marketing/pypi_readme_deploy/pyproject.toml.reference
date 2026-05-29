@@ -1,0 +1,205 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ralph-workflow"
+dynamic = ["version"]
+description = "Vendor-neutral AI coding workflow orchestration with unattended execution, recovery, and verification."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-or-later" }
+license-files = ["LICENSE"]
+authors = [{ name = "Mistlight" }]
+keywords = ["ai", "agent", "orchestration", "pipeline", "multi-agent"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "typer>=0.12",
+  "rich>=13.0",
+  "rich-click>=1.8",
+  "mcp>=1.27.0",
+  "pydantic>=2.7",
+  "httpx>=0.27",
+  "jinja2>=3.1",
+  "loguru>=0.7",
+  "tqdm>=4.66",
+  "watchdog>=4.0",
+  "gitpython>=3.1",
+  "ddgs>=9.14.0",
+  "readability-lxml>=0.8.1",
+  "selectolax>=0.3.21",
+  "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+dev = [
+  "hatch",
+  "ruff",
+  "mypy",
+  "types-psutil>=5.9",
+  "hypothesis>=6.100",
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pytest-cov>=4.0",
+  "pytest-xdist>=3.6",
+  "pydantic>=2.7",
+  "vulture>=2.16",
+  "readability-lxml>=0.8.1",
+  "selectolax>=0.3.21",
+]
+web-search = [
+  "tavily-python>=0.7.23",
+  "exa-py>=2.12.0",
+  "brave-search-python-client>=0.4.27",
+]
+docs = [
+  "sphinx>=7",
+  "furo>=2024.8.6",
+  "myst-parser",
+  "linkify-it-py>=2",
+  "sphinx-copybutton>=0.5",
+  "sphinx-design>=0.5",
+]
+bundle = ["pyinstaller>=6.0"]
+
+[project.scripts]
+ralph = "ralph.cli.main:app"
+ralph-mcp = "ralph.mcp.server.runtime:main"
+ralph-prompt = "ralph.cli._prompt_helper_entry:main"
+
+[project.urls]
+Homepage = "https://ralphworkflow.com"
+Documentation = "https://ralphworkflow.com/docs"
+Repository = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+Issues = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new"
+
+[tool.hatch.version]
+source = "code"
+path = "ralph/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ralph"]
+include = [
+  "ralph/prompts/templates/**/*.jinja",
+  "ralph/policy/defaults/*.toml",
+  "ralph/mcp/artifacts/format_docs/*.md",
+  "ralph/skills/content/**/*.md",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/ralph",
+  "/README.md",
+  "/LICENSE",
+  "/ralph/prompts/templates/**/*.jinja",
+  "/ralph/mcp/artifacts/format_docs/*.md",
+  "/ralph/skills/content/**/*.md",
+]
+
+[tool.hatch.envs.publish]
+dependencies = ["hatch"]
+
+[tool.hatch.publish.index]
+url = "https://upload.pypi.org/legacy/"
+auth = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "W",
+  "I",
+  "N",
+  "UP",
+  "ANN",
+  "B",
+  "C4",
+  "SIM",
+  "RUF",
+  "TCH",
+  "PTH",
+  "PERF",
+  "PL",
+  "PGH",
+]
+ignore = ["PLR2004", "PLC0415"]  # Magic values in tests are acceptable; PLC0415 allows lazy imports to avoid circular dependencies
+
+[tool.ruff.lint.pylint]
+# CLI entry-point functions (e.g., typer commands) necessarily have one parameter per flag.
+# The ruff default of 5 is too low for production CLI functions.
+# main() in cli/main.py has ~33 parameters representing CLI flags.
+max-args = 40
+
+
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "ralph.pydantic_compat.RalphBaseModel"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.vulture]
+paths = ["ralph", "tests"]
+min_confidence = 100
+sort_by_size = true
+ignore_names = [
+    "html_partial",
+    "separator",
+    "from_attributes",
+    "by_alias",
+    "by_name",
+    "raise_errors",
+    "deep",
+    "strict",
+    "extra",
+    "context",
+    "mode",
+    "exclude_unset",
+    "exclude_defaults",
+    "exclude_none",
+    "round_trip",
+    "warnings",
+    "force",
+    "indent",
+    "ensure_ascii",
+    "update",
+]
+
+
+[tool.coverage.run]
+source = ["ralph"]
+data_file = ".coverage.pytest"
+omit = ["ralph/testing/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.20.1",
+    "types-psutil",
+    "hypothesis>=6.100",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.6",
+    "ruff>=0.1",
+    "types-tqdm>=4.67.3.20260518",
+]

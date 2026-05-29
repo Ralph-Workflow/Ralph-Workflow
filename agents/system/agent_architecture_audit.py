@@ -57,6 +57,14 @@ def is_external_issue(issue: dict) -> bool:
         or any(item.startswith('marketing_') or item.startswith('marketing-') for item in blocked_by)
     ):
         return True
+    if (
+        owner_domain == 'unblocker'
+        or 'blocked-channel-recovery' in name
+        or 'blocked-channel-recovery' in job_id
+        or '/agents/unblocker/' in path
+        or any('unblocker' in str(item) for item in blocked_by)
+    ):
+        return True
     return False
 
 
@@ -276,10 +284,16 @@ def main() -> int:
     previous_independent_verdict = str(independent.get('verdict') or '') if independent else ''
     previous_independent_summary = independent.get('summary') if independent else None
     previous_checked_at = independent.get('checked_at') if independent else None
-    independent_status = 'pending_post_audit_refresh'
-    independent_verdict = ''
-    independent_summary = 'Post-audit independent verification must be rerun; see verifier artifact for the fresh result.'
-    checked_at = None
+    if independent and independent.get('checked_at'):
+        independent_status = 'performed' if independent.get('verdict') else 'pending_post_audit_refresh'
+        independent_verdict = independent.get('verdict') or ''
+        independent_summary = independent.get('summary') or ''
+        checked_at = independent.get('checked_at')
+    else:
+        independent_status = 'pending_post_audit_refresh'
+        independent_verdict = ''
+        independent_summary = 'Post-audit independent verification must be rerun; see verifier artifact for the fresh result.'
+        checked_at = None
 
     payload = {
         'schema_version': 'ecc.agent-architecture-audit.report.v1',
@@ -427,7 +441,7 @@ def main() -> int:
         f"- Primary failure mode: {primary_failure_mode}",
         f"- Most urgent fix: {urgent_fix}",
         f"- Verifier status: {independent_status}",
-        '- Verifier verdict: pending_refresh',
+        f"- Verifier verdict: {independent_verdict or 'pending_refresh'}",
         '',
         '## Live topology',
         '',
@@ -466,8 +480,8 @@ def main() -> int:
     else:
         md_lines.append('- none')
     md_lines.extend(['', '## Independent verification', ''])
-    md_lines.append('- Performed: pending post-audit refresh')
-    md_lines.append('- Verdict: pending_refresh')
+    md_lines.append(f"- Performed: {'yes' if checked_at else 'pending post-audit refresh'}")
+    md_lines.append(f"- Verdict: {independent_verdict or 'pending_refresh'}")
     if independent_summary:
         md_lines.append(f"- Summary: {independent_summary}")
     if previous_independent_verdict:

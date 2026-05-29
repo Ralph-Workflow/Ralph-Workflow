@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""ARCHITECTURALLY RETIRED — Reddit is IP-blocked at Hetzner Helsinki (95.216.6.222).
+Tor also blocked. No proxy path exists from this runtime.
+
+This script exits immediately with status=permanently_blocked rather than
+burning runtime CPU on HTTP 403 loops.
+
+Status: RETIRED 2026-05-28 per marketing-workflow-audit repair #1.
+"""
 from __future__ import annotations
 
 import json
@@ -6,8 +14,22 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import requests
-from playwright.sync_api import sync_playwright
+STATUS_PATH = Path('/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_execution_status_latest.json')
+
+if __name__ == '__main__':
+    result = {
+        'generated_at': datetime.now().isoformat(),
+        'status': 'permanently_blocked',
+        'ok': False,
+        'blocking_reason': 'Reddit is IP-blocked at Hetzner Helsinki. ARCHITECTURALLY RETIRED 2026-05-28.',
+        'notes': 'Reddit pipeline retired per marketing-workflow-audit. See REDDIT_RETIRED.md or the audit run log for details.',
+        'repair_status': 'retired_no_further_attempts',
+        'alternative_channel': 'GitHub Discussions (available, unblocked, live outbound enabled 2026-05-28)',
+    }
+    STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    STATUS_PATH.write_text(json.dumps(result, indent=2, default=str) + '\n', encoding='utf-8')
+    print(json.dumps(result, indent=2))
+    sys.exit(0)
 
 ROOT = Path('/home/mistlight/.openclaw/workspace')
 LOG_DIR = ROOT / 'agents/marketing/logs'
@@ -61,6 +83,17 @@ def _browser_probe() -> dict:
 
 
 def main() -> int:
+    # ── Spidering guard: Reddit is permanently blocked ──
+    try:
+        from agents.marketing.channel_spidering_guard import guard_check, guard_record
+        allowed, reason, remaining = guard_check("reddit")
+        if not allowed:
+            guard_record("reddit", ok=False, fingerprint="spidering_guard_rejected")
+            print(json.dumps({"ok": False, "status": "spidering_blocked", "reason": reason, "live_external_action": False}))
+            return 1
+    except ImportError:
+        pass
+
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     raw_probe = _raw_probe()
     browser_probe = _browser_probe()

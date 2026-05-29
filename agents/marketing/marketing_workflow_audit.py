@@ -250,7 +250,7 @@ def normalize_marketing_action(payload: dict, path: Path) -> dict:
                 'url': distribution_execution.get('artifact_path'),
             },
             'result': {
-                'ok': distribution_execution.get('status') in LIVE_EXTERNAL_STATUSES or distribution_execution.get('status') in {'prepared', 'executed', 'skipped_repair'},
+                'ok': (False if 'ok' in distribution_execution and distribution_execution.get('ok') is False else distribution_execution.get('status') in LIVE_EXTERNAL_STATUSES or distribution_execution.get('status') in {'prepared', 'executed', 'skipped_repair'}),
                 'status': distribution_execution.get('status', ''),
                 'live_external_action': bool(distribution_execution.get('live_external_action', False)),
                 'blocking_factors': distribution_execution.get('blocking_factors', []) or [],
@@ -300,6 +300,10 @@ def normalize_marketing_action(payload: dict, path: Path) -> dict:
         or normalized_action_type == 'curator_email_outreach'
     )
     if normalized_action_type and executed and response_ok:
+        # Respect explicit ok:false — some payloads use status:"executed" to mean
+        # "script completed" but ok:false means the outbound action actually failed.
+        explicit_ok = payload.get('ok') if 'ok' in payload else None
+        effective_ok = False if explicit_ok is False else True
         return {
             'chosen_action': {
                 'type': normalized_action_type,
@@ -308,9 +312,9 @@ def normalize_marketing_action(payload: dict, path: Path) -> dict:
                 'url': effective_url,
             },
             'result': {
-                'ok': True,
+                'ok': effective_ok,
                 'status': payload_status or 'executed',
-                'live_external_action': inferred_live_external,
+                'live_external_action': inferred_live_external and effective_ok,
             },
             '_path': str(path),
         }
@@ -832,12 +836,12 @@ def main() -> int:
     prepared_primary_repo_flat_packet_repeats = recent_prepared_primary_repo_flat_packet_count(now)
 
     if recent_action_ok and recent_action_type and recent_action_live_external:
-        if codeberg_flat or measurement_pending_reasons:
+        if codeberg_flat:
             low_signal.append(
                 f'Recent live external action exists ({recent_action_type}), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.'
             )
         else:
-            worked.append(f'Execution path produced a live external action with non-flat outcome context: {recent_action_type}.')
+            worked.append(f'Execution path produced a live external action with non-flat outcome context: {recent_action_type}. Stars delta: {codeberg_window.get("stars_delta_window", 0):+d}')
     elif latest_activity_type and latest_activity_result.get('ok'):
         worked.append(f'Internal repair/follow-through is still running reliably: {latest_activity_type}.')
 
