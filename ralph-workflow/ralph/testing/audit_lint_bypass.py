@@ -17,10 +17,46 @@ import re
 import sys
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+
+def _load_toml_root(path: Path) -> dict[str, object] | None:
+    try:
+        parsed_obj: object = tomllib.loads(path.read_text(encoding="utf-8"))
+    except OSError:
+        return None
+    if not isinstance(parsed_obj, dict):
+        return None
+    return cast("dict[str, object]", parsed_obj)
+
+
+def _nested_mapping(root: dict[str, object], *keys: str) -> dict[str, object]:
+    current: object = root
+    for key in keys:
+        if not isinstance(current, dict):
+            return {}
+        mapping = cast("dict[str, object]", current)
+        next_value = mapping.get(key)
+        if next_value is None:
+            return {}
+        current = next_value
+    if not isinstance(current, dict):
+        return {}
+    return cast("dict[str, object]", current)
+
+
+def _string_key_mapping(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    mapping = cast("dict[object, object]", value)
+    return {
+        raw_key: raw_value
+        for raw_key, raw_value in mapping.items()
+        if isinstance(raw_key, str)
+    }
 
 # ---------------------------------------------------------------------------
 # Allowlist: known-legitimate noqa uses
@@ -40,8 +76,9 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
 # Files to skip entirely (test fixtures, generated code, etc.).
 _SKIP_DIRS: frozenset[str] = frozenset({"__pycache__", ".venv", ".mypy_cache", "tmp"})
 
-# Regex for matching # noqa comments on a line.
-_NOQA_RE = re.compile(r"#\s*noqa(?:\s*:\s*(.*?))?(?:\s*$|\s*$)")
+# Regex for matching inline noqa annotations.
+_NOQA_RE = re.compile(r"#\s*noqa(?:\s*:\s*(.*?))?(?:\s*$)")
+_NOQA_WITH_SUFFIX_RE = re.compile(r"#\s*noqa\b(.*)$")
 
 # Acceptable noqa codes — any code NOT in this set requires an allowlist entry.
 # Currently only complexity and global-state codes are acceptable when used
@@ -86,6 +123,29 @@ def _is_inside_triple_quoted(lines: list[str], line_index: int) -> bool:
     return in_triple
 
 
+def _extract_noqa_codes(raw_line: str) -> str | None | Literal[False]:
+    """Return noqa codes, None for bare noqa, or False when no noqa is present."""
+    match = _NOQA_RE.search(raw_line)
+    if match is not None:
+        raw_codes = match.group(1)
+        if isinstance(raw_codes, str) and raw_codes:
+            return raw_codes
+        return None
+
+    suffix_match = _NOQA_WITH_SUFFIX_RE.search(raw_line)
+    if suffix_match is None:
+        return False
+
+    suffix_raw = suffix_match.group(1)
+    if not isinstance(suffix_raw, str):
+        return False
+
+    suffix = suffix_raw.strip()
+    if not suffix.startswith(":"):
+        return None
+    return suffix.removeprefix(":").strip() or None
+
+
 def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassViolation]:
     """Scan source lines for forbidden noqa annotations."""
     violations: list[LintBypassViolation] = []
@@ -98,14 +158,10 @@ def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassVio
         if _is_inside_triple_quoted(lines, idx):
             continue
 
-        match = _NOQA_RE.search(raw_line)
-        if not match:
+        extracted = _extract_noqa_codes(raw_line)
+        if extracted is False:
             continue
-
-        codes_str = match.group(1)
-
-        if codes_str is None:
-            # Bare # noqa without specific codes.
+        if extracted is None:
             violations.append(
                 LintBypassViolation(
                     file_path=rel_path,
@@ -116,8 +172,7 @@ def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassVio
             )
             continue
 
-        # Parse comma-separated codes.
-        codes = [c.strip() for c in codes_str.split(",") if c.strip()]
+        codes = [c.strip() for c in extracted.split(",") if c.strip()]
         for code in codes:
             if (file_stem, code) in _NOQA_ALLOWLIST:
                 continue
@@ -153,18 +208,13 @@ def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]:
     if not pyproject_path.is_file():
         return violations
 
-    try:
-        data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
+    data = _load_toml_root(pyproject_path)
+    if data is None:
         return violations
 
-    ruff_lint = (
-        data.get("tool", {})
-        .get("ruff", {})
-        .get("lint", {})
-    )
+    ruff_lint = _nested_mapping(data, "tool", "ruff", "lint")
 
-    per_file_ignores = ruff_lint.get("per-file-ignores", {})
+    per_file_ignores = _string_key_mapping(ruff_lint.get("per-file-ignores", {}))
     if per_file_ignores:
         for file_pattern, codes in per_file_ignores.items():
             violations.append(
@@ -177,7 +227,9 @@ def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]:
                 )
             )
 
-    extend_per_file_ignores = ruff_lint.get("extend-per-file-ignores", {})
+    extend_per_file_ignores = _string_key_mapping(
+        ruff_lint.get("extend-per-file-ignores", {}),
+    )
     if extend_per_file_ignores:
         for file_pattern, codes in extend_per_file_ignores.items():
             violations.append(
@@ -238,11 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = argv if argv is not None else sys.argv[1:]
 
-    if args:
-        codebase_root = Path(args[0])
-    else:
-        # Default: scan the ralph-workflow package root.
-        codebase_root = Path(__file__).parent.parent.parent
+    codebase_root = Path(args[0]) if args else Path(__file__).parent.parent.parent
 
     if not codebase_root.is_dir():
         print(f"Error: directory not found: {codebase_root}", file=sys.stderr)

@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-import shutil
-from configparser import ConfigParser
-from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from ralph.testing.audit_typecheck_bypass import (
-    _find_type_ignore_violations,
+    _VALID_REASON_MARKERS,
     _check_mypy_ini,
     _check_pyproject_mypy,
+    _find_type_ignore_violations,
     audit_codebase,
     main,
-    _TYPE_IGNORE_ALLOWLIST,
-    _VALID_REASON_MARKERS,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Helper to get the approved reason suffix
@@ -306,7 +303,7 @@ def test_blanket_type_ignore_violation_found(tmp_path: Path) -> None:
     src_dir.mkdir()
     (src_dir / "bad.py").write_text("x = external_api()  # type: ignore\n")
 
-    violations, checked = audit_codebase(tmp_path)
+    violations, _checked = audit_codebase(tmp_path)
     assert len(violations) >= 1
     assert any("blanket" in v.category for v in violations)
 
@@ -318,7 +315,7 @@ def test_mypy_ini_config_violations_found(tmp_path: Path) -> None:
     (src_dir / "clean.py").write_text("def hello() -> str:\n    return 'world'\n")
     (tmp_path / "mypy.ini").write_text("[mypy]\nignore_missing_imports = true\n")
 
-    violations, checked = audit_codebase(tmp_path)
+    violations, _checked = audit_codebase(tmp_path)
     assert len(violations) >= 1
     assert any("ignore_missing_imports" in v.detail for v in violations)
 
@@ -363,5 +360,5 @@ def test_skipped_dirs_excluded(tmp_path: Path) -> None:
     cache_dir.mkdir()
     (cache_dir / "cached.py").write_text("# type: ignore\n")
 
-    violations, checked = audit_codebase(tmp_path)
+    violations, _checked = audit_codebase(tmp_path)
     assert len(violations) == 0

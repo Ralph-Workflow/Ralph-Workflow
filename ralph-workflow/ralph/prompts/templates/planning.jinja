@@ -10,17 +10,8 @@ You are in PLANNING MODE. Create a detailed, structured execution plan.
 
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
-{% if SKILLS_INLINE_CONTENT %}
-## SHIPPED SKILL BUNDLE
-
-{{ SKILLS_INLINE_CONTENT }}
-{% else %}
-## BASELINE WORKFLOW SKILLS
-
-The following skills from the Ralph Workflow shipped skill bundle apply to this planning task. Read and apply the relevant ones before proceeding:
-
-{{ PLANNING_SKILL_REFERENCES }}
-{% endif %}
+{% set shipped_skills_mode = 'planning' %}
+{% include 'shared/_shipped_skills.j2' %}
 
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
@@ -183,8 +174,8 @@ Your payload must decode to an object shaped like this:
 
 Hard requirements for the payload:
 - `summary.scope_items` must contain at least 3 concrete items.
-- `skills_mcp.skills` must contain at least 1 shipped skill name from the Ralph Workflow skill bundle. Choose skills the development agent should read for this task, not every available skill.
-- `skills_mcp.skills` names must match shipped skill bundle names exactly.
+- `skills_mcp.skills` must contain at least 1 shipped skill name from skills already available in your environment. Choose skills the development agent should invoke for this task, not every installed skill.
+- `skills_mcp.skills` names must match installed shipped skill names exactly.
 - `steps` must contain at least 1 step, and every step must be explicit enough for a weaker agent to execute without re-planning.
 - `critical_files.primary_files` must contain at least 1 file.
 - `targets[*].action` and `critical_files.primary_files[*].action` must be one of `create`, `modify`, or `delete`.

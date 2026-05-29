@@ -2,14 +2,8 @@ PLANNING EDIT MODE
 
 {% include 'shared/_unattended_mode.j2' %}
 
-{% if SKILLS_INLINE_CONTENT %}
-{{ SKILLS_INLINE_CONTENT }}
-{% else %}
-## BASELINE WORKFLOW SKILLS
-
-Skills available from the Ralph Workflow shipped skill bundle (read and apply as appropriate):
-{{ PLANNING_SKILL_REFERENCES }}
-{% endif %}
+{% set shipped_skills_mode = 'planning' %}
+{% include 'shared/_shipped_skills.j2' %}
 
 {% if LAST_RETRY_ERROR %}
 Recent retry context:

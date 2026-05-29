@@ -10,10 +10,6 @@ from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
 from ralph.prompts import template_engine
 from ralph.prompts.developer.developer_prompt_inputs import DeveloperPromptInputs
 from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
-from ralph.skills._prompt_skill_references import (
-    development_skill_references_text,
-    planning_skill_references_text,
-)
 
 __all__ = [
     "DeveloperPromptInputs",
@@ -74,9 +70,6 @@ def prompt_developer_iteration_xml_with_context(
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "true",
         "LAST_RETRY_ERROR": inputs.last_retry_error,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
-        "DEVELOPMENT_SKILL_REFERENCES": development_skill_references_text(),
-        "PLAN_SKILL_REFERENCES": inputs.plan_skill_references,
-        "PLANNING_SKILL_REFERENCES": planning_skill_references_text(),
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
     }
     base_vars.update(
@@ -132,9 +125,6 @@ def prompt_developer_iteration_xml_with_context(
                 "ARTIFACT_HISTORY_PATH": inputs.artifact_history_path,
                 "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
                 "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
-                "DEVELOPMENT_SKILL_REFERENCES": development_skill_references_text(),
-                "PLAN_SKILL_REFERENCES": inputs.plan_skill_references,
-                "PLANNING_SKILL_REFERENCES": planning_skill_references_text(),
                 "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
                 "PLAN_PATH": inputs.plan_path
@@ -167,7 +157,6 @@ def prompt_planning_xml_with_context(
         "PLAN_XSD_PATH": workspace.absolute_path(".agent/artifacts/plan.schema.json"),
         "LAST_RETRY_ERROR": inputs.last_retry_error,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
-        "PLANNING_SKILL_REFERENCES": planning_skill_references_text(),
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
     }
     base_vars.update(
@@ -223,8 +212,6 @@ def prompt_planning_xml_with_context(
             "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
             "LAST_RETRY_ERROR": inputs.last_retry_error,
             "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
-            "PLANNING_SKILL_REFERENCES": planning_skill_references_text(),
-            "DEVELOPMENT_SKILL_REFERENCES": development_skill_references_text(),
             "PROMPT_PATH": current_prompt_path,
             "PLAN_PATH": inputs.plan_path
             or str(Path(payload_root) / "planning_plan.txt"),

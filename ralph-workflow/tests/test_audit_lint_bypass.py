@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-import shutil
-import tomllib
-from pathlib import Path
-from unittest.mock import patch
-
-import pytest
+from typing import TYPE_CHECKING
 
 from ralph.testing.audit_lint_bypass import (
-    _find_noqa_violations,
     _check_pyproject_config,
+    _find_noqa_violations,
     audit_codebase,
     main,
-    _NOQA_ALLOWLIST,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # _find_noqa_violations tests
@@ -185,7 +181,7 @@ def test_bare_noqa_violation_found_in_codebase(tmp_path: Path) -> None:
     (src_dir / "bad.py").write_text("def f(): pass  # noqa\n")
     (tmp_path / "pyproject.toml").write_text("[tool.ruff.lint]\nselect = ['E']\n")
 
-    violations, checked = audit_codebase(tmp_path)
+    violations, _checked = audit_codebase(tmp_path)
     assert len(violations) >= 1
     assert any("bare-noqa" in v.category for v in violations)
 
@@ -200,7 +196,7 @@ def test_unreadable_file_skipped(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text("[tool.ruff.lint]\nselect = ['E']\n")
 
     try:
-        violations, checked = audit_codebase(tmp_path)
+        _violations, checked = audit_codebase(tmp_path)
         # Should not crash — unreadable files are skipped.
         assert checked >= 0
     finally:
@@ -250,5 +246,5 @@ def test_skipped_dirs_excluded(tmp_path: Path) -> None:
     (cache_dir / "cached.py").write_text("def f(): pass  # noqa\n")
     (tmp_path / "pyproject.toml").write_text("[tool.ruff.lint]\nselect = ['E']\n")
 
-    violations, checked = audit_codebase(tmp_path)
+    violations, _checked = audit_codebase(tmp_path)
     assert len(violations) == 0

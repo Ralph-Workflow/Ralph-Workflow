@@ -19,10 +19,45 @@ import re
 import sys
 from configparser import ConfigParser
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+
+def _regex_group_str(match: re.Match[str], group: int) -> str:
+    value = match.group(group)
+    if not isinstance(value, str):
+        msg = "expected regex capture group to be str"
+        raise TypeError(msg)
+    return value
+
+
+def _load_toml_root(path: Path) -> dict[str, object] | None:
+    try:
+        import tomllib as _tomllib
+
+        parsed_obj: object = _tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ImportError):
+        return None
+    if not isinstance(parsed_obj, dict):
+        return None
+    return cast("dict[str, object]", parsed_obj)
+
+
+def _nested_mapping(root: dict[str, object], *keys: str) -> dict[str, object]:
+    current: object = root
+    for key in keys:
+        if not isinstance(current, dict):
+            return {}
+        mapping = cast("dict[str, object]", current)
+        next_value = mapping.get(key)
+        if next_value is None:
+            return {}
+        current = next_value
+    if not isinstance(current, dict):
+        return {}
+    return cast("dict[str, object]", current)
 
 # ---------------------------------------------------------------------------
 # Allowlist: known-legitimate type:ignore annotations
@@ -57,6 +92,16 @@ _WEAKENING_MYPY_KEYS: dict[str, str] = {
     "follow_imports": "follow_imports = silent",
     "ignore_errors": "ignore_errors = true",
 }
+_WEAKENING_MYPY_VALUES: dict[str, frozenset[str]] = {
+    "ignore_missing_imports": frozenset({"true"}),
+    "follow_imports": frozenset({"silent"}),
+    "ignore_errors": frozenset({"true"}),
+}
+
+
+def _mypy_value_weakens(key: str, value: str) -> bool:
+    allowed = _WEAKENING_MYPY_VALUES.get(key)
+    return allowed is not None and value in allowed
 
 
 class TypecheckBypassViolation:
@@ -123,7 +168,7 @@ def _check_line_for_type_ignore(
         # Check for coded type: ignore in test files.
         code_match = _CODE_TYPE_IGNORE_RE.search(line)
         if code_match:
-            code = code_match.group(1).strip()
+            code = _regex_group_str(code_match, 1).strip()
             violations.append(
                 TypecheckBypassViolation(
                     file_path=rel_path,
@@ -149,7 +194,7 @@ def _check_line_for_type_ignore(
         # Check for coded type: ignore.
         code_match = _CODE_TYPE_IGNORE_RE.search(line)
         if code_match:
-            code = code_match.group(1).strip()
+            code = _regex_group_str(code_match, 1).strip()
 
             # Check allowlist.
             if (file_stem, code) in _TYPE_IGNORE_ALLOWLIST:
@@ -229,7 +274,7 @@ def _check_mypy_ini(config_path: Path) -> list[TypecheckBypassViolation]:
 
     rel_path = str(config_path)
 
-    for section_name in config.sections():
+    for section_name in cast("list[str]", config.sections()):
         if not section_name.startswith("mypy"):
             continue
 
@@ -239,27 +284,7 @@ def _check_mypy_ini(config_path: Path) -> list[TypecheckBypassViolation]:
                     value = config.get(section_name, key).strip().lower()
                 except Exception:
                     continue
-                if key == "ignore_missing_imports" and value == "true":
-                    violations.append(
-                        TypecheckBypassViolation(
-                            file_path=rel_path,
-                            line=0,
-                            category="mypy-config",
-                            detail=f"[{section_name}] {pattern} — "
-                            f"weakens type checking",
-                        )
-                    )
-                elif key == "follow_imports" and value == "silent":
-                    violations.append(
-                        TypecheckBypassViolation(
-                            file_path=rel_path,
-                            line=0,
-                            category="mypy-config",
-                            detail=f"[{section_name}] {pattern} — "
-                            f"weakens type checking",
-                        )
-                    )
-                elif key == "ignore_errors" and value == "true":
+                if _mypy_value_weakens(key, value):
                     violations.append(
                         TypecheckBypassViolation(
                             file_path=rel_path,
@@ -296,13 +321,11 @@ def _check_pyproject_mypy(pyproject_path: Path) -> list[TypecheckBypassViolation
     if not pyproject_path.is_file():
         return violations
 
-    try:
-        import tomllib as _tomllib
-        data = _tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-    except (OSError, ImportError, Exception):
+    data = _load_toml_root(pyproject_path)
+    if data is None:
         return violations
 
-    tool_mypy = data.get("tool", {}).get("mypy", {})
+    tool_mypy = _nested_mapping(data, "tool", "mypy")
     if not tool_mypy:
         return violations
 
@@ -311,27 +334,7 @@ def _check_pyproject_mypy(pyproject_path: Path) -> list[TypecheckBypassViolation
     for key, pattern in _WEAKENING_MYPY_KEYS.items():
         if key in tool_mypy:
             value = str(tool_mypy[key]).strip().lower()
-            if key == "ignore_missing_imports" and value == "true":
-                violations.append(
-                    TypecheckBypassViolation(
-                        file_path=rel_path,
-                        line=0,
-                        category="mypy-config",
-                        detail=f"[tool.mypy] {pattern} — "
-                        f"weakens type checking",
-                    )
-                )
-            elif key == "follow_imports" and value == "silent":
-                violations.append(
-                    TypecheckBypassViolation(
-                        file_path=rel_path,
-                        line=0,
-                        category="mypy-config",
-                        detail=f"[tool.mypy] {pattern} — "
-                        f"weakens type checking",
-                    )
-                )
-            elif key == "ignore_errors" and value == "true":
+            if _mypy_value_weakens(key, value):
                 violations.append(
                     TypecheckBypassViolation(
                         file_path=rel_path,
@@ -419,11 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = argv if argv is not None else sys.argv[1:]
 
-    if args:
-        codebase_root = Path(args[0])
-    else:
-        # Default: scan the ralph-workflow package root.
-        codebase_root = Path(__file__).parent.parent.parent
+    codebase_root = Path(args[0]) if args else Path(__file__).parent.parent.parent
 
     if not codebase_root.is_dir():
         print(f"Error: directory not found: {codebase_root}", file=sys.stderr)

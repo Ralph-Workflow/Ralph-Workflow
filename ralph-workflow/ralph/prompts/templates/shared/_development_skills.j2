@@ -1,19 +1,2 @@
-{% if SKILLS_INLINE_CONTENT %}
-## SHIPPED SKILL BUNDLE
-
-{{ SKILLS_INLINE_CONTENT }}
-{% else %}
-## BASELINE WORKFLOW SKILLS
-
-The following skills from the Ralph Workflow shipped skill bundle apply to this development task. Read and apply the relevant ones before proceeding:
-
-{{ DEVELOPMENT_SKILL_REFERENCES }}
-{% endif %}
-
-{% if PLAN_SKILL_REFERENCES %}
-## PLAN-RECOMMENDED SKILLS
-
-The planner identified these shipped skills as especially relevant for this task. Read and apply them before proceeding:
-
-{{ PLAN_SKILL_REFERENCES }}
-{% endif %}
+{% set shipped_skills_mode = 'development' %}
+{% include 'shared/_shipped_skills.j2' %}
