@@ -347,3 +347,76 @@ def test_verify_step_timeout_invariant_survives_minus_o() -> None:
     )
     assert "RuntimeError" in result.stderr
     assert "must be positive" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# _INTEGRATION_PER_TEST_TIMEOUT_SECONDS invariant tests
+# ---------------------------------------------------------------------------
+
+
+def _run_integration_timeout_patched_import(
+    timeout_value: float, *, minus_o: bool = False
+) -> subprocess.CompletedProcess[str]:
+    verify_path = _get_verify_path()
+    original = Path(verify_path).read_text(encoding="utf-8")
+
+    patched = original.replace(
+        "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0",
+        f"_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = {timeout_value}",
+    )
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", prefix="verify_patched_", delete=False
+    ) as f:
+        f.write(patched)
+        f.flush()
+        tmp_path = f.name
+
+    try:
+        runner = (
+            "import sys\n"
+            f"sys.path.insert(0, {Path(tmp_path).parent!r})\n"
+            f"sys.path.insert(0, {Path(verify_path).parent!r})\n"
+            f"import importlib.util\n"
+            f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
+            f"mod = importlib.util.module_from_spec(spec)\n"
+            f"spec.loader.exec_module(mod)\n"
+            "print('OK')\n"
+        )
+
+        cmd = [sys.executable]
+        if minus_o:
+            cmd.append("-O")
+        cmd.extend(["-c", runner])
+
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(Path(verify_path).parent.parent),
+            check=False,
+        )
+    finally:
+        with contextlib.suppress(OSError):
+            Path(tmp_path).unlink()
+
+
+def test_integration_per_test_timeout_must_be_1() -> None:
+    """_INTEGRATION_PER_TEST_TIMEOUT_SECONDS = 2.0 should raise RuntimeError."""
+    result = _run_integration_timeout_patched_import(2.0)
+    assert result.returncode != 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    )
+    assert "RuntimeError" in result.stderr
+    assert "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0" in result.stderr
+
+
+def test_integration_per_test_timeout_invariant_survives_minus_o() -> None:
+    """_INTEGRATION_PER_TEST_TIMEOUT_SECONDS invariant must survive python -O."""
+    result = _run_integration_timeout_patched_import(2.0, minus_o=True)
+    assert result.returncode != 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    )
+    assert "RuntimeError" in result.stderr
+    assert "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0" in result.stderr

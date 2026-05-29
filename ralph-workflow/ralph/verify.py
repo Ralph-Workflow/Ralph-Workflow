@@ -43,6 +43,13 @@ if TYPE_CHECKING:
 # total elapsed time of every test suite running sequentially under
 # `make verify` must not exceed this value.
 #
+# _INTEGRATION_PER_TEST_TIMEOUT_SECONDS: ABSOLUTE and IMMUTABLE
+# per-test timeout for integration tests (tests/integration/).
+# NO integration test may take longer than this. Enforced by
+# SIGALRM in tests/conftest.py — any integration test that
+# exceeds this limit is a design defect: fix the production
+# coupling, not the timeout.
+#
 # Enforcement mechanism: run_verify() tracks cumulative wall-clock
 # time via time.monotonic() across ALL test-budget-tracked steps.
 # Splitting tests across N suites does NOT give you N x 60s — the
@@ -59,6 +66,7 @@ if TYPE_CHECKING:
 # MemoryWorkspace, inject fake clocks). Do NOT raise these constants.
 _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
 _TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
+_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0
 _BUDGET_EPSILON: Final = 1e-9
 _MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
 
@@ -149,6 +157,14 @@ for idx in _BUDGET_TRACKED_STEPS:
 if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < _BUDGET_EPSILON:
     raise RuntimeError(
         f"_TOTAL_TEST_BUDGET_SECONDS must be 60.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
+    )
+
+# Per-test integration timeout integrity: 1.0 seconds is ABSOLUTE and
+# IMMUTABLE. No integration test may take longer than this.
+if not abs(_INTEGRATION_PER_TEST_TIMEOUT_SECONDS - 1.0) < _BUDGET_EPSILON:
+    raise RuntimeError(
+        "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0 "
+        f"(got {_INTEGRATION_PER_TEST_TIMEOUT_SECONDS})"
     )
 
 # _VERIFY_STEP_TIMEOUT_SECONDS integrity: must be positive and non-trivial.
