@@ -254,10 +254,12 @@ class TestExecuteAgentEffectA:
             "workspace.edit",
             "workspace.delete",
             "process.exec_bounded",
+            "process.exec_unbounded",
             "run.report_progress",
             "env.read",
             "web.search",
             "web.visit",
+            "web.download",
             "media.read",
         }
 
@@ -313,10 +315,12 @@ class TestExecuteAgentEffectA:
             "workspace.edit",
             "workspace.delete",
             "process.exec_bounded",
+            "process.exec_unbounded",
             "run.report_progress",
             "env.read",
             "web.search",
             "web.visit",
+            "web.download",
             "media.read",
         }
 

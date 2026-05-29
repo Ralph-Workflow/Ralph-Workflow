@@ -1743,6 +1743,16 @@ ralph.mcp.tools.exec
    :members:
    :show-inheritance:
 
+ralph.mcp.tools.unsafe_exec
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.tools.unsafe_exec
+   :members:
+   :show-inheritance:
+
+   The ``raw_exec`` tool is an alias for ``unsafe_exec`` — it uses the same
+   handler and exposes the same functionality under a different name.
+
 ralph.mcp.tools.exec_overlay
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

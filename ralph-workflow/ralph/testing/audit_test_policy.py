@@ -46,6 +46,38 @@ _IO_ALLOWLIST: set[str] = {
     # a fake workspace would measure a DIFFERENT code path and produce
     # meaningless regression assertions. This is a legitimate allowlist entry.
     "test_multimodal_session_memory_regression",
+    # Template rendering tests that read Jinja2 template files from the repo.
+    # These tests verify template logic against real template content; mocking
+    # the file reads would test nothing meaningful.
+    "test_analysis_context_partial_analysis_context_path_behavior",
+    "test_analysis_context_partial_analysis_context_path_only_behavior",
+    "test_analysis_context_partial_analysis_context_rendering",
+    "test_analysis_context_partial_analysis_context_suppression",
+    "test_analysis_prompt_payload_contract_analysis_template_payload_contract",
+    "test_analysis_prompt_payload_contract_retry_hint_guard_in_templates",
+    # AST inspection tests that read production Python source files to enforce
+    # invariants (e.g., no hardcoded phase names). The read target IS the
+    # subject under test — replacing with mocked content would defeat the purpose.
+    "test_no_hardcoded_phase_names_artifact_tool_has_no_canonical_drain_names",
+    "test_no_hardcoded_phase_names_display_layer_has_no_canonical_phase_names",
+    "test_no_hardcoded_phase_names_handoffs_has_no_canonical_phase_names",
+    "test_no_hardcoded_phase_names_materialize_has_no_canonical_phase_names",
+    "test_no_hardcoded_phase_names_register_role_handlers_is_generic",
+    "test_no_hardcoded_phase_names_runner_artifact_handoff_is_generic",
+    "test_no_hardcoded_phase_names_runner_has_no_canonical_phase_names",
+    # Static analysis tests that read Python source or documentation files
+    # from the repo to enforce structural invariants.
+    "test_parallel_no_worktree_imports",
+    "test_repo_root_operational_docs_sync",
+    # Git integration tests using the tmp_git_repo fixture (which wraps
+    # tmp_path). The write_text calls go to the fixture's temp directory.
+    "test_git_rebase_preconditions",
+    "test_git_wrapper",
+    # Helper backend classes: write_text is a method on a custom backend
+    # object (MemoryBackend subclass), not a Path.write_text() call.
+    # The audit tool's AST heuristic cannot distinguish these.
+    "test_tool_artifact_1_helper_failingartifactbackend",
+    "test_tool_artifact_2_helper_failingartifactbackend",
 }
 
 # Files that legitimately use time.monotonic()/time.perf_counter() for
@@ -63,7 +95,18 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # Measures fan-out/verify timing to confirm parallelism works
     # correctly, not to accumulate passage-of-time for control flow.
     "test_parallel_serialized_verification",
+    # Measures actual process kill duration for hard-kill correctness testing.
+    # Wall-clock measurement IS the point of this test.
+    "test_hard_kill_helper_sleeperexecutor",
+    # Performance regression test: measures real subscriber dispatch latency.
+    # Wall-clock measurement IS the correctness assertion.
+    "test_subscriber_performance",
 }
+
+# Path I/O methods that indicate real filesystem access.
+_PATH_IO_METHODS: frozenset[str] = frozenset(
+    {"read_text", "write_text", "read_bytes", "write_bytes", "open"}
+)
 
 # Patterns that monkeypatch away real I/O — these are legitimate.
 _MONKEYPATCH_PATTERNS: set[str] = {
@@ -119,6 +162,7 @@ class TestPolicyAuditor(ast.NodeVisitor):
             pattern in source for pattern in _MONKEYPATCH_PATTERNS
         )
         self._has_subprocess_e2e_marker = "subprocess_e2e" in source
+        self._inside_wait_for: bool = False
 
     def _add_violation(self, node: ast.AST, category: str, detail: str) -> None:
         lineno: int = getattr(node, "lineno", 0)
@@ -137,7 +181,12 @@ class TestPolicyAuditor(ast.NodeVisitor):
         self._check_io_call(node)
         self._check_wall_clock_call(node)
         self._check_blocking_wait_call(node)
+        func_name = self._get_func_name(node)
+        parent_was_in_wait_for = self._inside_wait_for
+        if func_name in ("asyncio.wait_for", "asyncio.timeout"):
+            self._inside_wait_for = True
         self.generic_visit(node)
+        self._inside_wait_for = parent_was_in_wait_for
 
     def _check_sleep_call(self, node: ast.Call) -> None:
         """Detect time.sleep(N) and asyncio.sleep(N) where N > 0."""
@@ -178,6 +227,18 @@ class TestPolicyAuditor(ast.NodeVisitor):
         """Detect real I/O operations."""
         func_name = self._get_func_name(node)
         if func_name is None:
+            # Check for Path(expr).method() pattern where receiver is a Call
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr in _PATH_IO_METHODS
+                and not self._has_monkeypatch
+                and not self._is_using_tmp_path()
+            ):
+                self._add_violation(
+                    node,
+                    "io",
+                    f".{node.func.attr}() — real filesystem I/O in test; use tmp_path fixture",
+                )
             return
 
         # Detect open() calls (file I/O).
@@ -193,13 +254,7 @@ class TestPolicyAuditor(ast.NodeVisitor):
             return
 
         # Detect Path().read_text / write_text etc.
-        if func_name in (
-            "Path.read_text",
-            "Path.write_text",
-            "Path.read_bytes",
-            "Path.write_bytes",
-            "Path.open",
-        ):
+        if any(func_name == f"Path.{m}" for m in _PATH_IO_METHODS):
             if self._has_monkeypatch:
                 return
             # Allow if using tmp_path (detected via string pattern).
@@ -275,6 +330,8 @@ class TestPolicyAuditor(ast.NodeVisitor):
 
         # threading.Event().wait(), asyncio.Event().wait(), etc.
         if func_name.endswith(".wait") and not node.args and not node.keywords:
+            if self._inside_wait_for:
+                return
             self._add_violation(
                 node,
                 "blocking-wait",

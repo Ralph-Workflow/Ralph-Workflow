@@ -119,7 +119,9 @@ class PromptPhaseOptions:
 
 def __getattr__(name: str) -> object:
     if name == "MultimodalSidecarEntry":
-        from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry as _Entry
+        from ralph.prompts._multimodal_sidecar_entry import (  # noqa: PLC0415
+            MultimodalSidecarEntry as _Entry,
+        )
 
         return _Entry
     msg = f"module {__name__!r} has no attribute {name!r}"
@@ -654,10 +656,10 @@ def _prepare_planning_prompt_context(
     # Preserve planning context for loopbacks and resumed passes.
     if not preserve_planning_context:
         # Clear drain artifacts for a genuine fresh planning entry.
-        from ralph.pipeline.phase_entry_cleaner import (
+        from ralph.pipeline.phase_entry_cleaner import (  # noqa: PLC0415
             clear_phase_entry_drains as _clear_phase_entry_drains,
         )
-        from ralph.pipeline.phase_entry_cleaner import (
+        from ralph.pipeline.phase_entry_cleaner import (  # noqa: PLC0415
             is_fresh_phase_entry,
         )
 

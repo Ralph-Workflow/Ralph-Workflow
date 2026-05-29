@@ -4,14 +4,11 @@ import json
 import os
 import threading
 import time
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
 from ralph.mcp.tools import exec_sandbox
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _THREAD_JOIN_TIMEOUT_S = 2.0
 _LOCK_HOLD_TIME_S = 0.2
@@ -827,6 +824,43 @@ def test_cleanup_deletes_collectible_slots_when_path_size_bytes_is_slow(
     # Both stale slots must be gone even though _path_size_bytes raised.
     assert not slot_one.exists(), f"{slot_one} should have been deleted"
     assert not slot_two.exists(), f"{slot_two} should have been deleted"
+
+
+def test_cleanup_base_runs_when_not_throttled(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    first = manager.cleanup_base()
+    assert first.removed_paths >= 0
+    assert first.remaining_bytes >= 0
+
+
+def test_compute_workspace_size_bytes_returns_total_file_sizes(tmp_path: Path) -> None:
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    (workspace / "a.txt").write_text("hello")
+    (workspace / "b.txt").write_text("world!")
+    sub = workspace / "sub"
+    sub.mkdir()
+    (sub / "c.txt").write_text("x")
+    assert exec_sandbox._compute_workspace_size_bytes(workspace) == 12
+
+
+def test_compute_workspace_size_bytes_excludes_generated_dirs(tmp_path: Path) -> None:
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    (workspace / "src.txt").write_text("abc")
+    pycache = workspace / "__pycache__"
+    pycache.mkdir()
+    (pycache / "cached.pyc").write_text("ignored")
+    node_modules = workspace / "node_modules"
+    node_modules.mkdir()
+    (node_modules / "big.js").write_text("xxxxxxxx")
+    assert exec_sandbox._compute_workspace_size_bytes(workspace) == 3
+
+
+def test_compute_workspace_size_bytes_handles_empty_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    assert exec_sandbox._compute_workspace_size_bytes(workspace) == 0
 
 
 def test_cleanup_per_pool_failure_does_not_block_other_pools(

@@ -2,40 +2,39 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.workspace.fs import FsWorkspace
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 class TestFsWorkspaceCopy:
-    def test_copy_file(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
-            (Path(tmpdir) / "src.txt").write_text("content", encoding="utf-8")
+    def test_copy_file(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "src.txt").write_text("content", encoding="utf-8")
 
-            ws.copy("src.txt", "dest.txt")
+        ws.copy("src.txt", "dest.txt")
 
-            assert (Path(tmpdir) / "src.txt").exists()
-            assert (Path(tmpdir) / "dest.txt").read_text(encoding="utf-8") == "content"
+        assert (tmp_path / "src.txt").exists()
+        assert (tmp_path / "dest.txt").read_text(encoding="utf-8") == "content"
 
-    def test_copy_file_with_overwrite(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
-            (Path(tmpdir) / "src.txt").write_text("src", encoding="utf-8")
-            (Path(tmpdir) / "dest.txt").write_text("dest", encoding="utf-8")
+    def test_copy_file_with_overwrite(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "src.txt").write_text("src", encoding="utf-8")
+        (tmp_path / "dest.txt").write_text("dest", encoding="utf-8")
 
-            ws.copy("src.txt", "dest.txt", overwrite=True)
+        ws.copy("src.txt", "dest.txt", overwrite=True)
 
-            assert (Path(tmpdir) / "dest.txt").read_text(encoding="utf-8") == "src"
+        assert (tmp_path / "dest.txt").read_text(encoding="utf-8") == "src"
 
-    def test_copy_directory(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
-            subdir = Path(tmpdir) / "src_dir"
-            subdir.mkdir()
-            (subdir / "file.txt").write_text("nested", encoding="utf-8")
+    def test_copy_directory(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
+        subdir = tmp_path / "src_dir"
+        subdir.mkdir()
+        (subdir / "file.txt").write_text("nested", encoding="utf-8")
 
-            ws.copy("src_dir", "dest_dir")
+        ws.copy("src_dir", "dest_dir")
 
-            assert (Path(tmpdir) / "dest_dir" / "file.txt").read_text(encoding="utf-8") == "nested"
+        assert (tmp_path / "dest_dir" / "file.txt").read_text(encoding="utf-8") == "nested"

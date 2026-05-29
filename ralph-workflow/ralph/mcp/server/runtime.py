@@ -33,7 +33,7 @@ import uuid
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loguru import logger
@@ -156,12 +156,15 @@ if TYPE_CHECKING:
             ...
 
 
+_func_metadata_module: ModuleType | None = None
 try:
     _fastmcp_module = import_module("mcp.server.fastmcp")
     _tool_module = import_module("mcp.server.fastmcp.tools.base")
+    _func_metadata_module = import_module("mcp.server.fastmcp.utilities.func_metadata")
 except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback tests
     FastMCP = cast("object | None", None)
     Tool = cast("object | None", None)
+    _func_metadata_module = None
 else:
     FastMCP = cast("object | None", _fastmcp_module.FastMCP)
     Tool = cast("object | None", _tool_module.Tool)
@@ -240,8 +243,6 @@ def _make_tool_metadata(
         return result
 
     def convert_result(result: object) -> object:
-        from mcp.server.fastmcp.utilities.func_metadata import _convert_to_content
-
         if (
             isinstance(result, dict)
             and "content" in result
@@ -250,7 +251,10 @@ def _make_tool_metadata(
             return result
         if hasattr(result, "isError") and hasattr(result, "content"):
             return result
-        return _convert_to_content(result)
+        _converter: object = getattr(_func_metadata_module, "_convert_to_content", None)
+        if callable(_converter):
+            return cast("object", _converter(result))
+        return result
 
     return SimpleNamespace(
         arg_model=arg_model,

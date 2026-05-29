@@ -100,6 +100,7 @@ class TestRenderPlanArtifact:
                                 {"text": "Show the full handoff to users"},
                             ],
                         },
+                        "skills_mcp": {"skills": ["test-driven-development"]},
                         "steps": [
                             {
                                 "number": 1,

@@ -35,7 +35,9 @@ class SleeperExecutor:
         self.pids.append(handle.record.pid)
 
         try:
-            await handle.wait()
+            await asyncio.wait_for(handle.wait(), timeout=60.0)
+        except TimeoutError as exc:
+            raise RuntimeError("Process wait timed out unexpectedly") from exc
         except asyncio.CancelledError:
             on_status(WorkerStatus.CANCELLED)
             await asyncio.shield(handle.terminate(grace_period_s=0))

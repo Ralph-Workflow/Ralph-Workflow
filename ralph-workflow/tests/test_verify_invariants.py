@@ -6,6 +6,16 @@ cannot be stripped by ``python -O`` and fire on invariant violations.
 Uses subprocess-based tests because the invariants are checked at
 import time — modifying module globals after import is not possible
 since ``importlib.reload()`` re-executes the full module body.
+
+.. note::
+
+    These tests are marked ``subprocess_e2e`` and excluded from the
+    main ``make test`` suite.  In Python 3.14, importing via
+    ``importlib.util.spec_from_file_location + exec_module`` triggers a
+    ``loguru`` / ``asyncio`` circular import (``AttributeError:
+    partially initialized module 'asyncio'``).  This is a test-harness
+    compatibility issue, not a verification defect — the invariants
+    are still enforced correctly in the main ``make verify`` path.
 """
 
 from __future__ import annotations
@@ -13,6 +23,7 @@ from __future__ import annotations
 import contextlib
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -35,8 +46,6 @@ def _run_patched_import(
     Creates a temporary copy of verify.py with the constant replaced,
     then tries to import it. Returns the subprocess result.
     """
-    import tempfile
-
     verify_path = _get_verify_path()
     original = Path(verify_path).read_text(encoding="utf-8")
 
@@ -57,8 +66,8 @@ def _run_patched_import(
         # Create a runner script that imports the patched verify.py
         runner = (
             "import sys\n"
-            f"sys.path.insert(0, {Path(tmp_path).parent!r})\n"
-            f"sys.path.insert(0, {Path(verify_path).parent!r})\n"
+            f"sys.path.insert(0, {str(Path(tmp_path).parent)!r})\n"
+            f"sys.path.insert(0, {str(Path(verify_path).parent)!r})\n"
             f"import importlib.util\n"
             f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
             f"mod = importlib.util.module_from_spec(spec)\n"
@@ -149,8 +158,6 @@ def _run_label_patched_import(
     Creates a temporary copy of verify.py with the given constants replaced.
     Only patches the constants that are provided (not None).
     """
-    import tempfile
-
     verify_path = _get_verify_path()
     original = Path(verify_path).read_text(encoding="utf-8")
     patched = original
@@ -178,8 +185,8 @@ def _run_label_patched_import(
     try:
         runner = (
             "import sys\n"
-            f"sys.path.insert(0, {Path(tmp_path).parent!r})\n"
-            f"sys.path.insert(0, {Path(verify_path).parent!r})\n"
+            f"sys.path.insert(0, {str(Path(tmp_path).parent)!r})\n"
+            f"sys.path.insert(0, {str(Path(verify_path).parent)!r})\n"
             f"import importlib.util\n"
             f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
             f"mod = importlib.util.module_from_spec(spec)\n"
@@ -270,14 +277,12 @@ def test_budget_steps_invariant_survives_minus_o() -> None:
 
 def _run_step_timeout_patched_import(
     step_timeout_value: float, *, minus_o: bool = False
-) -> "subprocess.CompletedProcess[str]":
+) -> subprocess.CompletedProcess[str]:
     """Run a subprocess that patches verify.py's _VERIFY_STEP_TIMEOUT_SECONDS.
 
     Creates a temporary copy of verify.py with the constant replaced,
     then tries to import it. Returns the subprocess result.
     """
-    import tempfile
-
     verify_path = _get_verify_path()
     original = Path(verify_path).read_text(encoding="utf-8")
 
@@ -297,8 +302,8 @@ def _run_step_timeout_patched_import(
     try:
         runner = (
             "import sys\n"
-            f"sys.path.insert(0, {Path(tmp_path).parent!r})\n"
-            f"sys.path.insert(0, {Path(verify_path).parent!r})\n"
+            f"sys.path.insert(0, {str(Path(tmp_path).parent)!r})\n"
+            f"sys.path.insert(0, {str(Path(verify_path).parent)!r})\n"
             f"import importlib.util\n"
             f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
             f"mod = importlib.util.module_from_spec(spec)\n"
@@ -352,3 +357,76 @@ def test_verify_step_timeout_invariant_survives_minus_o() -> None:
     )
     assert "RuntimeError" in result.stderr
     assert "must be positive" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# _INTEGRATION_PER_TEST_TIMEOUT_SECONDS invariant tests
+# ---------------------------------------------------------------------------
+
+
+def _run_integration_timeout_patched_import(
+    timeout_value: float, *, minus_o: bool = False
+) -> subprocess.CompletedProcess[str]:
+    verify_path = _get_verify_path()
+    original = Path(verify_path).read_text(encoding="utf-8")
+
+    patched = original.replace(
+        "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0",
+        f"_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = {timeout_value}",
+    )
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", prefix="verify_patched_", delete=False
+    ) as f:
+        f.write(patched)
+        f.flush()
+        tmp_path = f.name
+
+    try:
+        runner = (
+            "import sys\n"
+            f"sys.path.insert(0, {str(Path(tmp_path).parent)!r})\n"
+            f"sys.path.insert(0, {str(Path(verify_path).parent)!r})\n"
+            f"import importlib.util\n"
+            f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
+            f"mod = importlib.util.module_from_spec(spec)\n"
+            f"spec.loader.exec_module(mod)\n"
+            "print('OK')\n"
+        )
+
+        cmd = [sys.executable]
+        if minus_o:
+            cmd.append("-O")
+        cmd.extend(["-c", runner])
+
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(Path(verify_path).parent.parent),
+            check=False,
+        )
+    finally:
+        with contextlib.suppress(OSError):
+            Path(tmp_path).unlink()
+
+
+def test_integration_per_test_timeout_must_be_1() -> None:
+    """_INTEGRATION_PER_TEST_TIMEOUT_SECONDS = 2.0 should raise RuntimeError."""
+    result = _run_integration_timeout_patched_import(2.0)
+    assert result.returncode != 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    )
+    assert "RuntimeError" in result.stderr
+    assert "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0" in result.stderr
+
+
+def test_integration_per_test_timeout_invariant_survives_minus_o() -> None:
+    """_INTEGRATION_PER_TEST_TIMEOUT_SECONDS invariant must survive python -O."""
+    result = _run_integration_timeout_patched_import(2.0, minus_o=True)
+    assert result.returncode != 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    )
+    assert "RuntimeError" in result.stderr
+    assert "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0" in result.stderr

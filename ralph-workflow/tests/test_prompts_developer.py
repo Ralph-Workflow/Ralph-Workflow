@@ -224,7 +224,7 @@ def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work
     assert "development_result" in prompt
     assert "analysis_items_addressed" in prompt
     assert "UNATTENDED MODE" in prompt
-    assert "AVAILABLE TOOLS" in prompt
+    assert "MCP TOOLS" in prompt
     assert DEVELOPER_SMALL_CHANGE_TEXT in prompt
     assert DEVELOPER_NATIVE_CHECKS_TEXT in prompt
     assert DEVELOPER_NO_BYPASS_TEXT in prompt

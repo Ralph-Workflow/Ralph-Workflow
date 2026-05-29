@@ -30,11 +30,11 @@ def render_commit_cleanup_prompt(
     session_caps: SessionCapabilities,
 ) -> str:
     """Render the commit cleanup prompt using the commit_cleanup.jinja template."""
-    from ralph.prompts.materialize import (
+    from ralph.prompts.materialize import (  # noqa: PLC0415
         _merged_variables,
         commit_cleanup_diff,
     )
-    from ralph.prompts.materialize_support import (
+    from ralph.prompts.materialize_support import (  # noqa: PLC0415
         current_prompt_variables as _current_prompt_variables,
     )
 

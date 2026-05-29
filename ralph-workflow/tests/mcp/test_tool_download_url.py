@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.config.mcp_models import WebVisitConfig
 from ralph.mcp.tools import webvisit as tool_webvisit
 from ralph.mcp.tools.coordination import ToolResult
@@ -168,8 +170,6 @@ def test_download_url_content_type_in_result(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_download_url_url_not_in_logs(monkeypatch: pytest.MonkeyPatch) -> None:
-    from loguru import logger
-
     secret_url = "https://internal-secret-dl-98765.example.com/private"
     timeout_outcome = FetchOutcome(status="timeout", error="timed out")
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: timeout_outcome)

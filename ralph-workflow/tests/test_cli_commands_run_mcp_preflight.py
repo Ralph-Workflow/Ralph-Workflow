@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
@@ -10,8 +11,6 @@ from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import pytest
 
     from ralph.workspace.scope import WorkspaceScope
@@ -38,8 +37,6 @@ def _fake_preflight_request(
 
 class _FakeWorkspaceScope:
     def __init__(self, root: str) -> None:
-        from pathlib import Path
-
         self.root = Path(root)
 
 

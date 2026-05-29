@@ -63,6 +63,7 @@ def _stub_prompt_materialization(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
     monkeypatch.setattr(runner, "materialize_prompt_for_phase", lambda *args, **kwargs: "noop")
     monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
 
 
 def _write_artifact(root: Path, relative_path: str, payload: dict[str, object]) -> None:
@@ -397,11 +398,30 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
     def capture_saved_state(state: PipelineState, *_args: object, **_kwargs: object) -> None:
         saved_states.append(state)
 
+    def fake_phase_event_after_agent_run(
+        *,
+        effect: object,
+        **_kwargs: object,
+    ) -> PipelineEvent:
+        if isinstance(effect, InvokeAgentEffect) and effect.phase == "planning_analysis":
+            try:
+                data = json.loads(
+                    (tmp_path / ".agent/artifacts/planning_analysis_decision.json").read_text()
+                )
+                status = data["content"]["status"]
+                if status == "completed":
+                    return PipelineEvent.ANALYSIS_SUCCESS
+                return PipelineEvent.ANALYSIS_LOOPBACK
+            except Exception:
+                return PipelineEvent.ANALYSIS_LOOPBACK
+        return PipelineEvent.AGENT_SUCCESS
+
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
     _stub_prompt_materialization(monkeypatch)
     monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(runner, "call_determine_effect_from_policy", stop_at_development)
+    monkeypatch.setattr(runner, "phase_event_after_agent_run", fake_phase_event_after_agent_run)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     _install_runner_display_context(monkeypatch)
 

@@ -132,3 +132,58 @@ def test_permission_prompt_action_message_describes_selected_option() -> None:
     assert message is not None
     assert "Allow once" in message
     assert "Allow this action?" in message
+
+
+def test_extract_menu_state_parses_linux_block_prefix() -> None:
+    """Linux Claude uses \u258c (LEFT HALF BLOCK) instead of \u276f for selection."""
+    screen = """
+    \u258c1. Yes, I trust this folder
+    2. No, exit
+
+    Enter to confirm
+    """
+
+    state = invoke_module.extract_choice_menu_state(screen)
+
+    assert state is not None
+    assert state.selected_index == 0
+    assert [option.label for option in state.options] == [
+        "Yes, I trust this folder",
+        "No, exit",
+    ]
+
+
+def test_auto_response_picks_yes_for_linux_trust_prompt() -> None:
+    """Auto-response selects 'Yes' for the Linux trust prompt using \u258c prefix."""
+    screen = """
+    \u258c1. Yes, I trust this folder
+    2. No, exit
+
+    Enter to confirm
+    """
+
+    response = invoke_module.interactive_auto_response_for_prompt(
+        screen,
+        auto_mode_prompt_seen=False,
+    )
+
+    assert response == "\r"
+
+
+def test_auto_response_navigates_to_allow_option_with_linux_prefix() -> None:
+    """When the affirmative option isn't pre-selected, navigate to it."""
+    screen = """
+    Allow this action?
+
+    \u258c1. No, cancel
+    2. Allow once
+
+    Enter to confirm
+    """
+
+    response = invoke_module.interactive_auto_response_for_prompt(
+        screen,
+        auto_mode_prompt_seen=False,
+    )
+
+    assert response == "\x1b[B\r"

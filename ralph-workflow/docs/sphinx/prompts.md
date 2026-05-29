@@ -14,7 +14,7 @@ Ralph Workflow uses built-in templates to assemble prompts for planning, develop
 
 ## Skill injection
 
-`ralph --init` installs Ralph Workflow's shipped skill bundle where Claude Code and OpenCode discover skills automatically (for example under `~/.claude/skills/`). Planning and development prompts include a short **SHIPPED SKILLS** section that tells agents to invoke skills through their environment's skill mechanism. Ralph does not enumerate skill names in prompts.
+`ralph --init` installs Ralph Workflow's shipped skill bundle where Claude Code and OpenCode discover skills automatically (for example under `~/.claude/skills/`). Planning and development prompts include a short **SHIPPED SKILLS** section that tells agents to invoke skills through their environment's skill mechanism. Ralph Workflow does not enumerate skill names in prompts.
 
 When `RALPH_INLINE_SKILLS_DIR` is set, prompts may inline skill content through `SKILLS_INLINE_CONTENT` instead.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -75,8 +76,6 @@ class TestRunnerCycleStartUsesForceTrue:
 
         Disk-full (ENOSPC) is environmental; the cycle baseline is best-effort.
         """
-        import errno
-
         root, _ = git_repo
 
         def failing_write(workspace_root: Path, sha: str, *, force: bool = False) -> None:

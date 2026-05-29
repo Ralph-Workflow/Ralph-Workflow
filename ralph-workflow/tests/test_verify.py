@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from ralph import verify as verify_module
 from ralph.executor.process import TIMEOUT_EXIT_CODE, ProcessResult
 from ralph.verify import main
+from ralph.verify_timeout import DEFAULT_SUITE_TIMEOUT_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -206,7 +207,6 @@ def test_main_rejects_positional_arguments(tmp_path: Path) -> None:
 
 
 def test_total_test_budget_matches_suite_timeout_policy() -> None:
-    from ralph.verify_timeout import DEFAULT_SUITE_TIMEOUT_SECONDS
     assert verify_module._TOTAL_TEST_BUDGET_SECONDS == DEFAULT_SUITE_TIMEOUT_SECONDS, (
         "_TOTAL_TEST_BUDGET_SECONDS and DEFAULT_SUITE_TIMEOUT_SECONDS must stay in sync"
     )

@@ -11,7 +11,11 @@ from rich.text import Text
 from ralph.agents.availability import HasListAgents, check_agent_availability
 from ralph.banner import SupportsPrint, show_banner
 from ralph.display.context import DisplayContext
-from ralph.onboarding import getting_started_pointer_sentence, welcome_panel_next_steps
+from ralph.onboarding import (
+    CODEBERG_STAR_CTA,
+    getting_started_pointer_sentence,
+    welcome_panel_next_steps,
+)
 
 if TYPE_CHECKING:
     from ralph.config.bootstrap import BootstrapResult
@@ -180,8 +184,6 @@ def emit_first_run_welcome(
     content.append(_build_next_steps_text())
 
     # Star CTA — highest-leverage conversion from install → repo adoption
-    from ralph.onboarding import CODEBERG_STAR_CTA
-
     content.append(Text())  # blank line
     content.append(Text(CODEBERG_STAR_CTA, style="theme.status.warning"))
 

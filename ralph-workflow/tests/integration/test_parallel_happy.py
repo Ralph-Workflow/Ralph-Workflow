@@ -65,10 +65,10 @@ def test_three_workers_all_succeed() -> None:
             del on_output, on_status
             started.append(unit.unit_id)
             if unit.unit_id == "unit-A":
-                await second_started.wait()
+                await asyncio.wait_for(second_started.wait(), timeout=5.0)
             elif unit.unit_id == "unit-B":
                 second_started.set()
-            await release_workers.wait()
+            await asyncio.wait_for(release_workers.wait(), timeout=5.0)
             return WorkerResult(
                 unit_id=unit.unit_id,
                 exit_code=0,
@@ -84,7 +84,7 @@ def test_three_workers_all_succeed() -> None:
                 display=cast("ParallelDisplay", _FakeDisplay()),
             )
         )
-        await second_started.wait()
+        await asyncio.wait_for(second_started.wait(), timeout=5.0)
         release_workers.set()
         return await task
 

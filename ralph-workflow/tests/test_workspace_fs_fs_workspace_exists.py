@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.workspace.fs import FsWorkspace
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 class TestFsWorkspaceExists:
-    def test_returns_true_for_existing_file(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
-            (Path(tmpdir) / "exists.txt").write_text("hi", encoding="utf-8")
+    def test_returns_true_for_existing_file(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "exists.txt").write_text("hi", encoding="utf-8")
 
-            assert ws.exists("exists.txt") is True
+        assert ws.exists("exists.txt") is True
 
-    def test_returns_false_for_nonexistent(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
+    def test_returns_false_for_nonexistent(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
 
-            assert ws.exists("missing.txt") is False
+        assert ws.exists("missing.txt") is False

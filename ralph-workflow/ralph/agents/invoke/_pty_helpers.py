@@ -18,25 +18,149 @@ _PERMISSION_PROMPT_PATTERNS = (
     re.compile(r"enable auto mode\?", re.IGNORECASE),
     re.compile(r"enter to confirm", re.IGNORECASE),
 )
-_CHOICE_MENU_OPTION_RE = re.compile("^(?P<prefix>\u276f\\s*)?(?P<index>\\d+)\\.\\s+(?P<label>.+)$")
+_CHOICE_MENU_OPTION_RE = re.compile(
+    "^(?P<prefix>[^\\d\\w\\s]\\s*)?(?P<index>\\d+)\\.\\s*(?P<label>.+)$"
+)
+
+_APPROVAL_KEYWORDS = frozenset({"allow", "approve", "yes", "grant", "authorize"})
+_REJECTION_KEYWORDS = frozenset({"no", "cancel", "deny", "reject", "block", "skip", "exit"})
+_MENU_SCORE_CONFIRM_FOOTER = 3
+_MENU_SCORE_PERMISSION_KEYWORDS = 2
+_MENU_SCORE_NUMBERED_OPTIONS = 2
+_MENU_SCORE_PERMISSION_PATTERN = 2
+_MENU_SCORE_THRESHOLD = 4
+_MIN_LINE_LEN_FOR_NUMBERED_CHECK = 3
+_MIN_PREFIX_LEN = 2
+_MENU_APPROVAL_INDICATORS = frozenset({
+    "allow", "approve", "yes", "grant", "authorize", "ok", "okay", "accept", "confirm",
+})
+_MENU_REJECTION_INDICATORS = frozenset({
+    "no", "cancel", "deny", "reject", "block", "skip", "exit", "quit", "refuse", "decline",
+})
+_MENU_APPROVAL_COUNT_THRESHOLD = 2
+_MIN_PREFIX_CHAR_LEN = 4
 _MENU_QUIESCENCE_SECONDS = 0.75
+_RECENT_CHOICE_LINES_MAX = 20
 
 
 def _split_complete_vt_lines(text: str) -> tuple[list[str], str]:
-    lines = text.splitlines(keepends=True)
-    pending = lines.pop() if lines and not lines[-1].endswith(("\n", "\r")) else ""
-    return lines, pending
+    collapsed = text.replace("\r\r\n", "\n").replace("\r\n", "\n")
+    lines = collapsed.split("\n")
+    if not lines:
+        return [], ""
+    if collapsed.endswith("\n"):
+        lines.pop()
+        return [f"{line}\n" for line in lines], ""
+    pending = lines.pop()
+    return [f"{line}\n" for line in lines], pending
 
 
 def _pending_vt_snapshot_line(text: str) -> str | None:
-    normalized = normalize_vt_text(text).strip()
+    normalized = normalize_vt_text(text).rstrip()
     if not normalized:
         return None
-    return f"{normalized}\n"
+    if not normalized.endswith("\n"):
+        return f"{normalized}\n"
+    return normalized
 
 
 def _visible_tui_text(text: str) -> str:
     return normalize_vt_text(text).strip()
+
+
+def _fuzzy_contains_permission_prompt(text: str) -> bool:
+    """Fuzzy detection of interactive permission/approval prompts.
+
+    Permission prompts ask Claude to do something (allow tool, enable mode, etc).
+    Action chooser menus (Retry/Skip/Exit) ask user to pick a task action.
+
+    We detect permission prompts by looking for permission-related keywords
+    in the text, which is robust against format variations.
+    """
+    visible = normalize_vt_text(text)
+    lower = visible.lower()
+    lines = [line.strip().lower() for line in visible.splitlines() if line.strip()]
+
+    if any(pattern.search(visible) is not None for pattern in _PERMISSION_PROMPT_PATTERNS):
+        return True
+
+    approval_count = sum(
+        1 for line in lines
+        if any(kw in line for kw in _MENU_APPROVAL_INDICATORS)
+    )
+    rejection_count = sum(
+        1 for line in lines
+        if any(kw in line for kw in _MENU_REJECTION_INDICATORS)
+    )
+
+    if approval_count >= 1 and rejection_count >= 1:
+        return True
+
+    if approval_count >= _MENU_APPROVAL_COUNT_THRESHOLD:
+        return True
+
+    permission_phrases = [
+        "claude requested",
+        "permission",
+        "authorize",
+        "tool use",
+        "requires confirmation",
+        "approval",
+        "auto mode",
+        "trust prompt",
+    ]
+    return any(phrase in lower for phrase in permission_phrases)
+
+
+def _simple_auto_approve(text: str) -> str | None:
+    """Simple auto-approval for permission menus that can't be precisely parsed.
+
+    Returns "\\r" to accept the default/indicated selection if we detect
+    a permission menu. This is a last-resort fallback when the precise
+    menu parser fails - we just send Enter to accept whatever is selected.
+    """
+    if not _fuzzy_contains_permission_prompt(text):
+        return None
+
+    visible = normalize_vt_text(text)
+    lines = [line.strip() for line in visible.splitlines() if line.strip()]
+    if not lines:
+        return "\r"
+
+    yes_indices: list[int] = []
+    default_indices: list[int] = []
+    selected_index: int | None = None
+
+    for i, line in enumerate(lines):
+        lower = line.lower()
+        is_approval = any(kw in lower for kw in _MENU_APPROVAL_INDICATORS)
+        is_rejection = any(kw in lower for kw in _MENU_REJECTION_INDICATORS)
+
+        if is_approval and not is_rejection:
+            yes_indices.append(i)
+            if any(tok in lower for tok in ("once", "this time", "now", "default")):
+                default_indices.append(i)
+
+        if len(line) > _MIN_PREFIX_LEN and line[0:2].isdigit() and "." in line[:4]:
+            lstripped = line.lstrip()
+            if len(lstripped) > _MIN_PREFIX_CHAR_LEN:
+                prefix_char = lstripped[_MIN_PREFIX_CHAR_LEN]
+            else:
+                prefix_char = " "
+            if prefix_char in ("\u276f", "\u258c", "*", ">", "\x1b"):
+                selected_index = i
+
+    if default_indices:
+        return "\r"
+    if yes_indices and selected_index is not None:
+        target = yes_indices[0]
+        delta = target - selected_index
+        nav = ("\x1b[B" * delta) if delta > 0 else ("\x1b[A" * abs(delta))
+        return nav + "\r"
+    if yes_indices:
+        return "\r"
+
+    return None
 
 
 def _extract_choice_menu_state(text: str) -> _ChoiceMenuState | None:
@@ -48,7 +172,11 @@ def _extract_choice_menu_state(text: str) -> _ChoiceMenuState | None:
     prompt: str | None = None
     confirm_footer: str | None = None
     for line in lines:
-        if "enter to confirm" in line.lower():
+        lower = line.lower()
+        is_confirm_footer = (
+            ("enter" in lower and "confirm" in lower) or "enter to confirm" in lower
+        )
+        if is_confirm_footer:
             confirm_footer = line
             continue
         match = _CHOICE_MENU_OPTION_RE.match(line)
@@ -60,8 +188,14 @@ def _extract_choice_menu_state(text: str) -> _ChoiceMenuState | None:
             continue
         if prompt is None:
             prompt = line
-    if prompt is None or confirm_footer is None or not options:
+    if confirm_footer is None or not options:
         return None
+    if prompt is None:
+        selected_option = next((opt for opt in options if opt.selected), None)
+        if selected_option is not None:
+            prompt = selected_option.label
+        else:
+            return None
     selected_index = next((i for i, option in enumerate(options) if option.selected), None)
     return _ChoiceMenuState(
         prompt=prompt,
@@ -75,9 +209,10 @@ def _menu_navigation_response(
     state: _ChoiceMenuState,
     preferred_index: int | None,
 ) -> str | None:
-    if preferred_index is None or state.selected_index is None:
+    if preferred_index is None:
         return None
-    delta = preferred_index - state.selected_index
+    effective_selected = state.selected_index if state.selected_index is not None else 0
+    delta = preferred_index - effective_selected
     if delta > 0:
         return ("\x1b[B" * delta) + "\r"
     if delta < 0:
@@ -197,6 +332,8 @@ def _is_permission_prompt_line(text: str) -> bool:
     stripped = _visible_tui_text(text)
     if _extract_choice_menu_state(text) is not None:
         return True
+    if _fuzzy_contains_permission_prompt(text):
+        return True
     return any(pattern.search(stripped) is not None for pattern in _PERMISSION_PROMPT_PATTERNS)
 
 
@@ -209,4 +346,9 @@ def _interactive_auto_response_for_prompt(
         return _plan_choice_menu_response(
             text if auto_mode_prompt_seen else f"Enable auto mode?\n{text}"
         )
-    return _plan_fuzzy_permission_menu_response(text)
+    precise_response = _plan_fuzzy_permission_menu_response(text)
+    if precise_response is not None:
+        return precise_response
+    if _fuzzy_contains_permission_prompt(text):
+        return _simple_auto_approve(text)
+    return None

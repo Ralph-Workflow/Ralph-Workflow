@@ -68,6 +68,67 @@ def _workspace_key(workspace_root: Path) -> str:
     return digest[:_KEY_LENGTH]
 
 
+def _compute_sandbox_limits(workspace_size_bytes: int) -> tuple[int, int, int]:
+    """Return (max_total_bytes, max_pool_bytes, max_workspace_bytes) scaled to workspace size.
+
+    Each workspace instance gets its own sandbox manager with limits proportional
+    to the repository size, rather than contending for a single shared global cap.
+    Small repos keep the existing defaults; large repos scale up to avoid eviction
+    pressure when sandbox slots each carry a full workspace mirror.
+    """
+    if workspace_size_bytes <= 0:
+        workspace_size_bytes = _DEFAULT_MAX_TOTAL_BYTES
+    # Minimum slot count we want to support without LRU eviction of idle slots.
+    min_desired_slots = 4
+    # Estimate per-slot overhead: full workspace mirror + git isolation (~20% overhead).
+    slot_bytes = int(workspace_size_bytes * 1.2)
+    pool_bytes = max(
+        _DEFAULT_MAX_POOL_BYTES,
+        slot_bytes * min_desired_slots,
+    )
+    total_bytes = max(
+        _DEFAULT_MAX_TOTAL_BYTES,
+        pool_bytes * 2,  # allow at least 2 full pools
+    )
+    workspace_safety_bytes = max(
+        _DEFAULT_MAX_WORKSPACE_BYTES,
+        workspace_size_bytes * 6,
+    )
+    return total_bytes, pool_bytes, workspace_safety_bytes
+
+
+def _compute_workspace_size_bytes(workspace_root: Path) -> int:
+    """Calculate the on-disk size of a workspace, excluding generated directories."""
+    total = 0
+    ignored_relative_paths = _ignored_workspace_relative_paths(workspace_root)
+
+    def _scan_dir(dir_path: Path) -> None:
+        nonlocal total
+        try:
+            with os.scandir(dir_path) as entries:
+                for entry in entries:
+                    if entry.name in _GENERATED_DIR_NAMES:
+                        continue
+                    child = dir_path / entry.name
+                    try:
+                        rel = child.relative_to(workspace_root)
+                    except ValueError:
+                        continue
+                    if any(
+                        rel == ignored_path or rel.is_relative_to(ignored_path)
+                        for ignored_path in ignored_relative_paths
+                    ):
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        _scan_dir(child)
+                    elif entry.is_file(follow_symlinks=False):
+                        with suppress(OSError):
+                            total += entry.stat().st_size
+        except OSError:
+            pass
+
+    _scan_dir(workspace_root)
+    return total
 @dataclass(frozen=True)
 class _IdleSlotCandidate:
     slot_root: Path

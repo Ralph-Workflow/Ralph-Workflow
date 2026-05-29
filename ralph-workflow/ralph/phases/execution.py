@@ -65,6 +65,9 @@ if TYPE_CHECKING:
         PipelinePolicy,
     )
 
+_MATCH_SCORE_THRESHOLD = 0.88
+_MATCH_SCORE_GAP = 0.03
+
 
 def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
     """Generic handler for any phase with role='execution'.
@@ -388,7 +391,7 @@ def _match_analysis_proof_ref(required_refs: frozenset[str], submitted_ref: str)
 
     best_score, best_match = scored_matches[0]
     second_best_score = scored_matches[1][0] if len(scored_matches) > 1 else 0.0
-    if best_score < 0.88 or best_score - second_best_score < 0.03:
+    if best_score < _MATCH_SCORE_THRESHOLD or best_score - second_best_score < _MATCH_SCORE_GAP:
         return None
     return best_match
 

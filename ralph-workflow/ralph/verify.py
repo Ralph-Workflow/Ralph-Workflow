@@ -43,6 +43,13 @@ if TYPE_CHECKING:
 # total elapsed time of every test suite running sequentially under
 # `make verify` must not exceed this value.
 #
+# _INTEGRATION_PER_TEST_TIMEOUT_SECONDS: ABSOLUTE and IMMUTABLE
+# per-test timeout for integration tests (tests/integration/).
+# NO integration test may take longer than this. Enforced by
+# SIGALRM in tests/conftest.py — any integration test that
+# exceeds this limit is a design defect: fix the production
+# coupling, not the timeout.
+#
 # Enforcement mechanism: run_verify() tracks cumulative wall-clock
 # time via time.monotonic() across ALL test-budget-tracked steps.
 # Splitting tests across N suites does NOT give you N x 60s — the
@@ -57,8 +64,31 @@ if TYPE_CHECKING:
 #
 # If tests are too slow, fix the test design (remove I/O, use
 # MemoryWorkspace, inject fake clocks). Do NOT raise these constants.
+#
+# --- Allowed skip: subprocess_e2e tests ---
+#
+# Tests marked ``@pytest.mark.subprocess_e2e`` are excluded from the
+# main ``make test`` suite (``-m "not subprocess_e2e"``).  These tests
+# may be skipped only in narrow, documented cases where the failure is
+# in the test harness or a third-party dependency we cannot control.
+#
+# The SINGLE allowed skip as of 2026-05-29:
+#   ``tests/test_verify_invariants.py`` — imports ``verify.py`` via
+#   ``importlib.util.spec_from_file_location + exec_module`` in a
+#   subprocess.  In Python 3.14, this triggers a ``loguru`` /
+#   ``asyncio`` circular import (``AttributeError: partially
+#   initialized module 'asyncio'``).  The invariants are still
+#   enforced correctly in the main ``make verify`` path (import-time
+#   RuntimeError checks).  This is a test-harness compatibility issue
+#   with a third-party library (loguru), not a verification defect.
+#
+# No other test may be skipped, quarantined, or marked subprocess_e2e
+# to bypass the 1s per-test or 60s combined budget limits.
 _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
 _TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
+_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0
+_BUDGET_EPSILON: Final = 1e-9
+_MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
 
 # --- Verification step definitions ---
 #
@@ -144,9 +174,17 @@ for idx in _BUDGET_TRACKED_STEPS:
 
 # Budget-constant integrity: the 60-second combined budget is ABSOLUTE and
 # IMMUTABLE. This epsilon check prevents any drift or accidental change.
-if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9:
+if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < _BUDGET_EPSILON:
     raise RuntimeError(
         f"_TOTAL_TEST_BUDGET_SECONDS must be 60.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
+    )
+
+# Per-test integration timeout integrity: 1.0 seconds is ABSOLUTE and
+# IMMUTABLE. No integration test may take longer than this.
+if not abs(_INTEGRATION_PER_TEST_TIMEOUT_SECONDS - 1.0) < _BUDGET_EPSILON:
+    raise RuntimeError(
+        "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0 "
+        f"(got {_INTEGRATION_PER_TEST_TIMEOUT_SECONDS})"
     )
 
 # _VERIFY_STEP_TIMEOUT_SECONDS integrity: must be positive and non-trivial.
@@ -156,7 +194,7 @@ if not _VERIFY_STEP_TIMEOUT_SECONDS > 0:
     raise RuntimeError(
         "_VERIFY_STEP_TIMEOUT_SECONDS must be positive"
     )
-if _VERIFY_STEP_TIMEOUT_SECONDS < 5.0:
+if _VERIFY_STEP_TIMEOUT_SECONDS < _MIN_VERIFY_STEP_TIMEOUT_SECONDS:
     raise RuntimeError(
         f"_VERIFY_STEP_TIMEOUT_SECONDS must be at least 5.0 (got {_VERIFY_STEP_TIMEOUT_SECONDS})"
     )

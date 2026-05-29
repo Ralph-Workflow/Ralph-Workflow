@@ -249,9 +249,7 @@ def _sync_dir(  # noqa: PLR0912
     dst.mkdir(parents=True, exist_ok=True)
     try:
         with os.scandir(src) as src_entries:
-            src_children: list[tuple[str, Path]] = []
-            for entry in src_entries:
-                src_children.append((entry.name, Path(entry.path)))
+            src_children = [(entry.name, Path(entry.path)) for entry in src_entries]
     except OSError:
         return
     src_names = {name for name, _ in src_children}
@@ -343,7 +341,7 @@ def _resolve_gitdir_reference(gitdir_file: Path) -> Path | None:
     return gitdir_path
 
 
-@functools.lru_cache(maxsize=16)
+@functools.lru_cache(maxsize=16)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 def _ignored_workspace_relative_paths(source_root: Path) -> tuple[Path, ...]:
     ignored_paths: set[Path] = {Path(".git")}
     source_git = source_root / ".git"

@@ -37,6 +37,8 @@ from ralph.policy.validation._pipeline_validators import (
 )
 from ralph.policy.validation._policy_validation_error import PolicyValidationError
 
+_BLOCK_BASED_POLICY_FORMAT_VERSION = 2
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -329,7 +331,8 @@ def validate_checkpoint_against_policy(
         entry_block = bundle.pipeline.entry_block
     except AttributeError:
         entry_block = None
-    if entry_block is not None and state.policy_format_version != 2:
+    wrong_version = state.policy_format_version != _BLOCK_BASED_POLICY_FORMAT_VERSION
+    if entry_block is not None and wrong_version:
         raise PolicyValidationError(
             "Cannot resume from this obsolete checkpoint: it was saved before "
             "the block-based policy format redesign. Preserve the checkpoint "

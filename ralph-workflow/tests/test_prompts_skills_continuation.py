@@ -1,5 +1,6 @@
 """Tests that developer_iteration_continuation uses Skill-tool discovery."""
 
+import tempfile
 from pathlib import Path
 
 from ralph.prompts.developer import (
@@ -31,7 +32,6 @@ def _shared_render_developer(
     tmp_path: Path | None = None,
 ) -> str:
     """Render a developer prompt with optional has_docs_mcp."""
-    import tempfile
     if tmp_path is None:
         with tempfile.TemporaryDirectory() as td:
             tmp_path = Path(td)

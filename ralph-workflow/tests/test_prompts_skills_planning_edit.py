@@ -1,5 +1,6 @@
 """Tests that planning_edit templates use Skill-tool discovery and docs-mcp guidance."""
 
+import tempfile
 from pathlib import Path
 
 from ralph.prompts.developer import (
@@ -37,7 +38,6 @@ def _shared_render_planning(
     tmp_path: Path | None = None,
 ) -> str:
     """Render a planning prompt with optional has_docs_mcp."""
-    import tempfile
     if tmp_path is None:
         with tempfile.TemporaryDirectory() as td:
             tmp_path = Path(td)

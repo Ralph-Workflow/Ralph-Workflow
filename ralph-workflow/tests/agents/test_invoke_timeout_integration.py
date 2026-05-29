@@ -182,7 +182,7 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
     def _blocking_stdout() -> Iterator[str]:
         # Blocks reader thread so main loop takes the empty-queue/evaluate path.
         # Released in finally so reader thread exits cleanly after the test.
-        _reader_release.wait()
+        _reader_release.wait(timeout=5.0)
         yield from ()
 
     handle = _FakeManagedHandle(_blocking_stdout())
@@ -225,7 +225,7 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
     _reader_release = threading.Event()
 
     def _blocking_stdout() -> Iterator[str]:
-        _reader_release.wait()
+        _reader_release.wait(timeout=5.0)
         yield from ()
 
     handle = _FakeManagedHandle(_blocking_stdout())
@@ -388,7 +388,7 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
 
     def _blocking_stdout() -> Iterator[str]:
         # Blocks the reader thread so the main loop takes the empty-queue path.
-        _reader_release.wait()
+        _reader_release.wait(timeout=5.0)
         yield from ()
 
     handle = _FakeManagedHandle(_blocking_stdout())
@@ -458,7 +458,7 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
     _reader_release = threading.Event()
 
     def _blocking_stdout() -> Iterator[str]:
-        _reader_release.wait()
+        _reader_release.wait(timeout=5.0)
         yield from ()
 
     handle = _FakeManagedHandle(_blocking_stdout())
@@ -533,7 +533,7 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
     _reader_release = threading.Event()
 
     def _blocking_stdout() -> Iterator[str]:
-        _reader_release.wait()
+        _reader_release.wait(timeout=5.0)
         yield from ()
 
     # Fake handle with active descendants but no fresh progress.
@@ -624,7 +624,7 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only() 
     _reader_release = threading.Event()
 
     def _blocking_stdout() -> Iterator[str]:
-        _reader_release.wait()
+        _reader_release.wait(timeout=5.0)
         yield from ()
 
     handle = _FakeManagedHandle(

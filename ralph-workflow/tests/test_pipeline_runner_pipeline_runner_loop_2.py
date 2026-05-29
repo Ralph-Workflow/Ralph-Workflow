@@ -195,6 +195,7 @@ class TestPipelineRunnerLoop:
                                 {"text": "three"},
                             ],
                         },
+                        "skills_mcp": {"skills": ["test-driven-development"], "mcps": []},
                         "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
                         "critical_files": {
                             "primary_files": [{"path": "src/plan.py", "action": "modify"}],

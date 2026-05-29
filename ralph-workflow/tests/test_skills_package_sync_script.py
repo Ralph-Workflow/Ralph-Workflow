@@ -14,6 +14,8 @@ from shutil import which
 
 import pytest
 
+from ralph.skills._content import BASELINE_SKILL_NAMES
+
 pytestmark = pytest.mark.subprocess_e2e
 
 
@@ -35,8 +37,6 @@ def test_upstream_manifest_covers_all_shipped_skills_and_has_no_local_sources() 
     manifest_path = repo_root / "skills-package" / "upstream-skills.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     bundle_names = tuple(skill["name"] for skill in manifest["skills"])
-
-    from ralph.skills._content import BASELINE_SKILL_NAMES
 
     assert bundle_names == BASELINE_SKILL_NAMES
     assert all(skill["source"]["type"] == "upstream" for skill in manifest["skills"])

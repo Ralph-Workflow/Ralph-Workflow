@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.tools import exec_overlay
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import pytest
 
 
@@ -117,10 +118,10 @@ def test_mirror_workspace_incremental_hard_links_unchanged_files(tmp_path: Path)
     assert (overlay / "b.txt").read_text() == "new!"
     assert (overlay / "c.txt").read_text() == "added"
 
-    a_ino = os.stat(overlay / "a.txt").st_ino
-    prev_a_ino = os.stat(previous / "a.txt").st_ino
-    b_ino = os.stat(overlay / "b.txt").st_ino
-    prev_b_ino = os.stat(previous / "b.txt").st_ino
+    a_ino = (overlay / "a.txt").stat().st_ino
+    prev_a_ino = (previous / "a.txt").stat().st_ino
+    b_ino = (overlay / "b.txt").stat().st_ino
+    prev_b_ino = (previous / "b.txt").stat().st_ino
 
     assert a_ino == prev_a_ino
     assert b_ino != prev_b_ino

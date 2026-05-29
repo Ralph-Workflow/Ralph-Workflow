@@ -132,8 +132,7 @@ def _stage_commit_scope(
     # Import effect_executor lazily to avoid circular import, then call stage_files
     # through its namespace so that test monkeypatching of effect_executor.stage_files
     # is respected.
-    import ralph.pipeline.effect_executor as _effect_executor
-
+    import ralph.pipeline.effect_executor as _effect_executor  # noqa: PLC0415
     _effect_executor.stage_files(str(repo_root), include_paths)
 
 

@@ -48,7 +48,7 @@ def _emit_timeout_message(timeout_seconds: float) -> None:
 
 def _terminate_descendants() -> None:
     try:
-        import psutil  # lazy import — psutil has heavy import cost
+        import psutil  # noqa: PLC0415
     except ImportError:
         return  # psutil not available — cannot terminate descendants
 

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.skills._capability_status import CapabilityStatus
+from ralph.skills._content import get_skill_content
 from ralph.skills._installer import install_baseline_skills
 
 if TYPE_CHECKING:
@@ -120,8 +121,6 @@ def test_install_baseline_skills_adopts_unmarked_identical_skill(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from ralph.skills._content import get_skill_content
-
     target_dir = tmp_path / "skills"
     skill_dir = target_dir / "using-superpowers"
     skill_dir.mkdir(parents=True)

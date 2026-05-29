@@ -470,6 +470,7 @@ def test_handle_planning_invokes_agent_successfully() -> None:
         '{"type":"plan","content":{"summary":{"context":"Plan handoff","scope_items":['
         '{"text":"Retry invalid planning output"},{"text":"Hand off to development"},'
         '{"text":"Verify policy-driven routing"}]},'
+        '"skills_mcp":{"skills":["test-driven-development"],"mcps":[]},'
         '"steps":[{"number":1,"title":"Implement","content":"Wire the pipeline"}],'
         '"critical_files":{"primary_files":[{"path":"ralph/pipeline/runner.py","action":"modify"}]},'
         '"risks_mitigations":[{"risk":"Regression","mitigation":"Add tests"}],'
@@ -535,6 +536,7 @@ def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None
     workspace.read.return_value = (
         '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
         '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
+        '"skills_mcp":{"skills":["test-driven-development"],"mcps":[]},'
         '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
         '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
         '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
@@ -588,6 +590,7 @@ def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -
     plan_json = (
         '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
         '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
+        '"skills_mcp":{"skills":["test-driven-development"],"mcps":[]},'
         '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
         '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
         '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'

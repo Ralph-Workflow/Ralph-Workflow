@@ -2,52 +2,49 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.workspace.fs import FsWorkspace
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 class TestFsWorkspaceWrite:
-    def test_writes_file_content(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
+    def test_writes_file_content(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
 
-            ws.write("output.txt", "test content")
+        ws.write("output.txt", "test content")
 
-            assert (Path(tmpdir) / "output.txt").read_text(encoding="utf-8") == "test content"
+        assert (tmp_path / "output.txt").read_text(encoding="utf-8") == "test content"
 
-    def test_writes_creates_parent_directories(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
+    def test_writes_creates_parent_directories(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
 
-            ws.write("a/b/c/deep.txt", "content")
+        ws.write("a/b/c/deep.txt", "content")
 
-            assert (Path(tmpdir) / "a" / "b" / "c" / "deep.txt").read_text(
-                encoding="utf-8"
-            ) == "content"
+        assert (tmp_path / "a" / "b" / "c" / "deep.txt").read_text(
+            encoding="utf-8"
+        ) == "content"
 
-    def test_writes_overwrites_existing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
-            (Path(tmpdir) / "existing.txt").write_text("original", encoding="utf-8")
+    def test_writes_overwrites_existing(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "existing.txt").write_text("original", encoding="utf-8")
 
-            ws.write("existing.txt", "updated")
+        ws.write("existing.txt", "updated")
 
-            assert (Path(tmpdir) / "existing.txt").read_text(encoding="utf-8") == "updated"
+        assert (tmp_path / "existing.txt").read_text(encoding="utf-8") == "updated"
 
-    def test_write_rejects_parent_traversal_outside_workspace(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
+    def test_write_rejects_parent_traversal_outside_workspace(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
 
-            with pytest.raises(ValueError, match="outside workspace"):
-                ws.write("../escape.txt", "blocked")
+        with pytest.raises(ValueError, match="outside workspace"):
+            ws.write("../escape.txt", "blocked")
 
-    def test_write_rejects_absolute_path_outside_workspace(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
+    def test_write_rejects_absolute_path_outside_workspace(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
 
-            with pytest.raises(ValueError, match="outside workspace"):
-                ws.write("/tmp/escape.txt", "blocked")
+        with pytest.raises(ValueError, match="outside workspace"):
+            ws.write("/tmp/escape.txt", "blocked")

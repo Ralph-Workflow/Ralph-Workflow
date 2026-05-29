@@ -268,6 +268,7 @@ _DEVELOPMENT_EXTRA: frozenset[str] = frozenset(
         "workspace.delete",
         "run.report_progress",
         "env.read",
+        "process.exec_unbounded",
     }
 )
 

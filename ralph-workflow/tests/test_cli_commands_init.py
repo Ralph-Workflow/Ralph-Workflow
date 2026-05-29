@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 
 from ralph.cli.commands import init as init_module
+from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
+from ralph.skills import manager as manager_module
+from ralph.skills._capability_entry import CapabilityEntry
+from ralph.skills._capability_state import CapabilityState
+from ralph.skills._capability_status import CapabilityStatus
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -24,8 +29,6 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
         color_system=None,
         theme=RALPH_THEME,
     )
-
-    from ralph.display.context import DisplayContext
 
     ctx = DisplayContext(
         console=console,
@@ -65,12 +68,7 @@ def test_init_command_calls_ensure_baseline_capabilities(
     def fake_ensure(_self_obj: object, *, workspace_root: object) -> object:
         nonlocal called
         called = True
-        from ralph.skills._capability_state import CapabilityState
-
         return CapabilityState()
-
-    from ralph.skills import manager as manager_module
-
     monkeypatch.setattr(
         manager_module.SkillManager,
         "ensure_baseline_capabilities",
@@ -89,19 +87,15 @@ def test_init_command_prints_capability_summary(
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
 
-    from ralph.skills._capability_entry import CapabilityEntry
-    from ralph.skills._capability_state import CapabilityState
-    from ralph.skills._capability_status import CapabilityStatus
-
-    def fake_ensure(_self_obj: object, *, workspace_root: object) -> CapabilityState:
+    def fake_ensure(
+        _self_obj: object, *, workspace_root: object
+    ) -> CapabilityState:
         return CapabilityState(
             web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
             visit_url=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
             docs_mcp=CapabilityEntry(status=CapabilityStatus.NOT_INSTALLED),
             skills=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
         )
-
-    from ralph.skills import manager as manager_module
 
     monkeypatch.setattr(
         manager_module.SkillManager,
@@ -125,8 +119,6 @@ def test_init_command_skill_failure_does_not_block_init(
 
     def fake_ensure_that_raises(*args: object, **kwargs: object) -> object:
         raise RuntimeError("simulated skill install failure")
-
-    from ralph.skills import manager as manager_module
 
     monkeypatch.setattr(
         manager_module.SkillManager,
@@ -159,12 +151,7 @@ def test_init_command_fallback_path_skips_capability_refresh(
     def fake_ensure(*_args: object, **_kwargs: object) -> object:
         nonlocal calls
         calls += 1
-        from ralph.skills._capability_state import CapabilityState
-
         return CapabilityState()
-
-    from ralph.skills import manager as manager_module
-
     monkeypatch.setattr(
         manager_module.SkillManager,
         "ensure_baseline_capabilities",

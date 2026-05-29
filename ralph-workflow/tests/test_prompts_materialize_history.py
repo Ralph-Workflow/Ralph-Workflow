@@ -20,6 +20,7 @@ from ralph.prompts.materialize import (
     PromptPhaseOptions,
     materialize_prompt_for_phase,
     resolve_fix_result_content,
+    submit_artifact_tool_name_for_transport,
     tool_name_prefix_for_transport,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
@@ -35,8 +36,6 @@ def test_tool_name_prefix_for_claude_interactive() -> None:
 
 
 def test_submit_artifact_tool_name_for_transport_returns_claude_namespaced_for_claude() -> None:
-    from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
-
     assert submit_artifact_tool_name_for_transport(AgentTransport.CLAUDE) == claude_tool_name(
         SUBMIT_ARTIFACT_TOOL
     )
@@ -46,14 +45,10 @@ def test_submit_artifact_tool_name_for_transport_returns_claude_namespaced_for_c
 
 
 def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_agy() -> None:
-    from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
-
     assert submit_artifact_tool_name_for_transport(AgentTransport.AGY) == SUBMIT_ARTIFACT_TOOL
 
 
 def test_submit_artifact_tool_name_for_transport_returns_bare_name_for_none() -> None:
-    from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
-
     assert submit_artifact_tool_name_for_transport(None) == SUBMIT_ARTIFACT_TOOL
 
 
