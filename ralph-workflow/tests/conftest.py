@@ -29,7 +29,6 @@ from ralph.runtime import (
     timeout_seconds_from_env,
 )
 from ralph.workspace.memory import MemoryWorkspace
-from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
 
@@ -37,6 +36,8 @@ if TYPE_CHECKING:
     from collections.abc import Generator
     from pathlib import Path
     from types import FrameType
+
+    from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 
 class TestExecutionTimeoutError(TimeoutError):
@@ -92,7 +93,7 @@ def _isolate_process_home(
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
 
 
-def _configure_repo_identity(repo):
+def _configure_repo_identity(repo: object) -> None:
     writer = repo.config_writer()
     try:
         writer.set_value("user", "name", "Test User")
@@ -320,6 +321,8 @@ def mock_agent_invoker(
     Returns:
         MockAgentInvoker instance.
     """
+    from tests.integration._mock_agent_invoker import MockAgentInvoker  # lazy import
+
     return MockAgentInvoker(memory_workspace)
 
 
@@ -404,7 +407,7 @@ def default_policy() -> tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy]:
 
 
 @pytest.fixture
-def cli_runner():
+def cli_runner() -> object:
     """Provide a Typer CLI test runner."""
     from typer.testing import CliRunner
 

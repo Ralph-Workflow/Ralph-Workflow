@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -597,7 +598,7 @@ def test_cleanup_base_prunes_expired_current_workspace_idle_slot(
 
 
 def test_cleanup_base_enforces_total_byte_budget_across_idle_slots(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     manager = exec_sandbox.ExecSandboxManager(
         base_dir=tmp_path / "exec-base",
@@ -606,6 +607,9 @@ def test_cleanup_base_enforces_total_byte_budget_across_idle_slots(
         max_idle_slot_age_s=60.0,
         max_idle_pool_age_s=60.0,
     )
+    # Use the pure-Python size counter (file bytes only) for the tight budget
+    # test; du -sk reports directory block overhead that would skew the micro-budget.
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", manager._path_size_bytes)
     workspace_a = tmp_path / "workspace-a"
     workspace_b = tmp_path / "workspace-b"
     workspace_a.mkdir()
@@ -770,3 +774,246 @@ def test_reusable_sandbox_preserves_git_isolation_for_regular_repo(tmp_path: Pat
     with manager.acquire(workspace) as sandbox:
         overlay_git = sandbox / ".git"
         assert overlay_git.is_file()
+
+
+def test_cleanup_deletes_collectible_slots_when_path_size_bytes_is_slow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Collectible slots must be deleted even when _path_size_bytes is slow or broken.
+
+    Regression: _path_size_bytes walks the full directory tree and can hang for
+    minutes on 50 GB+ cache directories.  This test simulates that by making
+    _path_size_bytes raise on the collectible slot — the slot should still be
+    deleted because the byte-accounting is best-effort, not a prerequisite.
+    """
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_idle_slot_age_s=60.0,
+        max_idle_pool_age_s=60.0,
+    )
+    workspace_key = exec_sandbox._workspace_key(workspace)
+    pool_root = manager._base_dir / workspace_key
+
+    # Create two collectible stale slots (no ready sentinel, dead owner PID)
+    slot_one = manager._slot_root(pool_root, workspace_key, 2)
+    slot_two = manager._slot_root(pool_root, workspace_key, 3)
+    for slot_root in (slot_one, slot_two):
+        ws_dir = slot_root / "ws"
+        ws_dir.mkdir(parents=True)
+        (ws_dir / "payload.bin").write_bytes(b"stale-data")
+        (slot_root / ".ralph-exec-owner.json").write_text(
+            json.dumps({"pid": -1}), encoding="utf-8"
+        )
+
+    # Simulate _path_size_bytes being slow/broken on the stale slot:
+    # it must NOT block deletion.
+    original_path_size_bytes = manager._path_size_bytes
+    called_on_paths: list[Path] = []
+
+    def broken_path_size_bytes(path: Path) -> int:
+        called_on_paths.append(path)
+        # Raise only when called on one of the collectible slot dirs
+        if path in (slot_one, slot_two):
+            raise OSError("simulated slow/hung _path_size_bytes")
+        return original_path_size_bytes(path)
+
+    monkeypatch.setattr(manager, "_path_size_bytes", broken_path_size_bytes)
+
+    with manager.acquire(workspace):
+        pass
+
+    # Both stale slots must be gone even though _path_size_bytes raised.
+    assert not slot_one.exists(), f"{slot_one} should have been deleted"
+    assert not slot_two.exists(), f"{slot_two} should have been deleted"
+
+
+def test_cleanup_per_pool_failure_does_not_block_other_pools(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure cleaning one pool must not prevent cleanup of other pools."""
+    workspace_a = tmp_path / "workspace-a"
+    workspace_b = tmp_path / "workspace-b"
+    workspace_a.mkdir()
+    workspace_b.mkdir()
+
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_idle_slot_age_s=60.0,
+        max_idle_pool_age_s=60.0,
+    )
+
+    # Pool A: one collectible stale slot (will be made to fail)
+    key_a = exec_sandbox._workspace_key(workspace_a)
+    pool_a = manager._base_dir / key_a
+    slot_a = manager._slot_root(pool_a, key_a, 2)
+    slot_a.mkdir(parents=True)
+    (slot_a / "ws").mkdir()
+    (slot_a / ".ralph-exec-owner.json").write_text(
+        json.dumps({"pid": -1}), encoding="utf-8"
+    )
+
+    # Pool B: two collectible stale slots (should be cleaned up)
+    key_b = exec_sandbox._workspace_key(workspace_b)
+    pool_b = manager._base_dir / key_b
+    slot_b1 = manager._slot_root(pool_b, key_b, 2)
+    slot_b2 = manager._slot_root(pool_b, key_b, 3)
+    for slot_root in (slot_b1, slot_b2):
+        slot_root.mkdir(parents=True)
+        (slot_root / "ws").mkdir()
+        (slot_root / ".ralph-exec-owner.json").write_text(
+            json.dumps({"pid": -1}), encoding="utf-8"
+        )
+
+    # Make pool A's cleanup raise an unexpected error (e.g. OSError)
+    original_prune = manager._prune_expired_and_broken_slots_locked
+
+    def failing_prune(pool_root: Path, current_time: float) -> tuple:
+        if pool_root == pool_a:
+            raise OSError("simulated pool failure")
+        return original_prune(pool_root, current_time)
+
+    monkeypatch.setattr(
+        manager, "_prune_expired_and_broken_slots_locked", failing_prune
+    )
+
+    manager.cleanup_base()
+
+    # Pool B's slots should have been cleaned despite pool A's failure.
+    assert not slot_b1.exists(), f"{slot_b1} in unaffected pool should be deleted"
+    assert not slot_b2.exists(), f"{slot_b2} in unaffected pool should be deleted"
+
+    # Pool A's slot may or may not be deleted depending on locking; the key
+    # assertion is that pool B was processed and cleaned.
+
+
+def test_cleanup_worktree_survives_rmtree_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_cleanup_worktree must not crash when rmtree fails with OSError."""
+    worktree = tmp_path / "ws"
+    worktree.mkdir(parents=True)
+    (worktree / "file.txt").write_text("content", encoding="utf-8")
+
+    # Make rmtree fail with PermissionError (a subclass of OSError)
+    def failing_rmtree(path: str, ignore_errors: bool = False) -> None:
+        del ignore_errors
+        if str(path).endswith("/ws"):
+            raise PermissionError("simulated permission error")
+        exec_sandbox.shutil.rmtree(path)
+
+    monkeypatch.setattr(exec_sandbox.shutil, "rmtree", failing_rmtree)
+
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+
+    # Must not raise — the suppressed exception should be caught.
+    manager._cleanup_worktree(worktree)
+
+
+def test_delete_expired_pool_does_not_walk_tree_before_rmtree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_delete_expired_pool_locked must not call _path_size_bytes before rmtree.
+
+    Same bottleneck pattern as Bug 1 — walking a stale pool's entire tree
+    to count bytes is unnecessary when the tree is about to be deleted.
+    """
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_idle_pool_age_s=0.0,
+    )
+    pool_root = manager._base_dir / "dead-pool"
+    slot_root = manager._slot_root(pool_root, "dead-pool", 1)
+    (slot_root / "ws").mkdir(parents=True)
+    (slot_root / "ws" / "payload.bin").write_bytes(b"x" * 1024)
+    (slot_root / ".ralph-exec-owner.json").write_text(
+        json.dumps({"pid": -1}), encoding="utf-8"
+    )
+
+    # _path_size_bytes must NOT be called on pool_root or slot_root
+    called_paths: list[Path] = []
+    original = manager._path_size_bytes
+
+    def tracking_size_bytes(path: Path) -> int:
+        called_paths.append(path)
+        return original(path)
+
+    monkeypatch.setattr(manager, "_path_size_bytes", tracking_size_bytes)
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", tracking_size_bytes)
+
+    manager._delete_expired_pool_locked(pool_root, time.time())
+
+    assert not pool_root.exists()
+    assert all(
+        path != pool_root and not str(path).startswith(str(pool_root))
+        for path in called_paths
+    ), f"_path_size_bytes was called on pool path: {called_paths}"
+
+
+def test_cleanup_base_removes_trash_dirs_without_path_size_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Trash dirs must be removed without walking their tree for byte accounting."""
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    trash = manager._base_dir / ".ralph-exec-trash-test-123-456"
+    trash.mkdir(parents=True)
+    (trash / "large_file.bin").write_bytes(b"y" * 8192)
+
+    called_paths: list[Path] = []
+    original = manager._path_size_bytes
+
+    def tracking_size_bytes(path: Path) -> int:
+        called_paths.append(path)
+        return original(path)
+
+    monkeypatch.setattr(manager, "_path_size_bytes", tracking_size_bytes)
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", tracking_size_bytes)
+
+    manager.cleanup_base()
+
+    assert not trash.exists()
+    assert all(
+        path != trash for path in called_paths
+    ), f"_path_size_bytes was called on trash: {called_paths}"
+
+
+def test_path_size_bytes_via_du_falls_back_to_rglob(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_path_size_bytes_via_du falls back to rglob when du is unavailable."""
+    monkeypatch.setattr(exec_sandbox.shutil, "which", lambda _cmd: None)
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    test_dir = tmp_path / "test-dir"
+    test_dir.mkdir()
+    (test_dir / "f").write_bytes(b"hello")
+    (test_dir / "g").write_bytes(b"world")
+
+    size = manager._path_size_bytes_via_du(test_dir)
+
+    assert size == 10  # "hello" (5) + "world" (5)
+
+
+def test_path_size_bytes_via_du_uses_du_when_available(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_path_size_bytes_via_du prefers du -sk when available."""
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    test_dir = tmp_path / "test-dir"
+    test_dir.mkdir()
+    (test_dir / "f").write_bytes(b"hello")
+
+    monkeypatch.setattr(exec_sandbox.shutil, "which", lambda _cmd: "/usr/bin/du")
+
+    def fake_run(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        class Result:
+            returncode = 0
+            stdout = "42\ttest-dir\n"
+        return Result()
+
+    monkeypatch.setattr(exec_sandbox.subprocess, "run", fake_run)
+
+    size = manager._path_size_bytes_via_du(test_dir)
+
+    assert size == 42 * 1024

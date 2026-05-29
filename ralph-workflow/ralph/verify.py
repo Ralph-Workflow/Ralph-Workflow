@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 #
 # Enforcement mechanism: run_verify() tracks cumulative wall-clock
 # time via time.monotonic() across ALL test-budget-tracked steps.
-# Splitting tests across N suites does NOT give you N × 30s — the
+# Splitting tests across N suites does NOT give you N x 30s — the
 # combined time of every track-tested step is summed and compared
 # against this cap. The per-step timeout passed to each runner() call
 # is min(per_suite_limit, remaining_budget), so an early suite that
@@ -86,9 +86,35 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     ("make test", "make", ("test",), _TOTAL_TEST_BUDGET_SECONDS),
+    (
+        "policy audit (audit_test_policy)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_test_policy"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
+
+# --- Module-level invariants ---
+# These are runtime assertions that must hold for the enforcement
+# mechanism to be correct. They are checked at import time.
+assert _TOTAL_TEST_BUDGET_SECONDS > 0, (
+    "_TOTAL_TEST_BUDGET_SECONDS must be positive"
+)
+assert all(
+    isinstance(i, int) and 0 <= i < len(_VERIFY_STEPS) for i in _BUDGET_TRACKED_STEPS
+), (
+    "_BUDGET_TRACKED_STEPS indices must be valid indices into _VERIFY_STEPS"
+)
+for idx in _BUDGET_TRACKED_STEPS:
+    _step = _VERIFY_STEPS[idx]
+    assert _step[3] is not None, (
+        f"Budget-tracked step {idx} ({_step[0]!r}) must have a non-None timeout"
+    )
+    assert isinstance(_step[3], (int, float)) and _step[3] > 0, (
+        f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout"
+    )
 
 
 def _default_runner(
@@ -172,7 +198,7 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
         ``min(step_timeout, remaining_budget)``.
       - After a tracked step completes (including on timeout) the actual
         elapsed time is added to cumulative_test_elapsed.
-      - Splitting tests across N suites does NOT give N × 30 s — the
+      - Splitting tests across N suites does NOT give N x 30 s — the
         combined time of EVERY budget-tracked step is summed and enforced.
     """
     print("Running full verification...", flush=True)
@@ -197,9 +223,14 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
                     flush=True,
                 )
                 return TIMEOUT_EXIT_CODE
-            effective_timeout = min(step_timeout, remaining_budget) if step_timeout > 0 else step_timeout
+            effective_timeout = (
+                min(step_timeout, remaining_budget) if step_timeout > 0 else step_timeout
+            )
         else:
-            effective_timeout = step_timeout
+            effective_timeout = (
+                step_timeout if step_timeout is not None
+                else _VERIFY_STEP_TIMEOUT_SECONDS
+            )
 
         step_start = time.monotonic()
         result = runner(command, args, cwd=cwd, timeout=effective_timeout, capture_output=False)
@@ -213,7 +244,10 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
         if result.stderr:
             print(result.stderr, end="", file=sys.stderr, flush=True)
         if result.returncode != 0:
-            cumulative_exhausted = is_tracked and cumulative_test_elapsed > _TOTAL_TEST_BUDGET_SECONDS
+            cumulative_exhausted = (
+                is_tracked
+                and cumulative_test_elapsed >= _TOTAL_TEST_BUDGET_SECONDS
+            )
             print(
                 format_verify_failure_banner(
                     failed_command=_failed_command_label(

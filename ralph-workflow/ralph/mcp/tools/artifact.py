@@ -223,6 +223,22 @@ def handle_submit_artifact(
         )
     )
 
+    # Post-submission verification: development_result artifacts require status="completed"
+    # or status="partial" (from instructions). If status is neither, surface a verification
+    # error after successful submission to direct the agent to complete work first.
+    if artifact_type == DEVELOPMENT_RESULT_ARTIFACT_TYPE:
+        status = parsed_content.get("status")
+        if status not in ("completed", "partial"):
+            return ToolResult(
+                content=[
+                    ToolContent.text_content(
+                        "VERIFICATION ERROR: work must be completed before submitting "
+                        "completion artifact. Partial status is not allowed."
+                    )
+                ],
+                is_error=True,
+            )
+
     return ToolResult(
         content=[ToolContent.text_content(f"Artifact submitted: {artifact_type}")],
         is_error=False,

@@ -14,8 +14,6 @@ import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-import psutil
-
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
     SUITE_TIMEOUT_ENV,
@@ -49,6 +47,11 @@ def _emit_timeout_message(timeout_seconds: float) -> None:
 
 
 def _terminate_descendants() -> None:
+    try:
+        import psutil  # lazy import — psutil has heavy import cost
+    except ImportError:
+        return  # psutil not available — cannot terminate descendants
+
     try:
         current_process = psutil.Process(os.getpid())
         descendants = current_process.children(recursive=True)

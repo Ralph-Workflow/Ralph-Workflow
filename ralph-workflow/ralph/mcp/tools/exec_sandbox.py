@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import time
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -51,6 +52,10 @@ _DEFAULT_MAX_POOL_BYTES = 512 * 1024 * 1024
 _DEFAULT_MAX_WORKSPACE_BYTES = 2 * 1024 * 1024 * 1024
 _DEFAULT_MAX_IDLE_SLOT_AGE_S = 10 * 60.0
 _DEFAULT_MAX_IDLE_POOL_AGE_S = 30 * 60.0
+_DEFAULT_FORCED_MAX_SLOT_AGE_S = 24 * 60 * 60.0
+_DEFAULT_HARD_CAP_MULTIPLIER = 2
+_MAX_CONSECUTIVE_CLEANUP_FAILURES = 5
+_CLEANUP_COOLDOWN_S = 300.0
 _INITIAL_AVERAGE_SLOTS = 1.0
 _SLOT_PREFIX = "slot-"
 _BASE_LOCK_FILE = ".ralph-exec-base.lock"
@@ -94,6 +99,7 @@ class ExecSandboxManager:
         max_workspace_bytes: int = _DEFAULT_MAX_WORKSPACE_BYTES,
         max_idle_slot_age_s: float = _DEFAULT_MAX_IDLE_SLOT_AGE_S,
         max_idle_pool_age_s: float = _DEFAULT_MAX_IDLE_POOL_AGE_S,
+        forced_max_slot_age_s: float = _DEFAULT_FORCED_MAX_SLOT_AGE_S,
     ) -> None:
         self._base_dir = base_dir
         self._lock_timeout_s = lock_timeout_s
@@ -104,14 +110,31 @@ class ExecSandboxManager:
         self._max_workspace_bytes = max(0, max_workspace_bytes)
         self._max_idle_slot_age_s = max(0.0, max_idle_slot_age_s)
         self._max_idle_pool_age_s = max(0.0, max_idle_pool_age_s)
+        self._forced_max_slot_age_s = max(0.0, forced_max_slot_age_s)
         self._last_base_prune_monotonic = 0.0
         self._managed_workspace_keys: set[str] = set()
+        self._consecutive_cleanup_failures = 0
+        self._cleanup_cooldown_until_monotonic = 0.0
 
     @contextmanager
     def acquire(self, workspace_root: Path) -> Iterator[Path]:
         """Yield a freshly reset sandbox worktree for the given workspace."""
         self._base_dir.mkdir(parents=True, exist_ok=True)
-        self.cleanup_base()
+        if self._cleanup_in_cooldown():
+            raise OSError(
+                "exec cache cleanup has failed repeatedly — "
+                "refusing to proceed until cooldown expires"
+            )
+        summary = self.cleanup_base()
+        if (
+            self._max_total_bytes > 0
+            and summary.remaining_bytes > self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
+        ):
+            cap = self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
+            raise OSError(
+                "exec cache exceeds hard cap even after cleanup: "
+                f"{summary.remaining_bytes} bytes > {cap} bytes"
+            )
         workspace_bytes = self._workspace_size_bytes(workspace_root)
         if workspace_bytes > self._max_workspace_bytes:
             raise OSError(
@@ -158,13 +181,18 @@ class ExecSandboxManager:
         self._base_dir.mkdir(parents=True, exist_ok=True)
         try:
             with self._base_lock():
-                return self._cleanup_base_locked()
+                summary = self._cleanup_base_locked()
+                self._record_cleanup_success()
+                return summary
         except ExecSandboxBusyError:
             return ExecCacheCleanupSummary(
                 removed_paths=0,
                 removed_bytes=0,
-                remaining_bytes=self._path_size_bytes(self._base_dir),
+                remaining_bytes=self._path_size_bytes_via_du(self._base_dir),
             )
+        except Exception:
+            self._record_cleanup_failure()
+            raise
 
     def _reset(self, workspace_root: Path, sandbox_root: Path, worktree: Path) -> None:
         if not self._is_ready(sandbox_root):
@@ -186,7 +214,7 @@ class ExecSandboxManager:
         if not self._is_ready(sandbox_root):
             return False
         if worktree.exists():
-            shutil.rmtree(worktree)
+            shutil.rmtree(worktree, ignore_errors=True)
         _write_overlay_owner_metadata(sandbox_root)
         _mirror_workspace(workspace_root, worktree)
         _ensure_git_isolation(workspace_root, worktree, sandbox_root)
@@ -198,12 +226,12 @@ class ExecSandboxManager:
             if child.name == _LOCK_FILE:
                 continue
             if child.is_dir() and not child.is_symlink():
-                shutil.rmtree(child)
+                shutil.rmtree(child, ignore_errors=True)
             else:
                 child.unlink(missing_ok=True)
 
     def _cleanup_worktree(self, worktree: Path) -> None:
-        with suppress(FileNotFoundError):
+        with suppress(OSError):
             shutil.rmtree(worktree)
 
     def _ready_path(self, sandbox_root: Path) -> Path:
@@ -421,6 +449,31 @@ class ExecSandboxManager:
                 continue
         return total
 
+    def _path_size_bytes_via_du(self, path: Path) -> int:
+        if not path.exists():
+            return 0
+        try:
+            children = list(path.iterdir())
+        except OSError:
+            return self._path_size_bytes(path)
+        if len(children) == 0:
+            return 0
+        du = shutil.which("du")
+        if du is not None:
+            try:
+                result = subprocess.run(
+                    [du, "-sk", str(path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+                if result.returncode == 0 and result.stdout:
+                    return int(result.stdout.split()[0]) * 1024
+            except (subprocess.TimeoutExpired, ValueError, OSError):
+                pass
+        return self._path_size_bytes(path)
+
     def _workspace_size_bytes(self, workspace_root: Path) -> int:
         total = 0
         ignored_relative_paths = _ignored_workspace_relative_paths(workspace_root)
@@ -454,6 +507,8 @@ class ExecSandboxManager:
         if not self._ready_path(slot_root).is_file():
             return True
         age_s = current_time - self._slot_last_used_at(slot_root)
+        if self._forced_max_slot_age_s > 0 and age_s >= self._forced_max_slot_age_s:
+            return True
         if age_s >= self._max_idle_slot_age_s:
             return True
         return self._slot_owner_is_collectible(slot_root)
@@ -466,8 +521,7 @@ class ExecSandboxManager:
         removed_bytes = 0
         for slot_root in self._all_slot_dirs(pool_root):
             if self._slot_is_collectible(slot_root, current_time):
-                removed_bytes += self._path_size_bytes(slot_root)
-                shutil.rmtree(slot_root, ignore_errors=True)
+                self._rmtree_with_escalation(slot_root)
                 removed_paths += 1
                 continue
             if self._slot_is_locked_by_live_process(slot_root):
@@ -496,7 +550,7 @@ class ExecSandboxManager:
                 retained_bytes += candidate.size_bytes
                 continue
             removed_bytes += candidate.size_bytes
-            shutil.rmtree(candidate.slot_root, ignore_errors=True)
+            self._rmtree_with_escalation(candidate.slot_root)
             removed_paths += 1
         return retained, removed_paths, removed_bytes
 
@@ -506,9 +560,10 @@ class ExecSandboxManager:
         last_used_at = self._pool_last_used_at(pool_root)
         if current_time - last_used_at < self._max_idle_pool_age_s:
             return 0, 0
-        removed_bytes = self._path_size_bytes(pool_root)
+        if not self._try_acquire_named_lock(self._pool_lock_path(pool_root)):
+            return 0, 0
         shutil.rmtree(pool_root, ignore_errors=True)
-        return 1, removed_bytes
+        return 1, 0
 
     def _cleanup_base_locked(self) -> ExecCacheCleanupSummary:
         current_time = time.time()
@@ -517,7 +572,6 @@ class ExecSandboxManager:
 
         for child in list(self._base_dir.iterdir()):
             if child.name.startswith(_TRASH_PREFIX):
-                removed_bytes += self._path_size_bytes(child)
                 shutil.rmtree(child, ignore_errors=True)
                 removed_paths += 1
 
@@ -525,24 +579,27 @@ class ExecSandboxManager:
         for pool_root in list(self._base_dir.iterdir()):
             if not pool_root.is_dir() or pool_root.name.startswith(_TRASH_PREFIX):
                 continue
-            idle_candidates, pool_removed_paths, pool_removed_bytes = (
-                self._prune_expired_and_broken_slots_locked(pool_root, current_time)
-            )
-            removed_paths += pool_removed_paths
-            removed_bytes += pool_removed_bytes
-            idle_candidates, budget_removed_paths, budget_removed_bytes = (
-                self._enforce_pool_byte_budget_locked(idle_candidates)
-            )
-            removed_paths += budget_removed_paths
-            removed_bytes += budget_removed_bytes
-            if not any(self._all_slot_dirs(pool_root)):
-                removed = self._delete_expired_pool_locked(pool_root, current_time)
-                removed_paths += removed[0]
-                removed_bytes += removed[1]
+            try:
+                idle_candidates, pool_removed_paths, pool_removed_bytes = (
+                    self._prune_expired_and_broken_slots_locked(pool_root, current_time)
+                )
+                removed_paths += pool_removed_paths
+                removed_bytes += pool_removed_bytes
+                idle_candidates, budget_removed_paths, budget_removed_bytes = (
+                    self._enforce_pool_byte_budget_locked(idle_candidates)
+                )
+                removed_paths += budget_removed_paths
+                removed_bytes += budget_removed_bytes
+                if not any(self._all_slot_dirs(pool_root)):
+                    removed = self._delete_expired_pool_locked(pool_root, current_time)
+                    removed_paths += removed[0]
+                    removed_bytes += removed[1]
+                    continue
+                global_idle_candidates.extend(idle_candidates)
+            except OSError:
                 continue
-            global_idle_candidates.extend(idle_candidates)
 
-        current_total_bytes = self._path_size_bytes(self._base_dir)
+        current_total_bytes = self._path_size_bytes_via_du(self._base_dir)
         if self._max_total_bytes > 0 and current_total_bytes > self._max_total_bytes:
             for candidate in sorted(global_idle_candidates, key=_idle_slot_last_used_asc):
                 if current_total_bytes <= self._max_total_bytes:
@@ -552,7 +609,7 @@ class ExecSandboxManager:
                 ):
                     continue
                 candidate_size = self._path_size_bytes(candidate.slot_root)
-                shutil.rmtree(candidate.slot_root, ignore_errors=True)
+                self._rmtree_with_escalation(candidate.slot_root)
                 removed_paths += 1
                 removed_bytes += candidate_size
                 current_total_bytes = max(0, current_total_bytes - candidate_size)
@@ -566,7 +623,7 @@ class ExecSandboxManager:
                     removed_bytes += removed[1]
                     current_total_bytes = max(0, current_total_bytes - removed[1])
 
-        remaining_bytes = self._path_size_bytes(self._base_dir)
+        remaining_bytes = self._path_size_bytes_via_du(self._base_dir)
         return ExecCacheCleanupSummary(
             removed_paths=removed_paths,
             removed_bytes=removed_bytes,
@@ -747,11 +804,69 @@ class ExecSandboxManager:
             return None
         return self._stage_dir_for_deletion(slot_dir)
 
+    def _rmtree_with_escalation(self, path: Path) -> bool:
+        if not path.exists():
+            return True
+        try:
+            shutil.rmtree(path, ignore_errors=True)
+            if not path.exists():
+                return True
+        except Exception:
+            pass
+        if os.name == "nt":
+            try:
+                subprocess.run(
+                    ["cmd", "/c", "rmdir", "/s", "/q", str(path)],
+                    capture_output=True, timeout=30, check=False,
+                )
+                if not path.exists():
+                    return True
+            except Exception:
+                pass
+            with suppress(Exception):
+                subprocess.run(
+                    ["cmd", "/c", "del", "/f", "/s", "/q", str(path)],
+                    capture_output=True, timeout=30, check=False,
+                )
+        else:
+            try:
+                subprocess.run(
+                    ["rm", "-rf", str(path)],
+                    capture_output=True, timeout=30, check=False,
+                )
+                if not path.exists():
+                    return True
+            except Exception:
+                pass
+        try:
+            for child in list(path.rglob("*")):
+                with suppress(OSError):
+                    child.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return not path.exists()
+
+    def _record_cleanup_success(self) -> None:
+        self._consecutive_cleanup_failures = 0
+
+    def _record_cleanup_failure(self) -> None:
+        self._consecutive_cleanup_failures += 1
+        if self._consecutive_cleanup_failures >= _MAX_CONSECUTIVE_CLEANUP_FAILURES:
+            self._cleanup_cooldown_until_monotonic = (
+                time.monotonic() + _CLEANUP_COOLDOWN_S
+            )
+
+    def _cleanup_in_cooldown(self) -> bool:
+        return (
+            self._consecutive_cleanup_failures >= _MAX_CONSECUTIVE_CLEANUP_FAILURES
+            and time.monotonic() < self._cleanup_cooldown_until_monotonic
+        )
+
     def _delete_paths(self, paths: list[Path]) -> None:
         for path in paths:
             if not path.exists():
                 continue
-            shutil.rmtree(path)
+            shutil.rmtree(path, ignore_errors=True)
 
     def _release_lock(self, sandbox_root: Path) -> None:
         self._lock_path(sandbox_root).unlink(missing_ok=True)

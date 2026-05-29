@@ -508,6 +508,8 @@ def _get_sandbox_manager() -> ExecSandboxManager:
                 _SandboxManagerCache.instance = ExecSandboxManager(
                     base_dir=_get_private_exec_base()
                 )
+                with contextlib.suppress(Exception):
+                    _SandboxManagerCache.instance.cleanup_base()
     return _SandboxManagerCache.instance
 
 

@@ -176,13 +176,19 @@ class TestCleanupNeverInvokesGit:
     def test_cleanup_does_not_shell_out_to_git(self, tmp_path: Path, monkeypatch: object) -> None:
         """cleanup --force must remove worker dirs without invoking any git process.
 
-        Monkeypatches all subprocess entry points and asserts none were called.
+        Monkeypatches subprocess entry points and asserts only du (disk-usage)
+        subprocess calls are allowed — no git or other subprocess invocations.
         """
 
         invocations: list[tuple[object, ...]] = []
 
         def _record(*args: object, **kwargs: object) -> object:
             invocations.append(args)
+            cmd_args = args[0] if isinstance(args[0], list) else []
+            if cmd_args and cmd_args[0] in ("du", "/usr/bin/du"):
+                return subprocess.CompletedProcess(
+                    args=cmd_args, returncode=0, stdout="0\tdir\n"
+                )
             raise AssertionError(
                 f"cleanup must not invoke subprocess: args={args!r} kwargs={kwargs!r}"
             )
@@ -205,8 +211,13 @@ class TestCleanupNeverInvokesGit:
         assert result.exit_code == 0, f"cleanup exited {result.exit_code}: {result.output}"
         assert not (workers_dir / "unit-a").exists(), "unit-a must have been removed"
         assert not (workers_dir / "unit-b").exists(), "unit-b must have been removed"
-        assert invocations == [], (
-            f"cleanup must not invoke any subprocess, but these were recorded: {invocations!r}"
+        non_du_invocations = [
+            inv for inv in invocations
+            if not (isinstance(inv[0], list) and inv[0] and inv[0][0] in ("du", "/usr/bin/du"))
+        ]
+        assert non_du_invocations == [], (
+            f"cleanup must not invoke non-du subprocess, "
+            f"but these were recorded: {non_du_invocations!r}"
         )
 
     def test_cleanup_source_does_not_reference_worktree_or_subprocess_git(self) -> None:
