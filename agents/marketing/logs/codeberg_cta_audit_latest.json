@@ -1,123 +1,10 @@
 {
-  "generated_at": "2026-05-28T17:29:48.541282+00:00",
-  "status": "fail",
-  "total_files_with_repo_links": 433,
-  "high_severity_count": 14,
+  "generated_at": "2026-05-29T01:35:26.318790+00:00",
+  "status": "pass",
+  "total_files_with_repo_links": 469,
+  "high_severity_count": 0,
   "medium_severity_count": 11,
-  "high_severity_findings": [
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_2026-05-17_claudeai_worktrees_comment.txt",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_2026-05-17_claudecode_what_breaks_first_comment.txt",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_2026-05-17_codex-switch-comment.txt",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_2026-05-18_checkpoint_cleanup_comment.txt",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_manual_comment_2026-05-17_codex-vs-claude.txt",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_142715_codex-feels-like-a-vibe-coder-s-dream-after-months-of-fighting-claude.md",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_182828_using-claude-with-codex-anyone-else.md",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_192834_did-anyone-here-moved-from-claude-to-codex-recently-and-why.md",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_205701_codex-vs-claude-code-my-current-take-after-watching-both-mature.md",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_214216_people-running-2-5-coding-agents-what-actually-breaks-first-for-you.md",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_225804_running-two-claude-code-agents-on-the-same-repo-simultaneously-git-worktrees-mak.md",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-18_155946_claude-code-agent-teams-w-gemini-and-codex.md",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-18_175949_claude-code-s-checkpoint-commits-are-polluting-my-git-history-how-are-you-handli.md",
-      "codeberg_links": 0,
-      "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/workflow_audit_2026-05-17.md",
-      "codeberg_links": 0,
-      "github_links": 1,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 1 times but never links Codeberg.",
-      "severity": "high"
-    }
-  ],
+  "high_severity_findings": [],
   "medium_severity_findings": [
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_are-vs-code-copilot-agent-debug-log-token-counts-t.md",
@@ -322,118 +209,6 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-18_reddit_next_window_packets.md",
-      "codeberg_links": 12,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_ai-agent-orchestration-cli_telegraph.md",
-      "codeberg_links": 4,
-      "github_links": 4,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_claude-code-automation_telegraph.md",
-      "codeberg_links": 8,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_claude-code-codex-workflow_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_open-source-ai-coding-orchestrator_telegraph.md",
-      "codeberg_links": 6,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_orchestration_draft.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_reddit_next_window_packets.md",
-      "codeberg_links": 8,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_run-claude-code-overnight-without-babysitting_telegraph.md",
-      "codeberg_links": 6,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_seo-page_ai-agent-orchestration-cli.md",
-      "codeberg_links": 8,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_seo-page_spec-driven-ai-agent.md",
-      "codeberg_links": 6,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_seo-page_unattended-coding-agent.md",
-      "codeberg_links": 6,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_technical_draft.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-19_telegraph_unattended-coding-agent.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20-claude-code-unattended.md",
       "codeberg_links": 2,
       "github_links": 0,
@@ -450,46 +225,6 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_ai-agent-workflow-composer_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_ai-coding-workflow-automation_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_ai-engineering-pipeline_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_claude-code-automation_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_claude-code-unattended_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_hackernews_lobsters_post.txt",
       "codeberg_links": 6,
       "github_links": 6,
@@ -498,65 +233,9 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_orchestration_draft.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_philosophy_draft.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_reddit_next-window_fresh-bodies.md",
-      "codeberg_links": 6,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_reddit_next_window_packets.md",
-      "codeberg_links": 4,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_spec-driven-ai-agent_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-20_spec_driven_draft.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-21_hackernews_post.txt",
       "codeberg_links": 6,
       "github_links": 6,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-21_spec_driven_draft.md",
-      "codeberg_links": 2,
-      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -578,30 +257,6 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_apollo_outreach_execution.md",
-      "codeberg_links": 6,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_curator_outreach_execution.md",
-      "codeberg_links": 6,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_curator_outreach_packet.md",
-      "codeberg_links": 8,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_qainsights_curator_email.txt",
       "codeberg_links": 4,
       "github_links": 2,
@@ -610,47 +265,7 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_reddit_fresh_bodies.md",
-      "codeberg_links": 6,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_reddit_structural_rewrite.md",
-      "codeberg_links": 6,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_spec_driven_draft.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_start-here-first-task-guide_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_taskade_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_unattended_coding_done_telegraph.md",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "ok",
@@ -746,31 +361,7 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_apollo_outreach_execution.md",
-      "codeberg_links": 6,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_choppytoast_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_claude-code-codex-workflow_dualpost.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_claude-code-codex-workflow_telegraph.md",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "ok",
@@ -789,14 +380,6 @@
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_dariubs_awesome_workflow_automation_email.txt",
       "codeberg_links": 4,
       "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_directory_submission_execution.md",
-      "codeberg_links": 2,
-      "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -845,30 +428,6 @@
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_simplicitylabs_curator_email.txt",
       "codeberg_links": 4,
       "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_spec_driven_draft.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_stackoverflow_answer_handoff_packet.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_stackoverflow_answer_reuse_packet.md",
-      "codeberg_links": 4,
-      "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -946,38 +505,6 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_axme_publisher_outreach_email.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_bollwerk_publisher_outreach_email.md",
-      "codeberg_links": 4,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_comparison_backlink_manual_delivery.md",
-      "codeberg_links": 6,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_ctxtdev_publisher_outreach_ready.md",
-      "codeberg_links": 8,
-      "github_links": 4,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_hidstech_publisher_outreach_email.txt",
       "codeberg_links": 4,
       "github_links": 0,
@@ -994,73 +521,9 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_paircoder_publisher_outreach_email.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_primary_repo_flat_contact_handoff_packet.md",
-      "codeberg_links": 4,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_saashub_listing_correction_email.txt",
       "codeberg_links": 2,
       "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_sitepoint_publisher_outreach_email.md",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_spec_driven_draft.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_stackoverflow_lane_repair_handoff_packet.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_tembo_publisher_outreach_email.md",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_wix_engineering_publisher_outreach_email.md",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_wyeworks_publisher_outreach_email.md",
-      "codeberg_links": 2,
-      "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -1346,6 +809,22 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_ai-coding-tools-comparison-telegraph-condensed.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_apollo_ab_variant_packet.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_ctxtdev_publisher_outreach_email.txt",
       "codeberg_links": 2,
       "github_links": 0,
@@ -1362,8 +841,24 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_publisher_outreach_packet.md",
+      "codeberg_links": 6,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_reddit_next_window_packets.md",
       "codeberg_links": 8,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_show_hn_packet.md",
+      "codeberg_links": 2,
       "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -1412,6 +907,430 @@
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/apollo_sequence_launch_packet_latest.md",
       "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-18_reddit_next_window_packets.md",
+      "codeberg_links": 12,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_ai-agent-orchestration-cli_telegraph.md",
+      "codeberg_links": 4,
+      "github_links": 4,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_claude-code-automation_telegraph.md",
+      "codeberg_links": 8,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_claude-code-codex-workflow_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_open-source-ai-coding-orchestrator_telegraph.md",
+      "codeberg_links": 6,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_orchestration_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_reddit_next_window_packets.md",
+      "codeberg_links": 8,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_run-claude-code-overnight-without-babysitting_telegraph.md",
+      "codeberg_links": 6,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_seo-page_ai-agent-orchestration-cli.md",
+      "codeberg_links": 8,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_seo-page_spec-driven-ai-agent.md",
+      "codeberg_links": 6,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_seo-page_unattended-coding-agent.md",
+      "codeberg_links": 6,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_technical_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-19_telegraph_unattended-coding-agent.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_ai-agent-workflow-composer_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_ai-coding-workflow-automation_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_ai-engineering-pipeline_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_claude-code-automation_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_claude-code-unattended_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_orchestration_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_philosophy_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_reddit_next-window_fresh-bodies.md",
+      "codeberg_links": 6,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_reddit_next_window_packets.md",
+      "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_spec-driven-ai-agent_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-20_spec_driven_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-21_spec_driven_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-22_apollo_outreach_execution.md",
+      "codeberg_links": 6,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-22_curator_outreach_execution.md",
+      "codeberg_links": 6,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-22_curator_outreach_packet.md",
+      "codeberg_links": 8,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-22_reddit_fresh_bodies.md",
+      "codeberg_links": 6,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-22_reddit_structural_rewrite.md",
+      "codeberg_links": 6,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-22_spec_driven_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-22_start-here-first-task-guide_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-22_unattended_coding_done_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-23_apollo_outreach_execution.md",
+      "codeberg_links": 6,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-23_claude-code-codex-workflow_dualpost.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-23_claude-code-codex-workflow_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-23_directory_submission_execution.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-23_spec_driven_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-23_stackoverflow_answer_handoff_packet.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-23_stackoverflow_answer_reuse_packet.md",
+      "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_axme_publisher_outreach_email.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_bollwerk_publisher_outreach_email.md",
+      "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_comparison_backlink_manual_delivery.md",
+      "codeberg_links": 6,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_ctxtdev_publisher_outreach_ready.md",
+      "codeberg_links": 8,
+      "github_links": 4,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_paircoder_publisher_outreach_email.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_primary_repo_flat_contact_handoff_packet.md",
+      "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_sitepoint_publisher_outreach_email.md",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_spec_driven_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_stackoverflow_lane_repair_handoff_packet.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_tembo_publisher_outreach_email.md",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_wix_engineering_publisher_outreach_email.md",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive/2026-05-24_wyeworks_publisher_outreach_email.md",
+      "codeberg_links": 2,
       "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -1954,6 +1873,46 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/github_discussions/anthropics_claude-code_62608.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/github_discussions/anthropics_claude-code_62631.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/github_discussions/anthropics_claude-code_63006.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/github_discussions/anthropics_claude-code_63129.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/github_discussions/anthropics_claude-code_63190.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md",
       "codeberg_links": 2,
       "github_links": 0,
@@ -1965,33 +1924,33 @@
       "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_2026-05-17_claudeai_worktrees_comment.txt",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_2026-05-17_claudecode_what_breaks_first_comment.txt",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_2026-05-17_codex-switch-comment.txt",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_2026-05-18_checkpoint_cleanup_comment.txt",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_2026-05-19_approval_plan_mode_comment.txt",
@@ -2021,9 +1980,9 @@
       "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_manual_comment_2026-05-17_codex-vs-claude.txt",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_next_window_packets_latest.md",
@@ -2325,6 +2284,14 @@
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
       "codeberg_links": 2,
       "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/github_discussions_outreach_state.json",
+      "codeberg_links": 10,
+      "github_links": 10,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -3573,65 +3540,65 @@
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_142715_codex-feels-like-a-vibe-coder-s-dream-after-months-of-fighting-claude.md",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_182828_using-claude-with-codex-anyone-else.md",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_192834_did-anyone-here-moved-from-claude-to-codex-recently-and-why.md",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_205701_codex-vs-claude-code-my-current-take-after-watching-both-mature.md",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_214216_people-running-2-5-coding-agents-what-actually-breaks-first-for-you.md",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-17_225804_running-two-claude-code-agents-on-the-same-repo-simultaneously-git-worktrees-mak.md",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-18_155946_claude-code-agent-teams-w-gemini-and-codex.md",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-18_175949_claude-code-s-checkpoint-commits-are-polluting-my-git-history-how-are-you-handli.md",
       "codeberg_links": 0,
       "github_links": 2,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 2 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-26_145518_reddit-reddit-com-r-ai-agents-seedance-2-0-is-impressive-it-s-still-not-a-produc.md",
@@ -3661,14 +3628,222 @@
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/workflow_audit_2026-05-17.md",
       "codeberg_links": 0,
       "github_links": 1,
-      "finding_type": "github_only",
-      "detail": "File links GitHub 1 times but never links Codeberg.",
-      "severity": "high"
+      "finding_type": "ok",
+      "detail": "GitHub-only in a non-public-facing or channel-specific context (acceptable).",
+      "severity": "none"
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/outreach-log.md",
       "codeberg_links": 147,
       "github_links": 14,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/pypi_readme_deploy/README.pypi.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-orchestration-cli-composable-alternative.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-output-verification-review-checklist.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-tools-comparison-2026.md",
+      "codeberg_links": 6,
+      "github_links": 5,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-workflow-automation-loop-structure.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-cost-model-routing-smart-agent-orchestration.md",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/autonomous-ai-coding-tools-compared.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-automation-unattended-sessions.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-autonomous-mode-wrapper.md",
+      "codeberg_links": 5,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/codex-opencode-cline-vs-ralph-workflow-2026.md",
+      "codeberg_links": 3,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/hello-ralph-workflow.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-run-claude-code-unattended.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-structure-autonomous-ai-agent-workflows-for-production-reliability.md",
+      "codeberg_links": 3,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-aider.md",
+      "codeberg_links": 2,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-claude-code.md",
+      "codeberg_links": 2,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-conductor-oss.md",
+      "codeberg_links": 2,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-conductor-teams.md",
+      "codeberg_links": 2,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-continue.md",
+      "codeberg_links": 2,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-cursor.md",
+      "codeberg_links": 2,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-github-copilot.md",
+      "codeberg_links": 2,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-hermes-agent.md",
+      "codeberg_links": 2,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/real-task-walkthrough-overnight-refactoring.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/safe-ai-code-execution-sandbox-isolation.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/spec-driven-ai-agents-why-workflow-is-the-unit-of-work.md",
+      "codeberg_links": 4,
+      "github_links": 4,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/unattended-coding-agent-what-done-actually-means.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md",
+      "codeberg_links": 6,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"

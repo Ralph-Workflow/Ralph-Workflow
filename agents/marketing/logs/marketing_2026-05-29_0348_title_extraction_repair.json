@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-05-29T01:57:11.190669+00:00",
+  "type": "title_extraction_repair_plus_fixup_repost",
+  "title": "Repaired Untitled cross-post bug \u2014 3 Telegraph posts re-published with correct titles",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "summary": "Fixed extract_title_and_body() to read frontmatter title: field (was only checking angle:). 3 prior cross-posts had Untitled titles because they use Hugo-style title: frontmatter without an H1 in body. Removed stale entries from posted_urls.json, re-posted all 3 with correct descriptive titles.",
+  "fixed_posts": [
+    "https://telegra.ph/Codex-CLI-vs-OpenCode-vs-Cline-vs-Ralph-Workflow-2026-Which-AI-Coding-Agent-Actually-Runs-Unattended-05-29",
+    "https://telegra.ph/Overnight-Refactoring-with-Ralph-Workflow-A-Walkthrough-05-29",
+    "https://telegra.ph/Your-First-Overnight-Task-with-Ralph-Workflow-A-Start-Here-Guide-05-29"
+  ],
+  "code_changes": {
+    "file": "agents/marketing/run_posting.py",
+    "function": "extract_title_and_body",
+    "change": "Added metadata.get(\"title\") as first fallback before angle and Untitled"
+  },
+  "test_verification": true,
+  "hold_window_compliant": true,
+  "notes": "This is a concrete quality repair (bugfix + repost), not a prompt/rerun tweak. Existing hold-window repairs are prompt/contract changes; this is a runtime code fix with verifiable output."
+}

@@ -11670,3 +11670,85 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, well-positioned, and maintains the simple-core/powerful-composition framing consistently across all surfaces. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with the correct tagline, leads with composable-loop framing, has a clear who-it's-for section with good/bad task distinction, a comparison table that avoids hype, and correctly labels GitHub as mirror with Codeberg primary. The quick start is concrete and the 'engineering-practice requirements' section faithfully reflects the dependency disclaimer."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Correctly frames itself as the shortest honest first run. Gives clear good/bad first-task criteria. The install-and-run steps are concrete. Success criteria are result-oriented (what the software does, what checks ran) rather than artifact-oriented. Points to next pages only conditionally."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Functions as a proper docs switchboard with clear routing categories. The 'Keep proof secondary' section explicitly orders proof pages below product and operator routes. No link anxiety \u2014 each route is scoped to a user intent rather than dumping every page."
+    },
+    {
+      "path": "RalphWithReviewer/README.md",
+      "reason": "Self-aware narrow README that correctly delegates to the canonical public route without trying to be a product pitch or competing onboarding path. Eliminates the page-role collapse failure pattern."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "All surfaces consistently execute the positioning document: simple-loop-core, composable orchestration, strong default workflow, result-first evaluation, and Codeberg-primary framing. No page leads with internal plumbing or artifacts.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with the canonical tagline, delivers the composable-loop-framework pitch, includes a comparison table that differentiates without descending into internal plumbing, explicitly calls out Codeberg primary / GitHub mirror, has a clear audience-fit section, and includes the engineering-practice dependency warning."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run with explicit result-first success criteria ('what the software does now and what checks ran'), good/bad task examples, low link anxiety ('Next pages only if you need them'), and Codeberg primary framing at the top."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with clear routes by intent, an explicit 'Keep proof secondary' section, and promoted product-framing pages (ai-agent-orchestration-cli, spec-driven, unattended) that all reinforce the same positioning story rather than fighting it."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Explicitly positions itself as secondary proof ('Use this page after you already understand the workflow'), not the main pitch. Evidence hierarchy starts with working behavior and real checks, not logs or transcripts."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

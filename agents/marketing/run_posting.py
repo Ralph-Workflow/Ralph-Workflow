@@ -82,7 +82,13 @@ def parse_front_matter(content: str) -> tuple[dict, str]:
 def extract_title_and_body(content: str) -> tuple[str, str, dict]:
     metadata, body = parse_front_matter(content)
     title_m = re.search(r"^#\s+(.+)$", body, re.MULTILINE)
-    title = title_m.group(1).strip() if title_m else metadata.get("angle", "Untitled")
+    if title_m:
+        title = title_m.group(1).strip()
+    else:
+        # Fallback: frontmatter title (Hugo-style "title:") > angle (legacy) > Untitled
+        title = metadata.get("title") or metadata.get("angle") or "Untitled"
+        if isinstance(title, str):
+            title = title.strip().strip('"')
     return title, body.strip(), metadata
 
 

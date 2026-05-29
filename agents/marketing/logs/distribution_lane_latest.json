@@ -2,7 +2,7 @@
   "lane": "distribution_architecture_guard_pause",
   "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; a newer concrete repair already ran after the current guard pause started, so pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
   "reasons": [
-    "2 live external marketing action(s) already shipped in the last 6 hours.",
+    "3 live external marketing action(s) already shipped in the last 6 hours.",
     "If no new outcome lands first, this short-window congestion clears at 2026-05-29T05:56:07. Before then, another live outbound action would mostly blur measurement.",
     "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
     "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
