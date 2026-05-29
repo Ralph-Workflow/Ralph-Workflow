@@ -1,3 +1,65 @@
+
+### 2026-05-29 — Marketing workflow audit (09:54 CEST)
+
+**Audit trigger:** Cron scheduled re-analysis of full marketing loop.
+**Status:** System operating at structural adoption ceiling. All metrics flat.
+**Actions taken in-run (runtime repairs, not just report):**
+
+#### Cron job cleanup (executed)
+- **Removed** `apollo_sequence_launcher.py` from crontab (permanently blocked, zero output ever)
+- **Removed** `hn_lobsters_preflight.py` from crontab (permanently blocked, daily identical "BLOCKED" output)
+- **Removed** `run_posting.py` at 14:00 and 22:00 (always "No scheduled drafts for today" — 66% dead runs)
+- **Reduced** `apollo_outbound_verifier.py` from daily to once-weekly (Monday only, was 17KB/day of Cloudflare-blocked status)
+- Cron reduced from 16 → 12 active jobs. Dead-weight eliminated.
+
+#### Data format bug fix (executed)
+- **Fixed** `telegraph_posts.json` — was stored as a plain list but the code base expected `{"posts": [...], "last_run": ...}` dict format. This caused `load_posted()` to return a list that failed `.get("posts")` silently, making every blog cross-post appear "already posted" because `already_posted_successfully()` received iterable false-positives.
+- Backup saved to `telegraph_posts.json.bak`. 10 historical Telegraph posts migrated to correct dict format.
+
+#### MARKETING_SELF_IMPROVEMENT.md rules added (executed)
+- **Dead-cron self-suppression rule**: Any cron job producing same non-actionable output 7+ consecutive runs → remove and replace with weekly watchdog.
+- **Total search collapse rule**: When web_search provider 100% bot-detection and Reddit direct 403 → cease new queries, carry forward last healthy shortlist, treat Reddit as research-only surface.
+
+#### Channel status snapshot
+| Channel | Status | Blocker | Autonomous path? |
+|---|---|---|---|
+| **Blog/ralphworkflow.com** | ✅ Live | — | Yes. 31 posts, all Codeberg-CTA-equipped |
+| **Telegraph** | ⚠️ Cooldown | 6h spidering guard (data format bug fixed, will post next cycle) | Yes, 1x/day at 06:00 UTC |
+| **GitHub Discussions** | ⚠️ Drafts ready | `gh auth login` required (human browser-based) | 5 draft replies prepared, cannot post |
+| **PyPI README CTA** | ⚠️ Deployed | v0.8.8 built but not published (no `PYPI_TOKEN`) | README has Codeberg link, but stale at v0.8.7 |
+| **Apollo** | 🔴 Blocked | Cloudflare auth interstitial | 5-record curator follow-up list exists, unreachable |
+| **Reddit** | 🔴 Blocked | DDG bot-detection + 403 IP-block | Architecturally retired 2026-05-28 |
+| **HN** | 🔴 Blocked | Human-gated posting | Show HN packet created, unposted |
+| **Lobsters** | 🔴 Blocked | Human-gated invite-wall | Packet created, no invitation |
+| **dev.to** | 🔴 Blocked | reCAPTCHA on signup | Requires human CAPTCHA |
+| **SMTP outreach** | 🔴 Blocked | `SMTP_USER` env var not set | Requires human credential handoff |
+
+#### Adoption metrics at audit
+- Codeberg: 12⭐ 2👀 2🍴 — flat across 9-sample window
+- GitHub: 1⭐ 2👀 0🍴 — flat
+- PyPI: 1,428/mo (v0.8.7, README has CTA but v0.8.8 blocked on PYPI_TOKEN)
+
+#### Content pipeline health
+- Blog: 31 posts live, all link to Codeberg primary + GitHub mirror
+- Coverage: 12 comparisons, 5 practical guides, 0 philosophy/meta posts
+- Gaps: evaluation criteria framework, TCO analysis, migration guide, CI/CD integration
+- Reddit shortlist: carrying same 4 threads from 2026-05-28 11:19 (total search collapse)
+
+#### What will produce real outcomes next
+1. **PyPI v0.8.8 publish** — only human-blocker remaining. Current 1,428/mo downloads see stale README. Each download is a conversion opportunity with no star CTA surface.
+2. **GitHub Discussions reply posting** — 5 drafts exist for real issues. `gh auth login` (one-time, browser-based) unblocks this lane.
+3. **Apollo curator follow-up** — 5-record list with Codeberg CTA ready. Cloudflare auth interstitial needs human solve.
+4. **Telegraph cross-post** — data format fixed, will post on next 06:00 UTC cron. 31 blog posts → Telegraph backlinks.
+5. **Directory submissions** — distribution hunter found 49 potential directories. Some may have open submission paths.
+
+#### System design finding
+The marketing loop has hit a structural ceiling: owned content (blog) is healthy at 31 posts, but all 5 organic distribution channels (Reddit, HN, Lobsters, dev.to, SMTP) are permanently blocked from this environment. The remaining live lanes (Telegraph cross-posts, blog SEO, GitHub Discussions drafts) can maintain visibility but cannot break through the 12→100+ star barrier without either:
+- A human unblocking at least one organic distribution channel
+- A PyPI v0.8.8 publish (1,428 downloads/mo → conversion surface)
+- A third-party backlink or curator mention from someone unaffiliated
+
+**Decision made:** Autonomous budget spent where it counts — cron cleanup, data format fix, principle updates. The remaining blockers are human-gated and the system truthfully surfaces them rather than optimizing around them.
+
 # Outreach Log
 
 ## 2026-05-29 (Friday) — Marketing workflow audit #10: vendored README repaired, PyPI v0.8.8 prepared, draft inflation pruned, openclaw-path crash fixed (01:29 CEST / 23:29 UTC)
@@ -7634,3 +7696,77 @@ The repaired cron infrastructure means `distribution_hunter.py` and `outcome_exe
 
 ### Next distributor: the cron runtime, not the analyst
 The most important repair in this audit is structural, not analytical: the cron runtime now has the jobs, the drafts, and the SMTP credentials to execute publisher outreach on its own. The analyst (this session) cannot send email, but the cron environment can — and now has the prepared drafts it needs to do so.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-29 10:00:01
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+---
+
+## 2026-05-29 09:54 CEST — Marketing Workflow Audit (Cron Trigger) — Actions Executed
+
+### Audit Summary
+**Codeberg flat at 12⭐** across entire measurement window. No delta on any adoption metric (stars, watches, forks). Structural ceiling confirmed: 5/7 organic distribution channels permanently blocked. Blog pipeline is the only autonomous lane producing real external artifacts. This run shifted from diagnosis to execution: content creation, deployment, cleanup, and guard hardening.
+
+### Runtime Repairs Executed
+
+#### 1. Blog: Evaluator Decision Guide Created & Deployed
+- **Created** `Ralph-Site/content/blog/is-ralph-workflow-right-for-your-project-decision-guide.md` — 4-stage decision framework (project fit, team need, prerequisites, failure modes) with concrete signal tests
+- **Deployed** via `cap production deploy` → live at https://ralphworkflow.com/blog/is-ralph-workflow-right-for-your-project-decision-guide (HTTP 200 verified)
+- **Content gap addressed**: 31 blog posts had 12 comparisons + 5 practical guides but zero evaluator decision frameworks. This closes the most common organic-traffic intent gap ("should I use this tool?")
+- **Deploy artifact**: `agents/marketing/logs/marketing_2026-05-29_0955_evaluator_decision_guide_deployed.json`
+
+#### 2. Stale Drafts Archived
+- 53 of 219 drafts older than 7 days moved to `drafts/archive/2026-05-29/`
+- Remaining 161 active drafts contain legitimate working packets (GitHub Discussions, curator handoffs, publisher outreach)
+
+#### 3. Stale Log Pruning
+- 45 log files older than 7 days moved to `agents/marketing/logs/archive/2026-05-29/`
+- 1,483 files remain in logs/ (down from 1,528; delta of 45 pruned + new files created this run)
+
+#### 4. Apollo Verifier Guard Short-Circuit
+- **Modified** `apollo_outbound_verifier.py` `main()`: checks `APOLLO_PASSWORD` env var before attempting Playwright browser login
+- If `APOLLO_PASSWORD` is unset → exits immediately with `apollo_cloudflare_blocked` status, skipping the doomed login attempt
+- Eliminates ~17KB of Cloudflare-blocked log output per weekly Monday run
+- Verified: guard short-circuit produces minimal output, exit code 0
+
+#### 5. MARKETING_SELF_IMPROVEMENT.md Updated
+- 2026-05-29 structural addendum documenting: Telegraph data bug fix, draft inflation, directory exhaustion, owned content saturation, PyPI blocker truth
+- All rule addenda preserved from prior runs
+
+#### 6. PyPI Blocker Truth Daily Artifact
+- **Created** `agents/marketing/logs/pypi_blocker_status_daily.md`
+- Concrete action required: Set `PYPI_TOKEN`, publish v0.8.8, unblock 1,428 monthly downloads from stale README
+- Updated metrics: 1,428/mo (down from 1,498), v0.8.8 built+verified, blocked by missing token
+
+### Directory Submission Status
+4 unsubmitted directories identified (agentdepot.dev, aisotools.com, comeai/iatool.online, saashub.com) — all have live 200 submit URLs but require manual HTML form filling. No programmatic submission path. The 4 "easy" directories from `channel_discovery.py` (aitoolsindex, codaone, toolshelf, toolwise) were already submitted in the 2026-05-23 cycle.
+
+### Channel Status (Unchanged from Prior Audit)
+| Channel | Status | Blocker |
+|---|---|---|
+| Blog/ralphworkflow.com | ✅ Live (32 posts) | — |
+| Telegraph | ⚠️ Cooldown (should resume 06:00 UTC) | Data format fix applied; 6h spidering guard |
+| GitHub Discussions | ⚠️ 5 drafts ready | `gh auth login` (human credential) |
+| PyPI README CTA | ⚠️ v0.8.8 built, unsubmitted | `PYPI_TOKEN` missing |
+| Apollo | 🔴 Blocked | Cloudflare auth |
+| Reddit | 🔴 Blocked | DDG bot-detect + 403 IP-block |
+| HN | 🔴 Blocked | Human-gated posting |
+| Lobsters | 🔴 Blocked | Human-gated invite-wall |
+| dev.to | 🔴 Blocked | reCAPTCHA signup |
+| SMTP outreach | 🔴 Blocked | `SMTP_USER` unset |
+
+### Crontab State
+12 active marketing-related jobs (down from ~16 before prior run's dead-cron consolidation). Backups at `/tmp/cron_backup_20260529.bak`.
+
+### Next Autonomous Actions (Scheduled via Cron)
+- 06:00 UTC: Telegraph cross-post (data format fix should enable `crosspost_blog_content()` to discover all 31→32 blog posts, rate-limited at 3 per 6h)
+- 10:00 UTC: Momentum watchdog / Reddit monitor (once-daily, stale shortlist carry-forward)
+- Monday 08:30 UTC: Apollo verifier (once-weekly, guard short-circuit will exit silently)
+
+### Remaining Blocker Truth (Human Handoff)
+**PyPI publish (highest ROI):** 1,428 monthly downloads see stale v0.8.7 README. v0.8.8 built with Codeberg CTA. Single action: set `PYPI_TOKEN`, run publish. Every install becomes a conversion opportunity.
+
+**GitHub Discussions (5 drafts):** Real issues found on claude-code, continue, opencode. Five reply drafts ready. Single action: `gh auth login` (browser-based, one-time), then run outreach.
+
+**Apollo body repair (June 1 window):** A/B variant drafted. Current body 19% spam rate, 0.14% reply rate. Requires Cloudflare solve + APOLLO_PASSWORD to deploy.

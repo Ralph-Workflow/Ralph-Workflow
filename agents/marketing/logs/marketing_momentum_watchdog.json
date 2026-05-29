@@ -1,25 +1,25 @@
 {
-  "generated_at": "2026-05-28T17:42:01.528298+02:00",
+  "generated_at": "2026-05-29T10:00:01.766105+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 1.83,
-  "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "latest_healthy_report_age_hours": 1.83,
-  "latest_post_age_hours": 48.9,
+  "report_age_hours": 0.11,
+  "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest_healthy.md",
+  "latest_healthy_report_age_hours": 22.67,
+  "latest_post_age_hours": 65.2,
   "reddit_monitor_runtime": {
     "status": "fresh_report_reused",
-    "age_hours": 8.45
+    "age_hours": 24.75
   },
   "reddit_execution_status": {
-    "status": "execution_blocked_permanent",
-    "age_hours": 5.28,
-    "blocking_reason": "Reddit is IP-blocked at Hetzner Helsinki (95.216.6.222). Tor also blocked \u2014 exit node 192.42.116.102 is on Reddit's Tor blocklist. No proxy path exists from this runtime."
+    "status": "permanently_blocked",
+    "age_hours": 13.39,
+    "blocking_reason": "Reddit is IP-blocked at Hetzner Helsinki. ARCHITECTURALLY RETIRED 2026-05-28."
   },
   "adoption_flat": true,
   "pending_repairs": [],
   "blocked_distribution_channels": [],
   "apollo": {
     "status": "cloudflare_auth_blocked",
-    "age_hours": 3.5,
+    "age_hours": 4.31,
     "cloudflare_blocked": true
   },
   "measurement_hold": {
