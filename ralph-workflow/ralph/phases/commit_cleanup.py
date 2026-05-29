@@ -51,6 +51,7 @@ _UNSAFE_PATH_SEGMENTS: tuple[str, ...] = ("tests/", "test_", "_test.", "docs/", 
 _GENERATED_TEXT_MARKERS: frozenset[str] = frozenset({
     "artifact",
     "capture",
+    "checkpoint",
     "debug",
     "dump",
     "generated",
@@ -125,7 +126,7 @@ def _is_safe_to_delete(repo_root: Path, path: str) -> bool:
         return False
 
     suffix = candidate.suffix.lower()
-    if suffix == ".txt":
+    if suffix in (".txt", ".json"):
         return _is_generated_text_artifact(repo_root, path)
 
     return suffix not in _UNSAFE_EXTENSIONS

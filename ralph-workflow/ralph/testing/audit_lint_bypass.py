@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 def _load_toml_root(path: Path) -> dict[str, object] | None:
     try:
         parsed_obj: object = tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, ValueError):
         return None
     if not isinstance(parsed_obj, dict):
         return None
