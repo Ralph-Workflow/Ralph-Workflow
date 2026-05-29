@@ -31,8 +31,31 @@ _SUBPROCESS_E2E_FILES: set[str] = set()
 # Files that legitimately use sleep() for clock-injection testing.
 _SLEEP_ALLOWLIST: set[str] = set()  # none currently — all sleep() in tests is a design defect
 
-# Files that legitimately do real I/O (e.g., test infrastructure).
-_IO_ALLOWLIST: set[str] = set()
+# Files that legitimately do real I/O (e.g., test infrastructure,
+# memory regression tests requiring real filesystem allocations).
+_IO_ALLOWLIST: set[str] = {
+    # Memory regression test requires real filesystem allocations for
+    # valid tracemalloc measurements. MemoryWorkspace would alter the
+    # allocation profile and invalidate the regression assertions.
+    "test_multimodal_session_memory_regression",
+}
+
+# Files that legitimately use time.monotonic()/time.perf_counter() for
+# non-circumvention purposes (single-point measurements, FakeClock
+# comparison, timing correctness assertions).
+_WALL_CLOCK_ALLOWLIST: set[str] = {
+    # Single timestamp measurement for fake process creation — not an
+    # elapsed-time loop. Aliased as _time.monotonic().
+    "test_process_manager",
+    # Comparing FakeClock timing against real wall-clock time.
+    # Core purpose of these tests: verify FakeClock.sleep() and
+    # FakeClock.advance() don't cause real wall-clock delays.
+    "test_timeout_clock",
+    # Parallel execution timing assertions.
+    # Measures fan-out/verify timing to confirm parallelism works
+    # correctly, not to accumulate passage-of-time for control flow.
+    "test_parallel_serialized_verification",
+}
 
 # Patterns that monkeypatch away real I/O — these are legitimate.
 _MONKEYPATCH_PATTERNS: set[str] = {
@@ -355,6 +378,12 @@ def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0
 
     # Skip files in the I/O allowlist.
     if file_path.name in _IO_ALLOWLIST:
+        return []
+
+    # Skip files in the wall-clock allowlist (legitimate time.monotonic()/
+    # time.perf_counter() for single-point measurements, FakeClock
+    # comparison, or timing correctness assertions).
+    if file_path.name in _WALL_CLOCK_ALLOWLIST:
         return []
 
     try:

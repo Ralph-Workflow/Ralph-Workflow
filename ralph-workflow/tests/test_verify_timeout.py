@@ -49,6 +49,7 @@ def test_build_timeout_env_sets_timeout_values() -> None:
     assert env["RALPH_PYTEST_SUITE_TIMEOUT_SECONDS"] == "30.0"
 
 
+@pytest.mark.subprocess_e2e
 def test_run_command_with_timeout_returns_completed_process(tmp_path: Path) -> None:
     result = run_command_with_timeout(
         [sys.executable, "-c", "print('ok')"],
@@ -60,6 +61,7 @@ def test_run_command_with_timeout_returns_completed_process(tmp_path: Path) -> N
     assert result.stdout == "ok\n"
 
 
+@pytest.mark.subprocess_e2e
 def test_run_command_with_timeout_raises_on_suite_timeout(tmp_path: Path) -> None:
     with pytest.raises(
         SuiteTimeoutError,
