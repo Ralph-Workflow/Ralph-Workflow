@@ -34,7 +34,9 @@ from ralph.agents.invoke._process_reader import (
 from ralph.agents.invoke._pty_extras import _PtyExtras
 from ralph.agents.invoke._pty_helpers import (
     _MENU_QUIESCENCE_SECONDS,
+    _RECENT_CHOICE_LINES_MAX,
     _extract_choice_menu_state,
+    _fuzzy_contains_permission_prompt,
     _interactive_auto_response_for_prompt,
     _is_auto_mode_menu_snapshot,
     _is_permission_prompt_line,
@@ -106,6 +108,7 @@ class PtyLineReader:
         self._last_auto_mode_menu_seen_at: float | None = None
         self._pending_permission_prompt_line: str | None = None
         self._pending_permission_prompt_started_at: float | None = None
+        self._recent_choice_lines: list[str] = []
 
     def _start_thread(self, target: Callable[[], None]) -> threading.Thread:
         thread = threading.Thread(target=target, daemon=True)
@@ -311,9 +314,30 @@ class PtyLineReader:
 
     def _observe_queued_line(self, queued_line: str) -> None:
         visible_line = _visible_tui_text(queued_line)
-        if _extract_choice_menu_state(queued_line) is not None:
-            self._auto_mode_menu_screen = queued_line
-            self._last_auto_mode_menu_seen_at = self._clock.monotonic()
+
+        # Maintain a sliding window of recent lines so cross-line menu detection
+        # can work even when TUI repaint sequences fragment menu options across
+        # individual queued entries.
+        self._recent_choice_lines.append(queued_line)
+        if len(self._recent_choice_lines) > _RECENT_CHOICE_LINES_MAX:
+            self._recent_choice_lines.pop(0)
+
+        def _check_menu(screen_text: str) -> bool:
+            if _extract_choice_menu_state(screen_text) is not None:
+                self._auto_mode_menu_screen = screen_text
+                self._last_auto_mode_menu_seen_at = self._clock.monotonic()
+                return True
+            if _fuzzy_contains_permission_prompt(screen_text):
+                self._auto_mode_menu_screen = screen_text
+                self._last_auto_mode_menu_seen_at = self._clock.monotonic()
+                return True
+            return False
+
+        menu_detected = _check_menu(queued_line)
+        if not menu_detected:
+            combined = "".join(self._recent_choice_lines)
+            menu_detected = _check_menu(combined)
+
         prompt_line_seen = "enable auto mode?" in visible_line.lower()
         menu_snapshot_seen = _is_auto_mode_menu_snapshot(queued_line)
         if prompt_line_seen or menu_snapshot_seen:
@@ -344,7 +368,11 @@ class PtyLineReader:
             )
             if menu_quiescent and (
                 self._last_auto_mode_response_at is None
-                or (now - self._last_auto_mode_response_at) >= 1.0
+                or (
+                    (now - self._last_auto_mode_response_at) >= 1.0
+                    and self._last_auto_mode_menu_seen_at is not None
+                    and self._last_auto_mode_menu_seen_at > self._last_auto_mode_response_at
+                )
             ):
                 with contextlib.suppress(OSError):
                     screen = self._auto_mode_menu_screen or ""
