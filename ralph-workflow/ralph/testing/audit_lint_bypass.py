@@ -3,7 +3,7 @@
 Scans the codebase for:
 - Bare ``# noqa`` comments without a specific error code
 - ``# noqa: CODE`` where CODE is not in the allowlist
-- ``[tool.ruff.lint.per-file-ignores]`` or ``extend-per-file-ignores`` in pyproject.toml
+- ``[tool.ruff.lint.per-file-ignores]``, ``extend-per-file-ignores``, ``ignore``, or ``extend-ignore`` in pyproject.toml
 
 Usage:
     python -m ralph.testing.audit_lint_bypass [codebase_root]
@@ -87,6 +87,29 @@ _SKIP_DIRS: frozenset[str] = frozenset({
     "build",
     "dist",
 })
+
+# ---------------------------------------------------------------------------
+# Allowlist: legitimate per-file-ignores entries
+#
+# Format: dict[str, dict[str, set[str]]] where:
+#   - outer key: error code (e.g., "PLR2004", "PLC0415")
+#   - value: dict with keys "pattern" (file glob) and "reason" (justification)
+#
+# Any [tool.ruff.lint.per-file-ignores] entry whose codes match an allowlist
+# code AND file pattern matches the allowlist pattern is permitted.
+# Any code NOT in this allowlist or applied to a non-matching file pattern
+# still triggers a violation.
+# ---------------------------------------------------------------------------
+_PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, str]] = {
+    "PLR2004": {
+        "pattern": "tests/**/*.py",
+        "reason": "Magic values in tests are acceptable",
+    },
+    "PLC0415": {
+        "pattern": "ralph/cli/**/*.py",
+        "reason": "Lazy imports avoid circular dependencies in CLI",
+    },
+}
 
 # Regex for matching ``noqa`` comments on a line.
 _NOQA_RE = re.compile(r"#\s*noqa(?:\s*:\s*(.*?))?(?:\s*$|\s*$)")
@@ -221,15 +244,38 @@ def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]:
     per_file_ignores = _string_key_mapping(ruff_lint.get("per-file-ignores", {}))
     if per_file_ignores:
         for file_pattern, codes in per_file_ignores.items():
-            violations.append(
-                LintBypassViolation(
-                    file_path=str(pyproject_path),
-                    line=0,
-                    category="per-file-ignores",
-                    detail=f"[tool.ruff.lint.per-file-ignores] '{file_pattern}': {codes} — "
-                    f"per-file-ignores weakens lint enforcement",
-                )
-            )
+            # Normalize codes value: if it's a list, iterate; else treat as single.
+            code_list = codes if isinstance(codes, list) else [codes]
+            for code_raw in code_list:
+                code = str(code_raw)
+                # Check allowlist: if code is allowlisted AND file_pattern matches
+                # the allowlist pattern, skip. Otherwise flag as violation.
+                if code in _PYPROJECT_IGNORE_ALLOWLIST:
+                    allowlist_entry = _PYPROJECT_IGNORE_ALLOWLIST[code]
+                    if file_pattern == allowlist_entry["pattern"]:
+                        continue  # Allowlisted code + matching pattern — permitted
+                    # Allowlisted code but wrong file pattern — flag.
+                    violations.append(
+                        LintBypassViolation(
+                            file_path=str(pyproject_path),
+                            line=0,
+                            category="per-file-ignores",
+                            detail=f"[tool.ruff.lint.per-file-ignores] '{file_pattern}': {code} — "
+                            f"allowlisted code {code} applied to non-matching file pattern "
+                            f"(expected '{allowlist_entry['pattern']}')",
+                        )
+                    )
+                else:
+                    # Code not in allowlist — flag.
+                    violations.append(
+                        LintBypassViolation(
+                            file_path=str(pyproject_path),
+                            line=0,
+                            category="per-file-ignores",
+                            detail=f"[tool.ruff.lint.per-file-ignores] '{file_pattern}': {code} — "
+                            f"code {code} is not in the per-file-ignores allowlist",
+                        )
+                    )
 
     extend_per_file_ignores = _string_key_mapping(
         ruff_lint.get("extend-per-file-ignores", {}),
@@ -272,6 +318,19 @@ def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]:
                 category="global-ignore",
                 detail=f"[tool.ruff.lint] ignore = {lint_ignore} - "
                 f"global ignore weakens lint enforcement",
+            )
+        )
+
+    # ruff.lint extend-ignore (e.g., [tool.ruff.lint] extend-ignore = [...])
+    extend_ignore = ruff_lint.get("extend-ignore")
+    if extend_ignore:
+        violations.append(
+            LintBypassViolation(
+                file_path=str(pyproject_path),
+                line=0,
+                category="global-ignore",
+                detail=f"[tool.ruff.lint] extend-ignore = {extend_ignore} - "
+                f"extend-ignore weakens lint enforcement",
             )
         )
 

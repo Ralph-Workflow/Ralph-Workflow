@@ -1,5 +1,7 @@
 # Profiling Report: `make verify` Test Budget Violation
 
+> **Note (2026-05-29):** The combined test budget was raised to 60s after this profiling was completed. All 30s references in this document reflect the budget at investigation time and are preserved as historical data.
+
 **Date**: 2026-05-28  
 **Context**: `make verify` was exceeding the 30s combined test budget with 6171 test items. This report provides the data-driven diagnosis required by Step 1 of the execution plan (`.agent/PLAN.md`).
 

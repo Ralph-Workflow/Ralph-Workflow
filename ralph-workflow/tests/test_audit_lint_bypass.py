@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.testing.audit_lint_bypass import (
+    _PYPROJECT_IGNORE_ALLOWLIST,
     _check_pyproject_config,
     _find_noqa_violations,
     audit_codebase,
@@ -247,4 +248,82 @@ def test_skipped_dirs_excluded(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text("[tool.ruff.lint]\nselect = ['E']\n")
 
     violations, _checked = audit_codebase(tmp_path)
+    assert len(violations) == 0
+
+
+# ---------------------------------------------------------------------------
+# per-file-ignores allowlist tests
+# ---------------------------------------------------------------------------
+
+def test_per_file_ignores_with_allowlisted_codes_are_allowed(tmp_path: Path) -> None:
+    """pyproject.toml with per-file-ignores of approved codes on matching file patterns — no violation."""
+    content = """[tool.ruff.lint]
+select = ["E", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["PLR2004"]
+"ralph/cli/**/*.py" = ["PLC0415"]
+"""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(content)
+    violations = _check_pyproject_config(pyproject)
+    assert len(violations) == 0
+
+
+def test_per_file_ignores_with_unapproved_codes_is_violation(tmp_path: Path) -> None:
+    """pyproject.toml with per-file-ignores of unapproved codes — violation."""
+    content = """[tool.ruff.lint]
+select = ["E", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["F841"]
+"""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(content)
+    violations = _check_pyproject_config(pyproject)
+    assert len(violations) >= 1
+    assert any("F841" in v.detail for v in violations)
+    assert any("not in the per-file-ignores allowlist" in v.detail for v in violations)
+
+
+def test_per_file_ignores_allowlisted_code_wrong_pattern_is_violation(tmp_path: Path) -> None:
+    """Allowlisted code applied to non-matching file pattern — violation."""
+    content = """[tool.ruff.lint]
+select = ["E", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/**/*.py" = ["PLR2004"]
+"""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(content)
+    violations = _check_pyproject_config(pyproject)
+    assert len(violations) >= 1
+    assert any("non-matching file pattern" in v.detail for v in violations)
+
+
+# ---------------------------------------------------------------------------
+# extend-ignore detection tests
+# ---------------------------------------------------------------------------
+
+def test_check_pyproject_extend_ignore_is_violation(tmp_path: Path) -> None:
+    """[tool.ruff.lint] extend-ignore in pyproject.toml is detected as a violation."""
+    content = """[tool.ruff.lint]
+select = ["E", "F"]
+extend-ignore = ["E501"]
+"""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(content)
+    violations = _check_pyproject_config(pyproject)
+    assert len(violations) >= 1
+    assert any("extend-ignore" in v.detail for v in violations)
+
+
+def test_check_pyproject_no_extend_ignore_no_violation(tmp_path: Path) -> None:
+    """pyproject.toml without extend-ignore section produces no extend-ignore violation."""
+    content = """[tool.ruff.lint]
+select = ["E", "F"]
+"""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(content)
+    violations = _check_pyproject_config(pyproject)
     assert len(violations) == 0

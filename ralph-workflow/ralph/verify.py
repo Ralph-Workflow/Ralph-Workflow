@@ -149,6 +149,18 @@ if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9:
         f"_TOTAL_TEST_BUDGET_SECONDS must be 60.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
     )
 
+# _VERIFY_STEP_TIMEOUT_SECONDS integrity: must be positive and non-trivial.
+# Zero or negative would disable per-step timeouts entirely, causing
+# ruff/mypy/audit steps to potentially hang.
+if not _VERIFY_STEP_TIMEOUT_SECONDS > 0:
+    raise RuntimeError(
+        "_VERIFY_STEP_TIMEOUT_SECONDS must be positive"
+    )
+if _VERIFY_STEP_TIMEOUT_SECONDS < 5.0:
+    raise RuntimeError(
+        f"_VERIFY_STEP_TIMEOUT_SECONDS must be at least 5.0 (got {_VERIFY_STEP_TIMEOUT_SECONDS})"
+    )
+
 # --- Known test step labels ---
 # These labels identify steps that count toward the combined test budget.
 # Any step whose label is in this frozenset MUST be in _BUDGET_TRACKED_STEPS.

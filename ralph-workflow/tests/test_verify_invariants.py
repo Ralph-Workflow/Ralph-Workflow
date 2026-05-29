@@ -261,3 +261,94 @@ def test_budget_steps_invariant_survives_minus_o() -> None:
     )
     assert "RuntimeError" in result.stderr
     assert "_BUDGET_TRACKED_STEPS must not be empty" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# _VERIFY_STEP_TIMEOUT_SECONDS invariant tests
+# ---------------------------------------------------------------------------
+
+
+def _run_step_timeout_patched_import(
+    step_timeout_value: float, *, minus_o: bool = False
+) -> "subprocess.CompletedProcess[str]":
+    """Run a subprocess that patches verify.py's _VERIFY_STEP_TIMEOUT_SECONDS.
+
+    Creates a temporary copy of verify.py with the constant replaced,
+    then tries to import it. Returns the subprocess result.
+    """
+    import tempfile
+
+    verify_path = _get_verify_path()
+    original = Path(verify_path).read_text(encoding="utf-8")
+
+    # Patch the _VERIFY_STEP_TIMEOUT_SECONDS constant value.
+    patched = original.replace(
+        "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0",
+        f"_VERIFY_STEP_TIMEOUT_SECONDS: Final = {step_timeout_value}",
+    )
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", prefix="verify_patched_", delete=False
+    ) as f:
+        f.write(patched)
+        f.flush()
+        tmp_path = f.name
+
+    try:
+        runner = (
+            "import sys\n"
+            f"sys.path.insert(0, {Path(tmp_path).parent!r})\n"
+            f"sys.path.insert(0, {Path(verify_path).parent!r})\n"
+            f"import importlib.util\n"
+            f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
+            f"mod = importlib.util.module_from_spec(spec)\n"
+            f"spec.loader.exec_module(mod)\n"
+            "print('OK')\n"
+        )
+
+        cmd = [sys.executable]
+        if minus_o:
+            cmd.append("-O")
+        cmd.extend(["-c", runner])
+
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(Path(verify_path).parent.parent),
+            check=False,
+        )
+    finally:
+        with contextlib.suppress(OSError):
+            Path(tmp_path).unlink()
+
+
+def test_verify_step_timeout_must_be_positive() -> None:
+    """_VERIFY_STEP_TIMEOUT_SECONDS = 0.0 should raise RuntimeError."""
+    result = _run_step_timeout_patched_import(0.0)
+    assert result.returncode != 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    )
+    assert "RuntimeError" in result.stderr
+    assert "must be positive" in result.stderr
+
+
+def test_verify_step_timeout_must_be_minimum() -> None:
+    """_VERIFY_STEP_TIMEOUT_SECONDS = 1.0 should raise RuntimeError (below 5.0)."""
+    result = _run_step_timeout_patched_import(1.0)
+    assert result.returncode != 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    )
+    assert "RuntimeError" in result.stderr
+    assert "must be at least 5.0" in result.stderr
+
+
+def test_verify_step_timeout_invariant_survives_minus_o() -> None:
+    """_VERIFY_STEP_TIMEOUT_SECONDS invariants must survive python -O."""
+    result = _run_step_timeout_patched_import(0.0, minus_o=True)
+    assert result.returncode != 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    )
+    assert "RuntimeError" in result.stderr
+    assert "must be positive" in result.stderr

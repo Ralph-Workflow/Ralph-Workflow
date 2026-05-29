@@ -52,6 +52,8 @@ If instructions conflict, follow the stricter one.
 | `_BUDGET_TRACKED_STEPS` non-empty | `must not be empty` | Can't empty tracked set to disable budget |
 | `'make test'` in `_KNOWN_TEST_STEP_LABELS` | `must contain 'make test'` | Primary test step label always present |
 | Labels/steps sync enforced | `must be`/`must NOT be` | Every label in `_KNOWN_TEST_STEP_LABELS` is tracked; no untracked test steps |
+| `_VERIFY_STEP_TIMEOUT_SECONDS > 0` | `must be positive` | Per-step timeout can't be zero or negative |
+| `_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0` | `must be at least 5.0` | Per-step timeout must be non-trivial (>= 5s) |
 
 All invariants are tested in `tests/test_verify_invariants.py` under `python -O` to confirm immunity.
 

@@ -88,7 +88,7 @@ See `AGENTS.md` §'═══ ABSOLUTE TEST BUDGET — 60s, IMMUTABLE ═══' 
 | Unit | `tests/` root, `tests/unit/` | Usually no | yes | `make test-unit` |
 | Integration | `tests/integration/` | Usually no | yes | `make test-integration` |
 | Full suite | all tests | mixed | yes | `make test` |
-| Verification | lint + typecheck + `make test` (via `ralph.test_suites`, 30 s combined budget) | mixed | yes | `make verify` |
+| Verification | lint + typecheck + `make test` (via `ralph.test_suites`, 60 s combined budget) | mixed | yes | `make verify` |
 
 ---
 
