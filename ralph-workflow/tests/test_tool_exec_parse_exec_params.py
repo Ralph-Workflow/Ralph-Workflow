@@ -102,7 +102,26 @@ class TestParseExecParams:
     def test_shell_operator_command_string_accepted(self) -> None:
         params = {"command": "ls | grep py"}
         result = parse_exec_params(params)
-        assert result.command == "ls"
+        assert result.command == "sh"
+        assert result.args == ["-c", "ls | grep py"]
+
+    def test_and_and_shell_operator(self) -> None:
+        params = {"command": "git show c9da560 --stat && echo ---"}
+        result = parse_exec_params(params)
+        assert result.command == "sh"
+        assert result.args == ["-c", "git show c9da560 --stat && echo ---"]
+
+    def test_redirection_operator(self) -> None:
+        params = {"command": "echo hello > /tmp/test.txt"}
+        result = parse_exec_params(params)
+        assert result.command == "sh"
+        assert result.args == ["-c", "echo hello > /tmp/test.txt"]
+
+    def test_no_operator_preserves_behavior(self) -> None:
+        params = {"command": "python -m pytest tests/test_tool_exec.py"}
+        result = parse_exec_params(params)
+        assert result.command == "python"
+        assert result.args == ["-m", "pytest", "tests/test_tool_exec.py"]
 
     def test_malformed_command_string_raises(self) -> None:
         params = {"command": "python -c \"print('hello')"}

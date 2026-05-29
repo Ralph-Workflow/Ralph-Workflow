@@ -67,6 +67,8 @@ _BLACKLIST_DESCRIPTIONS = {
     "multi_file_operation": "multi-file operation",
 }
 
+_SHELL_OPERATOR_CHARS = frozenset("|&;<>")
+
 _PRIVILEGE_ESCALATION_COMMANDS = {"sudo", "su", "doas", "pkexec", "runuser"}
 _DESTRUCTIVE_SYSTEM_COMMANDS = {"shutdown", "reboot", "halt", "poweroff", "killall"}
 _NETWORK_TUNNEL_COMMANDS = {"nc", "ncat", "netcat", "socat"}
@@ -102,10 +104,17 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     return ExecParams(command=command, args=merged_args, timeout_ms=timeout_ms)
 
 
+def _has_shell_operator_tokens(tokens: list[str]) -> bool:
+    return any(token and all(c in _SHELL_OPERATOR_CHARS for c in token) for token in tokens)
+
+
 def _parse_exec_command_tokens(params: Mapping[str, object]) -> list[str]:
     command_value = params.get("command")
     if isinstance(command_value, str):
-        return _parse_shell_words(command_value, field_name="command")
+        tokens = _parse_shell_words(command_value, field_name="command")
+        if _has_shell_operator_tokens(tokens):
+            return ["sh", "-c", command_value.strip()]
+        return tokens
     if isinstance(command_value, list):
         return _coerce_argv_tokens(command_value, field_name="command")
     if command_value is not None:

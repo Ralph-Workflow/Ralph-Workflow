@@ -10,6 +10,7 @@ from ralph.mcp.tools.names import (
     GIT_LOG_TOOL,
     GIT_SHOW_TOOL,
     GIT_STATUS_TOOL,
+    RAW_EXEC_TOOL,
     UNSAFE_EXEC_TOOL,
 )
 
@@ -190,6 +191,45 @@ def git_exec_specs() -> list[ToolSpec]:
                     "directory. All shell operators (|, &&, ||, ;, &, >, >>, <, <<) work. "
                     "Only version control commands (git, hg, svn) are blocked. "
                     "Required param: command (string, the full shell command). "
+                    "Optional param: timeout_ms (integer, default 30000). "
+                    "Returns stdout, stderr, and exit_code. "
+                    'Example: {"command": "make build && npm test"}.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": (
+                                "Full shell command string. Shell operators (|, &&, ||, ;) work as "
+                                "normal. Version control commands (git, hg, svn) are blocked. "
+                                '(example values: "make build", "npm test && npm lint").'
+                            ),
+                        },
+                        "timeout_ms": {
+                            "type": "number",
+                            "description": (
+                                "Timeout in milliseconds (default: 30000, "
+                                "example values: 5000, 10000, 60000)."
+                            ),
+                            "default": 30000,
+                        },
+                    },
+                    "required": ["command"],
+                },
+                required_capability="ProcessExecUnbounded",
+            ),
+            module_name="ralph.mcp.tools.unsafe_exec",
+            handler_name="handle_unsafe_exec",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=RAW_EXEC_TOOL,
+                description=(
+                    "DANGEROUS: Alias for unsafe_exec. Execute an unrestricted shell command "
+                    "in the real repository directory. All shell operators (|, &&, ||, ;, "
+                    "&, >, >>, <, <<) work. Only version control commands (git, hg, svn) "
+                    "are blocked. Required param: command (string, the full shell command). "
                     "Optional param: timeout_ms (integer, default 30000). "
                     "Returns stdout, stderr, and exit_code. "
                     'Example: {"command": "make build && npm test"}.'

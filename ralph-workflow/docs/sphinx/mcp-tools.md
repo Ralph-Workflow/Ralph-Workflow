@@ -43,6 +43,8 @@ The table below uses a few drain groupings:
 | `git_log` | `git.status_read` | all | Recent commit log |
 | `git_show` | `git.status_read` | all | Show a git object |
 | `exec` | `process.exec_bounded` | write drains | Execute a bounded subprocess from the workspace root |
+| `unsafe_exec` | `process.exec_unbounded` | write drains | Execute an unrestricted shell command in the real workspace directory (use when `exec` sandbox overhead is too high) |
+| `raw_exec` | `process.exec_unbounded` | write drains | Alias for `unsafe_exec` — same handler, same permissions, unrestricted shell execution with no sandbox overhead |
 | `ralph_submit_artifact` | `artifact.submit` | all | Submit a structured artifact |
 | `ralph_submit_plan_section` | `artifact.submit` | planning | Submit one section of the plan draft |
 | `ralph_finalize_plan` | `artifact.submit` | planning | Finalize and validate the plan draft |
@@ -81,6 +83,10 @@ Quoted arguments inside string forms are preserved, so values containing spaces 
 - Ralph Workflow persists a small learned target slot count per workspace and can grow or shrink the pool over time based on observed contention
 
 This pooling behavior is an internal optimization and concurrency contract, not a public API surface. The observable `exec` semantics stay the same: bounded subprocess execution from the workspace root with strict workspace isolation.
+
+### exec vs unsafe_exec / raw_exec
+
+When shell operators (`&&`, `|`, `||`, `;`) are needed, or when the sandbox pool overhead makes `exec` too slow for trivial commands, prefer `unsafe_exec` or its alias `raw_exec` instead. Both run the command directly in the real workspace directory with no sandbox isolation. Only version control commands (`git`, `hg`, `svn`) are blocked. Use with caution — there is no workspace isolation boundary.
 
 ### read_file response shapes
 
