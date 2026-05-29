@@ -14,7 +14,7 @@ Main entry points:
 - ``is_virtualenv()`` / ``detect_virtualenv_path()`` — virtualenv detection helpers.
 - ``run_command_with_timeout``, ``timeout_seconds_from_env``, ``build_timeout_env`` —
   re-exported from ``ralph.verify_timeout``; used by test commands to enforce the
-  30-second test-suite budget.
+  60-second test-suite budget.
 - ``SuiteTimeoutError`` — raised on suite timeout budget exhaustion.
 """
 

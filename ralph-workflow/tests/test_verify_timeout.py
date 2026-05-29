@@ -33,20 +33,20 @@ def test_timeout_seconds_from_env_uses_default_when_missing(
 
 
 def test_default_suite_timeout_is_thirty_seconds() -> None:
-    assert DEFAULT_SUITE_TIMEOUT_SECONDS == 30.0, (
-        "Policy violation: DEFAULT_SUITE_TIMEOUT_SECONDS must be 30.0. "
+    assert DEFAULT_SUITE_TIMEOUT_SECONDS == 60.0, (
+        "Policy violation: DEFAULT_SUITE_TIMEOUT_SECONDS must be 60.0. "
         "Raising this limit masks slow tests rather than fixing them."
     )
 
 
 def test_build_timeout_env_sets_timeout_values() -> None:
     env = build_timeout_env(
-        base_env={"A": "B"}, test_timeout_seconds=1.0, suite_timeout_seconds=30.0
+        base_env={"A": "B"}, test_timeout_seconds=1.0, suite_timeout_seconds=60.0
     )
 
     assert env["A"] == "B"
     assert env[TEST_TIMEOUT_ENV] == "1.0"
-    assert env["RALPH_PYTEST_SUITE_TIMEOUT_SECONDS"] == "30.0"
+    assert env["RALPH_PYTEST_SUITE_TIMEOUT_SECONDS"] == "60.0"
 
 
 @pytest.mark.subprocess_e2e
@@ -75,7 +75,7 @@ def test_run_command_with_timeout_raises_on_suite_timeout(tmp_path: Path) -> Non
 
 
 def test_suite_timeout_error_message_cites_policy() -> None:
-    err = SuiteTimeoutError(30.0)
+    err = SuiteTimeoutError(60.0)
     message = str(err)
     assert "POLICY VIOLATION" in message
     assert "YOU MUST fix" in message

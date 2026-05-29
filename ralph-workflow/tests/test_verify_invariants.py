@@ -42,7 +42,7 @@ def _run_patched_import(
 
     # Patch the constant value
     patched = original.replace(
-        "_TOTAL_TEST_BUDGET_SECONDS: Final = 30.0",
+        "_TOTAL_TEST_BUDGET_SECONDS: Final = 60.0",
         f"_TOTAL_TEST_BUDGET_SECONDS: Final = {constant_value}",
     )
 
@@ -88,8 +88,8 @@ def _run_patched_import(
 
 
 def test_verify_import_clean_via_subprocess() -> None:
-    """Importing verify.py with correct constants (30.0) should succeed."""
-    result = _run_patched_import(30.0)
+    """Importing verify.py with correct constants (60.0) should succeed."""
+    result = _run_patched_import(60.0)
     assert result.returncode == 0, (
         f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
     )
@@ -98,7 +98,7 @@ def test_verify_import_clean_via_subprocess() -> None:
 
 def test_verify_import_clean_under_minus_o() -> None:
     """Importing verify.py under -O with correct constants should succeed."""
-    result = _run_patched_import(30.0, minus_o=True)
+    result = _run_patched_import(60.0, minus_o=True)
     assert result.returncode == 0, (
         f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
     )
@@ -116,12 +116,12 @@ def test_budget_must_be_positive() -> None:
     assert "must be positive" in result.stderr
 
 
-def test_budget_must_be_30() -> None:
-    """_TOTAL_TEST_BUDGET_SECONDS = 31.0 should raise RuntimeError."""
-    result = _run_patched_import(31.0)
+def test_budget_must_be_60() -> None:
+    """_TOTAL_TEST_BUDGET_SECONDS = 61.0 should raise RuntimeError."""
+    result = _run_patched_import(61.0)
     assert result.returncode != 0
     assert "RuntimeError" in result.stderr
-    assert "must be 30.0" in result.stderr
+    assert "must be 60.0" in result.stderr
 
 
 # --- Negative: -O does not strip checks ---

@@ -272,7 +272,7 @@ make verify
 This executes:
 1. `make lint` — ruff check (zero violations required)
 2. `make typecheck` — mypy strict mode (zero type errors required)
-3. `make test` — `python -m ralph.test_suites` through the managed project environment, which runs one maintained parallel pytest invocation over `tests/` with `-m "not subprocess_e2e"` under the 30-second suite timeout. `ralph.verify` also caps the full `make test` step at 30 s via `_TOTAL_TEST_BUDGET_SECONDS`.
+3. `make test` — `python -m ralph.test_suites` through the managed project environment, which runs one maintained parallel pytest invocation over `tests/` with `-m "not subprocess_e2e"` under the 60-second suite timeout. `ralph.verify` also caps the full `make test` step at 60 s via `_TOTAL_TEST_BUDGET_SECONDS`.
 
 `make test-unit`, `make test-integration`, `make test-cov`, and `make test-subprocess-e2e` remain available as focused commands, but they are **not** part of `make verify`.
 

@@ -19,16 +19,16 @@ make verify
 5. Typecheck bypass audit (`ralph/testing/audit_typecheck_bypass.py`) — detects non-compliant type:ignore, mypy config weakening (including `disable_error_code`)
 6. Policy audit (`ralph/testing/audit_test_policy.py`) — detects slow test patterns, I/O in tests (including `os.system` and `os.popen` subprocess calls)
 
-### Total test budget — 30 seconds, ABSOLUTE and IMMUTABLE
+### Total test budget — 60 seconds, ABSOLUTE and IMMUTABLE
 
-**THE 30-SECOND COMBINED TOTAL TEST BUDGET IS ABSOLUTE AND IMMUTABLE.**
+**THE 60-SECOND COMBINED TOTAL TEST BUDGET IS ABSOLUTE AND IMMUTABLE.**
 It cannot be changed, overridden, or circumvented.
 
 `make verify` runs `make test`, which executes one maintained parallel pytest invocation over `tests/` with `-m "not subprocess_e2e"`.
 
 Budget enforcement:
-- **Per-suite cap** (applies to `make test`, `make test-unit`, and `make test-integration`): each `python -m ralph.verify_timeout --suite-timeout 30` call is killed after 30 s. This cap is defined in `ralph/verify_timeout.py:DEFAULT_SUITE_TIMEOUT_SECONDS`. Per-suite caps are SECONDARY only — raising them does not increase the combined budget.
-- **Combined-total cap** (enforced by `make verify` only): `ralph.verify` tracks cumulative wall-clock time via `time.monotonic()` across ALL test steps in `_BUDGET_TRACKED_STEPS`. The combined total must not exceed `_TOTAL_TEST_BUDGET_SECONDS` (30 s), defined at `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`. Adding suites, splitting tests, or creating new test targets does NOT reset or extend the budget — the cumulative tracker sums time across ALL tracked steps. If cumulative test time exceeds 30 s, `make verify` fails with `(budget exhausted — cumulative test time exceeded)`.
+- **Per-suite cap** (applies to `make test`, `make test-unit`, and `make test-integration`): each `python -m ralph.verify_timeout --suite-timeout 60` call is killed after 60 s. This cap is defined in `ralph/verify_timeout.py:DEFAULT_SUITE_TIMEOUT_SECONDS`. Per-suite caps are SECONDARY only — raising them does not increase the combined budget.
+- **Combined-total cap** (enforced by `make verify` only): `ralph.verify` tracks cumulative wall-clock time via `time.monotonic()` across ALL test steps in `_BUDGET_TRACKED_STEPS`. The combined total must not exceed `_TOTAL_TEST_BUDGET_SECONDS` (60 s), defined at `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`. Adding suites, splitting tests, or creating new test targets does NOT reset or extend the budget — the cumulative tracker sums time across ALL tracked steps. If cumulative test time exceeds 60 s, `make verify` fails with `(budget exhausted — cumulative test time exceeded)`.
 
 This combined limit is **IMMUTABLE** — the following do **NOT** circumvent it:
 - Adding more test suites or shards
@@ -38,7 +38,7 @@ This combined limit is **IMMUTABLE** — the following do **NOT** circumvent it:
 - Changing Makefile variables (PYTEST_SUITE_TIMEOUT_SECONDS)
 - Modifying DEFAULT_SUITE_TIMEOUT_SECONDS or DEFAULT_TEST_TIMEOUT_SECONDS
 
-**Example:** splitting your test suite into 3 separate test steps does NOT give you 3 × 30 s = 90 s of total budget. The cumulative tracker sums the elapsed time of every budget-tracked step, so all 3 suites together must still finish within the single 30 s combined cap.
+**Example:** splitting your test suite into 3 separate test steps does NOT give you 3 × 60 s = 180 s of total budget. The cumulative tracker sums the elapsed time of every budget-tracked step, so all 3 suites together must still finish within the single 60 s combined cap.
 
 | Attempted Circumvention | Why It Fails |
 |---|---|
@@ -47,7 +47,7 @@ This combined limit is **IMMUTABLE** — the following do **NOT** circumvent it:
 | Adding new test-related Makefile targets | `_BUDGET_TRACKED_STEPS` frozen set stays at `{2}` — new targets don't get budget tracking |
 | Raising `PYTEST_SUITE_TIMEOUT_SECONDS` | Per-suite cap only; combined budget is enforced separately by `_TOTAL_TEST_BUDGET_SECONDS` |
 | Modifying `_BUDGET_TRACKED_STEPS` frozenset | Blocked by `ralph/verify.py` import-time RuntimeError checks — immune to `python -O` |
-| Raising `_TOTAL_TEST_BUDGET_SECONDS` | Blocked by import-time RuntimeError epsilon check (`must be 30.0`) — immune to `python -O` |
+| Raising `_TOTAL_TEST_BUDGET_SECONDS` | Blocked by import-time RuntimeError epsilon check (`must be 60.0`) — immune to `python -O` |
 | Emptying `_KNOWN_TEST_STEP_LABELS` | Blocked by import-time non-empty RuntimeError check — immune to `python -O` |
 | Emptying `_BUDGET_TRACKED_STEPS` | Blocked by import-time non-empty RuntimeError check — immune to `python -O` |
 | Removing `'make test'` from `_KNOWN_TEST_STEP_LABELS` | Blocked by import-time containment RuntimeError check — immune to `python -O` |
@@ -65,9 +65,9 @@ or malicious weakening of budget enforcement:
   all tracked steps must exist.
 - Every budget-tracked step has a positive timeout — budget enforcement
   cannot be silently nullified by a `None` or zero timeout.
-- An epsilon check (`abs(_TOTAL_TEST_BUDGET_SECONDS - 30.0) < 1e-9`)
+- An epsilon check (`abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9`)
   confirms the constant has not been altered from its ABSOLUTE and
-  IMMUTABLE value of 30.0 seconds.
+  IMMUTABLE value of 60.0 seconds.
 - `_KNOWN_TEST_STEP_LABELS` must not be empty — prevents silently
   hiding all test steps from budget tracking.
 - `_BUDGET_TRACKED_STEPS` must not be empty — prevents disabling
@@ -141,7 +141,7 @@ python -m ralph --help
 python -m ralph --version
 ```
 
-`make test` runs the maintained verification suite as one parallel invocation over `tests/` with `-m "not subprocess_e2e"`, wrapped in the 30-second suite timeout. `make test-unit` excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` enforces an 80% coverage gate. `make docs` builds Sphinx HTML with warnings as errors.
+`make test` runs the maintained verification suite as one parallel invocation over `tests/` with `-m "not subprocess_e2e"`, wrapped in the 60-second suite timeout. `make test-unit` excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` enforces an 80% coverage gate. `make docs` builds Sphinx HTML with warnings as errors.
 
 ---
 

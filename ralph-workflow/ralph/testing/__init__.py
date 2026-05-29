@@ -1,7 +1,7 @@
 """Test helpers for Ralph Workflow.
 
 This package exports fake subprocess and process-management helpers for unit tests,
-along with timeout management utilities for keeping the test suite within the 30-second
+along with timeout management utilities for keeping the test suite within the 60-second
 wall-clock budget.
 
 Main entry points:

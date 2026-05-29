@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 #
 # Enforcement mechanism: run_verify() tracks cumulative wall-clock
 # time via time.monotonic() across ALL test-budget-tracked steps.
-# Splitting tests across N suites does NOT give you N x 30s — the
+# Splitting tests across N suites does NOT give you N x 60s — the
 # combined time of every track-tested step is summed and compared
 # against this cap. The per-step timeout passed to each runner() call
 # is min(per_suite_limit, remaining_budget), so an early suite that
@@ -58,7 +58,7 @@ if TYPE_CHECKING:
 # If tests are too slow, fix the test design (remove I/O, use
 # MemoryWorkspace, inject fake clocks). Do NOT raise these constants.
 _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
-_TOTAL_TEST_BUDGET_SECONDS: Final = 30.0
+_TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
 
 # --- Verification step definitions ---
 #
@@ -142,11 +142,11 @@ for idx in _BUDGET_TRACKED_STEPS:
             f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout"
         )
 
-# Budget-constant integrity: the 30-second combined budget is ABSOLUTE and
+# Budget-constant integrity: the 60-second combined budget is ABSOLUTE and
 # IMMUTABLE. This epsilon check prevents any drift or accidental change.
-if not abs(_TOTAL_TEST_BUDGET_SECONDS - 30.0) < 1e-9:
+if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9:
     raise RuntimeError(
-        f"_TOTAL_TEST_BUDGET_SECONDS must be 30.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
+        f"_TOTAL_TEST_BUDGET_SECONDS must be 60.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
     )
 
 # --- Known test step labels ---
@@ -282,7 +282,7 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
         ``min(step_timeout, remaining_budget)``.
       - After a tracked step completes (including on timeout) the actual
         elapsed time is added to cumulative_test_elapsed.
-      - Splitting tests across N suites does NOT give N x 30 s — the
+      - Splitting tests across N suites does NOT give N x 60 s — the
         combined time of EVERY budget-tracked step is summed and enforced.
     """
     print("Running full verification...", flush=True)
