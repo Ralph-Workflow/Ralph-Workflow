@@ -283,7 +283,7 @@ enabled = true
         "drain",
         ["development_commit", "review_commit", "commit"],
     )
-    def test_commit_drain_does_not_grant_git_write_or_exec(
+    def test_commit_drain_does_not_grant_git_write_but_allows_exec_and_denies_web_tools(
         self,
         commit_drain_workspace: Path,
         drain: str,
@@ -297,7 +297,7 @@ enabled = true
 
         assert "git.write" not in plan.capabilities
         assert "workspace.write_tracked" not in plan.capabilities
-        assert "process.exec_bounded" not in plan.capabilities
+        assert "process.exec_bounded" in plan.capabilities
         assert "upstream.tool_use" not in plan.capabilities
         assert "web.visit" not in plan.capabilities
         assert "web.search" not in plan.capabilities

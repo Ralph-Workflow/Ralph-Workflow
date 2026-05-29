@@ -49,6 +49,7 @@ class RalphToolName(StrEnum):
     READ_ENV = "read_env"
     WEB_SEARCH = "web_search"
     VISIT_URL = "visit_url"
+    DOWNLOAD_URL = "download_url"
     READ_IMAGE = "read_image"
     READ_MEDIA = "read_media"
 
@@ -110,6 +111,7 @@ COORDINATE_TOOL = RalphToolName.COORDINATE
 READ_ENV_TOOL = RalphToolName.READ_ENV
 WEB_SEARCH_TOOL = RalphToolName.WEB_SEARCH
 VISIT_URL_TOOL = RalphToolName.VISIT_URL
+DOWNLOAD_URL_TOOL = RalphToolName.DOWNLOAD_URL
 READ_IMAGE_TOOL = RalphToolName.READ_IMAGE
 READ_MEDIA_TOOL = RalphToolName.READ_MEDIA
 
@@ -154,6 +156,7 @@ PROGRESS_TOOLS: tuple[str, ...] = (REPORT_PROGRESS_TOOL,)
 ENV_READ_TOOLS: tuple[str, ...] = (READ_ENV_TOOL,)
 WEB_SEARCH_TOOLS: tuple[str, ...] = (WEB_SEARCH_TOOL,)
 WEB_VISIT_TOOLS: tuple[str, ...] = (VISIT_URL_TOOL,)
+WEB_DOWNLOAD_TOOLS: tuple[str, ...] = (DOWNLOAD_URL_TOOL,)
 MEDIA_READ_TOOLS: tuple[str, ...] = (READ_IMAGE_TOOL, READ_MEDIA_TOOL)
 
 ALL_RALPH_TOOLS: tuple[str, ...] = (
@@ -170,6 +173,7 @@ ALL_RALPH_TOOLS: tuple[str, ...] = (
     *ENV_READ_TOOLS,
     *WEB_SEARCH_TOOLS,
     *WEB_VISIT_TOOLS,
+    *WEB_DOWNLOAD_TOOLS,
 )
 
 # Authoritative source: https://opencode.ai/config.json schema PermissionConfig keys

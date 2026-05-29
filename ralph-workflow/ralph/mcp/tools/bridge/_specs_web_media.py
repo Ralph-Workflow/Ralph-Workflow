@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from ralph.mcp.tools.bridge._spec_helpers import _metadata
 from ralph.mcp.tools.bridge._tool_spec import ToolSpec
 from ralph.mcp.tools.names import (
+    DOWNLOAD_URL_TOOL,
     READ_IMAGE_TOOL,
     READ_MEDIA_TOOL,
     VISIT_URL_TOOL,
@@ -104,6 +105,48 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                 ),
                 module_name="ralph.mcp.tools.webvisit",
                 handler_name="handle_visit_url",
+            ),
+        )
+        specs.append(
+            ToolSpec(
+                metadata=_metadata(
+                    name=DOWNLOAD_URL_TOOL,
+                    description=(
+                        "Download a URL and save its content to a workspace file. "
+                        "Required params: url (string, http/https), "
+                        "output_path (string, relative path in workspace). "
+                        "Returns JSON with status, effective_url, content_type, "
+                        "output_path, and bytes_written. "
+                        "On failure returns is_error=true with a status code "
+                        "(timeout, unreachable, http_error, unsupported_content, too_large, "
+                        "blocked_by_policy, invalid_url)."
+                    ),
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": (
+                                    "URL to download as a string, must use http or https scheme "
+                                    "(example values: 'https://example.com/data.json', "
+                                    "'https://cdn.example.com/lib.js')."
+                                ),
+                            },
+                            "output_path": {
+                                "type": "string",
+                                "description": (
+                                    "Relative path in workspace where content will be saved "
+                                    "(example values: 'downloads/data.json', 'lib/vendor.js'). "
+                                    "Parent directories are created automatically."
+                                ),
+                            },
+                        },
+                        "required": ["url", "output_path"],
+                    },
+                    required_capability="WebDownload",
+                ),
+                module_name="ralph.mcp.tools.webvisit",
+                handler_name="handle_download_url",
             ),
         )
     if mcp_config.media.enabled:

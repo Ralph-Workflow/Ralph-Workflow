@@ -33,6 +33,7 @@ class McpCapability(StrEnum):
     UPSTREAM_TOOL_USE = "UpstreamToolUse"
     WEB_SEARCH = "WebSearch"
     WEB_VISIT = "WebVisit"
+    WEB_DOWNLOAD = "WebDownload"
     MEDIA_READ = "MediaRead"
     ARTIFACT_PLAN_SUBMIT = "ArtifactPlanSubmit"
 

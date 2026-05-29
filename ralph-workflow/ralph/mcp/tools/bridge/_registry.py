@@ -73,6 +73,10 @@ def build_ralph_tool_registry(
             spec.module_name == "ralph.mcp.tools.webvisit"
             and spec.handler_name == "handle_visit_url"
         )
+        is_webdownload = (
+            spec.module_name == "ralph.mcp.tools.webvisit"
+            and spec.handler_name == "handle_download_url"
+        )
         is_read_image = (
             spec.module_name == "ralph.mcp.tools.workspace"
             and spec.handler_name == "handle_read_image"
@@ -92,7 +96,7 @@ def build_ralph_tool_registry(
                     extra_kwargs={"web_search_config": mcp_cfg.web_search},
                 ),
             )
-        elif is_webvisit:
+        elif is_webvisit or is_webdownload:
             bridge.register(
                 spec.metadata,
                 LazyToolHandler(

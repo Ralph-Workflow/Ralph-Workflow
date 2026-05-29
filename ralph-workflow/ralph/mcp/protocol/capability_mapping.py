@@ -47,6 +47,7 @@ class Capability(StrEnum):
     UPSTREAM_TOOL_USE = "upstream.tool_use"
     WEB_SEARCH = "web.search"
     WEB_VISIT = "web.visit"
+    WEB_DOWNLOAD = "web.download"
     MEDIA_READ = "media.read"
     ARTIFACT_PLAN_SUBMIT = "artifact.plan_submit"
 
@@ -71,6 +72,7 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.UPSTREAM_TOOL_USE: Capability.UPSTREAM_TOOL_USE,
     McpCapability.WEB_SEARCH: Capability.WEB_SEARCH,
     McpCapability.WEB_VISIT: Capability.WEB_VISIT,
+    McpCapability.WEB_DOWNLOAD: Capability.WEB_DOWNLOAD,
     McpCapability.MEDIA_READ: Capability.MEDIA_READ,
     McpCapability.WORKSPACE_METADATA_READ: Capability.WORKSPACE_METADATA_READ,
     McpCapability.WORKSPACE_EDIT: Capability.WORKSPACE_EDIT,
@@ -92,6 +94,8 @@ _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
     "web_search": Capability.WEB_SEARCH,
     "web.visit": Capability.WEB_VISIT,
     "web_visit": Capability.WEB_VISIT,
+    "web.download": Capability.WEB_DOWNLOAD,
+    "web_download": Capability.WEB_DOWNLOAD,
     "media.read": Capability.MEDIA_READ,
     "media_read": Capability.MEDIA_READ,
     "workspace.metadata_read": Capability.WORKSPACE_METADATA_READ,
@@ -131,6 +135,8 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "web_search": McpCapability.WEB_SEARCH,
     "web.visit": McpCapability.WEB_VISIT,
     "web_visit": McpCapability.WEB_VISIT,
+    "web.download": McpCapability.WEB_DOWNLOAD,
+    "web_download": McpCapability.WEB_DOWNLOAD,
     "media.read": McpCapability.MEDIA_READ,
     "media_read": McpCapability.MEDIA_READ,
     "workspace.metadata_read": McpCapability.WORKSPACE_METADATA_READ,
@@ -456,6 +462,7 @@ def check_mcp_capability_policy(
         McpCapability.UPSTREAM_TOOL_USE,
         McpCapability.WEB_SEARCH,
         McpCapability.WEB_VISIT,
+        McpCapability.WEB_DOWNLOAD,
         McpCapability.MEDIA_READ,
         McpCapability.WORKSPACE_METADATA_READ,
         McpCapability.WORKSPACE_EDIT,

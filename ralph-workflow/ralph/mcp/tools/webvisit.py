@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ralph.workspace import Workspace
 
 WEB_VISIT_CAPABILITY = "WebVisit"
+WEB_DOWNLOAD_CAPABILITY = "WebDownload"
 
 _MAX_TEXT_CHARS_DIVISOR = 4
 
@@ -106,4 +107,55 @@ def _error_result(outcome: FetchOutcome) -> ToolResult:
     )
 
 
-__all__ = ["WEB_VISIT_CAPABILITY", "handle_visit_url"]
+def handle_download_url(
+    session: CoordinationSessionLike,
+    workspace: Workspace,
+    params: dict[str, object],
+    *,
+    web_visit_config: WebVisitConfig | None = None,
+) -> ToolResult:
+    """Download a URL and save its content to a workspace file."""
+    try:
+        require_capability(session, WEB_DOWNLOAD_CAPABILITY, "Download URL")
+        url = required_string_param(params, "url")
+        output_path = required_string_param(params, "output_path")
+    except (CapabilityDeniedError, InvalidParamsError) as exc:
+        return ToolResult(content=[ToolContent.text_content(str(exc))], is_error=True)
+
+    config = web_visit_config or WebVisitConfig()
+    outcome = fetch_url(
+        url,
+        timeout_ms=config.timeout_ms,
+        max_bytes=config.max_bytes,
+        user_agent=config.user_agent,
+        allow_private_networks=config.allow_private_networks,
+    )
+
+    if outcome.status != "ok":
+        logger.warning("download_url fetch failed: status={s}", s=outcome.status)
+        return _error_result(outcome)
+
+    body_bytes = outcome.body or b""
+    content_str = body_bytes.decode("utf-8", errors="replace")
+
+    workspace.write(output_path, content_str)
+
+    payload: dict[str, object] = {
+        "status": "ok",
+        "effective_url": outcome.effective_url,
+        "content_type": outcome.content_type,
+        "output_path": output_path,
+        "bytes_written": len(body_bytes),
+    }
+    return ToolResult(
+        content=[ToolContent.text_content(json.dumps(payload))],
+        is_error=False,
+    )
+
+
+__all__ = [
+    "WEB_DOWNLOAD_CAPABILITY",
+    "WEB_VISIT_CAPABILITY",
+    "handle_download_url",
+    "handle_visit_url",
+]

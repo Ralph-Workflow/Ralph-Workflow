@@ -1,10 +1,7 @@
-{% if MCP_TOOLS_LIST %}
 MCP TOOLS (Ralph Workflow Brokered)
 
 You MUST use Ralph Workflow's MCP tools for all operations. Native agent tools are DISABLED.
-
-AVAILABLE TOOLS:
-{{MCP_TOOLS_LIST}}
+All tools are provided through the MCP server — use them directly by name.
 
 {% if HAS_MCP_WRITE %}
 WRITE OPERATIONS:
@@ -34,4 +31,3 @@ ARTIFACT SUBMISSION:
 {% if DISCARD_PLAN_DRAFT_TOOL_NAME %}- Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} to discard a staged plan draft and restart{% endif %}
 {% endif %}
 - Use {{DECLARE_COMPLETE_TOOL_REFERENCE}} when finished
-{% endif %}

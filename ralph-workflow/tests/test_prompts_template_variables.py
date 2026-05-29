@@ -170,17 +170,9 @@ def test_analysis_drain_rendered_prompt_contains_exec_and_read_tooling(
     # The EXECUTION block from _mcp_tools.jinja must appear in the rendered output.
     assert "exec" in rendered
 
-    # The MCP TOOLS section must list the full read/git/exec/artifact tooling.
+    # Phase-specific guidance tools must appear in the rendered output.
+    # (Generic tool listing was removed — MCP tools are self-documenting via the protocol.)
     for tool in (
-        "read_file",
-        "list_directory",
-        "list_directory_recursive",
-        "directory_tree",
-        "search_files",
-        "git_diff",
-        "git_status",
-        "git_log",
-        "git_show",
         "exec",
         "ralph_submit_artifact",
         "declare_complete",
