@@ -12258,3 +12258,94 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with the positioning. Strong product-first framing, coherent README\u2192START_HERE\u2192docs/README journey, internal mechanics correctly subordinated to the product story, and promoted next-click pages all reinforce the same narrative without fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "GitHub mirror README lacks an explicit link to START_HERE.md \u2014 evaluators arriving on GitHub land on a complete self-contained pitch with no prompt to continue to the canonical second step",
+    "The 'Built-in capabilities' section in the GitHub mirror README surfaces Phase routing, Artifact handoff, and Recovery + retry \u2014 internal mechanics that the positioning doc says to keep off top-level surfaces unless directly necessary. These are below the fold but do technically violate the boundary."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/README.md",
+      "reason": "Lead paragraph nails 'operating system for autonomous coding', 'AI agent orchestrator', 'simple Ralph-loop core', 'composable loop framework', and 'default workflow strong enough to start with' \u2014 every framing requirement from the positioning doc is covered in the first screen."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/README.md",
+      "reason": "Engineering-practice dependency is stated explicitly rather than promising magic independence."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md",
+      "reason": "Correctly labeled as 'supporting proof, not the main product pitch' with a clear instruction to start with the product story first. Exactly how proof pages should be positioned."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Clear first-run path, strong task selection guidance, no internal plumbing language, and correctly flags GitHub as mirror upfront."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with role-appropriate routing and a 'Keep proof secondary' section. Promoted pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) all reinforce rather than fight the product story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is coherent, positioning-aligned, and the README\u2192START_HERE\u2192docs/README journey works cleanly. Promoted next-click pages reinforce the core story. The artifact-handoff bullet in the README capabilities section is a mild boundary creep but not a hard failure \u2014 it's contextualized and deep in the page.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "README.md \"Artifact handoff\" bullet in Built-in capabilities \u2014 positioning says artifacts belong in developer docs, not top-level product surfaces. Consider rephrasing as \"Cross-agent handoff\" or \"Phase handoff through the repo\" to drop the artifact noun."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with tagline, orchestrator framing, simple-core-in-composition, who-it's-for/not-for, result-first wake-up example, and engineering-practice dependency. Only minor issue is the 'Artifact handoff' capability bullet."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Mirror disclaimer upfront, clean install/run flow, good/bad task guidance, result-first success definition, and explicit next-page ordering."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicit 'use after README and START_HERE' instruction, clean route categories, 'Keep proof secondary' section, and Codeberg-primary note."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Properly positioned as secondary proof page ('not the main product pitch'), correct evidence hierarchy (working behavior \u2192 checks \u2192 scope \u2192 artifacts last)."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

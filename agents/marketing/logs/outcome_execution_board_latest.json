@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-29T10:34:20.766740",
+  "timestamp": "2026-05-29T11:08:52.700713",
   "type": "outcome_execution_board_runner",
   "status": "executed",
   "repair_needed_at_start": false,
@@ -12,13 +12,13 @@
   "execution_board_targets": [
     "Ralph Workflow curator follow-up — Codeberg CTA"
   ],
-  "execution_board_fingerprint": "33d93913ed4ae0b807c2b02c1ef5d5a8fb7ec4c1",
-  "short_review_window_release_at": "2026-05-29T10:50:00",
+  "execution_board_fingerprint": "177c9bcf79bc02c1fe8d54e0388ba6564d33d061",
+  "short_review_window_release_at": "2026-05-29T12:08:26",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Review Codeberg-linked movement within 7 days.",
   "summary": "Execution board refreshed, but no truthful do-now lane was available; the board itself is the structural truth source.",
   "next_truthful_checkpoint": {
-    "at": "2026-05-29T10:50:00",
+    "at": "2026-05-29T12:08:26",
     "source": "short_review_window_release",
     "reason": "Current short review window clears."
   },
