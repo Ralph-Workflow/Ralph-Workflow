@@ -1,5 +1,5 @@
 # Ralph Workflow Comparison Backlink Follow-Through
-Generated: 2026-05-29T00:45:01
+Generated: 2026-05-29T01:57:14
 
 ## Why this exists now
 - The current comparison queue already covers every ranked competitor with a prepared packet.
@@ -22,3 +22,10 @@ Generated: 2026-05-29T00:45:01
 
 ## Canonical manual execution packet
 - /home/mistlight/.openclaw/workspace/drafts/comparison_backlink_handoff_packet_latest.md
+
+
+## Post-hold marketer rerun scheduled
+- Scheduled run: 2026-05-29T05:56:07
+- Cron job: marketing-measurement-hold-release (fdad9e93-df88-47b5-a00a-643df26e88b0)
+- Log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_015714_measurement_hold_release_cron.json
+- This keeps the first truthful post-hold slot alive even though the current lane is still blocked by short-window congestion.

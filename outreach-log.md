@@ -1,5 +1,35 @@
 # Outreach Log
 
+## 2026-05-29 (Friday) — Marketing workflow audit #10: vendored README repaired, PyPI v0.8.8 prepared, draft inflation pruned, openclaw-path crash fixed (01:29 CEST / 23:29 UTC)
+
+- **Audit context:** Cron-triggered re-analysis of RalphWorkflow marketing loop. Codeberg 12⭐ (+0), PyPI 1,498/mo (10/day), Apollo window until June 1, blog pipeline is only autonomous lane shipping real external actions (24 posts, +2 deployed today). Spidering guard working: 102→83→3 logs/day.
+
+- **Critical finding: Vendored README was 0.8.6-era stale.** The `Ralph-Site/vendor/Ralph-Workflow/ralph-workflow/README.md` had NO Codeberg CTA — it was the old "install + operator entrypoint" version that said "not the main product pitch" and routed installers to local docs instead of Codeberg. Meanwhile the Codeberg main-branch README has the conversion-optimized version with Codeberg-star CTA, comparison table, and blog CTAs. This vendored README is what gets published to PyPI. **The PyPI release pipeline was shipping a dead README.**
+
+- **Repairs executed in this run:**
+  - ✅ `Ralph-Site/vendor/Ralph-Workflow/ralph-workflow/README.md` — replaced with Codeberg-mirror of the conversion-optimized README (Codeberg-star CTA, comparison table, blog CTAs, first-task walkthrough link)
+  - ✅ `Ralph-Site/vendor/Ralph-Workflow/ralph-workflow/ralph/__init__.py` — version bumped 0.8.6→0.8.8
+  - ✅ Built v0.8.8 distributions: `dist/ralph_workflow-0.8.8.tar.gz` + `dist/ralph_workflow-0.8.8-py3-none-any.whl`
+  - ✅ `agents/marketing/distribution_lane_executor.py` — fixed `openclaw` → `/home/mistlight/.bun/bin/openclaw` (was crashing outcome_capability_runner with FileNotFoundError)
+  - ✅ `agents/marketing/distribution_lane_selector.py` — same openclaw-path fix
+  - ✅ `agents/marketing/churn_escalation_watchdog.py` — same openclaw-path fix
+  - ✅ `agents/marketing/marketing_workflow_audit_precheck.py` — same openclaw-path fix
+  - ✅ `agents/marketing/pypi_release_preparer.py` — NEW. Verifies README has Codeberg CTA, builds dist, writes one-command handoff
+  - ✅ `drafts/archive/` — 94 stale drafts (May 17-24) moved to archive; 305→122 remaining
+  - ✅ `agents/marketing/logs/pypi_release_handoff_latest.json` — human-actionable publish instruction
+
+- **Blocked: PyPI publish.** v0.8.8 built, README verified, but PYPI_TOKEN not set. 1,498/mo installers see stale 0.8.7 README. Publish command: `export PYPI_TOKEN=<token> && cd Ralph-Site/vendor/Ralph-Workflow/ralph-workflow && hatch publish --no-prompt --user __token__ --auth $PYPI_TOKEN`
+
+- **Blocked: GCP Indexing API.** `submit_url_to_google.py` built but API not enabled. Dashboard: https://console.developers.google.com/apis/api/indexing.googleapis.com/overview?project=292739303076
+
+- **Verified: Cron jobs are not waste.** hn_lobsters_preflight correctly self-blocks (packet_stale), github_discussions_outreach correctly self-blocks (draft bank full/5, needs human review). All 13 cron jobs either self-terminate harmlessly or produce real output.
+
+- **What changed from prior run:** The single most impactful repair — the vendored README now has a Codeberg-star CTA and full conversion-optimized copy. When v0.8.8 is published to PyPI, 1,498 monthly installers will see a real onboarding funnel instead of a dead "install + operator entrypoint." The openclaw-path crash that was silently failing outcome_capability_runner every night is also fixed.
+
+- **Type:** **AUDIT / PYPI_READY / DRAFT_INFLATION_PRUNED / CRASH_FIX**
+
+---
+
 ## 2026-05-28 (Thursday) — Marketing workflow audit #9: spidering guard, post-commit verification, critical-path blockers (22:15 CEST / 20:15 UTC)
 - **Audit context:** 80+ log files generated on May 28 alone, 62 have no `type` field (unknown). 3 lanes permanently blocked (dev.to, reddit, smtp). PyPI: 1,498 monthly downloads → only 12 stars (0.10% rate). Apollo: 19% spam rate, 193 spam-blocked. System at autonomous execution ceiling.
 - **Repairs executed in this run:**

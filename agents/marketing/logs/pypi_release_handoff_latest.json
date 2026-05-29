@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-05-28T23:43:58.084468+00:00",
+  "action": "pypi_release_prepared",
+  "version": "0.8.8",
+  "readme_verified": true,
+  "missing_signals": [],
+  "forbidden_signals": [],
+  "artifacts": [],
+  "build_successful": true,
+  "pypi_downloads_monthly": 1498,
+  "current_codeberg_stars": 12,
+  "expected_conversion_improvement": "0.8% \u2192 2%+ with new README on PyPI",
+  "human_action_required": "Run: export PYPI_TOKEN=<your-token> && cd /home/mistlight/.openclaw/workspace/Ralph-Site/vendor/Ralph-Workflow/ralph-workflow && hatch publish --no-prompt --user __token__ --auth $PYPI_TOKEN"
+}

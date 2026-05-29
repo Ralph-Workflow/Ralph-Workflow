@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-05-28T19:27:02.940346+00:00",
+  "timestamp": "2026-05-28T23:47:02.311144+00:00",
   "packet_path": "/home/mistlight/.openclaw/workspace/drafts/HN_LOBSTERS_ACTIVE_PACKET.md",
   "packet_fingerprint": "12baef498580",
-  "packet_stale": false,
+  "packet_stale": true,
   "reachability": {
     "hn": {
       "reachable": true,
@@ -13,6 +13,8 @@
       "reason": null
     }
   },
-  "status": "READY",
-  "blocked_reasons": []
+  "status": "BLOCKED",
+  "blocked_reasons": [
+    "packet_stale"
+  ]
 }

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-28T22:33:33.003672",
+  "generated_at": "2026-05-29T01:41:35.292438",
   "current_bottleneck": "conversion_to_free_use",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -41,7 +41,7 @@
       "forks_delta_window": 0
     },
     "PyPI": {
-      "samples": 8,
+      "samples": 9,
       "stars_delta_window": 0,
       "watchers_delta_window": 0,
       "forks_delta_window": 0
@@ -68,7 +68,7 @@
     "mirror_repo_flat_window"
   ],
   "worked": [
-    "Execution path produced a live external action with non-flat outcome context: new_blog_comparison_article_deployed. Stars delta: +1"
+    "Execution path produced a live external action with non-flat outcome context: distribution_architecture_repair_plus_blog_deploy. Stars delta: +1"
   ],
   "not_worked": [
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
@@ -108,8 +108,8 @@
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains new_blog_comparison_article_deployed; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (new_blog_comparison_article_deployed), so the system is still shipping output even though outcome movement is not visible yet.",
+    "The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains distribution_architecture_repair_plus_blog_deploy; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (distribution_architecture_repair_plus_blog_deploy), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (manual_outreach_asset_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
@@ -144,9 +144,9 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_distribution_architecture_guard_pause.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_measurement_hold.json",
     "type": "distribution_lane_switch",
-    "title": "Distribution lane decision: distribution_architecture_guard_pause",
+    "title": "Distribution lane decision: measurement_hold",
     "status": "prepared",
     "ok": true,
     "live_external_action": false,
@@ -155,9 +155,9 @@
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_1656_new_blog_comparison_deployed.json",
-    "type": "new_blog_comparison_article_deployed",
-    "title": "new blog comparison article deployed",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_0030_blog_sandbox_security_deployed.json",
+    "type": "distribution_architecture_repair_plus_blog_deploy",
+    "title": "distribution architecture repair plus blog deploy",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
@@ -194,7 +194,7 @@
   "shared_artifact_sync": {
     "status": "synced",
     "selected_lane": "distribution_architecture_guard_pause",
-    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_marketing_execution_board.md",
+    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md",
     "execution_board_targets": [],
     "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json"
   }

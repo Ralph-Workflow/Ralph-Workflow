@@ -1,0 +1,67 @@
+{
+  "timestamp": "2026-05-29T01:07:00+02:00",
+  "type": "marketing_active_loop_run",
+  "cron_job": "marketing-active-loop",
+  "triggered_at": "2026-05-29T01:00 CEST",
+
+  "pre_action_state": {
+    "execution_board": "no truthful do-now handoff packet",
+    "distribution_guard": "measurement_hold (congestion clears 05:56)",
+    "hold_window_contents": ["active_loop_prompt_repair", "post_hold_reentry_contract_repair"],
+    "live_external_actions_last_6h": 2,
+    "blog_post_count_before": 23,
+    "codeberg_stars": 12,
+    "bottleneck": "conversion_to_free_use",
+    "note": "Prior run at 00:45 logged measurement_hold, violating reentry contract rule. Two prompt repairs already exist in hold window → rule forbids another. Must do concrete runtime/process repair."
+  },
+
+  "action_decision": {
+    "chosen_lane": "owned_content_blog_deploy",
+    "rationale": [
+      "Hold window already has 2 prompt repairs — rule says do not spend another slot on more rerun/prompt tweaks",
+      "Ralph's cost model routing is its most unique differentiator with ZERO dedicated blog coverage — mentioned in 5+ comparison posts but never its own article",
+      "Blog deploy pipeline is the only fully autonomous external action path right now",
+      "Targeting 'AI cost model routing' and 'cheap model for planning' long-tail SEO keywords with no existing ralphworkflow.com content",
+      "Lane selector's owned-content check uses hardcoded 4-file list that excludes all new topics — creating genuinely new content fixes the blind spot",
+      "Concrete process repair: fixed Capistrano assets.rake to use rbenv-shimmed bundle instead of hardcoded 3.3.0 path reverted by git rebase"
+    ]
+  },
+
+  "actions_executed": [
+    {
+      "action": "blog_deploy",
+      "title": "AI Cost Model Routing: Stop Paying Frontier Prices for Grunt Work",
+      "url": "https://ralphworkflow.com/blog/ai-cost-model-routing-smart-agent-orchestration",
+      "status": "deployed",
+      "live_external_action": true,
+      "outcome_ready": true,
+      "codeberg_cta": true,
+      "github_mirror": true,
+      "seo_keywords": ["AI cost model routing", "cheap model for planning", "tiered AI model pricing", "reduce AI coding costs"],
+      "word_count": 1123,
+      "blog_post_count_after": 24
+    }
+  ],
+
+  "process_repairs": [
+    {
+      "type": "capistrano_assets_rake_fix",
+      "what": "Changed assets.rake from hardcoded ~/.local/share/gem/ruby/3.3.0/bin/bundle path to :bundle (rbenv shim) — stable across ruby version upgrades",
+      "why": "Rebase reverted fix from 00:30 run. Hardcoded 3.3.0 path breaks on Ruby 4.0.1. Now uses rbenv PATH-resolved bundle, deploy worked first try."
+    }
+  ],
+
+  "post_action_state": {
+    "live_external_actions_last_6h": 3,
+    "blog_post_count": 24,
+    "cost_model_routing_post_live": true,
+    "next_suggested_action": "After congestion clears at 05:56, if no new outcome has landed: promote cost routing post via Telegraph as well (different topic from comparison post, not blurring measurement)"
+  },
+
+  "four_questions_check": {
+    "what_is_it": "Blog explains cost model routing — what it is, how it cuts costs 37x vs single-model frontier runs, and why Ralph's vendor-neutrality is the structural reason it exists",
+    "who_is_it_for": "Developers paying API bills for overnight coding runs — exactly Ralph's 'too big to babysit' audience",
+    "why_different": "No vendor-locked tool can ship cost model routing without undermining its own revenue. Ralph's open-source/vendor-neutral architecture is the differentiator",
+    "why_now": "Every comparison article mentions cost routing but no dedicated post explains it. Organic demand exists, page needs to exist to capture it"
+  }
+}

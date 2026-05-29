@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-28T14:21:05.265991",
+  "timestamp": "2026-05-29T01:57:14.072996",
   "type": "outcome_capability_runner",
   "status": "executed",
-  "selected_lane": "manual_outreach_asset_follow_through",
-  "selected_action_type": "manual_outreach_asset_follow_through",
-  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_manual_outreach_asset_follow_through.md",
-  "summary": "Reused the existing channel-ready manual publisher outreach asset as the active follow-through surface instead of burying it under another measurement-hold cycle. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
+  "selected_lane": "comparison_backlink_outreach",
+  "selected_action_type": "comparison_backlink_follow_through",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_comparison_backlink_follow_through.md",
+  "summary": "Detected that the comparison queue only yielded follow-through and blocked the run from counting prepared-only comparison churn as fresh execution. Reused the already-current comparison handoff packet because live PR submission is blocked here and that packet is still inside its active review window. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "direct_codeberg_linkage": {
     "cta": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
@@ -22,9 +22,7 @@
       "primary_repo_flat_contact_handoff_packet",
       "stackoverflow_answer"
     ],
-    "fresh_targets_prepared": [
-      "ComputingForGeeks"
-    ],
+    "fresh_targets_prepared": [],
     "comparison_queue_prepared_count": 8
   },
   "fake_green_guard": "This capability only counts because it created or refreshed an executable non-Reddit lane artifact tied to Codeberg-primary adoption movement.",
@@ -32,6 +30,7 @@
     "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
     "channel_discovery.json: validated easy-submit directory lanes",
     "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
-    "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+    "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+    "outcome_capability_runner: force non-Reddit executable lane with direct Codeberg adoption linkage"
   ]
 }
