@@ -1,5 +1,5 @@
 {
-  "ts": "2026-05-29T13:07:19.975512",
+  "ts": "2026-05-29T14:04:09.223066",
   "jobs_checked": 24,
   "issues_found": 3,
   "issues": [
@@ -19,7 +19,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 1075.82,
+      "artifact_age_minutes": 1132.64,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -28,8 +28,8 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=150",
-      "repeats_in_recent_history": 150,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=169",
+      "repeats_in_recent_history": 169,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
@@ -38,22 +38,28 @@
   ],
   "repairs_attempted": [
     {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
+      "type": "rerun_docs_verifier",
+      "job": "docs_agentic_review",
       "ok": true,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is clean, consistent, and faithful to positioning. No hard failures. Journey flows well. The only borderline element (reviewable-output.md) correctly self-positio"
     },
     {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "docs_agentic_review_mustFix_docs-readme-md-lists-reviewable-output-md-under",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-29T13:07:13.831900+02:00\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-05-29T12:03:28.411934+00:00"
     },
     {
       "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
+      "job": "docs_agentic_review_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_docs-readme-md-lists-reviewable-output-md-under_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     }
   ]
 }

@@ -12,7 +12,7 @@
   "execution_board_targets": [
     "ComputingForGeeks"
   ],
-  "execution_board_fingerprint": "34685fce5542106fa67044b8ee78520928d1d30c",
+  "execution_board_fingerprint": "cf292c908f6ed8b02ae513aa6dee8280552da804",
   "short_review_window_release_at": "2026-05-29T15:01:24",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.",

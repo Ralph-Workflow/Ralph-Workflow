@@ -1,12 +1,40 @@
 {
   "schema_version": "ecc.self-repair-self-improve-audit.v1",
-  "checked_at": "2026-05-28T14:27:16.676764+02:00",
-  "total_loops_audited": 26,
-  "loops_with_self_repair": 26,
-  "loops_with_self_improve": 26,
+  "checked_at": "2026-05-29T13:45:56.151797+02:00",
+  "total_loops_audited": 24,
+  "loops_with_self_repair": 24,
+  "loops_with_self_improve": 24,
   "loops_missing_self_repair": 0,
   "loops_missing_self_improve": 0,
   "loop_results": [
+    {
+      "job": "reddit-pipeline-watchdog",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/reddit_watchdog.py",
+      "has_self_repair": true,
+      "sr_detail": "is_watchdog_for:reddit_monitor.py",
+      "needs_self_repair": true,
+      "has_self_improve": true,
+      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "e90fa8d1-b086-49f8-893c-1c57d38eb1b3",
+      "model": "minimax/MiniMax-M2.7-highspeed"
+    },
+    {
+      "job": "ralph-docs-supervisor-precheck",
+      "script": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_supervisor_precheck.py",
+      "has_self_repair": true,
+      "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
+      "needs_self_repair": true,
+      "has_self_improve": true,
+      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "ff783799-2d21-45f7-bb06-eed9c46b95a6",
+      "model": "minimax/MiniMax-M2.7-highspeed"
+    },
     {
       "job": "system-health-monitor",
       "script": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
@@ -22,17 +50,17 @@
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
-      "job": "reddit-pipeline-watchdog",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/reddit_watchdog.py",
+      "job": "codeberg-github-mirror-sync",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
       "has_self_repair": true,
-      "sr_detail": "is_watchdog_for:reddit_monitor.py",
-      "needs_self_repair": true,
+      "sr_detail": "idempotent_reporter_exempt",
+      "needs_self_repair": false,
       "has_self_improve": true,
       "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
       "needs_self_improve": true,
       "self_repair_missing": false,
       "self_improve_missing": false,
-      "job_id": "e90fa8d1-b086-49f8-893c-1c57d38eb1b3",
+      "job_id": "b7d74fa6-ab9b-4f66-9d03-a77c0ad7a56c",
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
@@ -64,32 +92,12 @@
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
-      "job": "codeberg-github-mirror-sync",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
+      "job": "marketing-measurement-hold-release",
+      "status": "oneshot_timer_exempt",
       "has_self_repair": true,
-      "sr_detail": "idempotent_reporter_exempt",
-      "needs_self_repair": false,
+      "sr_detail": "oneshot_timer_exempt",
       "has_self_improve": true,
-      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "b7d74fa6-ab9b-4f66-9d03-a77c0ad7a56c",
-      "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "ralph-docs-supervisor-precheck",
-      "script": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_supervisor_precheck.py",
-      "has_self_repair": true,
-      "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "ff783799-2d21-45f7-bb06-eed9c46b95a6",
-      "model": "minimax/MiniMax-M2.7-highspeed"
+      "si_detail": "oneshot_timer_exempt"
     },
     {
       "job": "reddit-monitor",
@@ -104,14 +112,6 @@
       "self_improve_missing": false,
       "job_id": "6a9e1bbe-a907-4e13-bc94-e44bc31170ea",
       "model": "openrouter/deepseek/deepseek-v4-flash"
-    },
-    {
-      "job": "marketing-measurement-hold-release",
-      "status": "oneshot_timer_exempt",
-      "has_self_repair": true,
-      "sr_detail": "oneshot_timer_exempt",
-      "has_self_improve": true,
-      "si_detail": "oneshot_timer_exempt"
     },
     {
       "job": "marketing-churn-watchdog",
@@ -145,7 +145,7 @@
       "job": "ralph-site-owner-loop",
       "script": "/home/mistlight/.openclaw/workspace/agents/marketing/run.py",
       "has_self_repair": true,
-      "sr_detail": "patterns:def.*repair\\b,stale_artifact,repeat.*fail",
+      "sr_detail": "patterns:def.*repair\\b,self_?repair,stale_artifact",
       "needs_self_repair": true,
       "has_self_improve": true,
       "si_detail": "patterns:third-party,adoption_is_flat,adoption_flat",
@@ -187,7 +187,7 @@
       "job": "marketing-research-daily",
       "script": "/home/mistlight/.openclaw/workspace/agents/marketing/run.py",
       "has_self_repair": true,
-      "sr_detail": "patterns:def.*repair\\b,stale_artifact,repeat.*fail",
+      "sr_detail": "patterns:def.*repair\\b,self_?repair,stale_artifact",
       "needs_self_repair": true,
       "has_self_improve": true,
       "si_detail": "patterns:third-party,adoption_is_flat,adoption_flat",
@@ -201,7 +201,7 @@
       "job": "marketing-daily",
       "script": "/home/mistlight/.openclaw/workspace/agents/marketing/run.py",
       "has_self_repair": true,
-      "sr_detail": "patterns:def.*repair\\b,stale_artifact,repeat.*fail",
+      "sr_detail": "patterns:def.*repair\\b,self_?repair,stale_artifact",
       "needs_self_repair": true,
       "has_self_improve": true,
       "si_detail": "patterns:third-party,adoption_is_flat,adoption_flat",
@@ -210,34 +210,6 @@
       "self_improve_missing": false,
       "job_id": "fe8f8f62-cb85-4d49-9181-fc5f6c958950",
       "model": "openrouter/deepseek/deepseek-v4-pro"
-    },
-    {
-      "job": "marketing-workflow-audit-precheck",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_workflow_audit.py",
-      "has_self_repair": true,
-      "sr_detail": "patterns:def.*repair\\b,repeat.*fail",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:SELF_IMPROV,SELF_IMPROV,self_improv",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "5e8746f2-2311-48f6-a113-4ac6880b2376",
-      "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "marketing-momentum-watchdog",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_momentum_watchdog.py",
-      "has_self_repair": true,
-      "sr_detail": "is_watchdog_for:marketing_loop_runner.py",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:adoption flat,adoption_flat,adoption_flat",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "ce3f9db8-bb49-4f97-9ee3-d4786314c204",
-      "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
       "job": "marketing-distribution-hunter",
