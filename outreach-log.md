@@ -7770,3 +7770,21 @@ The most important repair in this audit is structural, not analytical: the cron 
 **GitHub Discussions (5 drafts):** Real issues found on claude-code, continue, opencode. Five reply drafts ready. Single action: `gh auth login` (browser-based, one-time), then run outreach.
 
 **Apollo body repair (June 1 window):** A/B variant drafted. Current body 19% spam rate, 0.14% reply rate. Requires Cloudflare solve + APOLLO_PASSWORD to deploy.
+
+
+### Marketing Daily — 2026-05-29 15:13 UTC
+
+
+### Evaluator Run — 2026-05-29 17:15 CEST (15:15 UTC)
+
+**Biggest fix this run: Content pipeline frontmatter bug.** The `owned_content_amplification.py` script generated posts with `date:` instead of `published_on:`. The Ralph-Site Rails `PostRepository` only parses `published_on:` — any post using the wrong key silently 404'd. This affected the most recently generated post. Root-cause fixed in the script template (also fixed `pipx install` → `pip install`, YAML tag format, removed redundant `slug:` key). Full Capistrano deploy pushed the fix to production. 34/34 posts now reachable.
+
+**PyPI watchdog waste:** Reduced from `*/5` (288x/day) to once-daily at 00:15 UTC. The watchdog polls for a human credential that hasn't been provided.
+
+**Channel reality:** Ralph-Site blog is the sole functioning channel. 34 live posts, 100 sitemap URLs, 100/100 SEO score. Zero backlinks. All outbound channels (Reddit, Apollo, DDG web search, GitHub Discussions, Dev.to, HN) are in blocked/credential-gated state.
+
+**GitHub Discussions:** 5 drafts ready but all use identical template-copy text. Draft bank full. `github_discussions_outreach.py` correctly blocks until human review. Blocked on `gh auth login`.
+
+**Adoption:** Codeberg ⭐12 🍴2, GitHub ⭐1 🍴0. Flat.
+
+**Next content publish:** Cooldown expires ~02:00 UTC May 30. Next target cluster is "ai-coding-cost-optimization" or "ai-agent-tool-calling-debugging".
