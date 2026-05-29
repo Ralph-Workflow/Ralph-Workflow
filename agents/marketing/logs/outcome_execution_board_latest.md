@@ -1,7 +1,7 @@
 # Outcome Execution Board Runner
 
-- Generated: `2026-05-29T22:22:49.607833`
-- Repair needed at start: `False`
+- Generated: `2026-05-29T23:14:46.402404`
+- Repair needed at start: `True`
 - Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md`
 - Selected lane: `measurement_hold`
 - Action type: `truth_snapshot_only`
@@ -10,8 +10,8 @@
 - Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
 - Measurement window: Review Codeberg-linked movement within 7 days.
-- Next truthful checkpoint: `2026-05-29T23:03:15` (short_review_window_release)
-- Checkpoint reason: Current short review window clears.
+- Next truthful checkpoint: `2026-05-31T00:00:00` (directory_secondary_surface_followup)
+- Checkpoint reason: Live directory secondary-surface repair reaches its next review checkpoint.
 
 ## Structural capability added
 - Dedicated execution-board runtime that re-checks the consolidated do-now asset list before every system-design follow-through pass.

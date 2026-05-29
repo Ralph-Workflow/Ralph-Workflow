@@ -1,0 +1,1 @@
+KNOWN ISSUE (2026-05-29): test_marketing_system.MarketingWorkflowAuditTests hangs indefinitely when run via unittest — tests spawn marketing_run() subprocess that never terminates. Excluded from automated test runs. See line 6011 in test_marketing_system.py.

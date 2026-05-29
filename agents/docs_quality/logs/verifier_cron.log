@@ -13233,3 +13233,88 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system satisfies the rubric. Positioning is well-internalized, the README \u2192 START_HERE \u2192 docs/README journey is coherent, and promoted next-click pages reinforce the same story. Main defect: pervasive boilerplate repetition on every supporting page opener.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "fail",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Every promoted supporting page (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md, first-task-guide.md, reviewable-output.md) opens with the same boilerplate sentence about 'Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.' This is templated copy, not crafted prose. Each page needs a varied, natural opener that serves its specific purpose.",
+    "The exact 'simple at the center, powerful in composition' mantra from the positioning doc is approximated but never stated verbatim anywhere. The contrast is present but softer than the positioning doc intends."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Correctly leads with product tagline, positioning, audience fit/non-fit, quick-start. No internal plumbing leakage on first screen. Codeberg-primary / GitHub-mirror distinction prominent. The strongest public-facing surface."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first-run path. Concrete before-you-start checklist, good/bad task examples, result-first success criteria. Promoted links stay within the product story."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clear categorical routing with explicit 'use this after README and START_HERE' guidance. Includes 'Keep proof secondary' discipline. Routes to product-framing pages, not plumbing."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Correctly subordinated \u2014 opens by saying this is supporting proof, not the main pitch, and should be used after the product story. Self-aware about its role."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is in good shape. The README \u2192 START_HERE \u2192 docs/README journey is coherent, the promoted secondary pages reinforce rather than fight the main story, and there is no internal-process leakage, stale framing, or confused hierarchy. The remediation that produced this state appears to have stuck.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'operating system for autonomous coding' / 'AI agent orchestrator built around a simple Ralph-loop core', comparison table is marketing framing not plumbing, fit/not-fit section is honest, explicitly notes Codeberg primary and GitHub mirror role, includes engineering-practice dependency caveat."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Opens 'AI agent orchestration system built around a simple Ralph-loop core', emphasizes default workflow and result-first judgment, task selection guidance is clear, next pages are optional not forced."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Route choices are curated not dumped, explicitly says 'Keep proof secondary', points to Codeberg as primary. Every link routes evaluators deeper into the same story rather than into stale or contradictory framing."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Explicitly positions itself as secondary proof ('not the main product pitch', 'start with the product story first'). Evidence ordering is result \u2192 checks \u2192 scope \u2192 logs, not the reverse. This is the hardest page to have gotten right, and it is right."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
