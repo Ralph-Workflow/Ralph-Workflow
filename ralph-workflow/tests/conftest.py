@@ -135,12 +135,13 @@ def tmp_git_repo(tmp_path: Path, _git_repo_template: Path) -> Path:
     from git import Repo
 
     repo_path = tmp_path / "repo"
-    repo = Repo.clone_from(
-        str(_git_repo_template),
-        str(repo_path),
-        multi_options=["--local"],
-    )
+    repo = Repo.init(str(repo_path))
     try:
+        readme_src = _git_repo_template / "README.md"
+        readme_dst = repo_path / "README.md"
+        readme_dst.write_text(readme_src.read_text())
+        repo.index.add(["README.md"])
+        repo.index.commit("initial commit")
         _configure_repo_identity(repo)
     finally:
         repo.close()

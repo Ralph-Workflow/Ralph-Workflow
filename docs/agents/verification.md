@@ -16,8 +16,8 @@ make verify
 2. `make typecheck` (`mypy --strict`)
 3. `make test` (pytest, parallel, excludes `subprocess_e2e`)
 4. Lint bypass audit (`ralph/testing/audit_lint_bypass.py`) — detects forbidden noqa, per-file-ignores
-5. Typecheck bypass audit (`ralph/testing/audit_typecheck_bypass.py`) — detects non-compliant type:ignore, mypy config weakening
-6. Policy audit (`ralph/testing/audit_test_policy.py`) — detects slow test patterns, I/O in tests
+5. Typecheck bypass audit (`ralph/testing/audit_typecheck_bypass.py`) — detects non-compliant type:ignore, mypy config weakening (including `disable_error_code`)
+6. Policy audit (`ralph/testing/audit_test_policy.py`) — detects slow test patterns, I/O in tests (including `os.system` and `os.popen` subprocess calls)
 
 ### Total test budget — 30 seconds, ABSOLUTE and IMMUTABLE
 
@@ -52,6 +52,25 @@ This combined limit is **IMMUTABLE** — the following do **NOT** circumvent it:
 | Adding `ignore_missing_imports = true` to mypy config | Detected by `ralph/testing/audit_typecheck_bypass.py` (part of `make verify`) |
 | Using bare `# noqa` or blanket `# type: ignore` | Detected by bypass audit modules with file:line reporting |
 
+#### Verification Invariants
+
+`ralph/verify.py` enforces import-time invariants to prevent accidental
+or malicious weakening of budget enforcement:
+
+- `_TOTAL_TEST_BUDGET_SECONDS > 0` — the budget must be positive.
+- `_BUDGET_TRACKED_STEPS` indices are valid indices into `_VERIFY_STEPS` —
+  all tracked steps must exist.
+- Every budget-tracked step has a positive timeout — budget enforcement
+  cannot be silently nullified by a `None` or zero timeout.
+- An epsilon assertion (`abs(_TOTAL_TEST_BUDGET_SECONDS - 30.0) < 1e-9`)
+  confirms the constant has not been altered from its ABSOLUTE and
+  IMMUTABLE value of 30.0 seconds.
+
+These invariants are checked at module import time. Any violation causes
+a `RuntimeError` at startup (enforced by `if`/`raise` — immune to `python -O`
+stripping), preventing `make verify` from running with
+a weakened budget configuration.
+
 A timeout failure is a test design defect. Fix the production coupling — never adjust the budget. Remove I/O, use `MemoryWorkspace`, inject fake clocks. Do **not** raise `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS` to mask a slow test.
 
 Verification passes only when all checks complete with **no ERROR/WARNING diagnostics**. If any step fails, fix the issue immediately and rerun. `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and `CLAUDE.md`.
@@ -70,7 +89,7 @@ The `make verify` pipeline includes automated bypass audits that scan the entire
 - Detects blanket `# type: ignore` without a specific mypy error code
 - Detects `# type: ignore[CODE]` without a policy-compliant reason marker (see `../docs/agents/type-ignore-policy.md` for exact format requirements)
 - Detects `# type: ignore` in test files (tests must be fully typed — no exceptions)
-- Detects ALL mypy config that weakens type checking: `ignore_missing_imports = true`, `follow_imports = silent`, `exclude` patterns, `ignore_errors = true`
+- Detects ALL mypy config that weakens type checking: `ignore_missing_imports = true`, `follow_imports = silent`, `exclude` patterns, `ignore_errors = true`, `disable_error_code` (globally suppresses error codes)
 - Violations produce output: `file:line: [TYPECHECK-BYPASS] category: detail`
 
 **Both audits** scan both `ralph/` and `tests/` directories. Each uses an allowlist of known-legitimate suppressions. Any new suppression that does not match the allowlist IS a violation. To add a legitimate suppression, the code must be added to the allowlist with a documented justification.

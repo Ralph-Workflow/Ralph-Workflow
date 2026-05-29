@@ -67,6 +67,12 @@ _TOTAL_TEST_BUDGET_SECONDS: Final = 30.0
 # that single step. For test-budget-tracked steps, the actual timeout
 # is further capped by the remaining cumulative budget.
 #
+# IMPORTANT: ANY step added here that runs test suites MUST:
+#   1. Have its label added to _KNOWN_TEST_STEP_LABELS
+#   2. Have its index added to _BUDGET_TRACKED_STEPS
+# These two must stay in sync — the module-level runtime checks
+# (below) enforce this at import time.
+#
 # _BUDGET_TRACKED_STEPS: the indices within _VERIFY_STEPS whose
 # elapsed wall-clock time counts against _TOTAL_TEST_BUDGET_SECONDS.
 # Currently only index 2 (make test) counts. Adding more test-related
@@ -109,24 +115,59 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
 
 # --- Module-level invariants ---
-# These are runtime assertions that must hold for the enforcement
+# These are runtime checks that must hold for the enforcement
 # mechanism to be correct. They are checked at import time.
-assert _TOTAL_TEST_BUDGET_SECONDS > 0, (
-    "_TOTAL_TEST_BUDGET_SECONDS must be positive"
-)
-assert all(
-    isinstance(i, int) and 0 <= i < len(_VERIFY_STEPS) for i in _BUDGET_TRACKED_STEPS
-), (
-    "_BUDGET_TRACKED_STEPS indices must be valid indices into _VERIFY_STEPS"
-)
+# Using ``if``/``raise RuntimeError`` instead of ``assert``
+# so the checks cannot be stripped by ``python -O``.
+
+if not _TOTAL_TEST_BUDGET_SECONDS > 0:
+    raise RuntimeError(
+        "_TOTAL_TEST_BUDGET_SECONDS must be positive"
+    )
+if not all(
+    isinstance(i, int) and 0 <= i < len(_VERIFY_STEPS)
+    for i in _BUDGET_TRACKED_STEPS
+):
+    raise RuntimeError(
+        "_BUDGET_TRACKED_STEPS indices must be valid indices into _VERIFY_STEPS"
+    )
 for idx in _BUDGET_TRACKED_STEPS:
     _step = _VERIFY_STEPS[idx]
-    assert _step[3] is not None, (
-        f"Budget-tracked step {idx} ({_step[0]!r}) must have a non-None timeout"
+    if _step[3] is None:
+        raise RuntimeError(
+            f"Budget-tracked step {idx} ({_step[0]!r}) must have a non-None timeout"
+        )
+    if not (isinstance(_step[3], (int, float)) and _step[3] > 0):
+        raise RuntimeError(
+            f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout"
+        )
+
+# Budget-constant integrity: the 30-second combined budget is ABSOLUTE and
+# IMMUTABLE. This epsilon check prevents any drift or accidental change.
+if not abs(_TOTAL_TEST_BUDGET_SECONDS - 30.0) < 1e-9:
+    raise RuntimeError(
+        f"_TOTAL_TEST_BUDGET_SECONDS must be 30.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
     )
-    assert isinstance(_step[3], (int, float)) and _step[3] > 0, (
-        f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout"
-    )
+
+# --- Known test step labels ---
+# These labels identify steps that count toward the combined test budget.
+# Any step whose label is in this frozenset MUST be in _BUDGET_TRACKED_STEPS.
+# Likewise, any step NOT in this frozenset MUST NOT be tracked.
+# This prevents accidentally adding untracked test steps or tracking
+# non-test steps (e.g., audit scripts with "test" in the filename).
+_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})
+
+# Enforce that _KNOWN_TEST_STEP_LABELS and _BUDGET_TRACKED_STEPS are in sync.
+for i, (label, *_rest) in enumerate(_VERIFY_STEPS):
+    if label in _KNOWN_TEST_STEP_LABELS:
+        if i not in _BUDGET_TRACKED_STEPS:
+            raise RuntimeError(
+                f"Test step {i} ({label!r}) must be in _BUDGET_TRACKED_STEPS"
+            )
+    elif i in _BUDGET_TRACKED_STEPS:
+            raise RuntimeError(
+                f"Non-test step {i} ({label!r}) must NOT be in _BUDGET_TRACKED_STEPS"
+            )
 
 
 def _default_runner(
@@ -273,6 +314,11 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             )
             return result.returncode
 
+    print(
+        f"\nCumulative test elapsed: {cumulative_test_elapsed:.2f}s"
+        f" / budget: {_TOTAL_TEST_BUDGET_SECONDS:.1f}s",
+        flush=True,
+    )
     return 0
 
 

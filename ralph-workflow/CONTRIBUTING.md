@@ -67,17 +67,20 @@ make verify
 | Scope | Limit | Enforcer |
 |-------|-------|----------|
 | Per individual test | 1 s | `conftest.py` SIGALRM watchdog |
-| Per suite invocation | 30 s | `python -m ralph.verify_timeout --suite-timeout 30` |
-| All test suites combined (`make test`) | 30 s | `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 30.0` |
+| Per suite invocation | 30 s (SECONDARY cap) | `python -m ralph.verify_timeout --suite-timeout 30` |
+| All test suites combined (`make test`) | 30 s (AUTHORITATIVE cap) | `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 30.0` (enforced via cumulative `time.monotonic()` tracking) |
 
 This 30-second combined budget is **absolute** and cannot be circumvented by:
-- Splitting tests into more suites or shards
+- Splitting tests into more suites or shards (cumulative tracker sums ALL tracked steps)
 - Moving slow tests to a different target
 - Raising `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS`
+- Modifying `_TOTAL_TEST_BUDGET_SECONDS` or `_BUDGET_TRACKED_STEPS` (blocked by import-time `if`/`raise RuntimeError` checks — immune to `python -O`)
 
 The combined budget is enforced at the verify runner level (`ralph/verify.py`). Per-suite timeouts are secondary caps only. The total elapsed time of every test suite running sequentially under `make verify` must not exceed 30 s. Splitting tests across N suites does NOT give N × 30 s.
 
 A slow test is a design defect. Fix the production coupling (extract I/O behind `MemoryWorkspace`, use `FakeAgentExecutor`). See `docs/agents/testing-guide.md` for the full no-I/O test policy.
+
+For cumulative volume bottlenecks (many fast tests with per-item overhead dominating), valid fix strategies include consolidating parameterized tests with overlapping coverage, optimizing shared fixtures, or reducing redundant test coverage. Do NOT disable, skip, or quarantine tests to work around the budget.
 
 The dead-code audit is available separately while the existing dead-code backlog is still being cleaned up:
 

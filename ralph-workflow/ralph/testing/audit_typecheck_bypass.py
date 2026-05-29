@@ -78,7 +78,17 @@ _VALID_REASON_MARKERS: tuple[str, ...] = (
 )
 
 # Files / directories to skip.
-_SKIP_DIRS: frozenset[str] = frozenset({"__pycache__", ".venv", ".mypy_cache", "tmp"})
+_SKIP_DIRS: frozenset[str] = frozenset({
+    "__pycache__",
+    ".venv",
+    ".mypy_cache",
+    "tmp",
+    ".ruff_cache",
+    ".pytest_cache",
+    "htmlcov",
+    "build",
+    "dist",
+})
 
 # Regex: blanket # type: ignore (no error code in brackets).
 _BLANKET_TYPE_IGNORE_RE = re.compile(r"#\s*type\s*:\s*ignore\s*(?:$|[^\[#])")
@@ -254,7 +264,7 @@ def _find_type_ignore_violations(
     return violations
 
 
-def _check_mypy_ini(config_path: Path) -> list[TypecheckBypassViolation]:
+def _check_mypy_ini(config_path: Path) -> list[TypecheckBypassViolation]:  # noqa: PLR0912
     """Check a mypy.ini file for weakening settings using ConfigParser."""
     violations: list[TypecheckBypassViolation] = []
 
@@ -294,6 +304,24 @@ def _check_mypy_ini(config_path: Path) -> list[TypecheckBypassViolation]:
                             f"weakens type checking",
                         )
                     )
+
+        # Check for disable_error_code — globally suppresses mypy error codes.
+        if config.has_option(section_name, "disable_error_code"):
+            try:
+                disable_value = config.get(section_name, "disable_error_code").strip()
+            except Exception:
+                disable_value = "<parse error>"
+            if disable_value:
+                violations.append(
+                    TypecheckBypassViolation(
+                        file_path=rel_path,
+                        line=0,
+                        category="mypy-config",
+                        detail=f"[{section_name}] disable_error_code = "
+                        f"{disable_value} — globally suppresses mypy "
+                        f"error codes, weakening enforcement",
+                    )
+                )
 
         # Check for exclude patterns.
         if config.has_option(section_name, "exclude"):
@@ -351,8 +379,47 @@ def _check_pyproject_mypy(pyproject_path: Path) -> list[TypecheckBypassViolation
                 file_path=rel_path,
                 line=0,
                 category="mypy-config",
-                detail=f"[tool.mypy] exclude = {tool_mypy['exclude']} — "
+                detail=f"[tool.mypy] exclude = {tool_mypy['exclude']} - "
                 f"excludes files from type checking, weakening enforcement",
+            )
+        )
+
+    # disable_error_code globally suppresses mypy error codes.
+    disable_error_code = tool_mypy.get("disable_error_code")
+    if disable_error_code:
+        violations.append(
+            TypecheckBypassViolation(
+                file_path=rel_path,
+                line=0,
+                category="mypy-config",
+                detail=f"[tool.mypy] disable_error_code = {disable_error_code} - "
+                f"globally suppresses mypy error codes, weakening enforcement",
+            )
+        )
+
+    # warn_unused_ignores = false weakens type checking by silencing
+    # the "unused ignore" error, allowing stale type: ignore to accumulate.
+    if tool_mypy.get("warn_unused_ignores") is False:
+        violations.append(
+            TypecheckBypassViolation(
+                file_path=rel_path,
+                line=0,
+                category="mypy-config",
+                detail="[tool.mypy] warn_unused_ignores = false - "
+                "weakens type checking by silencing unused ignore warnings",
+            )
+        )
+
+    # disallow_untyped_defs = false weakens type checking by allowing
+    # functions without type annotations to pass silently.
+    if tool_mypy.get("disallow_untyped_defs") is False:
+        violations.append(
+            TypecheckBypassViolation(
+                file_path=rel_path,
+                line=0,
+                category="mypy-config",
+                detail="[tool.mypy] disallow_untyped_defs = false - "
+                "weakens type checking by allowing untyped function definitions",
             )
         )
 
