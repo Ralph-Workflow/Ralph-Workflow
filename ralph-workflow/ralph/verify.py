@@ -155,7 +155,38 @@ if not abs(_TOTAL_TEST_BUDGET_SECONDS - 30.0) < 1e-9:
 # Likewise, any step NOT in this frozenset MUST NOT be tracked.
 # This prevents accidentally adding untracked test steps or tracking
 # non-test steps (e.g., audit scripts with "test" in the filename).
+#
+# INVARIANT: This frozenset must NOT be empty.
+# INVARIANT: The canonical test step label 'make test' must be present.
+# Both invariants are enforced by import-time RuntimeError checks below.
 _KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})
+
+# --- Module-level invariants for label/budget integrity ---
+# These prevent the circumvention of budget enforcement by emptying
+# _KNOWN_TEST_STEP_LABELS or _BUDGET_TRACKED_STEPS. Without these
+# checks, the frozensets could be silently emptied, removing all
+# budget-tracked test steps from enforcement.
+
+# (a) _KNOWN_TEST_STEP_LABELS must not be empty.
+if not _KNOWN_TEST_STEP_LABELS:
+    raise RuntimeError(
+        "_KNOWN_TEST_STEP_LABELS must not be empty"
+    )
+
+# (b) _BUDGET_TRACKED_STEPS must not be empty.
+if not _BUDGET_TRACKED_STEPS:
+    raise RuntimeError(
+        "_BUDGET_TRACKED_STEPS must not be empty"
+    )
+
+# (c) The canonical test step label 'make test' must be present in
+# _KNOWN_TEST_STEP_LABELS. This prevents removing the primary test
+# step label to silently exclude it from budget tracking.
+if "make test" not in _KNOWN_TEST_STEP_LABELS:
+    raise RuntimeError(
+        "_KNOWN_TEST_STEP_LABELS must contain 'make test' (got "
+        f"{sorted(_KNOWN_TEST_STEP_LABELS)})"
+    )
 
 # Enforce that _KNOWN_TEST_STEP_LABELS and _BUDGET_TRACKED_STEPS are in sync.
 for i, (label, *_rest) in enumerate(_VERIFY_STEPS):

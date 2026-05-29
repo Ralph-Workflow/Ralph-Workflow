@@ -46,8 +46,11 @@ This combined limit is **IMMUTABLE** — the following do **NOT** circumvent it:
 | Moving slow tests to a different suite/target | All test-budget-tracked steps count toward the same combined budget |
 | Adding new test-related Makefile targets | `_BUDGET_TRACKED_STEPS` frozen set stays at `{2}` — new targets don't get budget tracking |
 | Raising `PYTEST_SUITE_TIMEOUT_SECONDS` | Per-suite cap only; combined budget is enforced separately by `_TOTAL_TEST_BUDGET_SECONDS` |
-| Modifying `_BUDGET_TRACKED_STEPS` frozenset | Blocked by `ralph/verify.py` import-time assertions |
-| Raising `_TOTAL_TEST_BUDGET_SECONDS` | ABSOLUTE and IMMUTABLE — documented in `AGENTS.md` and `ralph/verify.py` |
+| Modifying `_BUDGET_TRACKED_STEPS` frozenset | Blocked by `ralph/verify.py` import-time RuntimeError checks — immune to `python -O` |
+| Raising `_TOTAL_TEST_BUDGET_SECONDS` | Blocked by import-time RuntimeError epsilon check (`must be 30.0`) — immune to `python -O` |
+| Emptying `_KNOWN_TEST_STEP_LABELS` | Blocked by import-time non-empty RuntimeError check — immune to `python -O` |
+| Emptying `_BUDGET_TRACKED_STEPS` | Blocked by import-time non-empty RuntimeError check — immune to `python -O` |
+| Removing `'make test'` from `_KNOWN_TEST_STEP_LABELS` | Blocked by import-time containment RuntimeError check — immune to `python -O` |
 | Adding `per-file-ignores` to pyproject.toml | Detected by `ralph/testing/audit_lint_bypass.py` (part of `make verify`) |
 | Adding `ignore_missing_imports = true` to mypy config | Detected by `ralph/testing/audit_typecheck_bypass.py` (part of `make verify`) |
 | Using bare `# noqa` or blanket `# type: ignore` | Detected by bypass audit modules with file:line reporting |
@@ -62,14 +65,26 @@ or malicious weakening of budget enforcement:
   all tracked steps must exist.
 - Every budget-tracked step has a positive timeout — budget enforcement
   cannot be silently nullified by a `None` or zero timeout.
-- An epsilon assertion (`abs(_TOTAL_TEST_BUDGET_SECONDS - 30.0) < 1e-9`)
+- An epsilon check (`abs(_TOTAL_TEST_BUDGET_SECONDS - 30.0) < 1e-9`)
   confirms the constant has not been altered from its ABSOLUTE and
   IMMUTABLE value of 30.0 seconds.
+- `_KNOWN_TEST_STEP_LABELS` must not be empty — prevents silently
+  hiding all test steps from budget tracking.
+- `_BUDGET_TRACKED_STEPS` must not be empty — prevents disabling
+  budget enforcement entirely.
+- `'make test'` must be present in `_KNOWN_TEST_STEP_LABELS` — the
+  canonical test step label always exists and is tracked.
+- Every label in `_KNOWN_TEST_STEP_LABELS` must correspond to a
+  tracked step, and every tracked step must have its label in
+  `_KNOWN_TEST_STEP_LABELS` — prevents label/steps drift.
 
 These invariants are checked at module import time. Any violation causes
 a `RuntimeError` at startup (enforced by `if`/`raise` — immune to `python -O`
 stripping), preventing `make verify` from running with
 a weakened budget configuration.
+
+All invariants are tested in `tests/test_verify_invariants.py` under
+both normal execution and `python -O` to confirm survivability.
 
 A timeout failure is a test design defect. Fix the production coupling — never adjust the budget. Remove I/O, use `MemoryWorkspace`, inject fake clocks. Do **not** raise `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS` to mask a slow test.
 

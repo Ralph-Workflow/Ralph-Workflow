@@ -58,14 +58,15 @@ If changing the implementation (without changing behavior) would break a test, *
 ### Agent checklist
 
 - [ ] Every test in the affected area finishes in < 1 s individually
-- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 30 s total (enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS` via cumulative `time.monotonic()` tracking)
+- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 30 s total (enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS` via cumulative `time.monotonic()` tracking; see `AGENTS.md` §'═══ ABSOLUTE TEST BUDGET — 30s, IMMUTABLE ═══' for all import-time invariants)
 - [ ] No test calls `time.sleep(N)` with `N > 0` or polls real wall-clock time
 - [ ] No test reaches through a boundary into real I/O (filesystem, subprocess, network)
 - [ ] Every test asserts on observable behavior, not internal state
 - [ ] Any refactor needed to make code testable within time is done — not deferred
 - [ ] No bypass audit violation detected in lint, typecheck, or test policy (see `docs/agents/verification.md` §'Bypass Audit Policy')
 
-See `docs/agents/verification.md` §'Total test budget' for the full non-circumvention table.
+See `docs/agents/verification.md` §'Total test budget — 30 seconds, ABSOLUTE and IMMUTABLE' for the full non-circumvention table.
+See `AGENTS.md` §'═══ ABSOLUTE TEST BUDGET — 30s, IMMUTABLE ═══' for the complete import-time invariant guard table.
 
 ---
 
