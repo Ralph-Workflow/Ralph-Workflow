@@ -1,0 +1,12 @@
+Hi,
+
+I liked AI Coding Tools Comparison 2026. A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
+
+I thought it could fit your comparison audience because you are already covering AI coding tools and workflow tradeoffs, while Ralph Workflow sits one layer up: it gives teams a no-babysitting way to coordinate planning, development, verification, and review across agents with strong defaults.
+
+If you keep comparison roundups, workflow references, or follow-up links on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow. The GitHub mirror is here if useful for readers: https://github.com/Ralph-Workflow/Ralph-Workflow.
+
+Thanks,
+Ralph Workflow

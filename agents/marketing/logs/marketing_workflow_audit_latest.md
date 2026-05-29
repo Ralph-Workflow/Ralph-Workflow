@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-29T18:21:07.556550
+- Generated: 2026-05-30T01:21:02.756047
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -10,10 +10,10 @@
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
-- Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
-- The most recent runtime activity was owned_content_lane_noop, but the latest meaningful external/replacement execution remains deployed_blog_post; do not confuse follow-through with fresh outcome-bearing distribution.
+- Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
+- The most recent runtime activity was manual_outreach_asset_follow_through, but the latest meaningful external/replacement execution remains deployed_blog_post; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (deployed_blog_post), so the system is still shipping output even though outcome movement is not visible yet.
-- A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
+- A fresh outcome-capability runtime is now logged (manual_outreach_asset_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 
 ## What actually worked
 - No meaningful tactic produced a trustworthy win in this window.
@@ -27,17 +27,18 @@
 
 ## What is low-signal
 - Recent live external action exists (deployed_blog_post), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
+- Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template.
 
 ## What should change now
 - REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
-- REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.
 - Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
 ## Observed risks
 - Repetition risk in outreach opening: "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
-- Failing tactic detected: reddit_style_repetition
 - Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
+- Dormant risk parked for now: reddit_style_repetition_suspended_while_channel_blocked
 
 ## Outcome evaluation
 - Codeberg: samples=9, stars +0, watchers +0, forks +0
@@ -57,12 +58,8 @@
   - Repair state: pending_measurement
   - Kill condition: N/A (mirror, not primary)
   - Success metric: GitHub mirror shows any adoption delta
-- **repetitive_outreach** (tactic) → REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.
-  - Repair state: pending_measurement
-  - Kill condition: Same opening detected again in next audit
-  - Success metric: No repeated openings in next audit window
 - No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
-- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, repetitive_outreach
+- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
 
 ## Latest executed marketing action
 - Type: deployed_blog_post
@@ -96,6 +93,6 @@
 
 ## Shared findings artifact sync
 - Status: synced
-- Refreshed distribution lane: owned_content
-- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md
+- Refreshed distribution lane: measurement_hold
+- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md
 - Outcome status: /home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json

@@ -1,7 +1,7 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-05-29T18:30:14
-- Hold release at: 2026-05-29T22:19:55
-- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md
+Generated: 2026-05-30T01:28:18
+- Hold release at: 2026-05-31T00:00:00
+- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot
 - If the execution board is still empty after the hold clears, choose distribution_architecture_repair instead of another measurement_hold.
@@ -25,4 +25,3 @@ Generated: 2026-05-29T18:30:14
 - channel_discovery.json: validated easy-submit directory lanes
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
-- outcome_capability_runner: force non-Reddit executable lane with direct Codeberg adoption linkage

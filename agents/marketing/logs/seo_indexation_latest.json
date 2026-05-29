@@ -1,0 +1,199 @@
+{
+  "generated_at": "2026-05-29T23:21:56.710288+00:00",
+  "domain": "ralphworkflow.com",
+  "sitemap": {
+    "sitemap_url": "https://ralphworkflow.com/sitemap.xml",
+    "ok": true,
+    "url_count": 101,
+    "error": null,
+    "urls": [
+      "https://ralphworkflow.com/",
+      "https://ralphworkflow.com/privacy",
+      "https://ralphworkflow.com/terms",
+      "https://ralphworkflow.com/install",
+      "https://ralphworkflow.com/aider-alternative",
+      "https://ralphworkflow.com/conductor-alternative",
+      "https://ralphworkflow.com/hermes-alternative",
+      "https://ralphworkflow.com/claude-code-alternative",
+      "https://ralphworkflow.com/cursor-alternative",
+      "https://ralphworkflow.com/continue-alternative",
+      "https://ralphworkflow.com/copilot-alternative",
+      "https://ralphworkflow.com/docs/",
+      "https://ralphworkflow.com/contact",
+      "https://ralphworkflow.com/docs/advanced-artifact-configuration",
+      "https://ralphworkflow.com/docs/advanced-mcp-configuration",
+      "https://ralphworkflow.com/docs/advanced-pipeline-configuration",
+      "https://ralphworkflow.com/docs/after-your-first-run",
+      "https://ralphworkflow.com/docs/agents",
+      "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
+      "https://ralphworkflow.com/docs/ai-agent-workflow-composer"
+    ],
+    "blog_url_count": 34
+  },
+  "robots": {
+    "robots_url": "https://ralphworkflow.com/robots.txt",
+    "ok": true,
+    "error": null,
+    "disallow_all": false,
+    "has_sitemap": true,
+    "body_first_500": "User-agent: *\nAllow: /\n\n# AI Search Engine Bots \u2014 allow all\nUser-agent: GPTBot\nAllow: /\nUser-agent: ChatGPT-User\nAllow: /\nUser-agent: PerplexityBot\nAllow: /\nUser-agent: Google-Extended\nAllow: /\nUser-agent: anthropic-ai\nAllow: /\nUser-agent: Bytespider\nAllow: /\nUser-agent: Amazonbot\nAllow: /\nUser-agent: FacebookBot\nAllow: /\nUser-agent: CCBot\nAllow: /\nUser-agent: DataForSeoBot\nAllow: /\nUser-agent: PetalBot\nAllow: /\nUser-agent: YouBot\nAllow: /\nUser-agent: KrbBot\nAllow: /\n\nDisallow: /admin\nDisallow: "
+  },
+  "search_engines": {
+    "google": {
+      "method": "gsc_api",
+      "ok": true,
+      "indexed_count_approx": 0,
+      "error": null,
+      "sample_urls": [
+        "https://ralphworkflow.com/",
+        "https://ralphworkflow.com/contact",
+        "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended",
+        "https://ralphworkflow.com/blog",
+        "https://ralphworkflow.com/copilot-alternative",
+        "https://ralphworkflow.com/docs/",
+        "https://ralphworkflow.com/docs/first-task-guide",
+        "https://ralphworkflow.com/docs/example-review-bundle",
+        "https://ralphworkflow.com/docs/example-review-bundle.html",
+        "https://ralphworkflow.com/docs/ralph-workflow-vs-aider"
+      ],
+      "gsc_sitemap": {
+        "ok": true,
+        "sitemaps": [
+          {
+            "path": "https://ralphworkflow.com/sitemap.xml",
+            "last_submitted": "2026-05-15T14:50:45.777Z",
+            "last_downloaded": "2026-05-25T23:01:29.277Z",
+            "warnings": "0",
+            "errors": "0",
+            "submitted": 80,
+            "indexed": 0
+          }
+        ],
+        "submitted": 80,
+        "indexed": 0,
+        "error": null
+      },
+      "gsc_analytics": {
+        "ok": true,
+        "total_clicks": 19,
+        "total_impressions": 306,
+        "pages_with_data": 13,
+        "top_pages": [
+          {
+            "url": "https://ralphworkflow.com/",
+            "impressions": 266,
+            "clicks": 19,
+            "ctr": 7.1
+          },
+          {
+            "url": "https://ralphworkflow.com/contact",
+            "impressions": 9,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended",
+            "impressions": 5,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/blog",
+            "impressions": 4,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/copilot-alternative",
+            "impressions": 4,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/docs/",
+            "impressions": 4,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/docs/first-task-guide",
+            "impressions": 3,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/docs/example-review-bundle",
+            "impressions": 2,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/docs/example-review-bundle.html",
+            "impressions": 2,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/docs/ralph-workflow-vs-aider",
+            "impressions": 2,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/docs/ralph-workflow-vs-claude-code",
+            "impressions": 2,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/docs/why-worktrees-are-not-enough",
+            "impressions": 2,
+            "clicks": 0,
+            "ctr": 0.0
+          },
+          {
+            "url": "https://ralphworkflow.com/docs/getting-started.html",
+            "impressions": 1,
+            "clicks": 0,
+            "ctr": 0.0
+          }
+        ],
+        "error": null,
+        "ctr": 6.21
+      }
+    },
+    "duckduckgo": {
+      "method": "ddg_html",
+      "ok": false,
+      "indexed_count_approx": null,
+      "error": "HTTP 202 or domain not found in results"
+    },
+    "bing": {
+      "method": "bing_raw",
+      "ok": true,
+      "indexed_count_approx": null,
+      "error": null,
+      "sample_urls": []
+    }
+  },
+  "canonical_check": {
+    "checked": 5,
+    "ok": 5,
+    "canonical_mismatches": []
+  },
+  "assessment": {
+    "sitemap_urls": 101,
+    "google_indexed_approx": 0,
+    "ddg_indexed_approx": 0,
+    "gsc_source": true,
+    "gsc_sitemap_submitted": 80,
+    "gsc_sitemap_indexed": 0,
+    "gsc_indexation_rate": 0.0,
+    "gsc_total_clicks_28d": 19,
+    "gsc_total_impressions_28d": 306,
+    "gsc_pages_with_data": 13,
+    "searchable": false,
+    "verdict": "NOT_INDEXED: 80 pages submitted via sitemap, 0 indexed by Google",
+    "recommendation": "CRITICAL: Google knows about 80 pages via sitemap but has indexed ZERO. Most likely causes: (1) domain is too new or has no backlinks signaling authority, (2) content is detected as thin/auto-generated/doorway pages, (3) Google needs manual reconsideration. Highest-leverage next action: get ONE quality backlink from an established domain (TechCrunch-style dev publication, GitHub repo with stars, etc). A single backlink will trigger Google to crawl and evaluate the content properly."
+  }
+}

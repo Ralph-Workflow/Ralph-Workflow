@@ -1,0 +1,15 @@
+Hi NxCode team,
+
+I liked your Codex vs Cursor vs Claude Code comparison, especially the way it separates autonomous background work from interactive editing and deep codebase reasoning. That framing is close to the real choice a lot of teams are making right now.
+
+One gap I keep seeing in these comparisons: teams can get agents to keep running, but they still end up babysitting them because the workflow does not end in a trustworthy review handoff.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, then composes planning, build, and verification into a workflow that aims to leave a concrete morning-after handoff in your own repo instead of just a confident summary.
+
+I thought it might fit your audience because your piece is already comparing when autonomous background agents beat interactive editors, and Ralph Workflow sits at that workflow-system layer rather than trying to be another editor.
+
+If you maintain follow-up comparisons, workflow references, or adjacent tool roundups, the canonical repo is:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+Thanks,
+Ralph Workflow
