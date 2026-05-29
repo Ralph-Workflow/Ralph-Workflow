@@ -258,6 +258,18 @@ def test_agent_registry_resolves_direct_ccs_model_reference() -> None:
     assert agent.can_commit is True
 
 
+def test_agent_registry_resolves_two_segment_opencode_model_reference() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("opencode/MiniMax-M2.7-highspeed")
+
+    assert agent is not None
+    assert agent.cmd == "opencode"
+    assert agent.transport == AgentTransport.OPENCODE
+    assert agent.model_flag == "-m MiniMax-M2.7-highspeed"
+    assert agent.can_commit is True
+
+
 @pytest.mark.parametrize(
     "name",
     [

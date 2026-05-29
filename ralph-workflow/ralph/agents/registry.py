@@ -15,7 +15,7 @@ from ralph.config.ccs_config import CcsAliasConfig, CcsConfig
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
 
-_MIN_OPENCODE_SEGMENTS = 3
+_MIN_OPENCODE_SEGMENTS = 2
 _CLAUDE_MODEL_SEGMENTS = 2
 
 if TYPE_CHECKING:

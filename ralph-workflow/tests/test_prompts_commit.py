@@ -113,6 +113,18 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "Good" in prompt
 
 
+def test_opencode_commit_prompt_skip_output_instruction_is_unambiguous() -> None:
+    prompt = prompt_commit_message_for_opencode(
+        "diff --git a/app.py b/app.py\n+hello",
+        submit_artifact_tool_name="ralph_submit_artifact",
+    )
+
+    # The old "<subject>" placeholder caused models to output "<skip>" for skip artifacts.
+    # The instruction must now be explicit for both commit and skip cases.
+    assert "<subject>" not in prompt
+    assert "output nothing" in prompt.lower() or "do not output" in prompt.lower()
+
+
 def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:
     prompt = prompt_commit_message("diff --git a/app.py b/app.py\n+hello")
 
