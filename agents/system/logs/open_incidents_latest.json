@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-29T16:04:27.224377+00:00",
+  "updated_at": "2026-05-29T17:03:42.684990+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
@@ -2925,7 +2925,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 464,
+      "repeat_count": 466,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -5053,15 +5053,23 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780070663012:56\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: agent-architecture-watchdog:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-29T17:45:13.297984+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=462"
+        },
+        {
+          "at": "2026-05-29T17:00:14.947753+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780074014907:58\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-29T18:48:00.419915+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=466"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-29T16:04:27.224363+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: agent-architecture-watchdog:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-29T18:04:13.325718+02:00\"\n}",
+      "last_seen": "2026-05-29T17:00:10.891965+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-29T18:48:00.419915+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-05-29T16:04:23.043769+00:00"
+      "closed_at": "2026-05-29T17:00:14.947772+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -8458,7 +8466,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T05:06:09.078715+00:00",
-      "repeat_count": 100,
+      "repeat_count": 101,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -8806,15 +8814,23 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=99"
+        },
+        {
+          "at": "2026-05-29T16:45:48.547834+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=101"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-29T16:04:09.103953+00:00",
+      "last_seen": "2026-05-29T16:45:13.049263+00:00",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Docs are well-aligned with positioning. The README \u2192 START_HERE \u2192 docs/README journey is coherent, promoted sub-pages reinforce the same story, and no hard failures are present. Copy repetition across sub-pages (same opening sentences) is the main cosmetic issue but does not violate any rubric criterion.",
+      "likely_cause": "The docs system is structurally sound and aligned with the positioning reference. The README \u2192 START_HERE \u2192 docs/README journey is coherent, the internal-process leakage is well-contained to secondary pages, and the core narrative (simple Ralph-loop core \u2192 composable orchestration \u2192 strong default workflow \u2192 extend later) is consistent across all surfaces. The user should not need to repeat this instruction.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-05-29T16:04:19.213862+00:00"
+      "closed_at": "2026-05-29T16:45:48.547849+00:00"
     },
     "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc::review_followup_required": {
       "key": "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc::review_followup_required",
@@ -9101,7 +9117,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 266,
+      "repeat_count": 280,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -9305,7 +9321,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-29T16:04:27.224360+00:00",
+      "last_seen": "2026-05-29T17:03:42.684976+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -15029,13 +15045,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 221,
+      "repeat_count": 235,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-05-29T16:04:27.224353+00:00",
+      "last_seen": "2026-05-29T17:03:42.684961+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null
@@ -15878,6 +15894,32 @@
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Sub-pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md, reviewable-output.md, first-task-guide.md) all open with nearly identical sentences about 'free and open-source AI agent orchestration system built around a simple Ralph-loop core'. Vary the openings by page role to reduce robotic scannability.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
       "closed_at": "2026-05-29T16:04:27.224375+00:00"
+    },
+    "docs_agentic_review_mustFix_nearly-every-page-opens-with-the-same-templated::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_nearly-every-page-opens-with-the-same-templated::review_followup_required",
+      "name": "docs_agentic_review_mustFix_nearly-every-page-opens-with-the-same-templated",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-29T16:45:13.049267+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [
+        {
+          "at": "2026-05-29T16:45:46.565082+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780073146523:57\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_nearly-every-page-opens-with-the-same-templated::review_followup_required::Nearly every page opens with the same templated sentence fragment ('Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core'). While consistent, this creates a copy-paste feel across ~8 pages. Each surface should vary its opening to match its specific role (e.g., START_HERE should lead with action, docs/README with navigation, support pages with their specific angle) while preserving the same core message.::Reviewer left unresolved required follow-up item in mustFix: Nearly every page opens with the same templated sentence fragment ('Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core'). While consistent, this creates a copy-paste feel across ~8 pages. Each surface should vary its opening to match its specific role (e.g., START_HERE should lead with action, docs/README with navigation, support pages with their specific angle) while preserving the same core message."
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-29T16:45:13.049271+00:00",
+      "last_error": "Nearly every page opens with the same templated sentence fragment ('Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core'). While consistent, this creates a copy-paste feel across ~8 pages. Each surface should vary its opening to match its specific role (e.g., START_HERE should lead with action, docs/README with navigation, support pages with their specific angle) while preserving the same core message.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Nearly every page opens with the same templated sentence fragment ('Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core'). While consistent, this creates a copy-paste feel across ~8 pages. Each surface should vary its opening to match its specific role (e.g., START_HERE should lead with action, docs/README with navigation, support pages with their specific angle) while preserving the same core message.",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-29T16:45:52.846611+00:00"
     }
   }
 }

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-29T09:00:01.702749",
+  "timestamp": "2026-05-29T18:17:03.125358",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "owned_content_lane_noop",
@@ -8,7 +8,7 @@
     "draft": null
   },
   "why_this_action": {
-    "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
+    "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",

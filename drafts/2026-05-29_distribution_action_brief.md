@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-29T18:14:58
+Generated: 2026-05-29T19:15:29
 Chosen lane: **owned_content**
 
 ## Why this lane

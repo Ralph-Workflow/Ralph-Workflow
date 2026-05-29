@@ -1,3 +1,45 @@
+### 2026-05-29 — Marketing workflow audit (18:20 CEST)
+
+**Audit trigger:** Cron scheduled re-analysis of full marketing loop (marketing-workflow-audit).
+**Status:** System operating at structural adoption ceiling. All autonomous lanes maximized. All metrics flat (Codeberg 12⭐, GitHub 1⭐, PyPI 1,428/mo on v0.8.7).
+
+#### Critical runtime error found and fixed
+- **Stale .pyc crash:** `outcome_capability_runner.py` import of `distribution_lane_executor` was loading stale bytecode compiled before the `/home/mistlight/.bun/bin/openclaw` path was patched. The `.pyc` contained bare `'openclaw'` which threw `FileNotFoundError` on every execution since at least 2026-05-27. The crash cascaded: `measurement_window_watchdog.py` retried, failed identically, then `measurement_hold_release` rescheduled with a fresh `openclaw cron add` call anyway — producing the observed 5+ duplicate measurement-hold release jobs today.
+- **Fix:** Cleaned all `__pycache__/` dirs and `*.pyc` files under `agents/` recursively. Hardened `_live_measurement_hold_release_jobs()` with `try/except` for `FileNotFoundError`/`PermissionError`/`OSError`.
+- **Verification:** `python3 -c "from agents.marketing.distribution_lane_executor import _live_measurement_hold_release_jobs; print('Import OK.')"` — passes.
+
+#### Cron adjustments executed this run
+- **Mirror sync frequency:** Reduced from `7,37 * * * *` (every 30 min, 48x/day) to `37 */6 * * *` (every 6 hours, 4x/day). All 12 logged runs showed `behind: 0, ahead: 0`. 48 checks/day was 12x overkill for a repo with zero commits/day.
+- **Removed redundant** `hn_lobsters` cron comment line from crontab.
+
+#### Channel status (unchanged from 09:54 audit)
+All non-blog channels remain human-gated or permanently blocked. No new autonomous distribution lanes available.
+
+#### Rules added to MARKETING_SELF_IMPROVEMENT.md
+- **Bytecode cache hygiene rule:** Any agent editing `.py` source files must also delete corresponding `__pycache__/` directories.
+- **Prepared-but-undeliverable suppression rule:** Any lane with prepared-but-undeliverable packets across 3+ consecutive cycles must be suppressed from active rotation.
+- **SEO indexation diagnostic gap:** No tool currently checks whether Google/Bing have indexed the 34 live blog posts. 0 backlinks + 0 indexation would explain flat adoption despite content output.
+
+#### System health summary
+| Component | State | Note |
+|---|---|---|
+| Python bytecode caches | **CLEANED** | Was causing silent crashes across 3 cron jobs |
+| `_live_measurement_hold_release_jobs()` | **HARDENED** | Wrapped in try/except for OS errors |
+| Mirror sync | **48x→4x/day** | Saved 44 no-op runs/day |
+| Comparison backlink lane | **8 prepared, 0 deliverable** | Same pattern as directory flood (May 28) — needs suppression |
+| SEO indexation | **Unknown** | No diagnostic exists |
+| PyPI publish | **v0.8.8 built, no token** | 1,428 downloads/month see stale v0.8.7 |
+| Active cron jobs | **16** | All at appropriate frequency |
+
+#### Structural ceiling confirmed (unchanged)
+All remaining adoption blockers are human-gated credentials:
+- `gh auth login` → GitHub Discussion posting + comparison PR submissions
+- `PYPI_TOKEN` → PyPI v0.8.8 publish (highest-ROI single action: 1,428 monthly downloads)
+- SMTP credentials → publisher email outreach
+- Apollo Cloudflare solve / Reddit IP unblock → gated distribution channels
+
+The autonomous system has no more lanes to open. Blog content + Codeberg surface optimization remain the only internal levers.
+
 
 ### 2026-05-29 — Marketing workflow audit (09:54 CEST)
 

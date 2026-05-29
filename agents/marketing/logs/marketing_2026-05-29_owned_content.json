@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-29T09:00:01.702749",
+  "timestamp": "2026-05-29T18:30:14.060574",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "owned_content_allowed",
@@ -17,9 +17,8 @@
     "reasoning": "No stronger autonomous lane detected.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
-      "4 live external marketing action(s) already shipped in the last 6 hours.",
-      "If no new outcome lands first, this short-window congestion clears at 2026-05-29T09:57:11. Before then, another live outbound action would mostly blur measurement.",
-      "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
+      "2 live external marketing action(s) already shipped in the last 6 hours.",
+      "If no new outcome lands first, this short-window congestion clears at 2026-05-29T22:19:55. Before then, another live outbound action would mostly blur measurement.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",

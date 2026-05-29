@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-29T10:20:28.916547",
+  "generated_at": "2026-05-29T18:21:07.556550",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -68,6 +68,7 @@
     ]
   },
   "failing_tactics": [
+    "reddit_style_repetition",
     "primary_repo_flat_window",
     "mirror_repo_flat_window"
   ],
@@ -80,17 +81,14 @@
     "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
-    "Recent live external action exists (deployed_blog_post), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
-    "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
-    "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
+    "Recent live external action exists (deployed_blog_post), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked."
   ],
   "should_change_now": [
     "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
+    "REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.",
     "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
-  "dormant_risks": [
-    "reddit_style_repetition_suspended_while_channel_blocked"
-  ],
+  "dormant_risks": [],
   "repair_actions": [
     {
       "target_tactic": "content_distribution",
@@ -111,12 +109,23 @@
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
       "repair_state": "pending_measurement"
+    },
+    {
+      "target_tactic": "reddit_post_style",
+      "failure_type": "repetitive_outreach",
+      "repair_kind": "tactic",
+      "action": "REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.",
+      "kill_condition": "Same opening detected again in next audit",
+      "success_metric": "No repeated openings in next audit window",
+      "priority": 2,
+      "repair_state": "pending_measurement"
     }
   ],
   "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
     "primary_repo_flat",
-    "mirror_repo_flat"
+    "mirror_repo_flat",
+    "repetitive_outreach"
   ],
   "has_failing_tactics": true,
   "reasons": [
@@ -124,7 +133,7 @@
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
-    "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
+    "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
     "The most recent runtime activity was owned_content_lane_noop, but the latest meaningful external/replacement execution remains deployed_blog_post; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (deployed_blog_post), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet."
@@ -160,18 +169,18 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_owned_content_execution.json",
     "type": "owned_content_lane_noop",
     "title": "Distribution lane execution: owned_content",
     "status": "skipped",
-    "ok": false,
+    "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_0859_spec_driven_contracts_deployed.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_0955_evaluator_decision_guide_deployed.json",
     "type": "deployed_blog_post",
     "title": "deployed blog post",
     "status": "executed",

@@ -1,6 +1,6 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-05-29T12:59:30
-- Hold release at: 2026-05-29T15:01:24
+Generated: 2026-05-29T18:30:14
+- Hold release at: 2026-05-29T22:19:55
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot
@@ -25,3 +25,4 @@ Generated: 2026-05-29T12:59:30
 - channel_discovery.json: validated easy-submit directory lanes
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
+- outcome_capability_runner: force non-Reddit executable lane with direct Codeberg adoption linkage

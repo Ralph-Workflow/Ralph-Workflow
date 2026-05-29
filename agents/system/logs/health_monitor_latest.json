@@ -1,19 +1,8 @@
 {
-  "ts": "2026-05-29T18:04:27.228680",
-  "jobs_checked": 23,
-  "issues_found": 9,
+  "ts": "2026-05-29T19:03:42.689275",
+  "jobs_checked": 24,
+  "issues_found": 4,
   "issues": [
-    {
-      "job_id": "dc190b5f-f215-458b-bdce-ba36be178c80",
-      "name": "agent-architecture-watchdog",
-      "category": "live_error",
-      "consecutive_errors": 1,
-      "last_status": "error",
-      "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
-      "timeout_seconds": 3600,
-      "last_duration_ms": 35362,
-      "likely_cause": "UNKNOWN: FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has "
-    },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery",
@@ -27,38 +16,22 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "required_text": "Status: independently verified pass",
-      "likely_cause": "Verifier artifact exists but does not show required pass contract"
-    },
-    {
-      "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 1372.94,
+      "artifact_age_minutes": 1432.2,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
     {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: agent-architecture-watchdog:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-29T18:04:13.325718+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
-    },
-    {
-      "job_id": "dc190b5f-f215-458b-bdce-ba36be178c80",
-      "name": "agent-architecture-watchdog_escalation",
+      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
+      "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
-      "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
-      "likely_cause": "Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=8",
-      "repeats_in_recent_history": 8,
-      "owner_domain": "architecture",
-      "incident_key": "agent-architecture-watchdog::live_error",
+      "last_error": "cron: job execution timed out",
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=234",
+      "repeats_in_recent_history": 234,
+      "owner_domain": null,
+      "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     },
@@ -67,92 +40,13 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=221",
-      "repeats_in_recent_history": 221,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=235",
+      "repeats_in_recent_history": 235,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_escalation",
-      "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=255",
-      "repeats_in_recent_history": 255,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
-      "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: agent-architecture-watchdog:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-29T18:04:13.325718+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=464",
-      "repeats_in_recent_history": 464,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
     }
   ],
-  "repairs_attempted": [
-    {
-      "type": "rerun_docs_verifier",
-      "job": "docs_agentic_review",
-      "ok": true,
-      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is coherent, well-aligned with positioning, and the user should not need to repeat this instruction. The README \\u2192 START_HERE \\u2192 docs/README journey works"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_docs-reviewable-output-md-exists-but-is-not-link",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": false,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
-    },
-    {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": false,
-      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: agent-architecture-watchdog:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verific"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent-architecture-watchdog_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780070655315:54\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780070657256:55\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_mustFix_docs-reviewable-output-md-exists-but-is-not-link_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780070663012:56\"\n}"
-    }
-  ]
+  "repairs_attempted": []
 }
