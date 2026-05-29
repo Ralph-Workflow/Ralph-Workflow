@@ -70,7 +70,7 @@ async def test_exit_code_7_is_exited_not_failed(tmp_path: Path) -> None:
     """ProcessManager records EXITED (not FAILED) even when returncode != 0."""
     pm = ProcessManager(policy=_FAST_POLICY)
     handle = pm.spawn([PYTHON, "-c", f"import sys; sys.exit({_EXPECTED_EXIT_CODE})"])
-    handle.wait()
+    handle.wait(timeout=5.0)
 
     assert handle.record.status == ProcessStatus.EXITED
     assert handle.record.returncode == _EXPECTED_EXIT_CODE

@@ -37,8 +37,6 @@ def _make_phase_def(
     **extra: object,
 ) -> PhaseDefinition:
     """Build a minimal PhaseDefinition for testing."""
-    from ralph.policy.models import PhaseDefinition, PhaseTransition
-
     kwargs: dict[str, object] = {
         "drain": "test_phase",
         "transitions": PhaseTransition(on_success="next"),
@@ -55,8 +53,6 @@ def _make_minimal_pipeline(
     phases: dict[str, PhaseDefinition],
 ) -> PipelinePolicy:
     """Build a minimal PipelinePolicy for testing."""
-    from ralph.policy.models import PhaseTransition, PipelinePolicy, RecoveryPolicy
-
     all_phases = dict(phases)
     all_phases["terminal"] = PhaseDefinition(
         drain="terminal",

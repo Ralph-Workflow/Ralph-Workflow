@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
-from ralph.executor.process import ProcessResult, ProcessRunOptions, run_process
+from ralph.executor.process import TIMEOUT_EXIT_CODE, ProcessResult, ProcessRunOptions, run_process
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 
 DEFAULT_TEST_TIMEOUT_SECONDS: Final = 1.0
@@ -139,7 +139,7 @@ def run_command_with_timeout(
         ),
         _pm=_VERIFY_TIMEOUT_PM,
     )
-    if result.returncode == 124:
+    if result.returncode == TIMEOUT_EXIT_CODE:
         raise SuiteTimeoutError(suite_timeout_seconds)
     return result
 

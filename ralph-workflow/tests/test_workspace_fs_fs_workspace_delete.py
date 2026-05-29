@@ -2,39 +2,38 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.workspace.fs import FsWorkspace
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 class TestFsWorkspaceDelete:
-    def test_delete_file(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
-            (Path(tmpdir) / "todelete.txt").write_text("content", encoding="utf-8")
+    def test_delete_file(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "todelete.txt").write_text("content", encoding="utf-8")
 
-            ws.delete("todelete.txt")
+        ws.delete("todelete.txt")
 
-            assert (Path(tmpdir) / "todelete.txt").exists() is False
+        assert (tmp_path / "todelete.txt").exists() is False
 
-    def test_delete_directory_without_recursive_raises(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
-            (Path(tmpdir) / "subdir").mkdir()
+    def test_delete_directory_without_recursive_raises(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "subdir").mkdir()
 
-            with pytest.raises(IsADirectoryError):
-                ws.delete("subdir")
+        with pytest.raises(IsADirectoryError):
+            ws.delete("subdir")
 
-    def test_delete_directory_recursive(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
-            subdir = Path(tmpdir) / "subdir"
-            subdir.mkdir()
-            (subdir / "file.txt").write_text("content", encoding="utf-8")
+    def test_delete_directory_recursive(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        (subdir / "file.txt").write_text("content", encoding="utf-8")
 
-            ws.delete("subdir", recursive=True)
+        ws.delete("subdir", recursive=True)
 
-            assert (Path(tmpdir) / "subdir").exists() is False
+        assert (tmp_path / "subdir").exists() is False

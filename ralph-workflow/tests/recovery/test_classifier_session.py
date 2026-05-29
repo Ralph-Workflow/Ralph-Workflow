@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.agents.invoke import AgentInvocationError
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from tests.recovery.test_classifier_session_helper__agentinactivitytimeouterror import (
     _AgentInactivityTimeoutError,
@@ -90,8 +91,6 @@ def test_documented_claude_session_limit_message_classifies_as_agent_fault() -> 
 
 def test_agent_invocation_parsed_output_session_limit_message_is_detected() -> None:
     """Classifier should inspect parsed output for documented Claude Code limit messages."""
-    from ralph.agents.invoke import AgentInvocationError
-
     classifier = FailureClassifier()
     exc = AgentInvocationError(
         "claude",

@@ -2,24 +2,24 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.workspace.fs import FsWorkspace
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 class TestFsWorkspaceRemove:
-    def test_removes_existing_file(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
-            (Path(tmpdir) / "todelete.txt").write_text("remove me", encoding="utf-8")
+    def test_removes_existing_file(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
+        (tmp_path / "todelete.txt").write_text("remove me", encoding="utf-8")
 
-            ws.remove("todelete.txt")
+        ws.remove("todelete.txt")
 
-            assert (Path(tmpdir) / "todelete.txt").exists() is False
+        assert (tmp_path / "todelete.txt").exists() is False
 
-    def test_remove_nonexistent_does_not_raise(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ws = FsWorkspace(tmpdir)
+    def test_remove_nonexistent_does_not_raise(self, tmp_path: Path) -> None:
+        ws = FsWorkspace(tmp_path)
 
-            ws.remove("nonexistent.txt")
+        ws.remove("nonexistent.txt")

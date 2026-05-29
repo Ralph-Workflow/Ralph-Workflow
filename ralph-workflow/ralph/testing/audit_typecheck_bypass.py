@@ -67,6 +67,7 @@ def _nested_mapping(root: dict[str, object], *keys: str) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 _TYPE_IGNORE_ALLOWLIST: set[tuple[str, str]] = {
     ("commit_cleanup", "misc"),
+    ("exec_overlay", "misc"),
 }
 
 # Policy-compliant reason markers (must appear on the same logical line
@@ -145,6 +146,14 @@ def _is_inside_triple_quoted(lines: list[str], line_index: int) -> bool:
     return in_triple
 
 
+# Files that are explicitly testing type-ignore behavior and must contain
+# type-ignore directives as test fixtures. Exempt from all type-ignore checks.
+_TYPE_IGNORE_EXEMPT_STEMS: frozenset[str] = frozenset({
+    "audit_typecheck_bypass",
+    "test_audit_typecheck_bypass",
+})
+
+
 def _is_test_file(rel_path: str) -> bool:
     """Return True if the file is under a tests/ directory."""
     parts = Path(rel_path).parts
@@ -160,6 +169,10 @@ def _check_line_for_type_ignore(
     """Check a single source line for type:ignore violations."""
     violations: list[TypecheckBypassViolation] = []
     file_stem = Path(rel_path).stem
+
+    # Skip files that are testing type-ignore behavior themselves.
+    if file_stem in _TYPE_IGNORE_EXEMPT_STEMS:
+        return violations
 
     # Skip lines inside triple-quoted strings.
     if _is_inside_triple_quoted(lines, lineno - 1):

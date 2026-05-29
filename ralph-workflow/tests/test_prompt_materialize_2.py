@@ -829,6 +829,7 @@ def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
             '{"text":"Use policy-driven handoff"},'
             '{"text":"Reject missing plan artifacts"},'
             '{"text":"Expose the handoff to users"}]},'
+            '"skills_mcp":{"skills":["test-driven-development"],"mcps":[]},'
             '"steps":[{"number":1,"title":"Honor policy","content":"Route via policy bundle"}],'
             '"critical_files":{"primary_files":['
             '{"path":"ralph/pipeline/runner.py","action":"modify"}]},'

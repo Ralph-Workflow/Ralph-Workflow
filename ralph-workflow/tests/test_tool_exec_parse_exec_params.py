@@ -76,10 +76,10 @@ class TestParseExecParams:
         assert result.command == "python"
         assert result.args == ["-m", "pytest", "tests/test_tool_exec.py"]
 
-    def test_command_argv_list_with_shell_operator_raises(self) -> None:
+    def test_command_argv_list_with_shell_operator_accepted(self) -> None:
         params = {"command": ["ls", "|", "grep", "py"]}
-        with pytest.raises(InvalidParamsError, match="does not run a shell"):
-            parse_exec_params(params)
+        result = parse_exec_params(params)
+        assert result.command == "ls"
 
     def test_preserves_quoted_spaces_in_command_string(self) -> None:
         params = {"command": "python -c \"print('hello world')\""}
@@ -99,10 +99,10 @@ class TestParseExecParams:
         assert result.command == "python"
         assert result.args == ["-m", "pytest", "-q", "tests/test_tool_exec.py"]
 
-    def test_shell_operator_command_string_raises(self) -> None:
+    def test_shell_operator_command_string_accepted(self) -> None:
         params = {"command": "ls | grep py"}
-        with pytest.raises(InvalidParamsError, match="does not run a shell"):
-            parse_exec_params(params)
+        result = parse_exec_params(params)
+        assert result.command == "ls"
 
     def test_malformed_command_string_raises(self) -> None:
         params = {"command": "python -c \"print('hello')"}

@@ -39,6 +39,8 @@ _PRIVATE_HOSTNAMES = frozenset({"localhost"})
 
 _HTTP_SUCCESS_MIN = 200
 _HTTP_SUCCESS_MAX = 300
+_HTTP_REDIRECT_MIN = 300
+_HTTP_REDIRECT_MAX = 400
 _MAX_REDIRECTS = 10
 
 
@@ -198,7 +200,7 @@ def fetch_url(
                     content_type_header: str | None = response.headers.get("content-type")
                     content_type_base = _content_type_base(content_type_header)
 
-                    if 300 <= http_status < 400:
+                    if _HTTP_REDIRECT_MIN <= http_status < _HTTP_REDIRECT_MAX:
                         location: str | None = response.headers.get("location")
                         if not location:
                             result = FetchOutcome(

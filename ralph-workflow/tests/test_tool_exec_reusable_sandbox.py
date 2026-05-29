@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import json
-import os
 import threading
 import time
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
 from ralph.mcp.tools import exec_sandbox
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def test_round_robin_cycles_through_slots(tmp_path: Path) -> None:
@@ -117,7 +112,7 @@ def test_concurrent_acquires_get_different_slots(tmp_path: Path) -> None:
         with manager.acquire(workspace) as sandbox:
             with lock:
                 results.append(sandbox)
-            barrier.wait()
+            barrier.wait(timeout=5.0)
 
     t1 = threading.Thread(target=acquire_and_record)
     t2 = threading.Thread(target=acquire_and_record)
@@ -157,10 +152,9 @@ def test_cleanup_base_is_throttled_on_rapid_calls(tmp_path: Path) -> None:
         call_count += 1
         return original()
 
-    manager._cleanup_base_locked = counting_cleanup  # type: ignore[method-assign]
-
     t0 = 1000.0
     monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(manager, "_cleanup_base_locked", counting_cleanup)
     monkeypatch.setattr(exec_sandbox.time, "monotonic", lambda: t0)
 
     first = manager.cleanup_base()
@@ -168,11 +162,11 @@ def test_cleanup_base_is_throttled_on_rapid_calls(tmp_path: Path) -> None:
     assert first.removed_paths >= 0
 
     t0 += 1.0
-    second = manager.cleanup_base()
+    manager.cleanup_base()
     assert call_count == 1
 
     t0 += 60.0
-    third = manager.cleanup_base()
+    manager.cleanup_base()
     assert call_count == 2
 
     monkeypatch.undo()
@@ -309,8 +303,6 @@ def test_cleanup_per_pool_failure_does_not_block_other_pools(tmp_path: Path) -> 
     pool_b.mkdir(parents=True)
     (pool_a / "a.txt").write_text("a", encoding="utf-8")
     (pool_b / "b.txt").write_text("b", encoding="utf-8")
-
-    from pathlib import Path
 
     original_iterdir = Path.iterdir
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.testing.audit_test_policy import (
@@ -13,7 +12,7 @@ from ralph.testing.audit_test_policy import (
 )
 
 if TYPE_CHECKING:
-    pass
+    from pathlib import Path
 
 
 # ---------------------------------------------------------------------------

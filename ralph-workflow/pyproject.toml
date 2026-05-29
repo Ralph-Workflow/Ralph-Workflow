@@ -147,6 +147,9 @@ max-args = 40
 
 
 
+[tool.ruff.lint.isort]
+known-first-party = ["ralph", "tests"]
+
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-base-classes = ["pydantic.BaseModel", "ralph.pydantic_compat.RalphBaseModel"]
 

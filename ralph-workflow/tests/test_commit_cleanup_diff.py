@@ -15,6 +15,7 @@ from ralph.policy.models import (
 from ralph.prompts.materialize import (
     PromptPhaseContext,
     PromptPhaseOptions,
+    commit_cleanup_diff,
     materialize_prompt_for_phase,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
@@ -26,8 +27,6 @@ if TYPE_CHECKING:
 
 def test_commit_cleanup_diff_excludes_untracked_files(tmp_git_repo: Path) -> None:
     """Untracked files do not appear in the cleanup diff helper output."""
-    from ralph.prompts.materialize import commit_cleanup_diff
-
     (tmp_git_repo / "accidental_binary.exe").write_bytes(b"\x00MZ")
     diff = commit_cleanup_diff(tmp_git_repo)
     assert "accidental_binary.exe" not in diff
@@ -35,8 +34,6 @@ def test_commit_cleanup_diff_excludes_untracked_files(tmp_git_repo: Path) -> Non
 
 def test_commit_cleanup_diff_fallback_on_non_repo_path(tmp_path: Path) -> None:
     """Non-git directory returns sentinel '(no diff available)'."""
-    from ralph.prompts.materialize import commit_cleanup_diff
-
     diff = commit_cleanup_diff(tmp_path)
     assert diff == "(no diff available)"
 

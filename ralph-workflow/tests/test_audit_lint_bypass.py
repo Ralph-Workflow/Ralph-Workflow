@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.testing.audit_lint_bypass import (
-    _PYPROJECT_IGNORE_ALLOWLIST,
     _check_pyproject_config,
     _find_noqa_violations,
     audit_codebase,
@@ -256,7 +255,7 @@ def test_skipped_dirs_excluded(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_per_file_ignores_with_allowlisted_codes_are_allowed(tmp_path: Path) -> None:
-    """pyproject.toml with per-file-ignores of approved codes on matching file patterns — no violation."""
+    """pyproject.toml with allowlisted per-file-ignores on matching patterns — no violation."""
     content = """[tool.ruff.lint]
 select = ["E", "F"]
 

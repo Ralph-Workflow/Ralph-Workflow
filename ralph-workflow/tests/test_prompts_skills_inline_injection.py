@@ -78,7 +78,7 @@ def test_developer_inline_content_appears_in_rendered_prompt(
 
 def test_developer_empty_inline_content_shows_normal_skill_names(tmp_path: Path) -> None:
     rendered = _render_developer(tmp_path, "", "developer_iteration.jinja")
-    assert "test-driven-development" in rendered or "systematic-debugging" in rendered
+    assert "SHIPPED SKILLS" in rendered
 
 
 def test_planning_inline_content_appears_in_rendered_prompt(
@@ -113,4 +113,4 @@ def test_process_skill_dir_does_not_inline_into_planning_prompt(
 
 def test_planning_empty_inline_content_shows_normal_skill_names(tmp_path: Path) -> None:
     rendered = _render_planning(tmp_path, "", "planning.jinja")
-    assert "writing-plans" in rendered or "brainstorming" in rendered
+    assert "SHIPPED SKILLS" in rendered

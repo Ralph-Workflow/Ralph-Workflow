@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -35,8 +36,6 @@ def _run_patched_import(
     Creates a temporary copy of verify.py with the constant replaced,
     then tries to import it. Returns the subprocess result.
     """
-    import tempfile
-
     verify_path = _get_verify_path()
     original = Path(verify_path).read_text(encoding="utf-8")
 
@@ -149,8 +148,6 @@ def _run_label_patched_import(
     Creates a temporary copy of verify.py with the given constants replaced.
     Only patches the constants that are provided (not None).
     """
-    import tempfile
-
     verify_path = _get_verify_path()
     original = Path(verify_path).read_text(encoding="utf-8")
     patched = original
@@ -270,14 +267,12 @@ def test_budget_steps_invariant_survives_minus_o() -> None:
 
 def _run_step_timeout_patched_import(
     step_timeout_value: float, *, minus_o: bool = False
-) -> "subprocess.CompletedProcess[str]":
+) -> subprocess.CompletedProcess[str]:
     """Run a subprocess that patches verify.py's _VERIFY_STEP_TIMEOUT_SECONDS.
 
     Creates a temporary copy of verify.py with the constant replaced,
     then tries to import it. Returns the subprocess result.
     """
-    import tempfile
-
     verify_path = _get_verify_path()
     original = Path(verify_path).read_text(encoding="utf-8")
 

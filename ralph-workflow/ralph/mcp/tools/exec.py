@@ -52,7 +52,6 @@ _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
 _KILL_SIGNAL_ARG_COUNT = 2
 _ARCHIVE_EXTENSIONS = (".tar", ".zip", ".gz", ".bz2", ".xz")
 _ARCHIVE_EXTRACT_FLAGS = ("-x", "--extract", "-d", "--delete")
-_SHELL_OPERATOR_TOKENS = frozenset({"|", "||", "&&", ";", "&", ">", ">>", "<", "<<"})
 _EXEC_USAGE_EXAMPLES = (
     'Examples: {"command": "python -m pytest"}, '
     '{"command": ["python", "-m", "pytest"]}, '
@@ -137,11 +136,6 @@ def _coerce_argv_tokens(values: list[object], *, field_name: str) -> list[str]:
     tokens = [value for value in values if isinstance(value, str)]
     if not tokens:
         raise InvalidParamsError(f"{field_name} must include at least one string token")
-    if any(token in _SHELL_OPERATOR_TOKENS for token in tokens):
-        raise InvalidParamsError(
-            f"{field_name} must not use shell control operators: exec does not run a shell. "
-            "Pass a plain command and arguments instead."
-        )
     return tokens
 
 
@@ -158,11 +152,6 @@ def _parse_shell_words(value: str, *, field_name: str) -> list[str]:
     except ValueError as exc:
         raise InvalidParamsError(f"Malformed {field_name} value: {exc}") from exc
 
-    if any(token in _SHELL_OPERATOR_TOKENS for token in tokens):
-        raise InvalidParamsError(
-            f"{field_name} must not use shell control operators: exec does not run a shell. "
-            "Pass a plain command and arguments instead."
-        )
     return tokens
 
 

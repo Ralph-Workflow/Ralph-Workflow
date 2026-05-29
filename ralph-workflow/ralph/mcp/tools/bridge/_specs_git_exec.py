@@ -10,6 +10,7 @@ from ralph.mcp.tools.names import (
     GIT_LOG_TOOL,
     GIT_SHOW_TOOL,
     GIT_STATUS_TOOL,
+    UNSAFE_EXEC_TOOL,
 )
 
 
@@ -121,8 +122,8 @@ def git_exec_specs() -> list[ToolSpec]:
                 description=(
                     "Execute a bounded subprocess in the workspace. Accepts command or "
                     "argv as a string or string array, plus optional args and timeout_ms. "
-                    "Shell-style strings are tokenized, but shell control operators are "
-                    "rejected because exec does not run a shell. Returns stdout, stderr, "
+                    "Shell-style strings are tokenized; the command blacklist is the "
+                    "security boundary. Returns stdout, stderr, "
                     'and exit_code. Example: {"command": "python -m pytest", '
                     '"args": ["-q"], "timeout_ms": 5000}. '
                     "Some commands may still be blacklisted; prefer structured tools "
@@ -161,7 +162,7 @@ def git_exec_specs() -> list[ToolSpec]:
                             ],
                             "description": (
                                 "Optional command arguments. Pass either an array of strings "
-                                "or a shell-style string without shell control operators "
+                                "or a shell-style string "
                                 "(example values: ['-la'], '--help', ['.', '--max-depth', '2'])."
                             ),
                         },
@@ -180,5 +181,44 @@ def git_exec_specs() -> list[ToolSpec]:
             ),
             module_name="ralph.mcp.tools.exec",
             handler_name="handle_exec_command",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=UNSAFE_EXEC_TOOL,
+                description=(
+                    "DANGEROUS: Execute an unrestricted shell command in the real repository "
+                    "directory. All shell operators (|, &&, ||, ;, &, >, >>, <, <<) work. "
+                    "Only version control commands (git, hg, svn) are blocked. "
+                    "Required param: command (string, the full shell command). "
+                    "Optional param: timeout_ms (integer, default 30000). "
+                    "Returns stdout, stderr, and exit_code. "
+                    'Example: {"command": "make build && npm test"}.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": (
+                                "Full shell command string. Shell operators (|, &&, ||, ;) work as "
+                                "normal. Version control commands (git, hg, svn) are blocked. "
+                                '(example values: "make build", "npm test && npm lint").'
+                            ),
+                        },
+                        "timeout_ms": {
+                            "type": "number",
+                            "description": (
+                                "Timeout in milliseconds (default: 30000, "
+                                "example values: 5000, 10000, 60000)."
+                            ),
+                            "default": 30000,
+                        },
+                    },
+                    "required": ["command"],
+                },
+                required_capability="ProcessExecUnbounded",
+            ),
+            module_name="ralph.mcp.tools.unsafe_exec",
+            handler_name="handle_unsafe_exec",
         ),
     ]

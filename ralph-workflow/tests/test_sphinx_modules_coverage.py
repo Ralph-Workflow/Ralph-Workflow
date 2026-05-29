@@ -79,6 +79,8 @@ _EXCLUDED: dict[str, str] = {
     "recovery.recovery_controller_options": "internal recovery type, not public API",
     "testing.fake_run": "test infrastructure, not public API",
     "testing.audit_test_policy": "test infrastructure, not public API",
+    "testing.audit_lint_bypass": "test infrastructure, not public API",
+    "testing.audit_typecheck_bypass": "test infrastructure, not public API",
     "test_suites": "internal test runner helper, not public API",
 }
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.util
 from datetime import UTC, datetime
 from importlib import import_module
 from typing import TYPE_CHECKING
@@ -15,6 +16,8 @@ from ralph.skills._installer import check_skills_update_available, install_basel
 from ralph.skills._recheck_policy import DEFAULT_POLICY, RecheckPolicy, needs_recheck
 from ralph.skills._state_store import load_capability_state, save_capability_state
 from ralph.workspace.scope import resolve_workspace_scope
+
+_DDGS_AVAILABLE = importlib.util.find_spec("ralph.mcp.websearch.backends.ddgs") is not None
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,11 +53,7 @@ def _find_configured_docs_mcp_url(workspace_root: Path | None = None) -> str | N
 
 
 def _web_search_is_available() -> bool:
-    try:
-        from ralph.mcp.websearch.backends.ddgs import DDGS as _DDGS
-    except ImportError:
-        return False
-    return _DDGS is not None
+    return _DDGS_AVAILABLE
 
 
 def _visit_url_is_available() -> bool:

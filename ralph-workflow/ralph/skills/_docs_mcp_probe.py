@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import httpx
 
 SUPPORTED_DOCS_MCP_PATHS: frozenset[str] = frozenset({"/mcp", "/sse"})
+_HTTP_OK = 200
 
 
 def is_supported_docs_mcp_url(url: str) -> bool:
@@ -25,7 +26,7 @@ def probe_docs_mcp(url: str, *, timeout: float = 2.0) -> bool:
         return False
     try:
         response = httpx.get(url, timeout=timeout)
-        return response.status_code == 200
+        return response.status_code == _HTTP_OK
     except Exception:
         return False
 

@@ -59,6 +59,8 @@ if TYPE_CHECKING:
 # MemoryWorkspace, inject fake clocks). Do NOT raise these constants.
 _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
 _TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
+_BUDGET_EPSILON: Final = 1e-9
+_MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
 
 # --- Verification step definitions ---
 #
@@ -144,7 +146,7 @@ for idx in _BUDGET_TRACKED_STEPS:
 
 # Budget-constant integrity: the 60-second combined budget is ABSOLUTE and
 # IMMUTABLE. This epsilon check prevents any drift or accidental change.
-if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9:
+if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < _BUDGET_EPSILON:
     raise RuntimeError(
         f"_TOTAL_TEST_BUDGET_SECONDS must be 60.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
     )
@@ -156,7 +158,7 @@ if not _VERIFY_STEP_TIMEOUT_SECONDS > 0:
     raise RuntimeError(
         "_VERIFY_STEP_TIMEOUT_SECONDS must be positive"
     )
-if _VERIFY_STEP_TIMEOUT_SECONDS < 5.0:
+if _VERIFY_STEP_TIMEOUT_SECONDS < _MIN_VERIFY_STEP_TIMEOUT_SECONDS:
     raise RuntimeError(
         f"_VERIFY_STEP_TIMEOUT_SECONDS must be at least 5.0 (got {_VERIFY_STEP_TIMEOUT_SECONDS})"
     )

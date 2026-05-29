@@ -59,6 +59,7 @@ _ALLOWLIST: list[tuple[str, str]] = [
     # Historical concept references — allowed only when describing lineage,
     # not when using 'Ralph' as the current product name.
     ("Ralph loop", "historical concept reference: the Ralph loop"),
+    ("Ralph-loop", "historical concept reference: the Ralph-loop (hyphenated)"),
     ("original Ralph", "historical lineage reference: original Ralph"),
     # ASCII art logo lines — the banner spells out 'Ralph' as visual art
     ("|  _ \\", "ASCII art banner line"),

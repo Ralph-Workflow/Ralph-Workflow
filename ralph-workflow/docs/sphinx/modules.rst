@@ -1743,6 +1743,13 @@ ralph.mcp.tools.exec
    :members:
    :show-inheritance:
 
+ralph.mcp.tools.unsafe_exec
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.tools.unsafe_exec
+   :members:
+   :show-inheritance:
+
 ralph.mcp.tools.exec_overlay
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

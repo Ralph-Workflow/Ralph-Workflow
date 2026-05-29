@@ -74,7 +74,7 @@ async def test_arun_concurrent_serializes() -> None:
         with lock:
             running_count += 1
             max_concurrent = max(max_concurrent, running_count)
-        op_release.wait()
+        op_release.wait(timeout=5.0)
         with lock:
             running_count -= 1
         return 1

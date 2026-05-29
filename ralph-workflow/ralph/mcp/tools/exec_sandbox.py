@@ -123,10 +123,8 @@ def _compute_workspace_size_bytes(workspace_root: Path) -> int:
                     if entry.is_dir(follow_symlinks=False):
                         _scan_dir(child)
                     elif entry.is_file(follow_symlinks=False):
-                        try:
+                        with suppress(OSError):
                             total += entry.stat().st_size
-                        except OSError:
-                            pass
         except OSError:
             pass
 
