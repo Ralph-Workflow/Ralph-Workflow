@@ -28,6 +28,7 @@ SCRIPTS = [
 POST_AUDIT_RUNTIME_SCRIPTS = [
     ROOT / 'agents/marketing/outcome_capability_runner.py',
     ROOT / 'agents/marketing/outcome_execution_board_runner.py',
+    ROOT / 'agents/marketing/hold_cycle_breaker.py',
 ]
 POST_AUDIT_TRIGGER_SYSTEM_DESIGN_REPAIR = 'post_audit_system_design_repair'
 POST_AUDIT_TRIGGER_MEASUREMENT_PENDING = 'post_audit_measurement_pending_follow_through'
