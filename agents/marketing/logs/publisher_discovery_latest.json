@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-05-29T00:30:06.291907+00:00",
+  "timestamp": "2026-05-29T07:37:40.558645+00:00",
   "saturated_domains_count": 444,
-  "discovered_count": 49,
+  "discovered_count": 47,
   "ranked": [
     {
       "title": "9 Best AI Orchestration Tools in 2026: A Comparison Guide",
@@ -18,32 +18,11 @@
       "score": 6
     },
     {
-      "title": "Agent Orchestration Frameworks Compared: LangGraph vs CrewAI vs AutoGen ...",
-      "url": "https://getbeam.dev/blog/agent-orchestration-frameworks-compared-2026.html",
-      "source": "getbeam.dev",
-      "query": "AI agent orchestration comparison 2026",
-      "score": 6
-    },
-    {
       "title": "10 Best AI Coding Agents in 2026 \u2014 Complete Guide &amp; Comparison",
       "url": "https://openagents.org/blog/posts/2026-05-21-best-ai-coding-agents",
       "source": "openagents.org",
-      "query": "unattended coding agent tool comparison",
+      "query": "autonomous coding workflow open source",
       "score": 6
-    },
-    {
-      "title": "Agent Orchestration 2026: LangGraph, CrewAI &amp; AutoGen Guide",
-      "url": "https://iterathon.tech/blog/ai-agent-orchestration-frameworks-2026",
-      "source": "iterathon.tech",
-      "query": "AI agent orchestration comparison 2026",
-      "score": 5
-    },
-    {
-      "title": "The 11 Best Agentic Orchestration Platforms for 2026: A Critical Review",
-      "url": "https://www.appintent.com/software/ai/agentic-orchestration/",
-      "source": "www.appintent.com",
-      "query": "AI agent orchestration comparison 2026",
-      "score": 5
     },
     {
       "title": "How to Set Up a Multi-Agent Code Review Pipeline in OpenClaw",
@@ -60,18 +39,39 @@
       "score": 5
     },
     {
-      "title": "Open Source Agentic Frameworks: LangGraph vs CrewAI &amp; More",
-      "url": "https://blog.premai.io/open-source-agentic-frameworks-langgraph-vs-crewai-more/",
-      "source": "blog.premai.io",
-      "query": "agentic coding framework comparison open source",
+      "title": "Code Review Pipeline: Multi-Agent Claude Code Skill",
+      "url": "https://mcpmarket.com/tools/skills/code-review-pipeline",
+      "source": "mcpmarket.com",
+      "query": "multi-agent coding pipeline review",
       "score": 5
     },
     {
-      "title": "Top Open Source Agentic Frameworks : CrewAI vs AutoGen vs LangGraph vs Lyzr",
-      "url": "https://www.lyzr.ai/blog/top-open-source-agentic-frameworks/",
-      "source": "www.lyzr.ai",
-      "query": "agentic coding framework comparison open source",
-      "score": 5
+      "title": "2026 AI Agent Framework Showdown: LangGraph vs CrewAI vs AG2 vs Claude ...",
+      "url": "https://qubittool.com/blog/ai-agent-framework-comparison-2026",
+      "source": "qubittool.com",
+      "query": "AI agent orchestration comparison 2026",
+      "score": 4
+    },
+    {
+      "title": "LangChain vs AutoGen vs CrewAI: Which AI Agent Framework Wins in 2026 ...",
+      "url": "https://scopir.com/posts/best-ai-agent-frameworks-2026/",
+      "source": "scopir.com",
+      "query": "AI agent orchestration comparison 2026",
+      "score": 4
+    },
+    {
+      "title": "15 best AI orchestration platforms for 2026 - Guideflow Blog",
+      "url": "https://www.guideflow.com/blog/best-ai-orchestration-platforms",
+      "source": "www.guideflow.com",
+      "query": "AI agent orchestration comparison 2026",
+      "score": 4
+    },
+    {
+      "title": "Coding Agents Comparison: Cursor, Claude Code, GitHub Copilot, and more",
+      "url": "https://artificialanalysis.ai/agents/coding",
+      "source": "artificialanalysis.ai",
+      "query": "unattended coding agent tool comparison",
+      "score": 4
     }
   ],
   "next_action": "Review the ranked list for publisher outreach candidates."

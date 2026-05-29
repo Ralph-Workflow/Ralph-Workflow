@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-28T18:43:15.807017+00:00",
+  "generated_at": "2026-05-29T07:30:01.544422+00:00",
   "pypi": {
     "status": "ok",
     "version": "0.8.7",
@@ -12,22 +12,20 @@
     "watchers": 2,
     "forks": 2,
     "open_issues": 4,
-    "updated_at": "2026-05-28T19:49:21+02:00"
+    "updated_at": "2026-05-29T06:26:41+02:00"
   },
   "downloads": {
-    "status": "ok",
-    "total_downloads": 11984,
-    "last_30_days": 1498,
-    "last_7_days": 166
+    "status": "fallback",
+    "total_downloads": 1498,
+    "last_30_days": 300,
+    "last_7_days": 70,
+    "note": "API error: HTTP Error 429: Too Many Requests, using cached values from adoption_metrics"
   },
   "conversion": {
-    "status": "ok",
-    "conversion_ratio": 0.001,
-    "conversion_pct": "0.10%",
-    "total_downloads": 11984,
-    "stars": 12,
-    "downloads_per_star": 998,
-    "health": "critical"
+    "status": "error",
+    "error": "pypi=fallback, codeberg=ok",
+    "conversion_ratio": null,
+    "health": "unknown"
   },
   "thresholds": {
     "critical": 0.005,
@@ -35,9 +33,7 @@
     "healthy": 0.02
   },
   "readme_cta_deploy_date": "2026-05-21T00:00:00+00:00",
-  "days_since_readme_cta": 7,
+  "days_since_readme_cta": null,
   "needs_additional_cta": false,
-  "recommendations": [
-    "PyPI\u2192Codeberg conversion at 0.10% is CRITICAL. Consider: 1) post-install message directing to Codeberg, 2) in-app star nudge on first successful run, 3) README copy A/B test with stronger CTA"
-  ]
+  "recommendations": []
 }

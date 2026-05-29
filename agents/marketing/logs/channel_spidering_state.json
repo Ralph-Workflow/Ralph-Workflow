@@ -6,5 +6,33 @@
     "total_failures": 0,
     "last_fingerprint": "",
     "recent_cooldown_hits": 1
+  },
+  "hackernews": {
+    "last_attempt_ts": "2026-05-29T06:52:18.588366+00:00",
+    "last_ok": false,
+    "total_attempts": 1,
+    "total_failures": 1,
+    "last_fingerprint": "spidering_guard_rejected"
+  },
+  "lobsters": {
+    "last_attempt_ts": "2026-05-29T06:52:18.591823+00:00",
+    "last_ok": false,
+    "total_attempts": 1,
+    "total_failures": 1,
+    "last_fingerprint": "spidering_guard_rejected"
+  },
+  "reddit": {
+    "last_attempt_ts": "2026-05-29T06:52:18.592020+00:00",
+    "last_ok": false,
+    "total_attempts": 1,
+    "total_failures": 1,
+    "last_fingerprint": "spidering_guard_rejected"
+  },
+  "dev.to": {
+    "last_attempt_ts": "2026-05-29T06:52:18.592199+00:00",
+    "last_ok": false,
+    "total_attempts": 1,
+    "total_failures": 1,
+    "last_fingerprint": "spidering_guard_rejected"
   }
 }

@@ -1,5 +1,5 @@
 # Apollo Sequence Launch Packet
-Generated: 2026-05-25T23:11:13+02:00
+Generated: 2026-05-29T09:00:01+02:00
 
 - Source list: Ralph Workflow — curator follow-up 2026-05-22
 - Verified visible records: 5

@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-29T06:28:19.711011",
+  "ts": "2026-05-29T08:21:43.469256",
   "jobs_checked": 24,
-  "issues_found": 7,
+  "issues_found": 13,
   "issues": [
     {
       "job_id": "0372271b-8c4e-4986-ad27-31e50d3fb54c",
@@ -43,17 +43,41 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 676.81,
+      "artifact_age_minutes": 790.17,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review",
+      "category": "loop_verification_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Docs system is well-aligned with the positioning. The README\u2192START_HERE\u2192docs/README journey is coherent, promoted next-click pages reinforce the same story, copy is clean and confident, and proof pages are correctly subordinated. No hard failures."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_github-mirror-readme-built-in-capabilities-secti",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "GitHub mirror README 'Built-in capabilities' section uses 'Artifact handoff' and 'Phase routing' \u2014 slightly internal phrasing. Consider 'Seamless agent handoffs' and 'Multi-step pipeline routing' instead.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: GitHub mirror README 'Built-in capabilities' section uses 'Artifact handoff' and 'Phase routing' \u2014 slightly internal phrasing. Consider 'Seamless agent handoffs' and 'Multi-step pipeline routing' instead."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_reviewable-output-md-title-uses-reviewable-outpu",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "reviewable-output.md title uses 'reviewable output' which risks becoming a top-level differentiator sound. The content correctly suborns it as secondary proof, but the title alone could mislead a skimmer.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: reviewable-output.md title uses 'reviewable output' which risks becoming a top-level differentiator sound. The content correctly suborns it as secondary proof, but the title alone could mislead a skimmer."
     },
     {
       "job_id": "0372271b-8c4e-4986-ad27-31e50d3fb54c",
       "name": "apollo-channel-monitor_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: apollo-channel-monitor:timeout_risk repeat_count=5",
-      "repeats_in_recent_history": 5,
+      "likely_cause": "Incident escalation level=critical: apollo-channel-monitor:timeout_risk repeat_count=12",
+      "repeats_in_recent_history": 12,
       "owner_domain": null,
       "incident_key": "apollo-channel-monitor::timeout_risk",
       "escalation_level": "critical",
@@ -64,8 +88,8 @@
       "name": "marketing-research-daily_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: marketing-research-daily:timeout_risk repeat_count=49",
-      "repeats_in_recent_history": 49,
+      "likely_cause": "Incident escalation level=critical: marketing-research-daily:timeout_risk repeat_count=56",
+      "repeats_in_recent_history": 56,
       "owner_domain": "marketing",
       "incident_key": "marketing-research-daily::timeout_risk",
       "escalation_level": "critical",
@@ -76,22 +100,62 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=87",
-      "repeats_in_recent_history": 87,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=94",
+      "repeats_in_recent_history": 94,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_escalation",
+      "category": "escalation_required",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=70",
+      "repeats_in_recent_history": 70,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review::loop_verification_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_github-mirror-readme-built-in-capabilities-secti_escalation",
+      "category": "escalation_required",
+      "last_error": "GitHub mirror README 'Built-in capabilities' section uses 'Artifact handoff' and 'Phase routing' \u2014 slightly internal phrasing. Consider 'Seamless agent handoffs' and 'Multi-step pipeline routing' instead.",
+      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_github-mirror-readme-built-in-capabilities-secti:review_followup_required repeat_count=3",
+      "repeats_in_recent_history": 3,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review_mustFix_github-mirror-readme-built-in-capabilities-secti::review_followup_required",
+      "escalation_level": "owner",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_reviewable-output-md-title-uses-reviewable-outpu_escalation",
+      "category": "escalation_required",
+      "last_error": "reviewable-output.md title uses 'reviewable output' which risks becoming a top-level differentiator sound. The content correctly suborns it as secondary proof, but the title alone could mislead a skimmer.",
+      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_reviewable-output-md-title-uses-reviewable-outpu:review_followup_required repeat_count=3",
+      "repeats_in_recent_history": 3,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review_mustFix_reviewable-output-md-title-uses-reviewable-outpu::review_followup_required",
+      "escalation_level": "owner",
       "blocked_by": []
     }
   ],
   "repairs_attempted": [
     {
-      "type": "increase_timeout",
-      "job": "apollo-channel-monitor",
-      "from": 2400,
-      "to": 3600,
+      "type": "rerun_docs_verifier",
+      "job": "docs_agentic_review",
       "ok": true,
-      "detail": "{\n  \"id\": \"0372271b-8c4e-4986-ad27-31e50d3fb54c\",\n  \"agentId\": \"main\",\n  \"sessionKey\": \"agent:main:matrix:direct:@mistlight_oriroris:matrix.org\",\n  \"name\": \"apollo-channel-monitor\",\n  \"enabled\": true,\n  \"createdAtMs\": 1779150431797,\n  \"schedule\": {\n    \"kind\": \"cron\",\n    \"expr\": \"25 */4 * * *\",\n   "
+      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is well-aligned with the positioning. The README\\u2192START_HERE\\u2192docs/README journey is coherent, promoted next-click pages reinforce the same story, copy is"
+    },
+    {
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "docs_agentic_review_mustFix_readme-built-in-capabilities-lists-phase-routing",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-05-29T06:21:10.233118+00:00"
     },
     {
       "type": "rerun_independent_architecture_verification",
@@ -103,19 +167,37 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-29T06:28:10.770741+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-29T08:21:24.858527+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing-research-daily_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780028892686:104\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780035687447:109\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780035690162:111\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_readme-built-in-capabilities-lists-phase-routing_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780035696875:112\"\n}"
     }
   ]
 }

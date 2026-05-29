@@ -1,14 +1,14 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-29T08:18:59
+Generated: 2026-05-29T09:48:14
 
 ## Why this board exists
-- Codeberg is still flat in the active window (9 samples; stars +1, watchers +0, forks +0).
+- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
 - Multiple live lanes already exist, so this board consolidates the best executable assets instead of letting them stay siloed across separate packet files.
 - Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
 ## Active review windows
-- Apollo next review: 2026-06-01T23:11:13.732870+02:00
-- Apollo launch review: 2026-06-01T23:11:13.732870+02:00
+- Apollo next review: 2026-05-29T09:00:01.629178+02:00
+- Apollo launch review: 2026-06-05T09:00:01.629178+02:00
 - Short review-window congestion clears at: 2026-05-29T09:57:11
 - Post-hold marketer rerun scheduled: 2026-05-29T09:57:11
 - StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
@@ -17,15 +17,12 @@ Generated: 2026-05-29T08:18:59
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
-- No do-now handoff packet is currently truthful in this review window.
-- Apollo has a verified non-zero list, but the current runtime is auth-blocked (cloudflare_auth_blocked), so do not surface the launch/review packet as a do-now asset until the runtime blocker clears.
-- Fresh publisher outreach already shipped in the current review window for: SitePoint.
-- Curator manual-contact packet already exists but was already delivered in the current review window; do not redeliver it yet.
-- Curator handoff packet exists, but curator reply/backlink review windows are already saturated in the current short window.
-- Comparison backlink packet exists, but it was already manually delivered in the current review window.
-- Directory secondary-surface repair already shipped in the current review window; wait for the follow-up date or a target-set change before resurfacing it.
-- StackOverflow handoff packet exists, but the post-cooldown slot already burned without a fresh placement-ready outcome.
-- If this board is still empty after one of these blockers clears, the lane architecture needs another repair.
+### 1. Apollo runtime-blocker review packet
+- When: Do now
+- Packet: /home/mistlight/.openclaw/workspace/drafts/2026-05-29_apollo_runtime_blocker_review_packet.md
+- Targets: Ralph Workflow curator follow-up — Codeberg CTA
+- Why this matters: Apollo follow-up is already due, but runtime auth is blocked; the truthful next move is to carry a blocker-specific recovery packet instead of collapsing back into another empty-board guard pause.
+
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
 - adoption_metrics_latest.json → Codeberg movement remains the primary success gate
@@ -36,7 +33,7 @@ Generated: 2026-05-29T08:18:59
 
 ## Verified infrastructure state (programmatic, not fabricated)
 - **Telegraph guard**: cooldown (cooldown_active) — clears ~11:59 UTC
-- **Telegraph queue**: 2 blogs pending cross-post (dry-run discovery verified), 0 already posted
+- **Telegraph queue**: 5 blogs pending cross-post (dry-run discovery verified), 0 already posted
 - **Telegraph crontab**: `0 6,14,22 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
 - **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED
 

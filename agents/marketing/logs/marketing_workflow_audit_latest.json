@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-05-29T01:41:35.292438",
+  "generated_at": "2026-05-29T08:31:02.404715",
   "current_bottleneck": "conversion_to_free_use",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
   "repeated_openings": [
-    "Which of the five made the most difference for your team? Worth thinking about explicitly \u2014 most teams do not name it clearly until after it becomes a bottleneck."
+    "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "adoption_metrics": [
     {
@@ -17,9 +17,9 @@
     },
     {
       "platform": "PyPI",
-      "downloads_month": 1498,
-      "downloads_week": 166,
-      "downloads_day": 10,
+      "downloads_month": 1428,
+      "downloads_week": 52,
+      "downloads_day": 0,
       "total_downloads": null,
       "version": "0.8.7",
       "html_url": "https://pypi.org/project/ralph-workflow/"
@@ -57,7 +57,7 @@
     "findings": [
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
-      "PyPI has 1498 downloads/month (10/day) \u2014 real usage signal that repo metrics don't capture."
+      "PyPI has 1428 downloads/month (0/day) — real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [],
     "next_focus": [
@@ -68,20 +68,20 @@
     "mirror_repo_flat_window"
   ],
   "worked": [
-    "Execution path produced a live external action with non-flat outcome context: distribution_architecture_repair_plus_blog_deploy. Stars delta: +1"
+    "Execution path produced a live external action with non-flat outcome context: deployed_blog_post. Stars delta: +1"
   ],
   "not_worked": [
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
-    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly \u2014 most teams do not name it clearly until after it becomes a bottleneck."
+    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
   ],
   "should_change_now": [
-    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving."
+    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
   "dormant_risks": [
     "reddit_style_repetition_suspended_while_channel_blocked"
@@ -91,7 +91,7 @@
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
-      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving.",
+      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
       "kill_condition": "N/A (mirror, not primary)",
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
@@ -108,10 +108,9 @@
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains distribution_architecture_repair_plus_blog_deploy; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (distribution_architecture_repair_plus_blog_deploy), so the system is still shipping output even though outcome movement is not visible yet.",
-    "A fresh outcome-capability runtime is now logged (manual_outreach_asset_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.",
-    "Apollo managed outbound is already inside an active measurement window until 2026-06-01T23:11:13.732870+02:00, so the loop should not repackage the same lane before that checkpoint."
+    "The most recent runtime activity was apollo_outbound_verification, but the latest meaningful external/replacement execution remains deployed_blog_post; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (deployed_blog_post), so the system is still shipping output even though outcome movement is not visible yet.",
+    "A fresh outcome-capability runtime is now logged (comparison_backlink_outreach), so the system-design repair should be treated as shipped even though repo adoption has not moved yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -144,20 +143,20 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_measurement_hold.json",
-    "type": "distribution_lane_switch",
-    "title": "Distribution lane decision: measurement_hold",
-    "status": "prepared",
-    "ok": true,
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_083102_apollo_outbound_verification.json",
+    "type": "apollo_outbound_verification",
+    "title": "Apollo outbound verification",
+    "status": "verification_timeout",
+    "ok": false,
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_0030_blog_sandbox_security_deployed.json",
-    "type": "distribution_architecture_repair_plus_blog_deploy",
-    "title": "distribution architecture repair plus blog deploy",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_0644_blog_tool_loop_deployed.json",
+    "type": "deployed_blog_post",
+    "title": "deployed blog post",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
@@ -166,47 +165,41 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-28T05:51:12.385684+02:00",
-    "status": "measurement_pending_launch_window",
-    "measurement_pending": true,
-    "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",
+    "generated_at": "2026-05-29T08:31:02.222505+02:00",
+    "status": "runtime_auth_blocked",
+    "measurement_pending": false,
+    "summary": "Apollo has a non-zero verified list, but live sequence-send evidence cannot be confirmed from the current runtime. Apollo runtime is blocked by a Cloudflare auth interstitial.",
     "launch_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_apollo_sequence_launch.json",
     "live_list_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_apollo_list_verification.json",
-    "outbound_verification_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_092656_apollo_outbound_verification.json",
+    "outbound_verification_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_083102_apollo_outbound_verification.json",
+    "record_count": 5,
+    "sequence_name": "Ralph Workflow curator follow-up — Codeberg CTA",
+    "final_url": "https://app.apollo.io/#/lists?sortByField=updated_at&sortAscending=false&groupBy[]=labelModality",
+    "verification_timestamp": "2026-05-29T08:30:01.492075+02:00",
+    "evidence": [
+      "Apollo UI shows list 'Ralph Workflow — curator follow-up 2026-05-22' with 5 visible records.",
+      "The curator follow-up asset is now usable for sequence launch with a Codeberg-primary CTA."
+    ],
+    "needs_live_verification": true,
+    "runtime_blocker_status": "cloudflare_auth_blocked",
+    "runtime_blocker_summary": "Apollo runtime is blocked by a Cloudflare auth interstitial.",
+    "runtime_blocker_notes": "Cloudflare interstitial detected in response body from https://app.apollo.io/. Browserless probe status: cloudflare_auth_blocked. Browserless saw Cloudflare interstitial content from https://app.apollo.io/.",
+    "runtime_blocker_timestamp": "2026-05-29T05:41:25.405251+02:00",
+    "runtime_status_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/apollo_status.json",
+    "runtime_status_url": "https://app.apollo.io/#/login",
     "launch_timestamp": "2026-05-25T23:11:13.732870+02:00",
-    "record_count": 758,
-    "sequence_name": "Ralph Workflow Seq",
-    "final_url": "https://app.apollo.io/#/sequences/69b1c2bad74f30001d57b003",
+    "next_review_at": "2026-05-25T23:11:13.732870+02:00",
     "launch_review_at": "2026-06-01T23:11:13.732870+02:00",
     "repo_visit_review_at": "2026-06-08T23:11:13.732870+02:00",
-    "adoption_review_at": "2026-06-24T23:11:13.732870+02:00",
-    "next_review_at": "2026-06-01T23:11:13.732870+02:00",
-    "verification_timestamp": "2026-05-27T09:26:31.126961+02:00",
-    "evidence": [
-      "Apollo sequence 'Ralph Workflow Seq' is active with 653 active contacts, 105 not yet sent, and 1028 delivered.",
-      "Sequence detail contains the Codeberg-primary CTA: https://codeberg.org/RalphWorkflow/Ralph-Workflow",
-      "Sequence detail also contains the GitHub mirror secondary CTA: https://github.com/Ralph-Workflow/Ralph-Workflow",
-      "Codeberg appears before GitHub in the outbound copy.",
-      "Observed downstream activity on the live sequence: 76 clicks, 1 replies, 193 spam-blocked."
-    ],
-    "needs_live_verification": false
+    "adoption_review_at": "2026-06-24T23:11:13.732870+02:00"
   },
   "shared_artifact_sync": {
     "status": "synced",
-    "selected_lane": "distribution_architecture_guard_pause",
+    "selected_lane": "owned_content",
     "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md",
-    "execution_board_targets": [],
+    "execution_board_targets": [
+      "Ralph Workflow curator follow-up — Codeberg CTA"
+    ],
     "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json"
-  },
-  "github_auth_status": {
-    "git_ssh": "authenticated",
-    "gh_cli": "unauthenticated",
-    "can_push_tags": true,
-    "can_push_branches": true,
-    "can_submit_prs": false,
-    "can_create_issues": false,
-    "verified_at": "2026-05-29T05:37:41.972252+02:00",
-    "verified_by": "pushed ralph-workflow-v0.8.8 tag to GitHub via SSH",
-    "note": "Git SSH fully operational. gh CLI unauthenticated \u2014 blocks API operations (PR creation, issue management) but NOT git push/pull/tag operations."
   }
 }

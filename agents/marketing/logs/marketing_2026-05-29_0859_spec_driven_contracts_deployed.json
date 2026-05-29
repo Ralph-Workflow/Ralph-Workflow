@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-05-29T07:01:24.416052+00:00",
+  "type": "blog_deploy",
+  "title": "Spec-Driven AI Agent: Why Explicit Contracts Change What Your Agent Produces",
+  "action": "deployed_blog_post",
+  "blog_path": "content/blog/spec-driven-ai-agent-explicit-contracts.md",
+  "blog_url": "https://ralphworkflow.com/blog/spec-driven-ai-agent-explicit-contracts",
+  "target_keywords": [
+    "spec-driven AI agent",
+    "spec-driven development",
+    "AI agent contracts"
+  ],
+  "keyword_cluster": "spec-driven-ai-agent",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "codeberg_cta": true,
+  "github_mirror_cta": true,
+  "deploy_verified": "cap production deploy succeeded, puma restarted, live public surface verified OK (HTTP 200, 5 Codeberg mentions)",
+  "content_summary": "Concrete prompt-vs-spec tutorial showing why explicit contracts change agent output. Distinct from May 10 spec-driven post (which was about workflow-as-unit-of-work). This one is a direct show-dont-tell comparison.",
+  "four_questions_answered": {
+    "what": "Ralph Workflow runs existing AI coding agents through spec-first phases with automated verification",
+    "who": "Developers who have hit the limits of prompt-based AI coding and want structure",
+    "why_different": "CLI enforces spec-first phases, runs verify automatically, loops until diff satisfies spec",
+    "why_now": "Free, open-source, runs with your existing agents on your own machine"
+  },
+  "expected_outcome": "Organic search traffic from spec-driven-AI-agent keyword cluster. Distinct angle from May 10 post avoids cannibalization.",
+  "measurement_window_days": 14,
+  "kill_condition": "If no organic impressions/clicks on spec-driven keyword cluster within 14 days, de-prioritize this angle."
+}

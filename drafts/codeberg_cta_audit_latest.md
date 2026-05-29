@@ -1,15 +1,18 @@
 # Codeberg CTA Audit Report
-Generated: 2026-05-29T01:35:26.318790+00:00
+Generated: 2026-05-29T07:00:25.827927+00:00
 
-## Summary: PASS
-- Files with repo links: 469
-- High severity issues: 0
+## Summary: FAIL
+- Files with repo links: 473
+- High severity issues: 1
 - Medium severity issues: 11
 
 ## Rule in force
 - All public-facing content must link Codeberg as primary and GitHub as mirror
 - GitHub-only links are only acceptable in GitHub-specific context (e.g. PR templates)
 - Codeberg link must appear before GitHub link when both are present
+
+## ⚠️ High-Severity: Missing Codeberg Links
+- **/home/mistlight/.openclaw/workspace/drafts/2026-05-29_pypi_publishing_handoff.md**: File links GitHub 2 times but never links Codeberg.
 
 ## Medium-Severity: Ordering or Missing Surface
 - **/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_are-vs-code-copilot-agent-debug-log-token-counts-t.md**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.

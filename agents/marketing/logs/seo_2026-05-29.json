@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-29T05:39:06.163807",
+  "timestamp": "2026-05-29T09:00:01.807586",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -30,7 +30,7 @@
     },
     "sitemap": {
       "status": 200,
-      "url_count": 92,
+      "url_count": 95,
       "urls": [
         "https://ralphworkflow.com/",
         "https://ralphworkflow.com/privacy",

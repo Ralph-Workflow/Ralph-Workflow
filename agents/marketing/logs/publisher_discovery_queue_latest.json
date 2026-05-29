@@ -14,32 +14,11 @@
     "score": 6
   },
   {
-    "title": "Agent Orchestration Frameworks Compared: LangGraph vs CrewAI vs AutoGen ...",
-    "url": "https://getbeam.dev/blog/agent-orchestration-frameworks-compared-2026.html",
-    "source": "getbeam.dev",
-    "query": "AI agent orchestration comparison 2026",
-    "score": 6
-  },
-  {
     "title": "10 Best AI Coding Agents in 2026 \u2014 Complete Guide &amp; Comparison",
     "url": "https://openagents.org/blog/posts/2026-05-21-best-ai-coding-agents",
     "source": "openagents.org",
-    "query": "unattended coding agent tool comparison",
+    "query": "autonomous coding workflow open source",
     "score": 6
-  },
-  {
-    "title": "Agent Orchestration 2026: LangGraph, CrewAI &amp; AutoGen Guide",
-    "url": "https://iterathon.tech/blog/ai-agent-orchestration-frameworks-2026",
-    "source": "iterathon.tech",
-    "query": "AI agent orchestration comparison 2026",
-    "score": 5
-  },
-  {
-    "title": "The 11 Best Agentic Orchestration Platforms for 2026: A Critical Review",
-    "url": "https://www.appintent.com/software/ai/agentic-orchestration/",
-    "source": "www.appintent.com",
-    "query": "AI agent orchestration comparison 2026",
-    "score": 5
   },
   {
     "title": "How to Set Up a Multi-Agent Code Review Pipeline in OpenClaw",
@@ -56,17 +35,10 @@
     "score": 5
   },
   {
-    "title": "Open Source Agentic Frameworks: LangGraph vs CrewAI &amp; More",
-    "url": "https://blog.premai.io/open-source-agentic-frameworks-langgraph-vs-crewai-more/",
-    "source": "blog.premai.io",
-    "query": "agentic coding framework comparison open source",
-    "score": 5
-  },
-  {
-    "title": "Top Open Source Agentic Frameworks : CrewAI vs AutoGen vs LangGraph vs Lyzr",
-    "url": "https://www.lyzr.ai/blog/top-open-source-agentic-frameworks/",
-    "source": "www.lyzr.ai",
-    "query": "agentic coding framework comparison open source",
+    "title": "Code Review Pipeline: Multi-Agent Claude Code Skill",
+    "url": "https://mcpmarket.com/tools/skills/code-review-pipeline",
+    "source": "mcpmarket.com",
+    "query": "multi-agent coding pipeline review",
     "score": 5
   },
   {
@@ -77,10 +49,17 @@
     "score": 4
   },
   {
-    "title": "AI Coding Tools 2026: Cursor 3 vs TRAE SOLO vs Claude Code vs GitHub ...",
-    "url": "https://qubittool.com/blog/ai-coding-tools-2026-comparison",
-    "source": "qubittool.com",
-    "query": "unattended coding agent tool comparison",
+    "title": "LangChain vs AutoGen vs CrewAI: Which AI Agent Framework Wins in 2026 ...",
+    "url": "https://scopir.com/posts/best-ai-agent-frameworks-2026/",
+    "source": "scopir.com",
+    "query": "AI agent orchestration comparison 2026",
+    "score": 4
+  },
+  {
+    "title": "15 best AI orchestration platforms for 2026 - Guideflow Blog",
+    "url": "https://www.guideflow.com/blog/best-ai-orchestration-platforms",
+    "source": "www.guideflow.com",
+    "query": "AI agent orchestration comparison 2026",
     "score": 4
   },
   {
@@ -98,10 +77,31 @@
     "score": 4
   },
   {
+    "title": "Best AI Coding Assistants 2026: Cursor vs Copilot vs Claude Code",
+    "url": "https://scrimba.com/articles/best-ai-coding-assistants-2026/",
+    "source": "scrimba.com",
+    "query": "unattended coding agent tool comparison",
+    "score": 4
+  },
+  {
     "title": "Agentic Coding in 2026: Claude Code vs Codex CLI vs Gemini CLI vs ...",
     "url": "https://ofox.ai/blog/agentic-coding-claude-codex-gemini-cursor-2026/",
     "source": "ofox.ai",
-    "query": "unattended coding agent tool comparison",
+    "query": "AI coding agent orchestration CLI 2026",
     "score": 4
+  },
+  {
+    "title": "CrewAI vs LangGraph vs AutoGen vs OpenAgents \u2014 Best AI Agent Framework ...",
+    "url": "https://openagents.org/blog/posts/2026-02-23-open-source-ai-agent-frameworks-compared",
+    "source": "openagents.org",
+    "query": "agentic coding framework comparison open source",
+    "score": 4
+  },
+  {
+    "title": "Multi-Agent Orchestration Frameworks 2026 - presenc.ai",
+    "url": "https://presenc.ai/research/multi-agent-orchestration-frameworks-2026",
+    "source": "presenc.ai",
+    "query": "AI agent orchestration comparison 2026",
+    "score": 3
   }
 ]

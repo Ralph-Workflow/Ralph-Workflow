@@ -1,12 +1,25 @@
 # Agent Architecture Independent Verification
 
-- Checked: 2026-05-29T06:30:15.953901
-- Status: independently verified pass
+- Checked: 2026-05-29T08:50:21.612319+02:00
+- Status: independently verified pass (qualified)
 - Independent artifact: `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`
-- Independent check time: 2026-05-29T06:30:11.997557+02:00
-- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Qualified external blockers: stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json, /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json, marketing independent verification is not pass: 'fail'
+- Summary: Independent verification confirms the freshly-run architecture audit is coherent: live topology matches, no hidden self-certification, ownership boundaries intact, architecture verifier passes, docs verifier passes. The only remaining blocker is external: marketing independent verification remains 'fail' on Codeberg-primary outcome evidence that is still measurement-pending.
 
-## Verification result
+## Gate results
 
-- Independent verification artifact is present, fresh, and passed.
+| Gate | Status |
+|------|--------|
+| Audit refresh (via agent_architecture_audit.py) | pass |
+| Health monitor cross-check (drift=0) | pass |
+| Ownership boundaries | pass (true) |
+| Hidden self-certification | pass (not detected) |
+| Stale topology leakage | pass (not detected) |
+| Architecture verifier | pass |
+| Docs independent verifier | pass |
+| Loop integrity (architecture) | pass (ok) |
+| Loop integrity (docs) | pass (ok) |
+| **Marketing independent verification** | **fail** (external blocker) |
+
+## Qualified external blockers
+
+- Marketing independent verification is not pass: 'fail' at 2026-05-28T19:11 — Codeberg-primary outcome evidence still measurement-pending

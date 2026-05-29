@@ -1,10 +1,19 @@
 {
-  "generated_at": "2026-05-29T01:35:26.318790+00:00",
-  "status": "pass",
-  "total_files_with_repo_links": 469,
-  "high_severity_count": 0,
+  "generated_at": "2026-05-29T07:00:25.827927+00:00",
+  "status": "fail",
+  "total_files_with_repo_links": 473,
+  "high_severity_count": 1,
   "medium_severity_count": 11,
-  "high_severity_findings": [],
+  "high_severity_findings": [
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_pypi_publishing_handoff.md",
+      "codeberg_links": 0,
+      "github_links": 2,
+      "finding_type": "github_only",
+      "detail": "File links GitHub 2 times but never links Codeberg.",
+      "severity": "high"
+    }
+  ],
   "medium_severity_findings": [
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_are-vs-code-copilot-agent-debug-log-token-counts-t.md",
@@ -876,6 +885,30 @@
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_timewell_publisher_outreach_email.txt",
       "codeberg_links": 2,
       "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_pypi_publishing_handoff.md",
+      "codeberg_links": 0,
+      "github_links": 2,
+      "finding_type": "github_only",
+      "detail": "File links GitHub 2 times but never links Codeberg.",
+      "severity": "high"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_readme_conversion_upgrade.md",
+      "codeberg_links": 1,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-29_spec_driven_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -2241,22 +2274,6 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/apollo_outbound_verification_latest.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/apollo_sequence_status_latest.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_status_latest.json",
       "codeberg_links": 2,
       "github_links": 2,
@@ -3490,8 +3507,8 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "codeberg_links": 4,
-      "github_links": 4,
+      "codeberg_links": 2,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -3665,6 +3682,14 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-tool-loop-debugging-guide.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-tools-comparison-2026.md",
       "codeberg_links": 6,
       "github_links": 5,
@@ -3721,6 +3746,14 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/good-vs-bad-unattended-coding-task-ai-agent.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/hello-ralph-workflow.md",
       "codeberg_links": 2,
       "github_links": 2,
@@ -3740,6 +3773,14 @@
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-structure-autonomous-ai-agent-workflows-for-production-reliability.md",
       "codeberg_links": 3,
       "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/offline-ai-coding-local-llm-guide.md",
+      "codeberg_links": 2,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"

@@ -10,6 +10,7 @@ Generated: 2026-05-25T18:53:00
 - Apollo next review: 2026-06-01T23:11:13.732870+02:00
 - Apollo launch review: 2026-06-01T23:11:13.732870+02:00
 - Short review-window congestion clears at: 2026-05-25T23:07:41
+- Post-hold marketer rerun scheduled: 2026-05-29T09:57:11
 - StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
@@ -29,6 +30,12 @@ Generated: 2026-05-25T18:53:00
 - primary_repo_flat_contact_discovery_latest.json → fresh publisher-contact lane
 - apollo_sequence_status_latest.json / apollo_sequence_launch_packet_latest.md → launch-ready managed outbound state
 - stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
+
+## Verified infrastructure state (programmatic, not fabricated)
+- **Telegraph guard**: cooldown (cooldown_active) — clears ~22:31 UTC
+- **Telegraph queue**: 2 blogs pending cross-post (dry-run discovery verified), 0 already posted
+- **Telegraph crontab**: `0 6,14,22 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
+- **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED
 
 ## Process rule now in force
 - Do not generate another siloed packet when one of the assets above is already current.

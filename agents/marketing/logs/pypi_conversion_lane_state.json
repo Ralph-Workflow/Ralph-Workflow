@@ -13,6 +13,13 @@
       "downloads_30d": 1498,
       "conversion_ratio": 0.001,
       "health": "critical"
+    },
+    {
+      "timestamp": "2026-05-29T07:30:01.544422+00:00",
+      "stars": 12,
+      "downloads_30d": 300,
+      "conversion_ratio": null,
+      "health": "unknown"
     }
   ]
 }
