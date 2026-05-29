@@ -58,7 +58,41 @@ jobs:
           name: ralph-workflow-dist
           path: dist/
 
-      - name: Publish to PyPI via trusted publishing
+      - name: Publish to PyPI (try Trusted Publishing)
+        id: trusted-publish
+        continue-on-error: true
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+
+      - name: Publish to PyPI (fallback: token auth)
+        if: steps.trusted-publish.outcome == 'failure' && secrets.PYPI_TOKEN != ''
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Publish failed — no PyPI auth configured
+        if: steps.trusted-publish.outcome == 'failure' && secrets.PYPI_TOKEN == ''
+        run: |
+          echo "::error::PyPI publish failed — no auth configured (Trusted Publishing missing + PYPI_TOKEN secret not set)."
+          echo ""
+          echo "To fix, pick ONE of these (both take <2 min):"
+          echo ""
+          echo "Option A (preferred) — Trusted Publishing:"
+          echo "  1. Go to https://pypi.org/manage/project/ralph-workflow/settings/publishing/"
+          echo "  2. Add a pending publisher with:"
+          echo "     - Owner: Ralph-Workflow"
+          echo "     - Repository: Ralph-Workflow"
+          echo "     - Workflow: publish-python-package.yml"
+          echo "     - Environment: pypi"
+          echo "  3. Push an empty commit to retrigger the workflow."
+          echo ""
+          echo "Option B — Token-based (simpler):"
+          echo "  1. Go to https://pypi.org/manage/account/token/"
+          echo "  2. Create a token scoped to 'ralph-workflow' project"
+          echo "  3. Add it as GitHub Secret 'PYPI_TOKEN' at:"
+          echo "     https://github.com/Ralph-Workflow/Ralph-Workflow/settings/secrets/actions"
+          echo "  4. Push an empty commit to retrigger the workflow."
+          exit 1
