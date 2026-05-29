@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -221,20 +222,20 @@ def _clonefile_or_copy(src: str, dst: str, *, follow_symlinks: bool = True) -> s
 def _mirror_workspace_rsync(
     source_root: Path, overlay_root: Path,
     excluded_names: list[str],
+    *,
+    link_dest: Path | None = None,
 ) -> bool:
     rsync = shutil.which("rsync")
     if rsync is None:
         return False
     excludes = [f"--exclude={n}" for n in excluded_names]
+    cmd: list[str] = [rsync, "-a", "--delete", "--copy-links"]
+    if link_dest is not None and link_dest.is_dir():
+        cmd.extend(["--link-dest", str(link_dest)])
+    cmd.extend(excludes)
+    cmd.extend([f"{source_root}/", f"{overlay_root}/"])
     try:
-        subprocess.run(
-            [
-                rsync, "-a", "--delete", "--copy-links",
-                *excludes,
-                f"{source_root}/", f"{overlay_root}/",
-            ],
-            capture_output=True, timeout=120, check=True,
-        )
+        subprocess.run(cmd, capture_output=True, timeout=120, check=True)
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         return False
@@ -247,13 +248,24 @@ def _sync_dir(  # noqa: PLR0912
 ) -> None:
     dst.mkdir(parents=True, exist_ok=True)
     try:
-        src_children = list(src.iterdir())
+        with os.scandir(src) as src_entries:
+            src_children: list[tuple[str, Path]] = []
+            for entry in src_entries:
+                src_children.append((entry.name, Path(entry.path)))
     except OSError:
         return
-    dst_children = {p.name: p for p in dst.iterdir()} if dst.exists() else {}
+    src_names = {name for name, _ in src_children}
 
-    for src_child in src_children:
-        name = src_child.name
+    dst_children: dict[str, Path] = {}
+    if dst.exists():
+        try:
+            with os.scandir(dst) as dst_entries:
+                for entry in dst_entries:
+                    dst_children[entry.name] = Path(entry.path)
+        except OSError:
+            pass
+
+    for name, src_child in src_children:
         if name in excluded_names:
             continue
 
@@ -281,20 +293,28 @@ def _sync_dir(  # noqa: PLR0912
             _sync_dir(src_child, d, excluded_names, ignored_paths)
 
     for name, dst_child in dst_children.items():
-        if name not in {c.name for c in src_children}:
+        if name not in src_names:
             if dst_child.is_dir():
                 shutil.rmtree(dst_child, ignore_errors=True)
             else:
                 dst_child.unlink(missing_ok=True)
 
 
-def _mirror_workspace(source_root: Path, overlay_root: Path) -> None:
+def _mirror_workspace(
+    source_root: Path, overlay_root: Path,
+    *,
+    link_dest: Path | None = None,
+) -> None:
     """Copy the workspace into a private overlay.
 
     Tries ``rsync -a --delete`` first (fastest, Unix-only),
     then a metadata-based diff copy (cross-platform, only copies
     files whose mtime/size changed), falling back to
     ``shutil.copytree`` with filesystem copy-on-write.
+
+    When *link_dest* is provided and points to an existing directory,
+    rsync creates hard links for unchanged files instead of copying
+    them, making incremental syncs near-instant.
     """
     ignored_relative_paths = _ignored_workspace_relative_paths(source_root)
     excluded_names = frozenset(_GENERATED_DIR_NAMES) | frozenset(
@@ -303,7 +323,8 @@ def _mirror_workspace(source_root: Path, overlay_root: Path) -> None:
     excluded_paths = frozenset(ignored_relative_paths)
     overlay_root.mkdir(parents=True, exist_ok=True)
     if not _mirror_workspace_rsync(
-        source_root, overlay_root, sorted(excluded_names)
+        source_root, overlay_root, sorted(excluded_names),
+        link_dest=link_dest,
     ):
         _sync_dir(source_root, overlay_root, excluded_names, excluded_paths)
 
@@ -322,6 +343,7 @@ def _resolve_gitdir_reference(gitdir_file: Path) -> Path | None:
     return gitdir_path
 
 
+@functools.lru_cache(maxsize=16)
 def _ignored_workspace_relative_paths(source_root: Path) -> tuple[Path, ...]:
     ignored_paths: set[Path] = {Path(".git")}
     source_git = source_root / ".git"

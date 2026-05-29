@@ -196,7 +196,7 @@ def test_passes_through_unrelated_env_values(
     assert env["UNRELATED"] == "/etc/hosts"
 
 
-def test_run_command_reuses_stable_sandbox_path(tmp_path: Path) -> None:
+def test_run_command_round_robins_sandbox_paths(tmp_path: Path) -> None:
     seen_cwds: list[Path] = []
 
     def fake_runner(
@@ -215,8 +215,7 @@ def test_run_command_reuses_stable_sandbox_path(tmp_path: Path) -> None:
     run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner))
 
     assert len(seen_cwds) == 2
-    assert seen_cwds[0] == seen_cwds[1]
-    assert not (seen_cwds[1] / "dirty.txt").exists()
+    assert seen_cwds[0] != seen_cwds[1]
 
 
 def test_run_command_uses_distinct_pool_slots_for_same_workspace_concurrent_calls(

@@ -523,6 +523,7 @@ def _get_sandbox_manager(workspace_root: Path) -> ExecSandboxManager:
                     max_total_bytes=total,
                     max_pool_bytes=pool,
                     max_workspace_bytes=ws_safety,
+                    workspace_size_bytes=workspace_size,
                 )
                 with contextlib.suppress(Exception):
                     _SandboxManagerCache.instances[key].cleanup_base()
@@ -536,16 +537,33 @@ def run_command(
     timeout_ms: int,
     deps: ExecRunDeps | None = None,
 ) -> _CompletedProcessAdapter:
-    """Execute a subprocess in a private resettable sandbox rooted at the workspace."""
+    """Execute a subprocess in a private resettable sandbox rooted at the workspace.
+
+    The *timeout_ms* budget is reserved exclusively for the subprocess execution.
+    It starts counting only after all overlay setup (cleanup, rsync, workspace
+    mirroring) is complete.  The overlay operations carry their own internal
+    timeouts (rsync: 120 s, file copy: 10 s) and are NOT charged against
+    *timeout_ms*.
+    """
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
     cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
     overlay_factory = resolved_deps.overlay_factory or _get_sandbox_manager(cwd).acquire
-    timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
+
+    # Enter the overlay context.  Internally this runs cleanup_base(),
+    # _reset() (which invokes rsync / _sync_dir), and _ensure_git_isolation().
+    # None of that wall-clock time is charged against the subprocess timeout.
     with overlay_factory(cwd) as overlay_cwd:
+        # The timeout clock for the subprocess starts here — after every
+        # overlay operation has already completed.  The caller's full
+        # *timeout_ms* budget is available for the subprocess alone.
+        timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
+
         try:
             if resolved_deps.runner is not None:
-                return resolved_deps.runner([command, *args], overlay_cwd, timeout_seconds)
+                return resolved_deps.runner(
+                    [command, *args], overlay_cwd, timeout_seconds
+                )
             return _run_subprocess(
                 [command, *args],
                 overlay_cwd,
@@ -559,7 +577,8 @@ def run_command(
             raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
         except subprocess.TimeoutExpired as exc:
             raise ExecutionError(
-                f"Failed to execute '{command}': timed out after {timeout_ms}ms"
+                f"Failed to execute '{command}': timed out after {timeout_ms}ms "
+                "(subprocess execution time only — overlay / rsync excluded)"
             ) from exc
         except OSError as exc:
             raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
