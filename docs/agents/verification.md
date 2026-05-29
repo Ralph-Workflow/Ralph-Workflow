@@ -104,7 +104,7 @@ The `make verify` pipeline includes automated bypass audits that scan the entire
 - Detects blanket `# type: ignore` without a specific mypy error code
 - Detects `# type: ignore[CODE]` without a policy-compliant reason marker (see `../docs/agents/type-ignore-policy.md` for exact format requirements)
 - Detects `# type: ignore` in test files (tests must be fully typed — no exceptions)
-- Detects ALL mypy config that weakens type checking: `ignore_missing_imports = true`, `follow_imports = silent`, `exclude` patterns, `ignore_errors = true`, `disable_error_code` (globally suppresses error codes)
+- Detects ALL mypy config that weakens type checking: `ignore_missing_imports = true`, `follow_imports = silent`, `exclude` patterns, `ignore_errors = true`, `disable_error_code` (globally suppresses error codes), `warn_unused_ignores = false` (silences unused ignore warnings), `disallow_untyped_defs = false` (allows untyped function definitions)
 - Violations produce output: `file:line: [TYPECHECK-BYPASS] category: detail`
 
 **Both audits** scan both `ralph/` and `tests/` directories. Each uses an allowlist of known-legitimate suppressions. Any new suppression that does not match the allowlist IS a violation. To add a legitimate suppression, the code must be added to the allowlist with a documented justification.

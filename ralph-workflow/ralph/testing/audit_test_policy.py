@@ -90,6 +90,8 @@ _ALLOWED_SLEEP_PATTERNS: set[str] = {
 class TestPolicyViolation:
     """A single policy violation found in a test file."""
 
+    __test__ = False
+
     def __init__(
         self,
         file_path: str,

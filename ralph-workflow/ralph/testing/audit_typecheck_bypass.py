@@ -5,7 +5,9 @@ Scans the codebase for:
 - ``# type: ignore[CODE]`` without a policy-compliant reason marker
 - ``# type: ignore`` in test files (must be fully typed)
 - Mypy config that weakens type checking: ``ignore_missing_imports``,
-  ``follow_imports = silent``, ``exclude`` patterns, ``ignore_errors``
+  ``follow_imports = silent``, ``exclude`` patterns, ``ignore_errors``,
+  ``disable_error_code``, ``warn_unused_ignores``,
+  ``disallow_untyped_defs``
 
 Usage:
     python -m ralph.testing.audit_typecheck_bypass [codebase_root]
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import re
 import sys
+import tomllib
 from configparser import ConfigParser
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -35,10 +38,8 @@ def _regex_group_str(match: re.Match[str], group: int) -> str:
 
 def _load_toml_root(path: Path) -> dict[str, object] | None:
     try:
-        import tomllib as _tomllib
-
-        parsed_obj: object = _tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ImportError):
+        parsed_obj: object = tomllib.loads(path.read_text(encoding="utf-8"))
+    except OSError:
         return None
     if not isinstance(parsed_obj, dict):
         return None
@@ -320,6 +321,42 @@ def _check_mypy_ini(config_path: Path) -> list[TypecheckBypassViolation]:  # noq
                         detail=f"[{section_name}] disable_error_code = "
                         f"{disable_value} — globally suppresses mypy "
                         f"error codes, weakening enforcement",
+                    )
+                )
+
+        # Check for warn_unused_ignores = false — silences "unused ignore"
+        # errors, allowing stale type: ignore annotations to accumulate.
+        if config.has_option(section_name, "warn_unused_ignores"):
+            try:
+                wui_value = config.get(section_name, "warn_unused_ignores").strip().lower()
+            except Exception:
+                wui_value = ""
+            if wui_value == "false":
+                violations.append(
+                    TypecheckBypassViolation(
+                        file_path=rel_path,
+                        line=0,
+                        category="mypy-config",
+                        detail=f"[{section_name}] warn_unused_ignores = false — "
+                        f"weakens type checking by silencing unused ignore warnings",
+                    )
+                )
+
+        # Check for disallow_untyped_defs = false — allows functions without
+        # type annotations to pass silently.
+        if config.has_option(section_name, "disallow_untyped_defs"):
+            try:
+                dud_value = config.get(section_name, "disallow_untyped_defs").strip().lower()
+            except Exception:
+                dud_value = ""
+            if dud_value == "false":
+                violations.append(
+                    TypecheckBypassViolation(
+                        file_path=rel_path,
+                        line=0,
+                        category="mypy-config",
+                        detail=f"[{section_name}] disallow_untyped_defs = false — "
+                        f"weakens type checking by allowing untyped function definitions",
                     )
                 )
 

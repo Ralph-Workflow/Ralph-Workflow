@@ -243,6 +243,58 @@ def test_missing_ini_file_returns_empty(tmp_path: Path) -> None:
     assert len(violations) == 0
 
 
+def test_mypy_ini_warn_unused_ignores_false_is_violation(tmp_path: Path) -> None:
+    """mypy.ini with warn_unused_ignores = false produces a violation."""
+    content = """[mypy]
+strict = true
+warn_unused_ignores = False
+"""
+    ini_path = tmp_path / "mypy.ini"
+    ini_path.write_text(content)
+    violations = _check_mypy_ini(ini_path)
+    assert len(violations) >= 1
+    assert any("warn_unused_ignores" in v.detail for v in violations)
+    assert any(v.category == "mypy-config" for v in violations)
+
+
+def test_mypy_ini_disallow_untyped_defs_false_is_violation(tmp_path: Path) -> None:
+    """mypy.ini with disallow_untyped_defs = false produces a violation."""
+    content = """[mypy]
+strict = true
+disallow_untyped_defs = False
+"""
+    ini_path = tmp_path / "mypy.ini"
+    ini_path.write_text(content)
+    violations = _check_mypy_ini(ini_path)
+    assert len(violations) >= 1
+    assert any("disallow_untyped_defs" in v.detail for v in violations)
+    assert any(v.category == "mypy-config" for v in violations)
+
+
+def test_mypy_ini_warn_unused_ignores_true_no_violation(tmp_path: Path) -> None:
+    """mypy.ini with warn_unused_ignores = true does NOT trigger a violation."""
+    content = """[mypy]
+strict = true
+warn_unused_ignores = True
+"""
+    ini_path = tmp_path / "mypy.ini"
+    ini_path.write_text(content)
+    violations = _check_mypy_ini(ini_path)
+    assert len(violations) == 0
+
+
+def test_mypy_ini_disallow_untyped_defs_true_no_violation(tmp_path: Path) -> None:
+    """mypy.ini with disallow_untyped_defs = true does NOT trigger a violation."""
+    content = """[mypy]
+strict = true
+disallow_untyped_defs = True
+"""
+    ini_path = tmp_path / "mypy.ini"
+    ini_path.write_text(content)
+    violations = _check_mypy_ini(ini_path)
+    assert len(violations) == 0
+
+
 # ---------------------------------------------------------------------------
 # _check_pyproject_mypy tests
 # ---------------------------------------------------------------------------

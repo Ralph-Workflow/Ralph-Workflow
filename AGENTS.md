@@ -70,7 +70,7 @@ All invariants are tested in `tests/test_verify_invariants.py` under `python -O`
 
 - **Non-circumvention rule — lint and typecheck** — the following do **NOT** circumvent lint/typecheck enforcement:
   - Adding `per-file-ignores`, `extend-per-file-ignores`, or any ruff config to weaken lint enforcement — detected by `ralph/testing/audit_lint_bypass.py`
-  - Adding `ignore_missing_imports`, `follow_imports = silent`, `exclude` patterns, or `ignore_errors` to mypy config — detected by `ralph/testing/audit_typecheck_bypass.py`
+  - Adding `ignore_missing_imports`, `follow_imports = silent`, `exclude` patterns, `ignore_errors`, `disable_error_code`, `warn_unused_ignores = false`, or `disallow_untyped_defs = false` to mypy config — detected by `ralph/testing/audit_typecheck_bypass.py`
   - Using bare `# noqa` without a specific error code, or `# noqa: CODE` where CODE is not in the allowlist — detected by `ralph/testing/audit_lint_bypass.py`
   - Using blanket `# type: ignore` without a specific mypy error code, or `# type: ignore[CODE]` without a policy-compliant reason marker — detected by `ralph/testing/audit_typecheck_bypass.py` and enforced by `../docs/agents/type-ignore-policy.md` (mandatory reading)
   - Using `# type: ignore` in test files — tests must be fully typed (no exceptions)
