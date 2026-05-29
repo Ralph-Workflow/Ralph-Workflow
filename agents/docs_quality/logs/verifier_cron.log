@@ -12349,3 +12349,85 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, consistent with positioning, and free of hard failures. No page leads with internal plumbing, artifacts, or process receipts. The README\u2192START_HERE\u2192docs/README journey sequences cleanly and promoted next-click pages reinforce the same framing instead of fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "REAME.md (workspace root)",
+      "reason": "Short, disciplined redirect that correctly defers to Codeberg primary and the canonical START_HERE \u2192 docs/README route. No product-pitch bloat."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Opens with Codeberg-primary/ GitHub-mirror framing. Leads with 'result first' evaluation, gives clear install + task-selection guidance, and avoids any internal plumbing or artifact language."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Correctly positions itself after README + START_HERE. Routes by user intent, keeps proof secondary, and explicitly names Codeberg as primary repo."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Explicitly labels itself supporting proof rather than main pitch. Orders evidence as working behavior > checks > scope > artifacts \u2014 exactly matching the positioning doc's instructions."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Coherent, well-positioned docs system. Every surface consistently leads with the simple core \u2192 composable \u2192 strong default story, keeps proof secondary, flags Codeberg as primary, avoids internal leakage, and routes cleanly. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with correct tagline, positioning, and comparison table. Result-first framing. Clear audience fit/non-fit. Codeberg primary. Default-first story."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Mirror disclaimer front and center. Task selection guidance consistent with positioning. What-success-looks-like follows result-first evaluation order."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean switchboard with clear page roles. 'Keep proof secondary' guardrail. Routes to product framing before deep docs."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Explicitly self-frames as supporting proof, not main pitch. Evaluates working behavior \u2192 real checks \u2192 scope \u2192 artifacts in canonical order."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

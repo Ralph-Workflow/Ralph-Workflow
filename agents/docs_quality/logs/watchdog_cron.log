@@ -25485,3 +25485,183 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "fail",
+  "summary": "Strong docs system overall but the GitHub mirror README leaks internal plumbing concepts ('Artifact handoff', 'Phase routing') into a top-level public surface via the capabilities list. Fix is small; the rest of the system is clean.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "fail",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "GitHub mirror README capabilities list: 'Artifact handoff' is flagged artifact-plumbing language on a top-level public surface. Reframe as user-facing benefit or move to deep docs.",
+    "GitHub mirror README capabilities list: 'Phase routing' and 'Recovery + retry' describe internal workflow plumbing. Consider consolidating the capabilities section or moving details to supporting pages \u2014 the comparison table already covers the core differentiators.",
+    "reviewable-output.md title and framing are marginally close to the 'reviewable result as main differentiator' failure signal, but it IS properly gated as secondary proof. Retain current positioning as secondary-only; do NOT promote it to any top-level surface."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/README.md",
+      "reason": "Top-level public README. Strong core positioning (tagline, composable loop, default workflow, target audience), comparison table is effective, Codeberg primary is clear, engineering-practice dependency is honest. However, the 'Built-in capabilities' section leaks 'Artifact handoff' and 'Phase routing' \u2014 internal workflow plumbing \u2014 onto a top-level public surface, violating positioning guardrails."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Clean first-run path. No internal leakage. Correctly scoped. Codeberg disclaimer upfront. Good first/second task guidance. Result-focused success criteria."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Solid docs switchboard. Routes to product framing pages before proof. Explicit 'Keep proof secondary' note. Clear audience-to-destination mapping."
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md",
+      "reason": "Correctly positioned as secondary proof page, not top-level. Leads with working behavior > real checks > written scope > supporting artifacts. Title/concept is near the 'reviewable result as main differentiator' failure line but the gating and content salvage it."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is coherent, role-disciplined, and consistently aligned with the positioning document across all checked surfaces. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "GitHub README 'Built-in capabilities' lists 'Artifact handoff' \u2014 minor internal-sounding label but buried in a bullet list, not leading. Rename to 'Agent handoff' or 'Phase handoff' for cleaner external framing."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with tagline and orchestrator positioning. Comparison table cleanly differentiates from chat tools. Who-it's-for and what-it's-not sections match positioning perfectly. Engineering-practice requirements embedded honestly."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Opens with Codeberg-primary notice. Clear task selection guidance (good vs bad). Result-oriented success criteria. Routes to only next-click pages that belong."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Choice-driven map with a 'Keep proof secondary' section. Product framing pages are promoted alongside operator routes. Every page link is intentional and role-scoped."
+    },
+    {
+      "path": "source-tree README.md (RalphWithReviewer/)",
+      "reason": "Exemplary role discipline \u2014 explicitly lists what it is NOT doing, points to the canonical public route, and stays narrow."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Explicitly labels itself as 'supporting proof... not the main product pitch' and tells users to start with the product story first. Exactly how a proof page should behave."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is coherent, well-positioned, and routes cleanly. Top-level surfaces follow the positioning document closely. Secondary pages have minor artifact-language drift that doesn't rise to a hard failure.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "first-task-prompt-templates.md:11 uses 'diff, checks, artifacts \u2014 instead of a transcript' framing which is artifact-vs-transcript language the positioning warns about, even though this is a secondary template page",
+    "when-unattended-coding-fits.md:11 promotes 'reviewable output \u2014 a real diff, checks, artifacts' with artifacts listed prominently",
+    "free-open-source-proof.md:33-53 shows .agent/ internal directory structure (PLAN.md, DEVELOPMENT_RESULT.md, ISSUES.md, FIX_RESULT.md, artifacts/) \u2014 this is permitted on a deep proof page but borders on excessive internal plumbing"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/README.md",
+      "reason": "Starts with 'operating system for autonomous coding', leads with AI agent orchestrator/simple Ralph-loop core/composable loop framing, includes comparison table, properly frames Codeberg primary and GitHub mirror, emphasizes ambitious well-specified work, includes engineering-practice dependency section"
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run with clear success criteria, Codeberg primary alert at top, no internal leakage, good bad/good first-task split, routes to right next pages"
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Clean switchboard with four clear routes, all promoted pages reinforce the same story, Codeberg as primary at bottom, 'Keep proof secondary' section explicitly manages expectations"
+    },
+    {
+      "path": "repos/Ralph-Workflow/github-mirror/ralph-workflow/README.md",
+      "reason": "Exemplary narrow source-tree README \u2014 explicitly disclaims being the public product pitch, routes to the canonical public path, states why it's intentionally narrow"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Positioning is well-executed across all evaluated surfaces. The README \u2192 START_HERE \u2192 docs/README journey is coherent, next-click pages reinforce the same story, and no internal-mechanics leakage appears on top-level pages. Minor improvements possible in feature-list copy and docs map density, but no hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "The 'Built-in capabilities' list in the README ('Phase routing', 'Repo-based handoff') is borderline \u2014 it describes features rather than plumbing, but a harsher reviewer could call it internal-sounding. Consider reframing the first two bullets in user-value terms."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with the canonical tagline, frames the product as an orchestrator (not chat/not wrapper), emphasizes simple core\u2192composable framework\u2192strong default workflow, includes explicit 'who it's for / not for', and leads with result-first evaluation. Engineering-practice dependency section is honest and on-brand."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Clean first-run path that leads with task selection guidance and success criteria aligned to result-first evaluation. No artifact/internals language. Routes seamlessly to docs/README."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Well-organized switchboard with clear role statements. Explicitly routes users to README and START_HERE first. 'Keep proof secondary' section shows the positioning has been internalized. Routes to supporting pages that reinforce rather than fight the core story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
