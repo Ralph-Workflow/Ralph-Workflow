@@ -14,32 +14,17 @@ Ralph Workflow uses built-in templates to assemble prompts for planning, develop
 
 ## Skill injection
 
-Planning and development prompts receive the shipped baseline skill bundle through `SKILLS_INLINE_CONTENT` when Ralph Workflow's mirrored default skills are available.
+`ralph --init` installs Ralph Workflow's shipped skill bundle where Claude Code and OpenCode discover skills automatically (for example under `~/.claude/skills/`). Planning and development prompts include a short **SHIPPED SKILLS** section that tells agents to invoke skills through their environment's skill mechanism. Ralph does not enumerate skill names in prompts.
+
+When `RALPH_INLINE_SKILLS_DIR` is set, prompts may inline skill content through `SKILLS_INLINE_CONTENT` instead.
 
 ### Planning prompts
 
-Planning prompts use these baseline rules:
-
-- `using-superpowers` for all planning flows
-- `brainstorming` before creative or open-ended solution shaping
-- `writing-plans` for multi-step implementation planning
-- `dispatching-parallel-agents` or `subagent-driven-development` when the workflow is intentionally parallelized
-- `using-git-worktrees` when isolated feature work or risky parallel work is required
-- `verification-loop` and `coding-standards` as baseline quality controls
+Planning prompts tell the agent to use available skills before staging `skills_mcp`. Task-relevant skill names belong in the plan artifact (`skills_mcp.skills`), not in the prompt body.
 
 ### Developer prompts
 
-Developer prompts use these baseline rules:
-
-- `using-superpowers` for all developer flows
-- `executing-plans` when a written plan is being turned into execution guidance
-- `test-driven-development` for feature work and bugfix work
-- `systematic-debugging` for errors, regressions, and failing verification
-- `verification-before-completion` before any success claim
-- `requesting-code-review` before merge-ready or handoff-ready completion
-- `receiving-code-review` when acting on review findings
-- `finishing-a-development-branch` when implementation is complete and integration choices must be made
-- `security-review`, `verification-loop`, and `coding-standards` as baseline quality controls
+Developer prompts tell the agent to invoke skills from the execution plan's **Skills and MCPs** section when present. The plan handoff is the task-specific skill record; the prompt does not duplicate it.
 
 ## Docs-aware adaptation
 

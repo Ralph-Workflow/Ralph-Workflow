@@ -21,6 +21,7 @@ from ralph.mcp.tools.artifact import (
     prepare_artifact_submission,
 )
 from ralph.mcp.tools.coordination import InvalidParamsError, ToolContent
+from tests.plan_fixtures import DEFAULT_SKILLS_MCP
 from tests.test_tool_artifact_1_helper_failingartifactbackend import FailingArtifactBackend
 from tests.test_tool_artifact_1_helper_memorybackend import MemoryBackend
 from tests.test_tool_artifact_1_helper_mocksession import MockSession
@@ -50,6 +51,7 @@ def _full_plan_payload() -> dict[str, object]:
                 {"text": "Scope item three"},
             ],
         },
+        "skills_mcp": DEFAULT_SKILLS_MCP,
         "steps": [{"number": 1, "title": "Test step", "content": "Do the thing"}],
         "critical_files": {
             "primary_files": [{"path": "test.py", "action": "modify"}],
@@ -73,6 +75,13 @@ def test_prepare_artifact_submission_normalizes_plan_without_workspace_io() -> N
                             {"text": "Add tests"},
                             {"text": "Update prompts"},
                         ],
+                    },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
                     },
                     "steps": [{"number": 1, "title": "Validate", "content": "Do the work"}],
                     "critical_files": {
@@ -504,6 +513,13 @@ def test_handle_submit_artifact_accepts_structured_plan_payload(tmp_path: Path) 
                             {"text": "Add tests", "count": "3 tests", "category": "test"},
                             {"text": "Update prompts", "count": "1 template", "category": "prompt"},
                         ],
+                    },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
                     },
                     "steps": [
                         {

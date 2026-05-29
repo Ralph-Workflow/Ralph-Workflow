@@ -36,6 +36,7 @@ from ralph.mcp.tools.names import (
     SUBMIT_ARTIFACT_TOOL,
     SUBMIT_PLAN_SECTION_TOOL,
     TRACKED_WRITE_TOOLS,
+    WEB_DOWNLOAD_TOOLS,
     WEB_VISIT_TOOLS,
     WORKSPACE_READ_TOOLS,
     WRITE_FILE_TOOL,
@@ -420,6 +421,7 @@ def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
         (RalphCapability.RUN_REPORT_PROGRESS, PROGRESS_TOOLS),
         (RalphCapability.ENV_READ, ["read_env"]),
         (RalphCapability.WEB_VISIT, WEB_VISIT_TOOLS),
+        (RalphCapability.WEB_DOWNLOAD, WEB_DOWNLOAD_TOOLS),
         (RalphCapability.MEDIA_READ, MEDIA_READ_TOOLS),
     )
     for capability, tools in tool_matrix:

@@ -151,6 +151,13 @@ def test_planning_retry_prompt_includes_artifact_history_path_when_history_exist
                             {"text": "three"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [{"number": 1, "title": "Revise", "content": "keep retry context"}],
                     "critical_files": {
                         "primary_files": [{"path": "src/plan.py", "action": "modify"}],
@@ -212,6 +219,13 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
                             {"text": "two"},
                             {"text": "three"},
                         ],
+                    },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
                     },
                     "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
                     "critical_files": {
@@ -326,6 +340,13 @@ def test_materialize_review_phase_references_plan_handoff_when_plan_exists(
                         "context": "Plan for the reviewed change.",
                         "scope_items": [{"text": "one"}, {"text": "two"}, {"text": "three"}],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [{"number": 1, "title": "Implement", "content": "do the work"}],
                     "critical_files": {
                         "primary_files": [{"path": "src/app.py", "action": "modify"}],
@@ -438,6 +459,13 @@ def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_to
                             {"text": "c"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [
                         {
                             "number": 1,
@@ -500,6 +528,13 @@ def test_materialize_development_entry_clears_all_completed_planning_history(
                     "summary": {
                         "context": "Approved plan context.",
                         "scope_items": [{"text": "one"}, {"text": "two"}, {"text": "three"}],
+                    },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
                     },
                     "steps": [{"number": 1, "title": "Implement", "content": "do the work"}],
                     "critical_files": {
@@ -706,6 +741,13 @@ def test_materialize_planning_analysis_uses_markdown_plan_handoff(
                             {"text": "Keep artifacts generic"},
                             {"text": "Verify the loop end-to-end"},
                         ],
+                    },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
                     },
                     "steps": [
                         {

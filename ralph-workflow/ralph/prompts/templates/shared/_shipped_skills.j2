@@ -1,0 +1,18 @@
+{% if SKILLS_INLINE_CONTENT %}
+## SHIPPED SKILL BUNDLE
+
+{{ SKILLS_INLINE_CONTENT }}
+{% else %}
+## SHIPPED SKILLS
+
+Ralph Workflow installs skills where your agent discovers them automatically. Claude Code and OpenCode both expose installed skills from their skill directories at session start — Ralph does not list skill names here. Use whatever skills your environment already makes available.
+
+Invoke relevant available skills through your agent's skill mechanism before proceeding. Do not Read or browse skill files from disk yourself.
+{% if shipped_skills_mode|default('') == 'planning' %}
+
+Before staging `skills_mcp`, choose task-relevant skills from those already available to you, then record their names in `skills_mcp.skills`.
+{% elif shipped_skills_mode|default('') == 'development' %}
+
+When the execution plan includes a Skills and MCPs section, invoke those skills through your agent's skill mechanism before proceeding.
+{% endif %}
+{% endif %}

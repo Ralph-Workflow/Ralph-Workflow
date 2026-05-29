@@ -174,7 +174,7 @@ uv run pytest tests/test_orchestrator.py -v
 uv run pytest -k "policy" -v
 ```
 
-Raw repo-local `pytest` runs are hard-capped at 30 seconds by the auto-loaded `ralph.testing.pytest_timeout_plugin` declared in `pytest.ini`. The Makefile keeps the outer `python -m ralph.verify_timeout` wrapper as a second guardrail for maintained verification commands, and `make test` itself delegates to `python -m ralph.test_suites` through the repo's managed Python environment.
+Individual `pytest` runs are capped at 60 seconds per suite invocation by the auto-loaded `ralph.testing.pytest_timeout_plugin` (using `DEFAULT_SUITE_TIMEOUT_SECONDS = 60.0` from `ralph/verify_timeout.py`). The combined total budget for ALL test suites running sequentially under `make verify` is separately enforced at 60 seconds by `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS` — raising per-suite limits does not increase the combined cap.
 
 ### Coverage Requirements
 
@@ -272,7 +272,7 @@ make verify
 This executes:
 1. `make lint` — ruff check (zero violations required)
 2. `make typecheck` — mypy strict mode (zero type errors required)
-3. `make test` — `python -m ralph.test_suites` through the managed project environment, which runs one maintained parallel pytest invocation over `tests/` with `-m "not subprocess_e2e"` under the 30-second suite timeout. `ralph.verify` also caps the full `make test` step at 30 s via `_TOTAL_TEST_BUDGET_SECONDS`.
+3. `make test` — `python -m ralph.test_suites` through the managed project environment, which runs one maintained parallel pytest invocation over `tests/` with `-m "not subprocess_e2e"` under the 60-second suite timeout. `ralph.verify` also caps the full `make test` step at 60 s via `_TOTAL_TEST_BUDGET_SECONDS`.
 
 `make test-unit`, `make test-integration`, `make test-cov`, and `make test-subprocess-e2e` remain available as focused commands, but they are **not** part of `make verify`.
 

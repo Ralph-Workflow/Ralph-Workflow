@@ -14,6 +14,7 @@ def format_plan_for_execution(content: str) -> str:
 
     sections = [
         _format_summary_section(plan),
+        _format_skills_mcp_section(plan),
         _format_steps_section(plan),
         _format_critical_files_section(plan),
         _format_risks_section(plan),
@@ -52,6 +53,41 @@ def _format_summary_section(plan: dict[str, object]) -> str:
         sections.append("\n".join(["Scope items:", *scope_lines]))
 
     return "\n\n".join(sections)
+
+
+def _format_skills_mcp_section(plan: dict[str, object]) -> str:
+    skills_mcp = plan.get("skills_mcp")
+    if not isinstance(skills_mcp, dict):
+        return ""
+
+    sections: list[str] = []
+    skill_lines = _bullet_lines(skills_mcp.get("skills"), "self")
+    if skill_lines:
+        sections.append("\n".join(["Planner-recommended skills:", *skill_lines]))
+
+    mcp_values = skills_mcp.get("mcps")
+    if isinstance(mcp_values, list):
+        mcp_lines = [
+            f"- {entry}"
+            for entry in mcp_values
+            if isinstance(entry, str) and entry.strip()
+        ]
+        if mcp_lines:
+            sections.append("\n".join(["Planner-recommended MCP servers:", *mcp_lines]))
+
+    return "\n\n".join(sections)
+
+
+def _bullet_lines(items: object, text_key: str) -> list[str]:
+    if not isinstance(items, list):
+        return []
+
+    if text_key == "self":
+        return [f"- {item}" for item in items if isinstance(item, str) and item.strip()]
+
+    return [
+        f"- {item[text_key]}" for item in items if isinstance(item, dict) and item.get(text_key)
+    ]
 
 
 def _format_steps_section(plan: dict[str, object]) -> str:
@@ -143,12 +179,3 @@ def _format_work_units_section(plan: dict[str, object]) -> str:
         if unit_id and description:
             lines.append(f"- {unit_id}: {description}")
     return "\n".join(lines)
-
-
-def _bullet_lines(items: object, text_key: str) -> list[str]:
-    if not isinstance(items, list):
-        return []
-
-    return [
-        f"- {item[text_key]}" for item in items if isinstance(item, dict) and item.get(text_key)
-    ]

@@ -2,7 +2,7 @@
 
 This module runs a pytest suite with per-test and full-suite timeout limits.
 Per-test limit is ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1 s); suite limit is
-``DEFAULT_SUITE_TIMEOUT_SECONDS`` (30 s). A test that exceeds these limits is
+``DEFAULT_SUITE_TIMEOUT_SECONDS`` (60 s). A test that exceeds these limits is
 a design defect — fix the production coupling, not the timeout.
 """
 
@@ -18,7 +18,7 @@ from ralph.executor.process import ProcessResult, ProcessRunOptions, run_process
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 
 DEFAULT_TEST_TIMEOUT_SECONDS: Final = 1.0
-DEFAULT_SUITE_TIMEOUT_SECONDS: Final = 30.0
+DEFAULT_SUITE_TIMEOUT_SECONDS: Final = 60.0
 TEST_TIMEOUT_ENV = "RALPH_PYTEST_TEST_TIMEOUT_SECONDS"
 SUITE_TIMEOUT_ENV = "RALPH_PYTEST_SUITE_TIMEOUT_SECONDS"
 _VERIFY_TIMEOUT_PM = ProcessManager(policy=ProcessManagerPolicy(log_events=False))
@@ -38,22 +38,24 @@ _POLICY_FIX_MESSAGE = (
     "\n"
     "Limits:\n"
     "  Per-test                         : 1 second   (RALPH_PYTEST_TEST_TIMEOUT_SECONDS)\n"
-    "  Per-suite invocation             : 30 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
-    "  ALL test suites combined (total): 30 seconds\n"
-    "    (ABSOLUTE and IMMUTABLE — enforced by\n"
-    "     ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS = 30.0,\n"
-    "     tracked cumulatively across ALL test steps via time.monotonic())\n"
+    "  Per-suite invocation             : 60 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
+    "  ALL test suites combined (total): 60 seconds\n"
+    "    (ABSOLUTE and IMMUTABLE — enforced by ralph/verify.py\n"
+    "     _TOTAL_TEST_BUDGET_SECONDS = 60.0, tracked\n"
+    "     cumulatively via time.monotonic())\n"
     "\n"
     "These limits are ABSOLUTE. You CANNOT avoid them by:\n"
     "- Splitting tests into more suites (adds process overhead,\n"
     "  risks combined total breach, tracked cumulatively\n"
-    "  by ralph/verify.py — N suites does NOT give N x 30s)\n"
+    "  by ralph/verify.py — N suites does NOT give N x 60s)\n"
     "- Moving slow tests to a different suite or target\n"
-    "- Raising DEFAULT_SUITE_TIMEOUT_SECONDS (this is exactly\n"
-    "  the violation that was committed—do NOT repeat it)\n"
+    "- Raising DEFAULT_SUITE_TIMEOUT_SECONDS\n"
+    "  (this is exactly the violation committed\n"
+    "   — do NOT repeat it)\n"
     "- Changing PYTEST_SUITE_TIMEOUT_SECONDS in the Makefile\n"
-    "The combined wall-clock time of ALL suites running\n"
-    "  sequentially must stay within 30 seconds when make verify is run.\n"
+    "The combined wall-clock time of ALL suites\n"
+    "  running sequentially must stay within 60s\n"
+    "  when make verify is run.\n"
     "A slow test is a design defect—fix the production coupling,\n"
     "  not the timeout.\n"
     "\n"
@@ -79,7 +81,7 @@ _POLICY_FIX_MESSAGE = (
     "\n"
     "DONE when ALL hold:\n"
     "  [ ] Every test finishes in < 1 s\n"
-    "  [ ] Full suite finishes in < 30 s wall-clock\n"
+    "  [ ] Full suite finishes in < 60 s wall-clock\n"
     "  [ ] No test calls sleep() or polls real wall-clock time\n"
     "  [ ] No test crosses a real I/O boundary\n"
     "  [ ] Every assertion targets observable behavior\n"

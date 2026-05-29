@@ -125,6 +125,10 @@ _VALID_PLAN_JSON_FULL = json.dumps(
                     {"text": "item three"},
                 ],
             },
+            "skills_mcp": {
+                "skills": ["test-driven-development", "verification-before-completion"],
+                "mcps": [],
+            },
             "steps": [
                 {"number": 1, "title": "test step", "content": "do something"},
             ],

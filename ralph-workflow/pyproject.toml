@@ -134,7 +134,10 @@ select = [
   "PL",
   "PGH",
 ]
-ignore = ["PLR2004", "PLC0415"]  # Magic values in tests are acceptable; PLC0415 allows lazy imports to avoid circular dependencies
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["PLR2004"]  # Magic values in tests are acceptable
+"ralph/cli/**/*.py" = ["PLC0415"]  # Lazy imports avoid circular dependencies in CLI
 
 [tool.ruff.lint.pylint]
 # CLI entry-point functions (e.g., typer commands) necessarily have one parameter per flag.

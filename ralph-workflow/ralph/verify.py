@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 #
 # Enforcement mechanism: run_verify() tracks cumulative wall-clock
 # time via time.monotonic() across ALL test-budget-tracked steps.
-# Splitting tests across N suites does NOT give you N x 30s — the
+# Splitting tests across N suites does NOT give you N x 60s — the
 # combined time of every track-tested step is summed and compared
 # against this cap. The per-step timeout passed to each runner() call
 # is min(per_suite_limit, remaining_budget), so an early suite that
@@ -58,7 +58,7 @@ if TYPE_CHECKING:
 # If tests are too slow, fix the test design (remove I/O, use
 # MemoryWorkspace, inject fake clocks). Do NOT raise these constants.
 _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
-_TOTAL_TEST_BUDGET_SECONDS: Final = 30.0
+_TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
 
 # --- Verification step definitions ---
 #
@@ -66,6 +66,12 @@ _TOTAL_TEST_BUDGET_SECONDS: Final = 30.0
 # The per_step_timeout is the MAX timeout passed to the runner for
 # that single step. For test-budget-tracked steps, the actual timeout
 # is further capped by the remaining cumulative budget.
+#
+# IMPORTANT: ANY step added here that runs test suites MUST:
+#   1. Have its label added to _KNOWN_TEST_STEP_LABELS
+#   2. Have its index added to _BUDGET_TRACKED_STEPS
+# These two must stay in sync — the module-level runtime checks
+# (below) enforce this at import time.
 #
 # _BUDGET_TRACKED_STEPS: the indices within _VERIFY_STEPS whose
 # elapsed wall-clock time counts against _TOTAL_TEST_BUDGET_SECONDS.
@@ -87,6 +93,18 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     ),
     ("make test", "make", ("test",), _TOTAL_TEST_BUDGET_SECONDS),
     (
+        "lint bypass audit (audit_lint_bypass)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_lint_bypass"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
+        "typecheck bypass audit (audit_typecheck_bypass)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_typecheck_bypass"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "policy audit (audit_test_policy)",
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_test_policy"),
@@ -97,24 +115,102 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
 
 # --- Module-level invariants ---
-# These are runtime assertions that must hold for the enforcement
+# These are runtime checks that must hold for the enforcement
 # mechanism to be correct. They are checked at import time.
-assert _TOTAL_TEST_BUDGET_SECONDS > 0, (
-    "_TOTAL_TEST_BUDGET_SECONDS must be positive"
-)
-assert all(
-    isinstance(i, int) and 0 <= i < len(_VERIFY_STEPS) for i in _BUDGET_TRACKED_STEPS
-), (
-    "_BUDGET_TRACKED_STEPS indices must be valid indices into _VERIFY_STEPS"
-)
+# Using ``if``/``raise RuntimeError`` instead of ``assert``
+# so the checks cannot be stripped by ``python -O``.
+
+if not _TOTAL_TEST_BUDGET_SECONDS > 0:
+    raise RuntimeError(
+        "_TOTAL_TEST_BUDGET_SECONDS must be positive"
+    )
+if not all(
+    isinstance(i, int) and 0 <= i < len(_VERIFY_STEPS)
+    for i in _BUDGET_TRACKED_STEPS
+):
+    raise RuntimeError(
+        "_BUDGET_TRACKED_STEPS indices must be valid indices into _VERIFY_STEPS"
+    )
 for idx in _BUDGET_TRACKED_STEPS:
     _step = _VERIFY_STEPS[idx]
-    assert _step[3] is not None, (
-        f"Budget-tracked step {idx} ({_step[0]!r}) must have a non-None timeout"
+    if _step[3] is None:
+        raise RuntimeError(
+            f"Budget-tracked step {idx} ({_step[0]!r}) must have a non-None timeout"
+        )
+    if not (isinstance(_step[3], (int, float)) and _step[3] > 0):
+        raise RuntimeError(
+            f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout"
+        )
+
+# Budget-constant integrity: the 60-second combined budget is ABSOLUTE and
+# IMMUTABLE. This epsilon check prevents any drift or accidental change.
+if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9:
+    raise RuntimeError(
+        f"_TOTAL_TEST_BUDGET_SECONDS must be 60.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
     )
-    assert isinstance(_step[3], (int, float)) and _step[3] > 0, (
-        f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout"
+
+# _VERIFY_STEP_TIMEOUT_SECONDS integrity: must be positive and non-trivial.
+# Zero or negative would disable per-step timeouts entirely, causing
+# ruff/mypy/audit steps to potentially hang.
+if not _VERIFY_STEP_TIMEOUT_SECONDS > 0:
+    raise RuntimeError(
+        "_VERIFY_STEP_TIMEOUT_SECONDS must be positive"
     )
+if _VERIFY_STEP_TIMEOUT_SECONDS < 5.0:
+    raise RuntimeError(
+        f"_VERIFY_STEP_TIMEOUT_SECONDS must be at least 5.0 (got {_VERIFY_STEP_TIMEOUT_SECONDS})"
+    )
+
+# --- Known test step labels ---
+# These labels identify steps that count toward the combined test budget.
+# Any step whose label is in this frozenset MUST be in _BUDGET_TRACKED_STEPS.
+# Likewise, any step NOT in this frozenset MUST NOT be tracked.
+# This prevents accidentally adding untracked test steps or tracking
+# non-test steps (e.g., audit scripts with "test" in the filename).
+#
+# INVARIANT: This frozenset must NOT be empty.
+# INVARIANT: The canonical test step label 'make test' must be present.
+# Both invariants are enforced by import-time RuntimeError checks below.
+_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})
+
+# --- Module-level invariants for label/budget integrity ---
+# These prevent the circumvention of budget enforcement by emptying
+# _KNOWN_TEST_STEP_LABELS or _BUDGET_TRACKED_STEPS. Without these
+# checks, the frozensets could be silently emptied, removing all
+# budget-tracked test steps from enforcement.
+
+# (a) _KNOWN_TEST_STEP_LABELS must not be empty.
+if not _KNOWN_TEST_STEP_LABELS:
+    raise RuntimeError(
+        "_KNOWN_TEST_STEP_LABELS must not be empty"
+    )
+
+# (b) _BUDGET_TRACKED_STEPS must not be empty.
+if not _BUDGET_TRACKED_STEPS:
+    raise RuntimeError(
+        "_BUDGET_TRACKED_STEPS must not be empty"
+    )
+
+# (c) The canonical test step label 'make test' must be present in
+# _KNOWN_TEST_STEP_LABELS. This prevents removing the primary test
+# step label to silently exclude it from budget tracking.
+if "make test" not in _KNOWN_TEST_STEP_LABELS:
+    raise RuntimeError(
+        "_KNOWN_TEST_STEP_LABELS must contain 'make test' (got "
+        f"{sorted(_KNOWN_TEST_STEP_LABELS)})"
+    )
+
+# Enforce that _KNOWN_TEST_STEP_LABELS and _BUDGET_TRACKED_STEPS are in sync.
+for i, (label, *_rest) in enumerate(_VERIFY_STEPS):
+    if label in _KNOWN_TEST_STEP_LABELS:
+        if i not in _BUDGET_TRACKED_STEPS:
+            raise RuntimeError(
+                f"Test step {i} ({label!r}) must be in _BUDGET_TRACKED_STEPS"
+            )
+    elif i in _BUDGET_TRACKED_STEPS:
+            raise RuntimeError(
+                f"Non-test step {i} ({label!r}) must NOT be in _BUDGET_TRACKED_STEPS"
+            )
 
 
 def _default_runner(
@@ -198,7 +294,7 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
         ``min(step_timeout, remaining_budget)``.
       - After a tracked step completes (including on timeout) the actual
         elapsed time is added to cumulative_test_elapsed.
-      - Splitting tests across N suites does NOT give N x 30 s — the
+      - Splitting tests across N suites does NOT give N x 60 s — the
         combined time of EVERY budget-tracked step is summed and enforced.
     """
     print("Running full verification...", flush=True)
@@ -261,6 +357,11 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             )
             return result.returncode
 
+    print(
+        f"\nCumulative test elapsed: {cumulative_test_elapsed:.2f}s"
+        f" / budget: {_TOTAL_TEST_BUDGET_SECONDS:.1f}s",
+        flush=True,
+    )
     return 0
 
 

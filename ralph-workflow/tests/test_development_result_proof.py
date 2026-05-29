@@ -69,6 +69,13 @@ def _write_plan_steps(workspace: MemoryWorkspace) -> None:
                             {"text": "Scope item three"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [
                         {"number": 1, "title": "Add validation", "content": "Do the work"},
                     ],

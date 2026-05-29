@@ -39,10 +39,7 @@ from ralph.policy.validation import PolicyValidationError
 _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
     "planning": frozenset(),
     "review": frozenset({"run.report_progress"}),
-    "analysis": frozenset({"process.exec_bounded", "run.report_progress"}),
-    # workspace.write_ephemeral allows the write_file fallback path when
-    # artifact.submit is unavailable; it only permits writes to non-tracked
-    # files (.agent/tmp/commit_message.json), not codebase files.
+    "analysis": frozenset({"run.report_progress"}),
     "commit": frozenset({"run.report_progress", "workspace.write_ephemeral"}),
 }
 
@@ -189,6 +186,8 @@ def build_session_mcp_plan(
         capabilities.add("web.search")
     if mcp_config.web_visit.enabled and not is_commit:
         capabilities.add("web.visit")
+    if mcp_config.web_visit.enabled and capability_cls in (DrainClass.DEVELOPMENT, DrainClass.FIX):
+        capabilities.add("web.download")
     if mcp_config.media.enabled:
         capabilities.add("media.read")
 
@@ -267,7 +266,6 @@ _DEVELOPMENT_EXTRA: frozenset[str] = frozenset(
         "workspace.write_tracked",
         "workspace.edit",
         "workspace.delete",
-        "process.exec_bounded",
         "run.report_progress",
         "env.read",
     }
@@ -287,6 +285,7 @@ def _base_capabilities_for_drain(
         "artifact.submit",
         "artifact.plan_read",
         "workspace.metadata_read",
+        "process.exec_bounded",
     }
 
     cls_value = capability_cls.value

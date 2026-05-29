@@ -215,6 +215,13 @@ def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path)
                             {"text": "three"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [{"number": 1, "title": "Old", "content": "old step"}],
                     "critical_files": {
                         "primary_files": [{"path": "src/old.py", "action": "modify"}],
@@ -316,6 +323,13 @@ def test_materialize_planning_fallback_tolerates_missing_plan_and_clears_stale_a
                         "context": "Stale plan that should be cleared.",
                         "scope_items": [{"text": "old item"}],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [{"number": 1, "title": "Old", "content": "old step"}],
                     "critical_files": {
                         "primary_files": [{"path": "src/old.py", "action": "delete"}],
@@ -395,6 +409,13 @@ def test_planning_loopback_prompt_and_plan_edit_mcp_contract_stay_consistent(
                 {"text": "two"},
                 {"text": "three"},
             ],
+        },
+        "skills_mcp": {
+            "skills": [
+                "test-driven-development",
+                "verification-before-completion",
+            ],
+            "mcps": [],
         },
         "steps": [
             {
@@ -523,6 +544,13 @@ def test_planning_loopback_entry_preserves_plan_and_analysis_artifacts(
                             {"text": "three"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [{"number": 1, "title": "Keep", "content": "keep existing"}],
                     "critical_files": {
                         "primary_files": [{"path": "src/keep.py", "action": "modify"}],
@@ -593,6 +621,13 @@ def test_repeated_planning_loopback_never_renders_fresh_template(
                             {"text": "three"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [
                         {
                             "number": 1,
@@ -651,6 +686,13 @@ def test_planning_loopback_prompt_includes_artifact_history_when_history_exists(
                             {"text": "three"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
                     "critical_files": {
                         "primary_files": [{"path": "src/plan.py", "action": "modify"}],
@@ -707,6 +749,13 @@ def test_materialize_planning_retry_preserves_current_plan_context_when_last_ret
                             {"text": "two"},
                             {"text": "three"},
                         ],
+                    },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
                     },
                     "steps": [{"number": 1, "title": "Revise", "content": "preserve current work"}],
                     "critical_files": {
@@ -815,6 +864,13 @@ def test_materialize_resumed_planning_preserves_existing_plan_context(
                             {"text": "two"},
                             {"text": "three"},
                         ],
+                    },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
                     },
                     "steps": [{"number": 1, "title": "Resume", "content": "continue editing"}],
                     "critical_files": {

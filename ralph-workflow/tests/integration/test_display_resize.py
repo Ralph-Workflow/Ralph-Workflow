@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import sys
 from io import StringIO
-from unittest.mock import PropertyMock, patch
 
 import pytest
 from rich.console import Console
@@ -28,31 +27,20 @@ class TestSigwinchIntegration:
         if sys.platform == "win32":
             pytest.skip("SIGWINCH not available on Windows")
 
-        # Create a wide console
-        wide_console = Console(file=StringIO(), width=120, force_terminal=True)
-        wide_ctx = make_display_context(console=wide_console, env={})
+        wide_console = Console(file=StringIO(), force_terminal=True)
+        wide_ctx = make_display_context(console=wide_console, force_width=120)
         assert wide_ctx.mode == "wide"
 
         renderer = PlainLogRenderer(wide_ctx)
-
-        # Verify initial mode is wide
         assert renderer._ctx.mode == "wide"
 
-        # Simulate SIGWINCH: while the console is narrow (patched),
-        # SIGWINCH handler calls refreshed() and updates renderer._ctx.
-        # Then flush_blocks() is called while still in narrow state.
-        with patch.object(type(wide_console), "width", new_callable=PropertyMock, return_value=40):
-            # SIGWINCH fires and calls refreshed()
-            refreshed_ctx = renderer._ctx.refreshed()
-            assert refreshed_ctx.mode == "compact"
-
-            # SIGWINCH handler updates the renderer's context
-            renderer._ctx = refreshed_ctx
-
-            # flush_blocks() also calls refreshed() but should stay compact
-            renderer.flush_blocks()
-
-            assert renderer._ctx.mode == "compact"
+        # Simulate SIGWINCH: the handler refreshes display limits for the narrower width
+        # and updates the renderer before the next flush.
+        narrow_ctx = make_display_context(console=wide_console, force_width=40)
+        assert narrow_ctx.mode == "compact"
+        renderer._ctx = narrow_ctx
+        renderer.flush_blocks()
+        assert renderer._ctx.mode == "compact"
 
     def test_phase_banner_adapts_to_context_mode(self) -> None:
         """show_phase_transition output differs between compact and wide mode."""

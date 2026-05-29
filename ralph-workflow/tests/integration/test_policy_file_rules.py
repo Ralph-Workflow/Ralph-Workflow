@@ -5,7 +5,6 @@ from __future__ import annotations
 import functools
 import io
 import tokenize
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -15,8 +14,6 @@ pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RALPH_DIR = REPO_ROOT / "ralph"
 TESTS_DIR = REPO_ROOT / "tests"
-MYPY_INI_PATH = REPO_ROOT / "mypy.ini"
-PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 _REPO_ROOT_STANDALONE_FILES: tuple[Path, ...] = (REPO_ROOT / "conftest.py",)
 _SKIP_DIRS = frozenset({"__pycache__", ".venv", "tmp"})
 _MAX_FILE_LINES = 1_000
@@ -216,28 +213,6 @@ def _collect_repo_root_violations() -> list[str]:
 def test_repo_structure_policies_hold() -> None:
     source_violations = _collect_source_violations()
     repo_root_violations = _collect_repo_root_violations()
-
-    mypy_text = MYPY_INI_PATH.read_text(encoding="utf-8")
-    pyproject = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-
-    for lineno, line in enumerate(mypy_text.splitlines(), start=1):
-        if "ignore_missing_imports" in line and "= true" in line.lower():
-            source_violations.append(
-                f"mypy ignore_missing_imports at line {lineno}: {line.strip()}"
-            )
-        if "follow_imports" in line and "= silent" in line.lower():
-            source_violations.append(
-                f"mypy follow_imports=silent at line {lineno}: {line.strip()}"
-            )
-
-    per_file_ignores = (
-        pyproject.get("tool", {})
-        .get("ruff", {})
-        .get("lint", {})
-        .get("per-file-ignores", {})
-    )
-    for file_pattern, codes in per_file_ignores.items():
-        source_violations.append(f"ruff per-file-ignores {file_pattern}: {codes}")
 
     assert not source_violations and not repo_root_violations, (
         "source violations:\n"

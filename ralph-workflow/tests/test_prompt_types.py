@@ -40,6 +40,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.ARTIFACT_SUBMIT,
         Capability.ARTIFACT_PLAN_READ,
         Capability.ARTIFACT_PLAN_WRITE,
+        Capability.PROCESS_EXEC_BOUNDED,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
         Capability.UPSTREAM_TOOL_USE,
@@ -60,6 +61,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
+        Capability.WEB_DOWNLOAD,
         Capability.UPSTREAM_TOOL_USE,
     }
     assert set(fix) == {
@@ -77,6 +79,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
+        Capability.WEB_DOWNLOAD,
         Capability.UPSTREAM_TOOL_USE,
     }
     assert set(commit) == {
@@ -86,6 +89,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
         Capability.ARTIFACT_PLAN_READ,
+        Capability.PROCESS_EXEC_BOUNDED,
         Capability.RUN_REPORT_PROGRESS,
     }
 

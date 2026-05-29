@@ -524,6 +524,13 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                             {"text": "three"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [
                         {
                             "number": 1,

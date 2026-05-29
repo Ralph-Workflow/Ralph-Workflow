@@ -18,6 +18,7 @@ from ralph.mcp.tools.artifact import (
     handle_submit_plan_section,
 )
 from ralph.mcp.tools.coordination import InvalidParamsError, ToolContent
+from tests.plan_fixtures import DEFAULT_SKILLS_MCP
 from tests.test_tool_artifact_2_helper_failingartifactbackend import FailingArtifactBackend
 from tests.test_tool_artifact_2_helper_memorybackend import MemoryBackend
 from tests.test_tool_artifact_2_helper_mocksession import MockSession
@@ -47,6 +48,7 @@ def _full_plan_payload() -> dict[str, object]:
                 {"text": "Scope item three"},
             ],
         },
+        "skills_mcp": DEFAULT_SKILLS_MCP,
         "steps": [{"number": 1, "title": "Test step", "content": "Do the thing"}],
         "critical_files": {
             "primary_files": [{"path": "test.py", "action": "modify"}],
@@ -55,6 +57,15 @@ def _full_plan_payload() -> dict[str, object]:
         "risks_mitigations": [{"risk": "Test risk", "mitigation": "Test mitigation"}],
         "verification_strategy": [{"method": "pytest", "expected_outcome": "all tests pass"}],
     }
+
+
+def _submit_required_plan_sections(tmp_path: Path, plan: dict[str, object]) -> None:
+    _submit_section(tmp_path, "summary", plan["summary"])
+    _submit_section(tmp_path, "skills_mcp", plan["skills_mcp"])
+    _submit_section(tmp_path, "steps", plan["steps"])
+    _submit_section(tmp_path, "critical_files", plan["critical_files"])
+    _submit_section(tmp_path, "risks_mitigations", plan["risks_mitigations"])
+    _submit_section(tmp_path, "verification_strategy", plan["verification_strategy"])
 
 
 def _submit_section(
@@ -232,11 +243,7 @@ def test_piecewise_plan_submission_produces_same_plan_json_as_atomic(tmp_path: P
         {"artifact_type": "plan", "content": _content(plan)},
     )
 
-    _submit_section(piecewise_path, "summary", plan["summary"])
-    _submit_section(piecewise_path, "steps", plan["steps"])
-    _submit_section(piecewise_path, "critical_files", plan["critical_files"])
-    _submit_section(piecewise_path, "risks_mitigations", plan["risks_mitigations"])
-    _submit_section(piecewise_path, "verification_strategy", plan["verification_strategy"])
+    _submit_required_plan_sections(piecewise_path, plan)
     result = handle_finalize_plan(MockSession(), MockWorkspace(piecewise_path), {})
 
     assert result.is_error is False
@@ -295,7 +302,7 @@ def test_finalize_plan_fails_when_required_section_missing(tmp_path: Path) -> No
     _submit_section(tmp_path, "critical_files", plan["critical_files"])
     _submit_section(tmp_path, "risks_mitigations", plan["risks_mitigations"])
 
-    with pytest.raises(InvalidParamsError, match="verification_strategy"):
+    with pytest.raises(InvalidParamsError, match="skills_mcp"):
         handle_finalize_plan(MockSession(), MockWorkspace(tmp_path), {})
 
     # Draft survives so the agent can fix and retry.
@@ -310,6 +317,7 @@ def test_finalize_plan_fails_when_no_draft(tmp_path: Path) -> None:
 def test_submit_plan_section_append_mode_extends_steps_list(tmp_path: Path) -> None:
     plan = _full_plan_payload()
     _submit_section(tmp_path, "summary", plan["summary"])
+    _submit_section(tmp_path, "skills_mcp", plan["skills_mcp"])
     _submit_section(
         tmp_path,
         "steps",
@@ -369,6 +377,7 @@ def test_get_plan_draft_hydrates_from_existing_plan_artifact(tmp_path: Path) -> 
     assert sorted(staged_sections) == [
         "critical_files",
         "risks_mitigations",
+        "skills_mcp",
         "steps",
         "summary",
         "verification_strategy",
@@ -435,6 +444,7 @@ def test_plan_draft_handlers_support_injected_persistence_without_real_filesyste
 
     for section in [
         "summary",
+        "skills_mcp",
         "steps",
         "critical_files",
         "risks_mitigations",
@@ -454,6 +464,7 @@ def test_plan_draft_handlers_support_injected_persistence_without_real_filesyste
     assert sorted(draft_payload["staged_sections"]) == [
         "critical_files",
         "risks_mitigations",
+        "skills_mcp",
         "steps",
         "summary",
         "verification_strategy",

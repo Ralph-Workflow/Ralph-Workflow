@@ -150,6 +150,40 @@ def test_delete_file_action_removes_file(tmp_git_repo: Path) -> None:
     assert not binary.exists()
 
 
+def test_delete_checkpoint_json_removes_file(tmp_git_repo: Path) -> None:
+    """Pipeline checkpoint JSON files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    checkpoint = tmp_git_repo / "checkpoint.json"
+    checkpoint.write_text('{"phase": "development"}')
+    assert checkpoint.exists()
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit_cleanup",
+        prompt_file="cleanup.txt",
+    )
+
+    result = handle_commit_cleanup_phase(effect, ctx)
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not checkpoint.exists()
+
+
 def test_delete_verify_output_text_file_removes_file(tmp_git_repo: Path) -> None:
     """Generated verification capture text files are safe housekeeping artifacts."""
     workspace = FsWorkspace(tmp_git_repo)

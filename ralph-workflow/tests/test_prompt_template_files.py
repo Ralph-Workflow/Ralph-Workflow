@@ -476,11 +476,10 @@ def test_planning_edit_prompt_teaches_repo_wide_recomputation_not_just_local_pat
     assert "Not submitting the revised plan is a FAILURE." in planning_edit
 
 
-def test_planning_analysis_prompt_references_baseline_planning_skills() -> None:
+def test_planning_analysis_prompt_references_shipped_skill_discovery() -> None:
     planning_analysis = (TEMPLATES_ROOT / "planning_analysis.jinja").read_text(encoding="utf-8")
 
-    assert "## BASELINE WORKFLOW SKILLS" in planning_analysis
-    assert "{{ PLANNING_SKILL_REFERENCES }}" in planning_analysis
+    assert "shared/_shipped_skills.j2" in planning_analysis
     assert "{% if HAS_DOCS_MCP %}" in planning_analysis
     assert "{% else %}" in planning_analysis
     assert "arabold/docs-mcp-server" in planning_analysis

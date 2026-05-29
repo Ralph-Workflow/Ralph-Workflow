@@ -1,4 +1,4 @@
-"""Tests that planning_edit templates contain BASELINE WORKFLOW SKILLS and docs-mcp guidance."""
+"""Tests that planning_edit templates use Skill-tool discovery and docs-mcp guidance."""
 
 from pathlib import Path
 
@@ -10,18 +10,10 @@ from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
-PLANNING_SKILL_NAMES = frozenset(
-    {
-        "using-superpowers",
-        "writing-plans",
-        "brainstorming",
-        "executing-plans",
-        "dispatching-parallel-agents",
-        "subagent-driven-development",
-        "coding-standards",
-        "verification-loop",
-        "security-review",
-    }
+SHIPPED_SKILLS_DISCOVERY_HINTS = (
+    "## SHIPPED SKILLS",
+    "discovers them automatically",
+    "Do not Read",
 )
 
 DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY = (
@@ -46,7 +38,6 @@ def _shared_render_planning(
 ) -> str:
     """Render a planning prompt with optional has_docs_mcp."""
     import tempfile
-
     if tmp_path is None:
         with tempfile.TemporaryDirectory() as td:
             tmp_path = Path(td)
@@ -68,39 +59,36 @@ def _shared_render_planning(
     return prompt_planning_xml_with_context(**kwargs)
 
 
-class TestPlanningEditTemplatesBaselineSkills:
+def _assert_shipped_skills_discovery(prompt: str) -> None:
+    for hint in SHIPPED_SKILLS_DISCOVERY_HINTS:
+        assert hint in prompt, f"Missing shipped-skills hint: {hint}"
+
+
+class TestPlanningEditTemplatesShippedSkills:
     """planning_edit.jinja and planning_edit_fallback.jinja."""
 
-    def test_planning_edit_jinja_has_baseline_workflow_skills(self, tmp_path: Path) -> None:
-        prompt = _shared_render_planning(False, template="planning_edit.jinja", tmp_path=tmp_path)
-        assert "## BASELINE WORKFLOW SKILLS" in prompt
+    def test_planning_edit_jinja_has_shipped_skills_section(self, tmp_path: Path) -> None:
+        prompt = _shared_render_planning(
+            False, template="planning_edit.jinja", tmp_path=tmp_path
+        )
+        _assert_shipped_skills_discovery(prompt)
 
-    def test_planning_edit_jinja_contains_required_skill_names(self, tmp_path: Path) -> None:
-        prompt = _shared_render_planning(False, template="planning_edit.jinja", tmp_path=tmp_path)
-        for skill_name in PLANNING_SKILL_NAMES:
-            assert f"`{skill_name}`" in prompt, f"Missing skill: {skill_name}"
-
-    def test_planning_edit_jinja_docs_mcp_false_branch_visible(self, tmp_path: Path) -> None:
-        prompt = _shared_render_planning(False, template="planning_edit.jinja", tmp_path=tmp_path)
+    def test_planning_edit_jinja_docs_mcp_false_branch_visible(
+        self, tmp_path: Path
+    ) -> None:
+        prompt = _shared_render_planning(
+            False, template="planning_edit.jinja", tmp_path=tmp_path
+        )
         for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY:
             assert hint_phrase in prompt, f"Missing false-branch hint: {hint_phrase}"
 
-    def test_planning_edit_fallback_jinja_has_baseline_workflow_skills(
+    def test_planning_edit_fallback_jinja_has_shipped_skills_section(
         self, tmp_path: Path
     ) -> None:
         prompt = _shared_render_planning(
             False, template="planning_edit_fallback.jinja", tmp_path=tmp_path
         )
-        assert "## BASELINE WORKFLOW SKILLS" in prompt
-
-    def test_planning_edit_fallback_jinja_contains_required_skill_names(
-        self, tmp_path: Path
-    ) -> None:
-        prompt = _shared_render_planning(
-            False, template="planning_edit_fallback.jinja", tmp_path=tmp_path
-        )
-        for skill_name in PLANNING_SKILL_NAMES:
-            assert f"`{skill_name}`" in prompt, f"Missing skill: {skill_name}"
+        _assert_shipped_skills_discovery(prompt)
 
     def test_planning_edit_fallback_jinja_docs_mcp_false_branch_visible(
         self, tmp_path: Path

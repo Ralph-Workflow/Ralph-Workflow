@@ -59,6 +59,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.ARTIFACT_SUBMIT,
         RalphCapability.ARTIFACT_PLAN_READ,
         RalphCapability.ARTIFACT_PLAN_WRITE,
+        RalphCapability.PROCESS_EXEC_BOUNDED,
         RalphCapability.WEB_SEARCH,
         RalphCapability.WEB_VISIT,
         RalphCapability.UPSTREAM_TOOL_USE,
@@ -83,6 +84,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.GIT_DIFF_READ,
         RalphCapability.ARTIFACT_SUBMIT,
         RalphCapability.ARTIFACT_PLAN_READ,
+        RalphCapability.PROCESS_EXEC_BOUNDED,
         RalphCapability.RUN_REPORT_PROGRESS,
     ),
     SessionDrain.ANALYSIS: (
@@ -105,6 +107,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.GIT_DIFF_READ,
         RalphCapability.ARTIFACT_SUBMIT,
         RalphCapability.ARTIFACT_PLAN_READ,
+        RalphCapability.PROCESS_EXEC_BOUNDED,
         RalphCapability.WEB_SEARCH,
         RalphCapability.WEB_VISIT,
         RalphCapability.UPSTREAM_TOOL_USE,
@@ -138,6 +141,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.ENV_READ,
         RalphCapability.WEB_SEARCH,
         RalphCapability.WEB_VISIT,
+        RalphCapability.WEB_DOWNLOAD,
         RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.FIX: (
@@ -155,6 +159,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.ENV_READ,
         RalphCapability.WEB_SEARCH,
         RalphCapability.WEB_VISIT,
+        RalphCapability.WEB_DOWNLOAD,
         RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.REVIEW_COMMIT: (
@@ -164,6 +169,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.GIT_DIFF_READ,
         RalphCapability.ARTIFACT_SUBMIT,
         RalphCapability.ARTIFACT_PLAN_READ,
+        RalphCapability.PROCESS_EXEC_BOUNDED,
         RalphCapability.RUN_REPORT_PROGRESS,
     ),
     SessionDrain.COMMIT: (
@@ -173,6 +179,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.GIT_DIFF_READ,
         RalphCapability.ARTIFACT_SUBMIT,
         RalphCapability.ARTIFACT_PLAN_READ,
+        RalphCapability.PROCESS_EXEC_BOUNDED,
         RalphCapability.RUN_REPORT_PROGRESS,
     ),
 }

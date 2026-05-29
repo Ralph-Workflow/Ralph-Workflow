@@ -17,7 +17,16 @@ Read before writing or modifying any test.
 
 **Every test must finish within 1 second.**
 
-**Combined budget (enforced by `make verify`):** When `make verify` runs `make test`, the combined wall-clock time of all test suites must stay within 30 seconds total, enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 30.0`. You cannot circumvent this by adding suites, renaming targets, or redistributing tests — the combined wall-clock time of ALL test suites is subject to the 30-second cap when verification runs. Running `make test` directly is only guarded by per-suite caps. `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
+**Combined budget (enforced by `make verify`):** When `make verify` runs `make test`, the combined wall-clock time of all test suites must stay within 60 seconds total, enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 60.0`. You cannot circumvent this by adding suites, renaming targets, or redistributing tests — the combined wall-clock time of ALL test suites is subject to the 60-second cap when verification runs. Running `make test` directly is only guarded by per-suite caps. `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
+
+Budget enforcement invariants in `ralph/verify.py` use `if`/`raise RuntimeError` (NOT `assert`) — this prevents `python -O` from stripping the checks. All import-time invariants survive `-O`.
+
+For cumulative volume bottlenecks (many fast tests where per-item overhead dominates), valid fix strategies include:
+- Consolidating parameterized tests with overlapping coverage
+- Optimizing shared fixtures (function-scoped → session-scoped where safe)
+- Reducing redundant test coverage (never remove the sole coverage for a code path)
+
+Tests in `_IO_ALLOWLIST` (e.g., memory regression tests) that require real I/O for valid assertions must not be refactored to test doubles — optimize their fixtures instead.
 
 Override only when genuinely required:
 
@@ -49,11 +58,15 @@ If changing the implementation (without changing behavior) would break a test, *
 ### Agent checklist
 
 - [ ] Every test in the affected area finishes in < 1 s individually
-- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 30 s total (enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS` via cumulative `time.monotonic()` tracking)
+- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 60 s total (enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS` via cumulative `time.monotonic()` tracking; see `AGENTS.md` §'═══ ABSOLUTE TEST BUDGET — 60s, IMMUTABLE ═══' for all import-time invariants)
 - [ ] No test calls `time.sleep(N)` with `N > 0` or polls real wall-clock time
 - [ ] No test reaches through a boundary into real I/O (filesystem, subprocess, network)
 - [ ] Every test asserts on observable behavior, not internal state
 - [ ] Any refactor needed to make code testable within time is done — not deferred
+- [ ] No bypass audit violation detected in lint, typecheck, or test policy (see `docs/agents/verification.md` §'Bypass Audit Policy')
+
+See `docs/agents/verification.md` §'Total test budget — 60 seconds, ABSOLUTE and IMMUTABLE' for the full non-circumvention table.
+See `AGENTS.md` §'═══ ABSOLUTE TEST BUDGET — 60s, IMMUTABLE ═══' for the complete import-time invariant guard table.
 
 ---
 
@@ -75,7 +88,7 @@ If changing the implementation (without changing behavior) would break a test, *
 | Unit | `tests/` root, `tests/unit/` | Usually no | yes | `make test-unit` |
 | Integration | `tests/integration/` | Usually no | yes | `make test-integration` |
 | Full suite | all tests | mixed | yes | `make test` |
-| Verification | lint + typecheck + `make test` (via `ralph.test_suites`, 30 s combined budget) | mixed | yes | `make verify` |
+| Verification | lint + typecheck + `make test` (via `ralph.test_suites`, 60 s combined budget) | mixed | yes | `make verify` |
 
 ---
 

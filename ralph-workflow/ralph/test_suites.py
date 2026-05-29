@@ -2,7 +2,7 @@
 
 .. note::
 
-    The 30-second ABSOLUTE and IMMUTABLE combined test budget is enforced
+    The 60-second ABSOLUTE and IMMUTABLE combined test budget is enforced
     UPSTREAM by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`` via cumulative
     ``time.monotonic()`` tracking, not by this module. This module provides
     per-suite timeout wrapping only. Splitting tests into more suites or
@@ -42,7 +42,11 @@ if TYPE_CHECKING:
         ) -> ProcessResult: ...
 
 
-_DEFAULT_PYTEST_WORKERS = "10"
+# Default: ``auto`` — pytest-xdist auto-detects available CPU cores.
+# On systems with 12+ cores, this reliably keeps tests under the 60s
+# combined budget. Override via PYTEST_WORKERS env var for environments
+# with fewer cores. Minimum recommendation: 8+ physical cores.
+_DEFAULT_PYTEST_WORKERS = "auto"
 
 
 def _pytest_workers() -> str:

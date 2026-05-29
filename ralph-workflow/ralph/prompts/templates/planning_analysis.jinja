@@ -6,17 +6,7 @@
 
 {% include 'shared/_mcp_tools.j2' %}
 
-{% if SKILLS_INLINE_CONTENT|default('') %}
-## SHIPPED SKILL BUNDLE
-
-{{ SKILLS_INLINE_CONTENT|default('') }}
-{% else %}
-## BASELINE WORKFLOW SKILLS
-
-The following skills from the Ralph Workflow shipped skill bundle apply to this planning analysis task. Read and apply the relevant ones before proceeding:
-
-{{ PLANNING_SKILL_REFERENCES }}
-{% endif %}
+{% include 'shared/_shipped_skills.j2' %}
 
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
