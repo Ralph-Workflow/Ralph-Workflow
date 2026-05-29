@@ -64,6 +64,26 @@ if TYPE_CHECKING:
 #
 # If tests are too slow, fix the test design (remove I/O, use
 # MemoryWorkspace, inject fake clocks). Do NOT raise these constants.
+#
+# --- Allowed skip: subprocess_e2e tests ---
+#
+# Tests marked ``@pytest.mark.subprocess_e2e`` are excluded from the
+# main ``make test`` suite (``-m "not subprocess_e2e"``).  These tests
+# may be skipped only in narrow, documented cases where the failure is
+# in the test harness or a third-party dependency we cannot control.
+#
+# The SINGLE allowed skip as of 2026-05-29:
+#   ``tests/test_verify_invariants.py`` — imports ``verify.py`` via
+#   ``importlib.util.spec_from_file_location + exec_module`` in a
+#   subprocess.  In Python 3.14, this triggers a ``loguru`` /
+#   ``asyncio`` circular import (``AttributeError: partially
+#   initialized module 'asyncio'``).  The invariants are still
+#   enforced correctly in the main ``make verify`` path (import-time
+#   RuntimeError checks).  This is a test-harness compatibility issue
+#   with a third-party library (loguru), not a verification defect.
+#
+# No other test may be skipped, quarantined, or marked subprocess_e2e
+# to bypass the 1s per-test or 60s combined budget limits.
 _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
 _TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
 _INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0
