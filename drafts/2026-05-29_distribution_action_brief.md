@@ -1,12 +1,11 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-29T21:34:10
+Generated: 2026-05-29T22:22:49
 Chosen lane: **measurement_hold**
 
 ## Why this lane
 - No unpublished repo-native guide remains for owned-content publication, so do not let the selector drift into an owned-content noop; hold for the next truthful execution window instead.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 2 live external marketing action(s) already shipped in the last 6 hours.
-- If no new outcome lands first, this short-window congestion clears at 2026-05-29T22:19:55. Before then, another live outbound action would mostly blur measurement.
+- 1 live external marketing action(s) already shipped in the last 6 hours.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.

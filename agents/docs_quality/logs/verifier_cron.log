@@ -13151,3 +13151,85 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-aligned with positioning. README -> START_HERE -> docs/README journey is coherent, internally consistent, and free of the failure signals (artifacts-as-lead, process receipts, internal plumbing). Promoted next-click pages (ai-agent-orchestration-cli, spec-driven-ai-agent, first-task-guide, unattended-coding-agent, reviewable-output) all reinforce the same simple-core/composable/strong-default story instead of fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (GitHub mirror)",
+      "reason": "Leads with 'operating system for autonomous coding', clear Codeberg primary note, result-first evaluation, engineering-practice dependency section, no internal plumbing in top-half"
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Shortest honest first run, good/bad first task split matches positioning, success criteria (real repo change + meaningful checks + reviewable result) are result-first, no artifact/handoff/plumbing language"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicit 'Keep proof secondary' section, routes users to the right next page by intent, no link anxiety, all promoted pages reinforce the same framing"
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Framed as supporting proof, not primary pitch; result-first evidence ordering (working behavior > checks > scope > artifacts); explicitly tells users to start with product story first"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are clean, disciplined, and aligned to positioning. The agent should not need this instruction repeated.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with positioning tagline, simple-core explanation, composable-loop framing, strong default workflow, and honest who-it's-for. No artifact/plumbing language. Comparison table tells the differentiation story without internal leak. Codeberg primary clearly stated."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Cleanest first-run path possible: task selection guardrails, unambiguous install steps, result-defined success criteria. Never mentions internals. Routes to docs only 'if you need them.'"
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Curated docs switchboard with user-intent routing. 'Keep proof secondary' section is a deliberate anti-leak guard. Promoted links (spec-driven-ai-agent, unattended-coding-agent, ai-agent-orchestration-cli) all reinforce the same story rather than fighting it."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Self-declares as supporting proof, not main pitch. Result-first evaluation order with 'logs and transcripts should not be the main promise.' Exactly what the positioning document demands for secondary pages."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
