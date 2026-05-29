@@ -1,9 +1,9 @@
 # Ralph Workflow Comparison Backlink Follow-Through
-Generated: 2026-05-29T01:57:14
+Generated: 2026-05-29T12:55:07
 
 ## Why this exists now
 - The current comparison queue already covers every ranked competitor with a prepared packet.
-- Codeberg is still flat in the active window (9 samples; stars +1, watchers +0, forks +0).
+- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
 - Do not claim fresh execution if the run only re-describes already-prepared targets.
 
 ## Live comparison queue
@@ -25,7 +25,7 @@ Generated: 2026-05-29T01:57:14
 
 
 ## Post-hold marketer rerun scheduled
-- Scheduled run: 2026-05-29T05:56:07
-- Cron job: marketing-measurement-hold-release (fdad9e93-df88-47b5-a00a-643df26e88b0)
-- Log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_015714_measurement_hold_release_cron.json
+- Scheduled run: 2026-05-29T15:01:24
+- Cron job: marketing-measurement-hold-release (42e50509-fa6b-47b4-8839-84ba4823ff16)
+- Log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_125507_measurement_hold_release_cron.json
 - This keeps the first truthful post-hold slot alive even though the current lane is still blocked by short-window congestion.
