@@ -11588,3 +11588,85 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Strongly aligned overall. The README\u2192START_HERE\u2192docs/README journey is coherent, the promoted pages reinforce the same framing, and the core 'operating system for autonomous coding' / 'simple Ralph-loop core' / 'composable loop framework' positioning carries consistently. One minor internal-leakage residue remains.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "fail",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "github-mirror/README.md: 'Artifact handoff' bullet in Built-in capabilities \u2014 explicit internal-plumbing language on a top-level surface. Replace with a user-facing benefit (e.g. 'Structured phase handoff\u2014agents work through the repo, not fragile context stuffing')."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with the canonical tagline, has a clean comparison table, clear quick-start flow, realistic fit/non-fit framing, and engineering-practice dependency. Best top-level product README Ralph Workflow has had."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run. Good task selection guardrails. Result-first success criteria. Mirror caveat upfront. Does exactly one thing and does it well."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with clear routing levels. Explicitly demotes proof pages to secondary. Helps the reader choose their path without link anxiety."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Best promoted next-click page. Opens with the product story, explains why the simple core matters, emphasizes the default workflow, and routes cleanly. No plumbing language."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README\u2192START_HERE\u2192docs/README journey is coherent, no hard failures, promoted pages reinforce the same story. Minor internal language residue in capabilities list does not compromise the top-level narrative.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "github-mirror/README.md 'Built-in capabilities' lists 'Artifact handoff' \u2014 the explanation underneath is fine (repo-based, not abstract), but the label itself is internal-process language. Rename to 'Agent handoff' or 'Phase handoff' to match the repo-as-workspace framing already used in the comparison table."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with the canonical tagline, clearly frames as orchestrator vs chat-window, has the simple-core/complex-workflow contrast, explicitly says 'ships with a default workflow strong enough to start with', steers to Codeberg as primary, and has the engineering-practice dependency section. No hard-failure pattern present."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Leads with what Ralph Workflow is (not internals), gives concrete first-task guidance, defines success in result terms (what the software does, what checks ran), and routes to next pages as optional only. No artifacts/plumbing/review-bundle language."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Explicitly frames itself as post-README/START_HERE routing, includes a 'keep proof secondary' section, and the promoted product-framing pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md) all reinforce the same simple-core/composition/result-first narrative."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

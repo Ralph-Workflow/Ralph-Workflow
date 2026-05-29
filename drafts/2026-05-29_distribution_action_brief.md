@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-29T02:06:33
+Generated: 2026-05-29T03:20:36
 Chosen lane: **distribution_architecture_guard_pause**
 
 ## Why this lane
@@ -26,7 +26,7 @@ Chosen lane: **distribution_architecture_guard_pause**
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
 - The post-cooldown StackOverflow slot already ran after the retry window and still produced no fresh placement-ready outcome, so retire this packet for now and spend the next slot elsewhere.
 - Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
-- 47 prior distribution-architecture repair run(s) already hit this same empty-board window.
+- 1 prior distribution-architecture repair run(s) already hit this same empty-board window.
 - A third-strike distribution-architecture churn guard is already active for this same execution-board fingerprint.
 
 ## Shared findings reused

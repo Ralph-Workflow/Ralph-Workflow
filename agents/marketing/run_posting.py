@@ -34,6 +34,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from agents.marketing.positioning import repo_cta_footer, validate_marketing_copy
+from agents.marketing.channel_spidering_guard import guard_check, guard_record
 
 LOG_DIR = AGENTS_DIR / "logs"
 DRAFTS_DIR = Path("/home/mistlight/.openclaw/workspace/drafts")
@@ -317,14 +318,115 @@ def find_todays_drafts(today: str) -> list[Path]:
     )
 
 
+def crosspost_blog_content(posted: dict, today: str, dry_run: bool = False) -> list[dict]:
+    """Discover blog posts that have not yet been cross-posted to Telegraph, then
+    cross-post each one.  Returns a list of result records.
+
+    This repairs the blind spot where 25 live Ralph-Site blog posts were invisible
+    to the marketing loop because OWNED_CONTENT_SOURCE_CANDIDATES was hardcoded to
+    4 guide paths that did not include the blog directory.
+    """
+    import time
+    BLOG_DIR = ROOT / 'Ralph-Site' / 'content' / 'blog'
+    if not BLOG_DIR.is_dir():
+        return []
+
+    blog_files = sorted(BLOG_DIR.glob('*.md'))
+    results: list[dict] = []
+    crossposted = 0
+
+    for blog_path in blog_files:
+        # Check if this blog post was already cross-posted via source_path match
+        source_str = str(blog_path)
+        if already_posted_successfully(posted, '', 'telegraph', source_path=source_str):
+            continue
+
+        raw = blog_path.read_text(encoding='utf-8')
+        title, body, metadata = extract_title_and_body(raw)
+        body_stripped = body.strip()
+        if len(body_stripped) < 300:
+            continue
+
+        body_hash = digest_text(body_stripped)
+        if already_posted_successfully(posted, body_hash, 'telegraph'):
+            continue
+
+        body_with_cta = body_stripped + CTA_FOOTER
+
+        if dry_run:
+            results.append({
+                "date": today,
+                "title": title,
+                "platform": "telegraph",
+                "ok": False,
+                "status": "dry_run_skipped",
+                "source_path": source_str,
+                "draft_hash": body_hash,
+            })
+            continue
+
+        ok_tg, url_tg = post_telegraph(title, body_with_cta, source_path=source_str)
+        record = {
+            "date": today,
+            "draft": blog_path.name,
+            "title": title,
+            "platform": "telegraph",
+            "ok": ok_tg,
+            "status": "crossposted_blog" if ok_tg else "failed",
+            "url": url_tg if ok_tg else None,
+            "error": None if ok_tg else url_tg,
+            "draft_hash": body_hash,
+            "source_path": source_str,
+        }
+        results.append(record)
+        posted.setdefault("posts", []).append(record)
+        if ok_tg:
+            crossposted += 1
+        # Rate-limit: small sleep between cross-posts to avoid hitting Telegraph limits
+        if crossposted > 0 and crossposted % 3 == 0:
+            time.sleep(1.0)
+
+    return results
+
+
+def _post_guard(results: list[dict]) -> None:
+    """Record Telegraph guard state after posting — called from all exit paths."""
+    any_telegraph_ok = any(r.get("platform") == "telegraph" and r.get("ok") for r in results)
+    guard_record("telegraph", ok=any_telegraph_ok or len(results) == 0)
+
+
 def main() -> int:
     now = datetime.now()
     today = now.strftime("%Y-%m-%d")
+
+    # ── Spidering guard — prevent rapid-fire Telegraph hits ──────────
+    status, reason, remaining = guard_check("telegraph")
+    if not status:
+        print(json.dumps({
+            "timestamp": now.isoformat(),
+            "guard_blocked": True,
+            "reason": reason,
+            "cooldown_remaining_h": round(remaining, 1) if remaining else None
+        }, indent=2))
+        return 0
+
     posted = load_posted()
     results: list[dict] = []
 
+    # ── Blog cross-posting stage (repair 2026-05-29) ──────────────────
+    # Discover and cross-post Ralph-Site blog posts to Telegraph.
+    crosspost_results = crosspost_blog_content(posted, today, dry_run=False)
+    results.extend(crosspost_results)
+
     todays_drafts = find_todays_drafts(today)
     if not todays_drafts:
+        if results:
+            posted["last_run"] = now.isoformat()
+            save_posted(posted)
+            _post_guard(results)
+            print(json.dumps({"timestamp": now.isoformat(), "results": results}, indent=2))
+            return 0
+        _post_guard(results)
         summary = {"timestamp": now.isoformat(), "results": [], "message": "No scheduled drafts for today."}
         print(json.dumps(summary, indent=2))
         return 0
@@ -381,12 +483,15 @@ def main() -> int:
             "error": None if ok_tg else url_tg,
             "draft_hash": draft_hash,
             "experiment_id": metadata.get("experiment_id"),
+            "source_path": str(draft),
         }
         results.append(record_tg)
         posted.setdefault("posts", []).append(record_tg)
 
     posted["last_run"] = now.isoformat()
     save_posted(posted)
+
+    _post_guard(results)
 
     log_file = LOG_DIR / f"posting_{today}.json"
     log_file.write_text(json.dumps({"timestamp": now.isoformat(), "results": results}, indent=2), encoding="utf-8")

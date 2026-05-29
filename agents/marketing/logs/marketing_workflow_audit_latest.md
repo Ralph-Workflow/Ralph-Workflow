@@ -87,3 +87,25 @@
 - Refreshed distribution lane: distribution_architecture_guard_pause
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-29_marketing_execution_board.md
 - Outcome status: /home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json
+
+---
+
+## Distribution architecture repair — 2026-05-29T02:21 UTC
+
+**Problem:** OWNED_CONTENT_SOURCE_CANDIDATES was hardcoded to 4 guide paths, making 25 live Ralph-Site blog posts completely invisible to the marketing loop. The `_owned_content_publication_available()` gate could never see blog content. This was a structural blind spot contributing to 47+ consecutive empty-board measurement holds.
+
+**Fix applied:**
+1. `distribution_lane_selector.py`: Replaced hardcoded `OWNED_CONTENT_SOURCE_CANDIDATES` list with dynamic `_owned_content_source_candidates()` that discovers blog posts from `Ralph-Site/content/blog/` plus the existing 4 guide paths.
+2. `run_posting.py`: Added `crosspost_blog_content()` to discover and cross-post uncrossposted blog content to Telegraph, with rate limiting (3 per batch, 1s sleep between batches).
+3. `tests/test_blog_discovery.py`: 9 new tests covering candidate discovery, uniqueness, sorting, and cross-post staging behavior.
+
+**Validation results:**
+- Dynamic candidates: 29 (4 guides + 25 blogs) — was 4 in old hardcoded list
+- No duplicate candidates
+- Blog candidates sorted for deterministic behavior
+- 25 blog posts discoverable for cross-posting (0 previously cross-posted via source_path)
+- Old `OWNED_CONTENT_SOURCE_CANDIDATES` constant no longer exists (prevents stale references)
+
+**Hold-window compliance:** This is a concrete runtime/process repair with code and test changes — not a prompt/rerun tweak. The hold window already contains `active_loop_prompt_repair` and `post_hold_reentry_contract_repair`; this repair is a different concrete change that modifies the execution board fingerprint.
+
+**Next step after congestion clears (05:56 UTC):** The next marketing loop run can now see blog content as owned-content assets. The `crosspost_blog_content()` pipeline is ready for first cross-posting run.

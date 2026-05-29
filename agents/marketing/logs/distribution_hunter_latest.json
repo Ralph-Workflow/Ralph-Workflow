@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-29T02:01:43.286953",
+  "timestamp": "2026-05-29T02:15:01.750656",
   "repair_types_seen": [],
   "selected_lane": "distribution_architecture_guard_pause",
   "selected_action_type": "distribution_architecture_guard_pause",
   "execution_status": "skipped_repair",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_020143_distribution_architecture_guard_pause.md",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_021501_distribution_architecture_guard_pause.md",
   "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
   "expected_outcome": "Advance distribution via lane distribution_architecture_guard_pause without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
@@ -56,7 +56,7 @@
     "lane": "distribution_architecture_guard_pause",
     "action_type": "distribution_architecture_guard_pause",
     "status": "skipped_repair",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_020143_distribution_architecture_guard_pause.md",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_021501_distribution_architecture_guard_pause.md",
     "summary": "The active distribution-architecture churn guard had already been acknowledged for this fingerprint in the current review window, so the loop paused further duplicate guard follow-through churn. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
     "targets_prepared": [],
     "shared_findings_used": [
