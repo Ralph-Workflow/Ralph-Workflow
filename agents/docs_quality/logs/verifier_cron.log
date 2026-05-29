@@ -12983,3 +12983,93 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Clean, self-aware docs system. README -> START_HERE -> docs/README forms a coherent route with clear role separation. Promoted next-click pages all reinforce the same core story (simple loop core, composable orchestration, strong default, ambitious work, result-first). No internal leakage, no artifact-first framing, no stale positioning. Loop is healthy.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with tagline, routes to Codeberg/START_HERE, explicitly refuses to be another competing pitch \u2014 model of role-disciplined README."
+    },
+    {
+      "path": "START_HERE.md (github-mirror)",
+      "reason": "Opens with GitHub-mirror disclaimer, result-first framing ('judge by what software does now and what checks ran'), right task selection, clean install path."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Categorized switchboard with explicit ordering ('use after README and START_HERE'), 'Keep proof secondary' section, routes to Codeberg primary."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Self-declared supporting proof page. Evidence ordering (working behavior > checks > scope > artifacts) is exactly what the positioning requires. Does not leak into main product story."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Explains the practical problem solved, default workflow value, simple-at-center framing. Reinforces instead of fighting the core route."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is clean, coherent, and aligned with the positioning document. Every surface has a clear declared role, the README\u2192START_HERE\u2192docs map journey flows naturally, and promoted next-click pages consistently reinforce the same story without fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (GitHub mirror)",
+      "reason": "Opens with the correct tagline, comparison table effectively frames the differentiator, audience fit/non-fit is explicit, built-in capabilities are at the right abstraction level, and Codeberg is correctly presented as primary with GitHub as mirror."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Cleanest possible first-run path \u2014 concrete install steps, task selection with good/bad examples, result-oriented success criteria, and minimal next-click surfaces that route back into the same story."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by intent rather than directory structure, explicitly tells users to read the product surfaces first, includes a 'Keep proof secondary' advisory, and avoids promoting stale or artifact-heavy pages."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted as a next-click page under 'product framing' \u2014 opens with consistent positioning, explains the problem it solves, emphasizes the default workflow, and correctly routes back to the core surfaces."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md and docs/unattended-coding-agent.md",
+      "reason": "Both use fresh framing consistent with current positioning and correctly link back to START_HERE and first-task-guide rather than routing into stale proof pages."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
