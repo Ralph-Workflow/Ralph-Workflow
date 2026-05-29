@@ -100,7 +100,7 @@ If multiple independent analysis or discovery threads would reduce uncertainty, 
 
 Default submission flow:
 1. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`.
-2. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `skills_mcp` with task-relevant shipped skills and any MCP servers the development agent should use.
+2. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `skills_mcp` with task-relevant skills and any MCP servers the development agent should use.
 3. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `steps`.
 4. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `critical_files`.
 5. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `risks_mitigations`.
@@ -128,7 +128,7 @@ Your payload must decode to an object shaped like this:
     ]
   },
   "skills_mcp": {
-    "skills": ["required shipped skill names for the development agent"],
+    "skills": ["skill names available to the development agent"],
     "mcps": ["optional MCP server names the development agent should use"]
   },
   "steps": [
@@ -174,8 +174,8 @@ Your payload must decode to an object shaped like this:
 
 Hard requirements for the payload:
 - `summary.scope_items` must contain at least 3 concrete items.
-- `skills_mcp.skills` must contain at least 1 shipped skill name from skills already available in your environment. Choose skills the development agent should invoke for this task, not every installed skill.
-- `skills_mcp.skills` names must match installed shipped skill names exactly.
+- `skills_mcp.skills` must contain at least 1 skill name from skills already available in your environment. Choose skills the development agent should invoke for this task, not every installed skill.
+- `skills_mcp.skills` names must match skill names your agent can discover and invoke.
 - `steps` must contain at least 1 step, and every step must be explicit enough for a weaker agent to execute without re-planning.
 - `critical_files.primary_files` must contain at least 1 file.
 - `targets[*].action` and `critical_files.primary_files[*].action` must be one of `create`, `modify`, or `delete`.

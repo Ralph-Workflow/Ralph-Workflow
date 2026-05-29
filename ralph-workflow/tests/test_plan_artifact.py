@@ -491,11 +491,30 @@ def test_normalize_plan_artifact_content_rejects_missing_skills_mcp() -> None:
         normalize_plan_artifact_content(invalid)
 
 
-def test_normalize_plan_artifact_content_rejects_unknown_skill_names() -> None:
-    invalid = _valid_plan()
-    invalid["skills_mcp"] = {"skills": ["not-a-real-skill"], "mcps": []}
+def test_normalize_plan_artifact_content_accepts_available_skill_names() -> None:
+    plan = _valid_plan()
+    plan["skills_mcp"] = {
+        "skills": [
+            "open-design--frontend-design",
+            "my-custom-skill",
+            "open-design--frontend-design",
+        ],
+        "mcps": [],
+    }
 
-    with pytest.raises(PlanArtifactValidationError, match="unknown skill names"):
+    normalized = normalize_plan_artifact_content(plan)
+
+    assert normalized["skills_mcp"]["skills"] == [
+        "open-design--frontend-design",
+        "my-custom-skill",
+    ]
+
+
+def test_normalize_plan_artifact_content_rejects_empty_skill_names() -> None:
+    invalid = _valid_plan()
+    invalid["skills_mcp"] = {"skills": ["   "], "mcps": []}
+
+    with pytest.raises(PlanArtifactValidationError, match="skills must contain at least one"):
         normalize_plan_artifact_content(invalid)
 
 
