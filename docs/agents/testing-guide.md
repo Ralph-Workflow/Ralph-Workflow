@@ -54,6 +54,9 @@ If changing the implementation (without changing behavior) would break a test, *
 - [ ] No test reaches through a boundary into real I/O (filesystem, subprocess, network)
 - [ ] Every test asserts on observable behavior, not internal state
 - [ ] Any refactor needed to make code testable within time is done — not deferred
+- [ ] No bypass audit violation detected in lint, typecheck, or test policy (see `docs/agents/verification.md` §'Bypass Audit Policy')
+
+See `docs/agents/verification.md` §'Total test budget' for the full non-circumvention table.
 
 ---
 

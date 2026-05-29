@@ -52,6 +52,24 @@ This combined limit is **IMMUTABLE** — the following do **NOT** circumvent it:
 | Adding `ignore_missing_imports = true` to mypy config | Detected by `ralph/testing/audit_typecheck_bypass.py` (part of `make verify`) |
 | Using bare `# noqa` or blanket `# type: ignore` | Detected by bypass audit modules with file:line reporting |
 
+#### Verification Invariants
+
+`ralph/verify.py` enforces import-time invariants to prevent accidental
+or malicious weakening of budget enforcement:
+
+- `_TOTAL_TEST_BUDGET_SECONDS > 0` — the budget must be positive.
+- `_BUDGET_TRACKED_STEPS` indices are valid indices into `_VERIFY_STEPS` —
+  all tracked steps must exist.
+- Every budget-tracked step has a positive timeout — budget enforcement
+  cannot be silently nullified by a `None` or zero timeout.
+- An epsilon assertion (`abs(_TOTAL_TEST_BUDGET_SECONDS - 30.0) < 1e-9`)
+  confirms the constant has not been altered from its ABSOLUTE and
+  IMMUTABLE value of 30.0 seconds.
+
+These invariants are checked at module import time. Any violation causes
+an `AssertionError` at startup, preventing `make verify` from running with
+a weakened budget configuration.
+
 A timeout failure is a test design defect. Fix the production coupling — never adjust the budget. Remove I/O, use `MemoryWorkspace`, inject fake clocks. Do **not** raise `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS` to mask a slow test.
 
 Verification passes only when all checks complete with **no ERROR/WARNING diagnostics**. If any step fails, fix the issue immediately and rerun. `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and `CLAUDE.md`.

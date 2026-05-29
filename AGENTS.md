@@ -48,6 +48,7 @@ If instructions conflict, follow the stricter one.
   - Using bare `# noqa` without a specific error code, or `# noqa: CODE` where CODE is not in the allowlist — detected by `ralph/testing/audit_lint_bypass.py`
   - Using blanket `# type: ignore` without a specific mypy error code, or `# type: ignore[CODE]` without a policy-compliant reason marker — detected by `ralph/testing/audit_typecheck_bypass.py` and enforced by `../docs/agents/type-ignore-policy.md` (mandatory reading)
   - Using `# type: ignore` in test files — tests must be fully typed (no exceptions)
+  - Using `time.sleep()`, real subprocess, or real file I/O in non-`subprocess_e2e` tests — detected by `ralph/testing/audit_test_policy.py`
   - Any weakening of any check requires a documented justification and an entry in the audit allowlist — there is NO other path to bypass
 - **How to fix a slow test** (do NOT work around the budget):
   - Replace real I/O with fakes (MemoryWorkspace, tmp_path, MockProcessExecutor)

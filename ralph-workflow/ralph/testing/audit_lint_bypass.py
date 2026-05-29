@@ -38,7 +38,7 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).
-_SKIP_DIRS: frozenset[str] = frozenset({"__pycache__", ".venv", ".mypy_cache", "tmp"})
+_SKIP_DIRS: frozenset[str] = frozenset({"__pycache__", ".venv", ".mypy_cache", "tmp", ".ruff_cache", ".pytest_cache", "htmlcov", "build", "dist"})
 
 # Regex for matching # noqa comments on a line.
 _NOQA_RE = re.compile(r"#\s*noqa(?:\s*:\s*(.*?))?(?:\s*$|\s*$)")
@@ -100,6 +100,17 @@ def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassVio
 
         match = _NOQA_RE.search(raw_line)
         if not match:
+            continue
+
+        if rel_path.startswith("tests/"):
+            violations.append(
+                LintBypassViolation(
+                    file_path=rel_path,
+                    line=lineno,
+                    category="test-noqa",
+                    detail="# noqa in test file — tests must follow all lint rules",
+                )
+            )
             continue
 
         codes_str = match.group(1)
@@ -189,6 +200,35 @@ def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]:
                     f"per-file-ignores weakens lint enforcement",
                 )
             )
+
+    # --- check for global lint ignore (whole-project weakening) ---
+    ruff_tool = data.get("tool", {}).get("ruff", {})
+
+    # top-level ruff ignore (e.g., [tool.ruff] ignore = [...])
+    top_ignore = ruff_tool.get("ignore")
+    if top_ignore:
+        violations.append(
+            LintBypassViolation(
+                file_path=str(pyproject_path),
+                line=0,
+                category="global-ignore",
+                detail=f"[tool.ruff] ignore = {top_ignore} - "
+                f"global ignore weakens lint enforcement",
+            )
+        )
+
+    # ruff.lint ignore (e.g., [tool.ruff.lint] ignore = [...])
+    lint_ignore = ruff_tool.get("lint", {}).get("ignore")
+    if lint_ignore:
+        violations.append(
+            LintBypassViolation(
+                file_path=str(pyproject_path),
+                line=0,
+                category="global-ignore",
+                detail=f"[tool.ruff.lint] ignore = {lint_ignore} - "
+                f"global ignore weakens lint enforcement",
+            )
+        )
 
     return violations
 

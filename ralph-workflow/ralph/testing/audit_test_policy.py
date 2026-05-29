@@ -17,6 +17,12 @@ import ast
 import sys
 from pathlib import Path
 
+# Directories to skip during file collection.
+_SKIP_DIRS: frozenset[str] = frozenset({
+    "__pycache__", ".venv", ".mypy_cache", ".ruff_cache",
+    ".pytest_cache", "htmlcov", "build", "dist", "tmp",
+})
+
 # --- Allowlist: test files exempt from specific checks ---
 
 # Files with pytest.mark.subprocess_e2e are EXCLUDED from all checks.
@@ -96,6 +102,8 @@ class TestPolicyAuditor(ast.NodeVisitor):
         """Detect sleep() and I/O calls."""
         self._check_sleep_call(node)
         self._check_io_call(node)
+        self._check_wall_clock_call(node)
+        self._check_blocking_wait_call(node)
         self.generic_visit(node)
 
     def _check_sleep_call(self, node: ast.Call) -> None:
@@ -210,6 +218,37 @@ class TestPolicyAuditor(ast.NodeVisitor):
             )
             return
 
+    def _check_wall_clock_call(self, node: ast.Call) -> None:
+        """Detect time.monotonic()/time.perf_counter() in elapsed-time loops."""
+        func_name = self._get_func_name(node)
+        if func_name is None:
+            return
+
+        if func_name in ("time.monotonic", "time.perf_counter"):
+            self._add_violation(
+                node,
+                "wall-clock",
+                f"{func_name}() - real wall-clock measurement in test; "
+                "inject a clock abstraction instead",
+            )
+
+    def _check_blocking_wait_call(self, node: ast.Call) -> None:
+        """Detect .wait() calls without a timeout argument."""
+        func_name = self._get_func_name(node)
+        if func_name is None:
+            return
+
+        # threading.Event().wait(), asyncio.Event().wait(), etc.
+        if func_name.endswith(".wait"):
+            # If no arguments provided or first arg is positional, flag.
+            if not node.args and not node.keywords:
+                self._add_violation(
+                    node,
+                    "blocking-wait",
+                    f"{func_name}() without timeout - "
+                    "blocking wait in test; always specify a timeout",
+                )
+
     def _get_func_name(self, node: ast.Call) -> str | None:
         """Extract the full dotted function name from a Call node."""
         func = node.func
@@ -231,16 +270,66 @@ class TestPolicyAuditor(ast.NodeVisitor):
 
 
 def _collect_subprocess_e2e_files(tests_root: Path) -> set[str]:
-    """Find all test files marked with @pytest.mark.subprocess_e2e."""
+    """Find all test files marked with @pytest.mark.subprocess_e2e.
+
+    Uses string pre-filter then AST parsing for accuracy. Files that
+    contain 'subprocess_e2e' in docstrings/comments but lack the actual
+    marker are NOT added (string-only false positives are excluded).
+    """
     e2e_files: set[str] = set()
     for py_file in tests_root.rglob("*.py"):
+        # Skip directories.
+        if any(part in _SKIP_DIRS for part in py_file.parts):
+            continue
         try:
             content = py_file.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        if "subprocess_e2e" in content:
+        # Fast string pre-filter.
+        if "subprocess_e2e" not in content:
+            continue
+        # AST-based confirmation: check for @pytest.mark.subprocess_e2e decorator
+        # or pytestmark assignment.
+        try:
+            tree = ast.parse(content, filename=str(py_file))
+        except SyntaxError:
+            # If we cannot parse, fall back to string-based (conservative).
+            e2e_files.add(py_file.name)
+            continue
+        has_marker = _has_subprocess_e2e_marker_ast(tree)
+        if has_marker:
             e2e_files.add(py_file.name)
     return e2e_files
+
+
+def _has_subprocess_e2e_marker_ast(tree: ast.AST) -> bool:
+    """Check AST for @pytest.mark.subprocess_e2e decorator or pytestmark."""
+    for node in ast.walk(tree):
+        # Check for @pytest.mark.subprocess_e2e decorator.
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            for decorator in getattr(node, "decorator_list", []):
+                if _is_subprocess_e2e_decorator(decorator):
+                    return True
+        # Check for module-level pytestmark = [pytest.mark.subprocess_e2e]
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "pytestmark":
+                    if isinstance(node.value, ast.List):
+                        for elt in node.value.elts:
+                            if _is_subprocess_e2e_decorator(elt):
+                                return True
+    return False
+
+
+def _is_subprocess_e2e_decorator(node: ast.AST) -> bool:
+    """Check if a decorator node represents @pytest.mark.subprocess_e2e."""
+    # Pattern: Attribute(Attribute(Name('pytest'), 'mark'), 'subprocess_e2e')
+    if isinstance(node, ast.Attribute):
+        if node.attr == "subprocess_e2e":
+            if isinstance(node.value, ast.Attribute) and node.value.attr == "mark":
+                if isinstance(node.value.value, ast.Name) and node.value.value.id == "pytest":
+                    return True
+    return False
 
 
 def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0911
@@ -292,6 +381,9 @@ def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], 
     files_checked = 0
 
     for py_file in sorted(tests_root.rglob("*.py")):
+        # Skip excluded directories.
+        if any(part in _SKIP_DIRS for part in py_file.parts):
+            continue
         # Skip test_process_audit.py itself and this audit file.
         if py_file.name in ("test_process_audit.py", "audit_test_policy.py"):
             continue

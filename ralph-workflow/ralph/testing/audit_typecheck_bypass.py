@@ -43,7 +43,7 @@ _VALID_REASON_MARKERS: tuple[str, ...] = (
 )
 
 # Files / directories to skip.
-_SKIP_DIRS: frozenset[str] = frozenset({"__pycache__", ".venv", ".mypy_cache", "tmp"})
+_SKIP_DIRS: frozenset[str] = frozenset({"__pycache__", ".venv", ".mypy_cache", "tmp", ".ruff_cache", ".pytest_cache", "htmlcov", "build", "dist"})
 
 # Regex: blanket # type: ignore (no error code in brackets).
 _BLANKET_TYPE_IGNORE_RE = re.compile(r"#\s*type\s*:\s*ignore\s*(?:$|[^\[#])")
@@ -348,8 +348,34 @@ def _check_pyproject_mypy(pyproject_path: Path) -> list[TypecheckBypassViolation
                 file_path=rel_path,
                 line=0,
                 category="mypy-config",
-                detail=f"[tool.mypy] exclude = {tool_mypy['exclude']} — "
+                detail=f"[tool.mypy] exclude = {tool_mypy['exclude']} - "
                 f"excludes files from type checking, weakening enforcement",
+            )
+        )
+
+    # warn_unused_ignores = false weakens type checking by silencing
+    # the "unused ignore" error, allowing stale type: ignore to accumulate.
+    if tool_mypy.get("warn_unused_ignores") is False:
+        violations.append(
+            TypecheckBypassViolation(
+                file_path=rel_path,
+                line=0,
+                category="mypy-config",
+                detail="[tool.mypy] warn_unused_ignores = false - "
+                "weakens type checking by silencing unused ignore warnings",
+            )
+        )
+
+    # disallow_untyped_defs = false weakens type checking by allowing
+    # functions without type annotations to pass silently.
+    if tool_mypy.get("disallow_untyped_defs") is False:
+        violations.append(
+            TypecheckBypassViolation(
+                file_path=rel_path,
+                line=0,
+                category="mypy-config",
+                detail="[tool.mypy] disallow_untyped_defs = false - "
+                "weakens type checking by allowing untyped function definitions",
             )
         )
 

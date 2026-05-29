@@ -128,6 +128,12 @@ for idx in _BUDGET_TRACKED_STEPS:
         f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout"
     )
 
+# Budget-constant integrity: the 30-second combined budget is ABSOLUTE and
+# IMMUTABLE. This epsilon assertion prevents any drift or accidental change.
+assert abs(_TOTAL_TEST_BUDGET_SECONDS - 30.0) < 1e-9, (
+    f"_TOTAL_TEST_BUDGET_SECONDS must be 30.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
+)
+
 
 def _default_runner(
     command: str,
@@ -273,6 +279,11 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             )
             return result.returncode
 
+    print(
+        f"\nCumulative test elapsed: {cumulative_test_elapsed:.2f}s"
+        f" / budget: {_TOTAL_TEST_BUDGET_SECONDS:.1f}s",
+        flush=True,
+    )
     return 0
 
 
