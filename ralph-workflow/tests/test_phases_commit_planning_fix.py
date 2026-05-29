@@ -435,6 +435,13 @@ def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
                             {"text": "three"},
                         ],
                     },
+                    "skills_mcp": {
+                        "skills": [
+                            "test-driven-development",
+                            "verification-before-completion",
+                        ],
+                        "mcps": [],
+                    },
                     "steps": [{"number": 1, "title": "x", "content": "y"}],
                     "critical_files": {
                         "primary_files": [

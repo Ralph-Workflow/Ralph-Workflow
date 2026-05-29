@@ -48,7 +48,7 @@ class PlanArtifact(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     summary: Summary
-    skills_mcp: SkillsMcp | None = None
+    skills_mcp: SkillsMcp
     steps: list[PlanStep] = Field(..., min_length=1)
     critical_files: CriticalFiles
     risks_mitigations: list[RiskMitigation] = Field(..., min_length=1)
@@ -456,6 +456,7 @@ def render_plan_markdown(content: Mapping[str, object]) -> str:
 
     lines = ["# Execution Plan"]
     lines.extend(_render_summary_section(plan.get("summary")))
+    lines.extend(_render_skills_mcp_section(plan.get("skills_mcp")))
     lines.extend(_render_steps_section(plan.get("steps")))
     lines.extend(_render_critical_files_section(plan.get("critical_files")))
     lines.extend(_render_risks_section(plan.get("risks_mitigations")))
@@ -484,6 +485,60 @@ def _render_summary_section(summary: object) -> list[str]:
             if isinstance(text, str) and text.strip():
                 lines.extend(["", f"- {text.strip()}"])
     return lines
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [entry.strip() for entry in value if isinstance(entry, str) and entry.strip()]
+
+
+def _render_skills_mcp_section(skills_mcp: object) -> list[str]:
+    if not isinstance(skills_mcp, dict):
+        return []
+
+    skill_lines = [f"- `{name}`" for name in _string_list(skills_mcp.get("skills"))]
+    mcp_lines = [f"- `{name}`" for name in _string_list(skills_mcp.get("mcps"))]
+    if not skill_lines and not mcp_lines:
+        return []
+
+    lines = ["", "## Skills and MCPs"]
+    if skill_lines:
+        lines.extend(["", "### Skills", ""])
+        lines.extend(skill_lines)
+    if mcp_lines:
+        lines.extend(["", "### MCP Servers", ""])
+        lines.extend(mcp_lines)
+    return lines
+
+
+def extract_plan_payload(content: Mapping[str, object]) -> dict[str, object] | None:
+    """Return the raw plan dict from an artifact envelope or bare payload."""
+    if content.get("type") == "plan":
+        nested = content.get("content")
+        if isinstance(nested, dict):
+            return cast("dict[str, object]", nested)
+        return None
+    return cast("dict[str, object]", dict(content))
+
+
+def extract_plan_skill_names(content: Mapping[str, object]) -> tuple[str, ...]:
+    """Return planner-specified skill names from a plan artifact payload."""
+    plan = extract_plan_payload(content)
+    if plan is None:
+        return ()
+    skills_mcp = plan.get("skills_mcp")
+    if not isinstance(skills_mcp, dict):
+        return ()
+    skills = skills_mcp.get("skills")
+    if not isinstance(skills, list):
+        return ()
+    names = tuple(
+        entry.strip()
+        for entry in skills
+        if isinstance(entry, str) and entry.strip()
+    )
+    return names
 
 
 def _render_steps_section(steps: object) -> list[str]:
@@ -643,6 +698,8 @@ __all__ = [
     "Summary",
     "VerificationStep",
     "delete_plan_draft",
+    "extract_plan_payload",
+    "extract_plan_skill_names",
     "finalize_plan_draft",
     "insert_plan_step",
     "is_noop_plan",

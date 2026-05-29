@@ -109,12 +109,13 @@ If multiple independent analysis or discovery threads would reduce uncertainty, 
 
 Default submission flow:
 1. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`.
-2. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `steps`.
-3. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `critical_files`.
-4. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `risks_mitigations`.
-5. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `verification_strategy`.
-6. Stage optional sections like `skills_mcp` or `parallel_plan` only when they add real value.
-7. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
+2. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `skills_mcp` with task-relevant shipped skills and any MCP servers the development agent should use.
+3. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `steps`.
+4. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `critical_files`.
+5. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `risks_mitigations`.
+6. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `verification_strategy`.
+7. Stage optional sections like `parallel_plan` only when they add real value.
+8. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
 
 Atomic fallback for short plans:
 - If the plan is genuinely short, you may call {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan" and content as a JSON string conforming to the plan schema.
@@ -136,8 +137,8 @@ Your payload must decode to an object shaped like this:
     ]
   },
   "skills_mcp": {
-    "skills": ["optional skill names"],
-    "mcps": ["optional MCP server names"]
+    "skills": ["required shipped skill names for the development agent"],
+    "mcps": ["optional MCP server names the development agent should use"]
   },
   "steps": [
     {
@@ -182,6 +183,8 @@ Your payload must decode to an object shaped like this:
 
 Hard requirements for the payload:
 - `summary.scope_items` must contain at least 3 concrete items.
+- `skills_mcp.skills` must contain at least 1 shipped skill name from the Ralph Workflow skill bundle. Choose skills the development agent should read for this task, not every available skill.
+- `skills_mcp.skills` names must match shipped skill bundle names exactly.
 - `steps` must contain at least 1 step, and every step must be explicit enough for a weaker agent to execute without re-planning.
 - `critical_files.primary_files` must contain at least 1 file.
 - `targets[*].action` and `critical_files.primary_files[*].action` must be one of `create`, `modify`, or `delete`.

@@ -43,6 +43,13 @@ def test_read_plan_artifact_projects_context_and_scope(tmp_path: Path) -> None:
                     "context": "Improve the dashboard",
                     "scope_items": ["Item A", "Item B", "Item C"],
                 },
+                "skills_mcp": {
+                    "skills": [
+                        "test-driven-development",
+                        "verification-before-completion",
+                    ],
+                    "mcps": [],
+                },
                 "steps": [{"id": 1}, {"id": 2}],
                 "risks_mitigations": [
                     {"risk": "timeout"},

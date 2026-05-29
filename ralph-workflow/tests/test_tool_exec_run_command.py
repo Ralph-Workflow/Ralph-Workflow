@@ -223,7 +223,7 @@ def test_run_command_uses_distinct_pool_slots_for_same_workspace_concurrent_call
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
-    monkeypatch.setattr(exec_tool, "_get_sandbox_manager", lambda: manager)
+    monkeypatch.setattr(exec_tool, "_get_sandbox_manager", lambda _: manager)
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
     workspace = MockWorkspaceRoot(workspace_root)

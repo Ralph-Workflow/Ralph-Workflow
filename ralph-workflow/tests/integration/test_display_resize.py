@@ -30,7 +30,11 @@ class TestSigwinchIntegration:
 
         # Create a wide console
         wide_console = Console(file=StringIO(), width=120, force_terminal=True)
-        wide_ctx = make_display_context(console=wide_console, env={})
+        wide_ctx = make_display_context(
+            console=wide_console,
+            env={"COLUMNS": "120"},
+            force_width=120,
+        )
         assert wide_ctx.mode == "wide"
 
         renderer = PlainLogRenderer(wide_ctx)

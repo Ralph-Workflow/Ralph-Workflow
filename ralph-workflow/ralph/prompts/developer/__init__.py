@@ -75,6 +75,7 @@ def prompt_developer_iteration_xml_with_context(
         "LAST_RETRY_ERROR": inputs.last_retry_error,
         "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
         "DEVELOPMENT_SKILL_REFERENCES": development_skill_references_text(),
+        "PLAN_SKILL_REFERENCES": inputs.plan_skill_references,
         "PLANNING_SKILL_REFERENCES": planning_skill_references_text(),
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
     }
@@ -132,6 +133,7 @@ def prompt_developer_iteration_xml_with_context(
                 "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
                 "SKILLS_INLINE_CONTENT": inputs.skills_inline_content,
                 "DEVELOPMENT_SKILL_REFERENCES": development_skill_references_text(),
+                "PLAN_SKILL_REFERENCES": inputs.plan_skill_references,
                 "PLANNING_SKILL_REFERENCES": planning_skill_references_text(),
                 "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),

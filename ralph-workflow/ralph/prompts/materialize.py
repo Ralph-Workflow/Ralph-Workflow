@@ -20,7 +20,12 @@ from ralph.mcp.artifacts.history import (
     clear_artifact_history,
     history_index_path,
 )
-from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_ARTIFACT_TYPE, PLAN_DRAFT_PATH
+from ralph.mcp.artifacts.plan import (
+    PLAN_ARTIFACT_PATH,
+    PLAN_ARTIFACT_TYPE,
+    PLAN_DRAFT_PATH,
+    extract_plan_skill_names,
+)
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
 from ralph.phases.required_artifacts import (
     resolve_required_artifact,
@@ -63,6 +68,7 @@ from ralph.prompts.template_engine import render_template
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
 from ralph.skills._prompt_skill_references import (
     development_skill_references_text,
+    plan_skill_references_text,
     planning_skill_references_text,
 )
 from ralph.skills._skill_resolver import get_inline_skill_content
@@ -436,6 +442,7 @@ def _render_developer_prompt(
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     skills_inline_content = get_inline_skill_content()
+    plan_skill_references = _resolve_plan_skill_references(workspace)
     return prompt_developer_iteration_xml_with_context(
         context=tmpl_ctx,
         inputs=DeveloperPromptInputs(
@@ -457,6 +464,7 @@ def _render_developer_prompt(
             prompt_name_prefix=phase,
             last_retry_error=last_retry_error,
             skills_inline_content=skills_inline_content,
+            plan_skill_references=plan_skill_references,
             artifact_history_path=dev_artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
             has_docs_mcp=has_docs_mcp,
@@ -526,6 +534,7 @@ def _render_template_based_prompt(
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
     variables["PLANNING_SKILL_REFERENCES"] = planning_skill_references_text()
     variables["DEVELOPMENT_SKILL_REFERENCES"] = development_skill_references_text()
+    variables["PLAN_SKILL_REFERENCES"] = _resolve_plan_skill_references(workspace)
     return render_template(
         template,
         _merged_variables(variables, session_caps),
@@ -590,6 +599,22 @@ def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
         artifact_path=PLAN_ARTIFACT_PATH,
         fallback_formatter=format_plan_for_execution,
     )
+
+
+def _resolve_plan_skill_references(workspace: Workspace) -> str:
+    if not workspace.exists(PLAN_ARTIFACT_PATH):
+        return ""
+    try:
+        parsed_obj: object = json.loads(workspace.read(PLAN_ARTIFACT_PATH))
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(parsed_obj, dict):
+        return ""
+    payload = cast("dict[str, object]", parsed_obj)
+    skill_names = extract_plan_skill_names(payload)
+    if not skill_names:
+        return ""
+    return plan_skill_references_text(skill_names)
 
 
 def _template_allows_missing_plan_handoff(template_name: str) -> bool:

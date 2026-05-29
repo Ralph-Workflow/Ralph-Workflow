@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -73,6 +74,21 @@ def _get_private_exec_base() -> Path:
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
     with suppress(Exception):
         base.chmod(0o700)
+    return base
+
+
+def _get_workspace_exec_base(workspace_root: Path) -> Path:
+    """Return a per-workspace exec sandbox directory scoped to a single repo.
+
+    Each workspace gets its own cache directory so that sandbox size limits
+    are per-instance, not shared across all Ralph processes for the same user.
+    """
+    private_base = _get_private_exec_base()
+    workspace_hash = hashlib.sha256(
+        str(workspace_root.resolve()).encode("utf-8")
+    ).hexdigest()[:16]
+    base = private_base / workspace_hash
+    base.mkdir(mode=0o700, parents=True, exist_ok=True)
     return base
 
 

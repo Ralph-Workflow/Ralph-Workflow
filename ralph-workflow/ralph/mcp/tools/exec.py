@@ -27,8 +27,13 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.mcp.tools.exec_overlay import _get_private_exec_base
-from ralph.mcp.tools.exec_sandbox import ExecSandboxManager
+from ralph.mcp.tools.exec_overlay import _get_workspace_exec_base
+from ralph.mcp.tools.exec_sandbox import (
+    ExecSandboxManager,
+    _compute_sandbox_limits,
+    _compute_workspace_size_bytes,
+    _workspace_key,
+)
 from ralph.process.manager import SpawnOptions, get_process_manager
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
@@ -501,20 +506,27 @@ def _cleanup_exec_orphans(pgid: int, root_pid: int, psutil_mod: _PsutilModuleLik
 
 
 class _SandboxManagerCache:
-    instance: ClassVar[ExecSandboxManager | None] = None
+    instances: ClassVar[dict[str, ExecSandboxManager]] = {}
     lock: ClassVar[threading.Lock] = threading.Lock()
 
 
-def _get_sandbox_manager() -> ExecSandboxManager:
-    if _SandboxManagerCache.instance is None:
+def _get_sandbox_manager(workspace_root: Path) -> ExecSandboxManager:
+    key = _workspace_key(workspace_root)
+    if key not in _SandboxManagerCache.instances:
         with _SandboxManagerCache.lock:
-            if _SandboxManagerCache.instance is None:
-                _SandboxManagerCache.instance = ExecSandboxManager(
-                    base_dir=_get_private_exec_base()
+            if key not in _SandboxManagerCache.instances:
+                sandbox_base = _get_workspace_exec_base(workspace_root)
+                workspace_size = _compute_workspace_size_bytes(workspace_root)
+                total, pool, ws_safety = _compute_sandbox_limits(workspace_size)
+                _SandboxManagerCache.instances[key] = ExecSandboxManager(
+                    base_dir=sandbox_base,
+                    max_total_bytes=total,
+                    max_pool_bytes=pool,
+                    max_workspace_bytes=ws_safety,
                 )
                 with contextlib.suppress(Exception):
-                    _SandboxManagerCache.instance.cleanup_base()
-    return _SandboxManagerCache.instance
+                    _SandboxManagerCache.instances[key].cleanup_base()
+    return _SandboxManagerCache.instances[key]
 
 
 def run_command(
@@ -527,8 +539,8 @@ def run_command(
     """Execute a subprocess in a private resettable sandbox rooted at the workspace."""
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
-    overlay_factory = resolved_deps.overlay_factory or _get_sandbox_manager().acquire
     cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
+    overlay_factory = resolved_deps.overlay_factory or _get_sandbox_manager(cwd).acquire
     timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
     with overlay_factory(cwd) as overlay_cwd:
         try:

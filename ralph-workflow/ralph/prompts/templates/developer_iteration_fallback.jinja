@@ -8,14 +8,7 @@ PREVIOUS ATTEMPT ERROR:
 
 {% endif %}
 
-{% if SKILLS_INLINE_CONTENT %}
-{{ SKILLS_INLINE_CONTENT }}
-{% else %}
-## BASELINE WORKFLOW SKILLS
-
-Skills available from the Ralph Workflow shipped skill bundle (read and apply as appropriate):
-{{ DEVELOPMENT_SKILL_REFERENCES }}
-{% endif %}
+{% include 'shared/_development_skills.j2' %}
 
 ORIGINAL REQUEST:
 Canonical request file: `{{PROMPT_PATH}}`

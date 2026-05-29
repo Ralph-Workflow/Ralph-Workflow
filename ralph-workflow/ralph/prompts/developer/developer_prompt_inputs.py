@@ -21,4 +21,5 @@ class DeveloperPromptInputs:
     prompt_name_prefix: str = "development"
     last_retry_error: str = ""
     skills_inline_content: str = ""
+    plan_skill_references: str = ""
     has_docs_mcp: bool = False

@@ -36,6 +36,13 @@ _VALID_CONTENT: dict[str, str] = {
                     {"text": "Verify"},
                 ],
             },
+            "skills_mcp": {
+                "skills": [
+                    "test-driven-development",
+                    "verification-before-completion",
+                ],
+                "mcps": [],
+            },
             "steps": [{"number": 1, "title": "Step 1", "content": "Do the work"}],
             "critical_files": {
                 "primary_files": [{"path": "ralph/pipeline/runner.py", "action": "modify"}]

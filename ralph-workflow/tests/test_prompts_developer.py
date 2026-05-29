@@ -14,6 +14,7 @@ from ralph.prompts.template_engine import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.skills._prompt_skill_references import (
     development_skill_references_text,
+    plan_skill_references_text,
     planning_skill_references_text,
 )
 from ralph.workspace.memory import MemoryWorkspace
@@ -525,6 +526,30 @@ def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path: Path
     assert DEVELOPER_CLEAR_OVER_CLEVER_TEXT in prompt
     assert DEVELOPER_NARROW_INTERFACES_TEXT in prompt
     assert DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT in prompt
+    assert development_skill_references_text().strip() in prompt
+
+
+def test_developer_prompt_includes_plan_recommended_skills(tmp_path: Path) -> None:
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+    plan_skill_refs = plan_skill_references_text(
+        ("test-driven-development", "systematic-debugging"),
+    )
+
+    prompt = prompt_developer_iteration_xml_with_context(
+        context=context,
+        inputs=DeveloperPromptInputs(
+            prompt_content="Implement MCP hardening",
+            plan_content="1. Add tests\n2. Fix capability checks",
+            plan_skill_references=plan_skill_refs,
+        ),
+        workspace=workspace,
+        session_caps=session_caps,
+    )
+
+    assert "## PLAN-RECOMMENDED SKILLS" in prompt
+    assert plan_skill_refs.strip() in prompt
     assert development_skill_references_text().strip() in prompt
 
 
