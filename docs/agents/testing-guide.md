@@ -19,6 +19,15 @@ Read before writing or modifying any test.
 
 **Combined budget (enforced by `make verify`):** When `make verify` runs `make test`, the combined wall-clock time of all test suites must stay within 30 seconds total, enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 30.0`. You cannot circumvent this by adding suites, renaming targets, or redistributing tests — the combined wall-clock time of ALL test suites is subject to the 30-second cap when verification runs. Running `make test` directly is only guarded by per-suite caps. `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
 
+Budget enforcement invariants in `ralph/verify.py` use `if`/`raise RuntimeError` (NOT `assert`) — this prevents `python -O` from stripping the checks. All import-time invariants survive `-O`.
+
+For cumulative volume bottlenecks (many fast tests where per-item overhead dominates), valid fix strategies include:
+- Consolidating parameterized tests with overlapping coverage
+- Optimizing shared fixtures (function-scoped → session-scoped where safe)
+- Reducing redundant test coverage (never remove the sole coverage for a code path)
+
+Tests in `_IO_ALLOWLIST` (e.g., memory regression tests) that require real I/O for valid assertions must not be refactored to test doubles — optimize their fixtures instead.
+
 Override only when genuinely required:
 
 ```python

@@ -34,14 +34,17 @@ If instructions conflict, follow the stricter one.
 - If there is a test failure, either the tests is implemented wrong, the code behavior is wrong, or the test is testing the wrong behavior. DO NOT change the test to match the current implementation. A test may never make any assumptions about the underlying implementation of the code.
 - All tests must complete in 30s or less, no exceptions.
 - This 30-second limit is the COMBINED TOTAL wall-clock budget for ALL test suites running sequentially under `make verify`. It is ABSOLUTE and IMMUTABLE — enforced by `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`. Individual suite timeouts (PYTEST_SUITE_TIMEOUT_SECONDS, DEFAULT_SUITE_TIMEOUT_SECONDS) are per-suite caps only; the combined budget cannot be circumvented by splitting tests, adding suites, or changing per-suite limits. A timeout failure is a test design defect — fix the test, not the budget.
-- **Non-circumvention rule** — the following do **NOT** circumvent the 30-second combined budget:
+- Per-suite timeouts (PYTEST_SUITE_TIMEOUT_SECONDS, DEFAULT_SUITE_TIMEOUT_SECONDS) are SECONDARY caps only. The AUTHORITATIVE and only budget that matters is `_TOTAL_TEST_BUDGET_SECONDS = 30.0` tracked cumulatively by `ralph/verify.py` via `time.monotonic()` across ALL `_BUDGET_TRACKED_STEPS`. Raising per-suite limits does NOT increase the combined budget.
+- The budget enforcement in `ralph/verify.py` uses `if`/`raise RuntimeError` (NOT `assert`) — this prevents `python -O` from stripping the invariant checks. All import-time invariants survive `-O`.
+
+- **Non-circumvention rule — test budget** — the following do **NOT** circumvent the 30-second combined budget:
   - Splitting tests into more suites (N suites does NOT give N × 30 s; cumulative tracker sums time across ALL budget-tracked steps)
   - Moving slow tests to a different suite, target, or Makefile recipe
-  - Renaming test targets or adding new test-related `_VERIFY_STEPS` entries
+  - Renaming test targets or adding new test-related `_VERIFY_STEPS` entries without also adding to `_KNOWN_TEST_STEP_LABELS` and `_BUDGET_TRACKED_STEPS`
   - Raising `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS` in the Makefile
   - Setting environment variables (`RALPH_PYTEST_SUITE_TIMEOUT_SECONDS`, `RALPH_PYTEST_TEST_TIMEOUT_SECONDS`)
-  - Raising `_TOTAL_TEST_BUDGET_SECONDS` in `ralph/verify.py`
-  - Modifying `_BUDGET_TRACKED_STEPS` to exclude slow steps from tracking
+  - Raising `_TOTAL_TEST_BUDGET_SECONDS` or modifying `_BUDGET_TRACKED_STEPS` in `ralph/verify.py` (blocked by import-time RuntimeError checks — immune to `python -O`)
+
 - **Non-circumvention rule — lint and typecheck** — the following do **NOT** circumvent lint/typecheck enforcement:
   - Adding `per-file-ignores`, `extend-per-file-ignores`, or any ruff config to weaken lint enforcement — detected by `ralph/testing/audit_lint_bypass.py`
   - Adding `ignore_missing_imports`, `follow_imports = silent`, `exclude` patterns, or `ignore_errors` to mypy config — detected by `ralph/testing/audit_typecheck_bypass.py`
@@ -55,6 +58,7 @@ If instructions conflict, follow the stricter one.
   - Eliminate sleep() and real wall-clock waits — inject a clock abstraction instead
   - Refactor production code for testability — extract I/O behind an interface
   - Assert on observable behavior, not implementation internals
+  - For cumulative volume bottlenecks (many fast tests, not individual slow tests): consolidate parameterized tests with overlapping coverage, optimize shared fixtures, or reduce redundant test coverage — see `docs/agents/testing-guide.md`
 
 ## Required workflows
 

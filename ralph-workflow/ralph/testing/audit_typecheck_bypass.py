@@ -270,6 +270,24 @@ def _check_mypy_ini(config_path: Path) -> list[TypecheckBypassViolation]:
                         )
                     )
 
+        # Check for disable_error_code — globally suppresses mypy error codes.
+        if config.has_option(section_name, "disable_error_code"):
+            try:
+                disable_value = config.get(section_name, "disable_error_code").strip()
+            except Exception:
+                disable_value = "<parse error>"
+            if disable_value:
+                violations.append(
+                    TypecheckBypassViolation(
+                        file_path=rel_path,
+                        line=0,
+                        category="mypy-config",
+                        detail=f"[{section_name}] disable_error_code = "
+                        f"{disable_value} — globally suppresses mypy "
+                        f"error codes, weakening enforcement",
+                    )
+                )
+
         # Check for exclude patterns.
         if config.has_option(section_name, "exclude"):
             try:
@@ -350,6 +368,19 @@ def _check_pyproject_mypy(pyproject_path: Path) -> list[TypecheckBypassViolation
                 category="mypy-config",
                 detail=f"[tool.mypy] exclude = {tool_mypy['exclude']} - "
                 f"excludes files from type checking, weakening enforcement",
+            )
+        )
+
+    # disable_error_code globally suppresses mypy error codes.
+    disable_error_code = tool_mypy.get("disable_error_code")
+    if disable_error_code:
+        violations.append(
+            TypecheckBypassViolation(
+                file_path=rel_path,
+                line=0,
+                category="mypy-config",
+                detail=f"[tool.mypy] disable_error_code = {disable_error_code} - "
+                f"globally suppresses mypy error codes, weakening enforcement",
             )
         )
 

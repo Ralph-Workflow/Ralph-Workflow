@@ -219,6 +219,8 @@ class TestPolicyAuditor(ast.NodeVisitor):
             "subprocess.check_output",
             "asyncio.create_subprocess_exec",
             "asyncio.create_subprocess_shell",
+            "os.system",
+            "os.popen",
         ):
             # Allow if file is marked subprocess_e2e (excluded at file level).
             if self._has_subprocess_e2e_marker:

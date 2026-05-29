@@ -1,6 +1,9 @@
 .PHONY: help install dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs packaging-smoke
 
-PYTEST_WORKERS ?= 10
+# Use ``auto`` so pytest-xdist auto-detects available CPU cores.
+# This maximizes parallel throughput and helps stay under the 30s
+# combined test budget with 6171+ tests.
+PYTEST_WORKERS ?= auto
 export PYTHONPATH := $(shell realpath .)
 # NOTE: PYTEST_SUITE_TIMEOUT_SECONDS is a PER-SUITE timeout only.
 # The combined total test budget (30 s, ABSOLUTE and IMMUTABLE) for
@@ -9,7 +12,6 @@ export PYTHONPATH := $(shell realpath .)
 # design instead.
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 30
 RUN_PYTHON = $(if $(VIRTUAL_ENV),python,uv run python)
-PYTEST_WORKERS ?= 10
 help:
 	@echo "Ralph Workflow - Makefile commands"
 	@echo ""

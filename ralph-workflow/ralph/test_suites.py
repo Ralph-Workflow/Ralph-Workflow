@@ -42,7 +42,10 @@ if TYPE_CHECKING:
         ) -> ProcessResult: ...
 
 
-_DEFAULT_PYTEST_WORKERS = "10"
+# Use ``auto`` so pytest-xdist auto-detects available CPU cores.
+# This maximizes parallel throughput and is essential for staying
+# under the 30s combined test budget with 6171+ tests.
+_DEFAULT_PYTEST_WORKERS = "auto"
 
 
 def _pytest_workers() -> str:
