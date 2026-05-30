@@ -44,6 +44,7 @@ class TestThoroughModeSemantics:
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
         monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
         runner.invoke(app, ["-T", "--dry-run"], catch_exceptions=False)
@@ -64,6 +65,7 @@ class TestThoroughModeSemantics:
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
         monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
         runner.invoke(app, ["-T", "-D", "3", "--dry-run"], catch_exceptions=False)
@@ -72,7 +74,10 @@ class TestThoroughModeSemantics:
         general = cast("dict[str, object]", cli_overrides["general"])
         assert general["developer_iters"] == THOROUGH_DEVELOPER_ITERS
 
-    def test_quick_and_thorough_together_raise_usage_error(self, cli_runner: CliRunner) -> None:
+    def test_quick_and_thorough_together_raise_usage_error(
+        self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
         result = cli_runner.invoke(app, ["-Q", "-T", "--prompt", "task"])
         assert result.exit_code == 2
         assert "--quick/-Q and --thorough/-T cannot be used together" in (

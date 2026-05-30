@@ -185,6 +185,14 @@ This README intentionally leaves out deeper implementation details and defers to
 - **Developer Reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — maintained contributor and architecture reference
 - **Modules Index:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — API/module entry points for deeper internals
 
+## Privacy & Error Reporting
+
+Ralph Workflow sends anonymous crash reports and performance metrics to help fix bugs and improve reliability. No personal data is collected.
+
+Each installation generates a random 32-character identifier stored in `~/.config/ralph-workflow-user.ini`. This identifier is not tied to your name, email address, IP address, or any other personal data — it is a random string used only to distinguish different installations in crash reports. A fresh random session identifier is generated on every run.
+
+To opt out: delete or rename `~/.config/ralph-workflow-user.ini`. Ralph Workflow creates a new random ID on the next run.
+
 ## Development and verification
 
 If you are changing Ralph Workflow itself, start with [`CONTRIBUTING.md`](CONTRIBUTING.md) and run the canonical verification command before you finish:

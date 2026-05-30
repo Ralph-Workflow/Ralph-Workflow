@@ -47,8 +47,8 @@ def init_sentry(user_id: str, session_id: str) -> None:
     sentry_sdk.init(
         dsn=_DSN,
         send_default_pii=False,
-        traces_sample_rate=0.1,
-        profiles_sample_rate=0.1,
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
         before_send=_scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         before_send_transaction=_scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     )

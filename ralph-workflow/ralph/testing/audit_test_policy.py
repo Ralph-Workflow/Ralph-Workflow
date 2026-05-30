@@ -78,8 +78,6 @@ _IO_ALLOWLIST: set[str] = {
     # The audit tool's AST heuristic cannot distinguish these.
     "test_tool_artifact_1_helper_failingartifactbackend",
     "test_tool_artifact_2_helper_failingartifactbackend",
-    # XDG_CONFIG_HOME redirect writes to tmp_path subdir — real path is the test's assertion target.
-    "test_get_or_create_uses_xdg_config_home",
 }
 
 # Files that legitimately use time.monotonic()/time.perf_counter() for

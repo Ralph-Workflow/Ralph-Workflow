@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.telemetry._sentry import _scrub_obj, init_sentry
+from ralph.telemetry._sentry import _scrub_event, _scrub_obj, init_sentry
 
 if TYPE_CHECKING:
     import pytest
@@ -35,6 +35,8 @@ def test_init_sentry_calls_sentry_init(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "sentry.io" in str(kwargs["dsn"])
     assert "before_send" in kwargs
     assert "before_send_transaction" in kwargs
+    assert kwargs.get("traces_sample_rate") == 1.0
+    assert kwargs.get("profiles_sample_rate") == 1.0
 
 
 def test_init_sentry_sets_user_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,3 +130,11 @@ def test_scrub_obj_ignores_non_string_values(monkeypatch: pytest.MonkeyPatch) ->
     assert data["n"] == 42
     assert data["b"] is True
     assert data["x"] is None
+
+
+def test_scrub_event_removes_server_name() -> None:
+    event: dict[str, object] = {"server_name": "myhost.local", "message": "test"}
+    result = _scrub_event(event, {})
+    assert isinstance(result, dict)
+    assert "server_name" not in result
+    assert result.get("message") == "test"

@@ -41,6 +41,7 @@ class TestAdditionalShortcutAliases:
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
         monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
         runner.invoke(app, ["-r", "--dry-run"], catch_exceptions=False)
@@ -54,6 +55,7 @@ class TestAdditionalShortcutAliases:
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
         monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
         monkeypatch.setattr(
             "ralph.cli.main.handle_check_config",
             lambda config, cli_overrides, check_config, *, console: 0 if check_config else None,

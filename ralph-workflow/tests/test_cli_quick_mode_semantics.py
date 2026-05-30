@@ -43,6 +43,7 @@ class TestQuickModeSemantics:
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
         monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
         runner.invoke(app, ["-Q", "--prompt", "do a task", "--dry-run"], catch_exceptions=False)
@@ -63,6 +64,7 @@ class TestQuickModeSemantics:
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
         monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
         runner.invoke(
@@ -87,6 +89,7 @@ class TestQuickModeSemantics:
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
         monkeypatch.setattr("ralph.cli.main.configure_logging", lambda v: None)
+        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
 
         runner = TyperCliRunner()
         runner.invoke(
@@ -97,7 +100,10 @@ class TestQuickModeSemantics:
 
         assert captured.get("request").inline_prompt == "do a quick change"
 
-    def test_prompt_without_quick_raises_usage_error(self, cli_runner: CliRunner) -> None:
+    def test_prompt_without_quick_raises_usage_error(
+        self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
         result = cli_runner.invoke(app, ["--prompt", "some text"])
         assert result.exit_code == 2
         assert (
