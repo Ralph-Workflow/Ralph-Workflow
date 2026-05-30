@@ -57,6 +57,21 @@ pip install ralph-workflow
 ralph --help
 ```
 
+### Docker
+
+```bash
+docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralphworkflow/ralph --help
+```
+
+Build from source:
+
+```bash
+git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+cd Ralph-Workflow/ralph-workflow
+docker build -t ralph-workflow .
+docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
+```
+
 ### From source
 
 ```bash
