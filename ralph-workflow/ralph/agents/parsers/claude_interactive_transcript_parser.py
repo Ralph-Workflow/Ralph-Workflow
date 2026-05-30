@@ -15,6 +15,20 @@ _SESSION_ID_PATTERNS = (
     re.compile(r"--resume\s+([A-Za-z0-9._:-]+)"),
 )
 _TOOL_USE_PATTERN = re.compile(r"^claude tool:\s*\S", re.IGNORECASE)
+_MIN_MEANINGFUL_LEN = 3
+_PURE_COUNTER_RE = re.compile(r"^\s*\d+\s*$")
+_TUI_STATUSBAR_RE = re.compile(
+    r"bypass permissions (on|off).*shift\+tab|"
+    r"← for agent|"
+    r"↑ \d+\.?\d*k tokens|"
+    r"Ctrl\+[CD]|"
+    r"esc to interrupt|"
+    r"thought for \d+s",
+    re.IGNORECASE,
+)
+_TUI_FRAGMENT_RE = re.compile(
+    r"^[\s\d\W]*?([A-Za-z]+)[\s\d\W]*$"
+)
 
 
 def _extract_message_text(value: object) -> str:
@@ -60,6 +74,9 @@ class ClaudeInteractiveTranscriptParser:
             if not text:
                 continue
             if not any(character.isalnum() for character in text):
+                continue
+            stripped = text.replace(" ", "").replace(".", "")
+            if len(text) <= _MIN_MEANINGFUL_LEN and stripped.isdigit():
                 continue
             event = self._event_for_text(text)
             if event is not None:
@@ -153,7 +170,11 @@ class ClaudeInteractiveTranscriptParser:
                 )
         return events
 
-    def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:
+    def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:  # noqa: PLR0911
+        if _PURE_COUNTER_RE.match(text):
+            return None
+        if _TUI_STATUSBAR_RE.search(text):
+            return None
         for pattern in _SESSION_ID_PATTERNS:
             match = pattern.search(text)
             if match is not None:

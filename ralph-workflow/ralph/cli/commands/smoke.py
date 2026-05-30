@@ -31,6 +31,7 @@ from ralph.cli.commands.smoke_run_params import SmokeRunParams
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
     read_smoke_test_result_artifact,
@@ -233,11 +234,15 @@ def _execute_smoke_turns(
                 str(params.prompt_file),
                 options=_with_session_id(params.options, current_session_id),
             )
+            display = ParallelDisplay(
+                params.display_context,
+                workspace_root=params.workspace_root,
+            )
             stream_parsed_agent_activity(
                 line_iter,
                 parser_type=str(params.config.json_parser),
                 agent_name=params.agent_name,
-                display=None,
+                display=display,
                 transport=params.config.transport,
                 display_context=params.display_context,
                 raw_output_sink=raw_lines,

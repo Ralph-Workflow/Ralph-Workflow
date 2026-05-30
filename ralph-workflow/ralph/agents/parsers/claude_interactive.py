@@ -51,7 +51,7 @@ class ClaudeInteractiveParser:
                     continue
                 if event.kind == "tool_result":
                     yield AgentOutputLine(type="tool_result", content=event.text, raw=raw)
-
+            yield from self._flush_accumulators()
         yield from self._flush_accumulators()
 
     def _flush_accumulators(self) -> Iterator[AgentOutputLine]:

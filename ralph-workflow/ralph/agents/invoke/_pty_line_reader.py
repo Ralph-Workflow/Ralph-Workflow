@@ -98,7 +98,7 @@ class PtyLineReader:
         self._last_meaningful: list[bool] = [False]
         self._last_hard_stop: list[WaitingStatusEvent | None] = [None]
         self._reader_done: list[bool] = [False]
-        self._input_writer = os.fdopen(os.dup(handle.master_fd), "wb", buffering=0)
+        self._input_writer_fd = os.dup(handle.master_fd)
         self._input_writer_lock = threading.Lock()
         self._auto_mode_prompt_seen = False
         self._auto_response_menu_seen = False
@@ -249,7 +249,9 @@ class PtyLineReader:
                     self._lines_queue.append(_TURN_BOUNDARY_MARKER + "\n")
                     self._lines_event.set()
                 with contextlib.suppress(OSError):
-                    _write_pty_input(self._input_writer, "/exit\r\n", lock=self._input_writer_lock)
+                    _write_pty_input(
+                        self._input_writer_fd, "/exit\r\n", lock=self._input_writer_lock
+                    )
                 return
             self._monitor_stop.wait(0.05)
 
@@ -334,7 +336,7 @@ class PtyLineReader:
 
         menu_detected = _check_menu(queued_line)
         if not menu_detected:
-            combined = "".join(self._recent_choice_lines)
+            combined = "\n".join(self._recent_choice_lines)
             menu_detected = _check_menu(combined)
 
         prompt_line_seen = "enable auto mode?" in visible_line.lower()
@@ -343,13 +345,16 @@ class PtyLineReader:
             self._auto_mode_prompt_seen = True
             self._auto_mode_menu_screen = queued_line
             self._last_auto_mode_menu_seen_at = self._clock.monotonic()
+        auto_response_text = (
+            "\n".join(self._recent_choice_lines) if self._recent_choice_lines else queued_line
+        )
         auto_response = _interactive_auto_response_for_prompt(
-            queued_line,
+            auto_response_text,
             auto_mode_prompt_seen=self._auto_mode_prompt_seen,
         )
         if auto_response is not None:
             self._auto_response_menu_seen = True
-            self._auto_mode_menu_screen = queued_line
+            self._auto_mode_menu_screen = auto_response_text
             self._last_auto_mode_menu_seen_at = self._clock.monotonic()
         if _is_permission_prompt_line(queued_line):
             self._pending_permission_prompt_line = queued_line.rstrip()
@@ -382,7 +387,7 @@ class PtyLineReader:
                         )
                         or "\r"
                     )
-                    _write_pty_input(self._input_writer, response, lock=self._input_writer_lock)
+                    _write_pty_input(self._input_writer_fd, response, lock=self._input_writer_lock)
                     action_message = _permission_prompt_action_message(
                         screen,
                         auto_mode_prompt_seen=self._auto_mode_prompt_seen,
@@ -406,7 +411,7 @@ class PtyLineReader:
         ):
             prompt_text = self._pending_permission_prompt_line
             with contextlib.suppress(OSError):
-                _write_pty_input(self._input_writer, "\r", lock=self._input_writer_lock)
+                _write_pty_input(self._input_writer_fd, "\r", lock=self._input_writer_lock)
                 logger.warning(
                     "Ralph auto-answered unknown prompt with Enter. "
                     "Prompt text: {}",
@@ -435,7 +440,7 @@ class PtyLineReader:
         for reader, timeout in zip(readers, timeouts, strict=True):
             reader.join(timeout=timeout)
         with contextlib.suppress(Exception):
-            self._input_writer.close()
+            os.close(self._input_writer_fd)
         if self._stop_sentinel_path is not None:
             with contextlib.suppress(FileNotFoundError):
                 self._stop_sentinel_path.unlink()

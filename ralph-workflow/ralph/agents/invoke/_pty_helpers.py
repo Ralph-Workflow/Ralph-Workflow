@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
-from typing import IO, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from ralph.agents.invoke._types import _ChoiceMenuOption, _ChoiceMenuState
 from ralph.display.vt_normalizer import normalize_vt_text
@@ -113,11 +114,10 @@ def _fuzzy_contains_permission_prompt(text: str) -> bool:
 
 
 def _simple_auto_approve(text: str) -> str | None:
-    """Simple auto-approval for permission menus that can't be precisely parsed.
+    """Auto-approve any permission prompt by scoring options for safety.
 
-    Returns "\\r" to accept the default/indicated selection if we detect
-    a permission menu. This is a last-resort fallback when the precise
-    menu parser fails - we just send Enter to accept whatever is selected.
+    Scores each option by approval/rejection keyword weight, picks the best.
+    Falls back to plain Enter when scoring is ambiguous.
     """
     if not _fuzzy_contains_permission_prompt(text):
         return None
@@ -127,41 +127,27 @@ def _simple_auto_approve(text: str) -> str | None:
     if not lines:
         return "\r"
 
-    yes_indices: list[int] = []
-    default_indices: list[int] = []
-    selected_index: int | None = None
-
+    option_indices: list[tuple[int, int]] = []
     for i, line in enumerate(lines):
         lower = line.lower()
-        is_approval = any(kw in lower for kw in _MENU_APPROVAL_INDICATORS)
-        is_rejection = any(kw in lower for kw in _MENU_REJECTION_INDICATORS)
+        has_digit = (
+            (len(line) > _MIN_PREFIX_LEN and line[0:2].isdigit() and "." in line[:4])
+            or any(line.lstrip().startswith(f"{d}.") for d in range(1, 10))
+        )
+        if has_digit:
+            approval = sum(1 for kw in _MENU_APPROVAL_INDICATORS if kw in lower)
+            rejection = sum(1 for kw in _MENU_REJECTION_INDICATORS if kw in lower)
+            option_indices.append((i, 2 * approval - 2 * rejection))
 
-        if is_approval and not is_rejection:
-            yes_indices.append(i)
-            if any(tok in lower for tok in ("once", "this time", "now", "default")):
-                default_indices.append(i)
-
-        if len(line) > _MIN_PREFIX_LEN and line[0:2].isdigit() and "." in line[:4]:
-            lstripped = line.lstrip()
-            if len(lstripped) > _MIN_PREFIX_CHAR_LEN:
-                prefix_char = lstripped[_MIN_PREFIX_CHAR_LEN]
-            else:
-                prefix_char = " "
-            if prefix_char in ("\u276f", "\u258c", "*", ">", "\x1b"):
-                selected_index = i
-
-    if default_indices:
-        return "\r"
-    if yes_indices and selected_index is not None:
-        target = yes_indices[0]
-        delta = target - selected_index
-        nav = ("\x1b[B" * delta) if delta > 0 else ("\x1b[A" * abs(delta))
-        return nav + "\r"
-    if yes_indices:
+    if not option_indices:
         return "\r"
 
-    # Last-resort: permission prompt detected but precise navigation failed.
-    # Send Enter to confirm whatever the default/selected option is.
+    best_index, best_score = max(option_indices, key=lambda pair: pair[1])  # type: ignore[misc]
+    if best_score > 0:
+        option_num = lines[best_index].lstrip()[:2].rstrip(".").strip()
+        if option_num.isdigit():
+            return f"{option_num}\r"
+
     return "\r"
 
 
@@ -320,14 +306,13 @@ def _is_auto_mode_menu_snapshot(text: str) -> bool:
     )
 
 
-def _write_pty_input(writer: IO[bytes], text: str, *, lock: threading.Lock | None = None) -> None:
+def _write_pty_input(writer_fd: int, text: str, *, lock: threading.Lock | None = None) -> None:
+    data = text.encode("utf-8")
     if lock is None:
-        writer.write(text.encode("utf-8"))
-        writer.flush()
-        return
-    with lock:
-        writer.write(text.encode("utf-8"))
-        writer.flush()
+        os.write(writer_fd, data)
+    else:
+        with lock:
+            os.write(writer_fd, data)
 
 
 def _is_permission_prompt_line(text: str) -> bool:

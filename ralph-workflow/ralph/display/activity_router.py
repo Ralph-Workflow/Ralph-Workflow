@@ -68,6 +68,7 @@ def map_parser_type_to_kind(parser_type: str) -> ActivityEventKind:
     """Convert a parser output type string to the canonical ``ActivityEventKind``."""
     mapping: dict[str, ActivityEventKind] = {
         "text": ActivityEventKind.TEXT,
+        "output": ActivityEventKind.TEXT,
         "thinking": ActivityEventKind.THINKING,
         "tool_use": ActivityEventKind.TOOL_USE,
         "tool_result": ActivityEventKind.TOOL_RESULT,
