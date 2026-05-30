@@ -1,5 +1,5 @@
 # Ralph Workflow distribution confirmation follow-through
-Generated: 2026-05-30T01:27:45
+Generated: 2026-05-30T14:03:19
 
 ## Why this exists now
 - A live external correction already shipped, but it still requires platform confirmation before the public proof actually exists.
@@ -14,3 +14,10 @@ Generated: 2026-05-30T01:27:45
 No confirmation-required live actions are currently waiting.
 
 If this packet still exists, clear it on the next run once the blocking action is either confirmed or expired.
+
+
+## Post-hold marketer rerun scheduled
+- Scheduled run: 2026-05-30T16:11:00
+- Cron job: marketing-measurement-hold-release (dbf5aa62-494f-474c-8881-a9b8695092d9)
+- Log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_140319_measurement_hold_release_cron.json
+- This keeps the first truthful post-hold slot alive even though the current lane is still blocked by short-window congestion.

@@ -1,6 +1,6 @@
 # Outcome Capability Runner
 
-- Generated: `2026-05-30T01:27:45.893313`
+- Generated: `2026-05-30T14:03:19.304475`
 - Lane executed: `distribution_confirmation_follow_through`
 - Action type: `distribution_confirmation_follow_through`
 - Artifact: `/home/mistlight/.openclaw/workspace/drafts/distribution_confirmation_follow_through_latest.md`
@@ -13,4 +13,4 @@
 - The generated lane artifact becomes the next real execution surface the main loop can reuse.
 
 ## Summary
-Prepared the confirmation-required follow-through packet so a live but not-yet-approved correction is treated as a real blocker instead of a shipped outcome.
+Prepared the confirmation-required follow-through packet so a live but not-yet-approved correction is treated as a real blocker instead of a shipped outcome. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.

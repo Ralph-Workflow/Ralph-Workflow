@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-05-30T14:06:09.387565",
+  "dry_run": false,
+  "counts": {
+    "total": 10,
+    "measurement_hold": 5,
+    "non_distribution_execution": 1,
+    "distribution": 0,
+    "other": 4
+  },
+  "rate_exceeded": true,
+  "violations": [
+    "10 total artifacts in 6h with ZERO distribution actions \u2014 pure churn"
+  ],
+  "churn_ratio_danger": true,
+  "action": "strike_1_soft_flag",
+  "details": "recorded strike 1: 10 total artifacts in 6h with ZERO distribution actions \u2014 pure churn",
+  "strike_count": 2
+}

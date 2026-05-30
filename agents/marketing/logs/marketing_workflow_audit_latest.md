@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-30T01:21:02.756047
+- Generated: 2026-05-30T13:57:01.808130
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -11,9 +11,8 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was manual_outreach_asset_follow_through, but the latest meaningful external/replacement execution remains deployed_blog_post; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (deployed_blog_post), so the system is still shipping output even though outcome movement is not visible yet.
-- A fresh outcome-capability runtime is now logged (manual_outreach_asset_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
+- The active loop did execute a live marketing action recently (social_card_deployed), so the system is still shipping output even though outcome movement is not visible yet.
+- A fresh outcome-capability runtime is now logged (distribution_confirmation_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 
 ## What actually worked
 - No meaningful tactic produced a trustworthy win in this window.
@@ -26,7 +25,7 @@
 - Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.
 
 ## What is low-signal
-- Recent live external action exists (deployed_blog_post), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Recent live external action exists (social_card_deployed), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 - Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template.
 
@@ -47,7 +46,7 @@
 - Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
 - GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
-- PyPI has 1428 downloads/month (0/day) — real usage signal that repo metrics don't capture.
+- PyPI has 1299 downloads/month (3/day) — real usage signal that repo metrics don't capture.
 
 ## Repair actions (execute in this run)
 - **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
@@ -62,11 +61,11 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
 
 ## Latest executed marketing action
-- Type: deployed_blog_post
-- Title: deployed blog post
+- Type: social_card_deployed
+- Title: social card deployed
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_0955_evaluator_decision_guide_deployed.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_1238_social_card_deployed.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

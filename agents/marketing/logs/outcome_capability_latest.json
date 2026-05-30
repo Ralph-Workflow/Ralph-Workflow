@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-30T01:27:45.893313",
+  "timestamp": "2026-05-30T14:03:19.304475",
   "type": "outcome_capability_runner",
   "status": "executed",
   "selected_lane": "distribution_confirmation_follow_through",
   "selected_action_type": "distribution_confirmation_follow_through",
   "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/distribution_confirmation_follow_through_latest.md",
-  "summary": "Prepared the confirmation-required follow-through packet so a live but not-yet-approved correction is treated as a real blocker instead of a shipped outcome.",
+  "summary": "Prepared the confirmation-required follow-through packet so a live but not-yet-approved correction is treated as a real blocker instead of a shipped outcome. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "direct_codeberg_linkage": {
     "cta": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",

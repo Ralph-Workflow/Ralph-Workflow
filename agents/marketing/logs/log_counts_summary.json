@@ -1,0 +1,27 @@
+{
+  "run_at": "2026-05-30T13:54:14.962272",
+  "total_files_before_archive": 1020,
+  "archived_this_run": 0,
+  "recent_7d": {
+    "window_days": 7,
+    "total_logs": 882,
+    "hold_actions": 220,
+    "hold_ratio": 0.249,
+    "by_category": {
+      "other": 501,
+      "measurement_hold": 178,
+      "guard_pause": 61,
+      "publisher": 44,
+      "execution_board": 35,
+      "reddit": 33,
+      "telegraph": 14,
+      "pypi": 8,
+      "confirmation_follow_through": 3,
+      "market_intelligence": 2,
+      "adoption": 1,
+      "distribution_hunter": 1,
+      "outcome_capability": 1
+    }
+  },
+  "hold_ratio_alert_active": false
+}

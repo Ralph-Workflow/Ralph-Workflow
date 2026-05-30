@@ -1,13 +1,9 @@
 {
-  "timestamp": "2026-05-30T05:33:40.106132+02:00",
-  "status": "cloudflare_auth_blocked",
-  "final_url": "https://app.apollo.io/#/login",
+  "timestamp": "2026-05-30T11:58:35Z",
+  "status": "blocked",
+  "blocker_type": "cloudflare_auth",
   "login_attempted": false,
-  "cloudflare_blocked": true,
-  "notes": "Cloudflare interstitial detected in response body from https://app.apollo.io/. Browserless probe status: cloudflare_auth_blocked. Browserless saw Cloudflare interstitial content from https://app.apollo.io/.",
-  "auth_endpoint_status_codes": [],
+  "notes": "Cloudflare interstitial detected at https://app.apollo.io/. Browserless probe confirms same blocker. Apollo is not actionable until Cloudflare auth can be resolved.",
   "browserless_probe_status": "cloudflare_auth_blocked",
-  "browserless_probe_final_url": "https://app.apollo.io/#/login",
-  "browserless_probe_notes": "Browserless saw Cloudflare interstitial content from https://app.apollo.io/.",
-  "browserless_probe_auth_endpoint_status_codes": []
+  "browserless_probe_final_url": "https://app.apollo.io/#/login"
 }

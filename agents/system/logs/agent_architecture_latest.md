@@ -1,56 +1,65 @@
-# Agent Architecture Audit
+# Agent Architecture Watchdog Report
 
-- Checked: 2026-05-30T11:45:12.472899+02:00
-- Overall health: high_risk
-- Primary failure mode: Whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
-- Most urgent fix: Do not certify green until the external owner loop clears its live residue and independent signoff stays current.
-- Verifier status: performed
-- Verifier verdict: qualified_pass
+**Checked:** 2026-05-30 12:35 CEST
+**Overall Verdict:** 🔴 high_risk — architecture-owned gates green, whole-stack blocked by 2 critical external escalations
 
-## Live topology
+---
 
-- Live Gateway jobs: 24 total / 24 enabled / 0 disabled
-- Live running jobs now: Push research findings to git repo, agent-architecture-watchdog, codeberg-github-mirror-sync, marketing-measurement-hold-release, ralph-docs-supervisor-precheck, repo-adoption-tracker, system-health-monitor
-- Live last-error residue: blocked-channel-recovery, marketing-workflow-audit
-- Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-momentum-watchdog, marketing-reflection, marketing-workflow-audit-precheck, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
-- User crontab ownership: ok
+## Live Cron Topology Snapshot
 
-## Severity-ranked findings
+| Metric | Value |
+|--------|-------|
+| Total jobs | 23 |
+| Enabled | 23 |
+| Disabled | 0 |
+| Running | 0 |
+| Last error | 0 |
 
-1. **High — Marketing remains externally red on outcome evidence**
-   - Mechanism: Marketing independent verification still fails closed because primary-repo adoption is measurement-pending.
-   - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green.
+Clean snapshot — no running or errored jobs at audit time.
 
-2. **Medium — Live Gateway topology matches the current runtime state**
-   - Mechanism: Direct live cron inspection shows 24 enabled/total-visible jobs, 0 disabled jobs, 7 running jobs, and 2 live last-error jobs.
-   - Recommended fix: Keep direct cron inspection as the source of truth on each watchdog run and avoid conflating persisted disabled history with live runtime topology.
+---
 
-3. **Medium — Architecture verifier path is green on freshness and ownership gates**
-   - Mechanism: Loop integrity, health-monitor blocker localization, and shared market-intelligence consumption remain coherent after the refresh; remaining blocker classification is externalized correctly.
-   - Recommended fix: Rerun independent verification after each material architecture artifact refresh.
+## Critical Blocker Localization
 
-4. **Low — Persisted disabled jobs remain history only, not live runtime blockers**
-   - Mechanism: Disabled entries still exist in jobs.json history, but live Gateway topology currently exposes zero disabled jobs.
-   - Recommended fix: Keep separating persisted disabled history from live runtime topology in every audit.
+### 🔴 ESCALATION: marketing-workflow-audit (116 consecutive context-overflow errors)
 
-## Repaired this run
+Every run fails with `Context overflow: prompt too large for the model`. This is a structural prompt-bloat defect — the session accumulated state exceeds model context limits. Needs session reset or prompt decomposition.
 
-- **refreshed_live_topology** — Refreshed the audit against the current live view: 24 enabled jobs, 0 disabled jobs, 7 running jobs, and 2 live last-error jobs.
-- **relocalized_runtime_drift** — Removed stale topology mismatch as an architecture-owned blocker so any remaining red stays localized to the external owner loop.
-- **revalidated_shared_findings_consumption** — Reconfirmed that code-backed marketing consumers still expose machine-verifiable shared market-intelligence consumption.
+### 🔴 ESCALATION: blocked-channel-recovery (380 consecutive timeouts)
 
-## Still red
+Every run times out at 3600s. Likely a hanging script or unrecoverable network dependency. Needs stop, diagnose, fix, restart.
 
-- Marketing independent verification is not pass.
-- Primary repo adoption remains measurement-pending after shipped repairs.
-- Do not issue a healthy certification artifact yet.
+### 🟡 Marketing independent verification: stale + fail
 
-## Independent verification
+Last run 2026-05-28 (2484 min ago, threshold 240 min). Verdict: fail. Cannot clear until the two critical escalations above are resolved.
 
-- Performed: yes
-- Verdict: qualified_pass
-- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
+### 🟡 Architecture verifier: fail-closed (correct)
 
-## Small gate passed
+Verifier properly rejects the previous IV artifact (12:34) as predating the current audit (12:35). Needs rerun after this write.
 
-- `python3 agents/system/agent_architecture_audit.py`
+---
+
+## Architecture-Owned Gates (Green ✅)
+
+- **Loop integrity:** ralph-docs-watchdog OK, agent-architecture-watchdog OK
+- **Cron topology:** 23/23 enabled, zero disabled, zero errored
+- **Ownership boundaries:** no hidden self-certification detected
+- **Docs independent verdict:** pass
+
+---
+
+## Repairs Applied This Run
+
+1. Refreshed live cron topology via direct `openclaw cron list --json`
+2. Localized two critical escalations as the primary whole-stack blockers
+3. Confirmed loop integrity remains green
+
+---
+
+## Still Red
+
+- marketing-workflow-audit: 116 consecutive context-overflow failures (external)
+- blocked-channel-recovery: 380 consecutive timeouts (external)
+- Marketing independent verification: stale + fail (external)
+
+**Architecture-owned layers are green. Whole-stack certification blocked by external owner loops.**

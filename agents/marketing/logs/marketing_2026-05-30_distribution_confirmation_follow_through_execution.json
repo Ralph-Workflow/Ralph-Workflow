@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-30T01:27:45.893313",
+  "timestamp": "2026-05-30T14:03:19.304475",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "distribution_confirmation_follow_through",
@@ -8,7 +8,7 @@
     "draft": "/home/mistlight/.openclaw/workspace/drafts/distribution_confirmation_follow_through_latest.md"
   },
   "why_this_action": {
-    "summary": "Prepared the confirmation-required follow-through packet so a live but not-yet-approved correction is treated as a real blocker instead of a shipped outcome.",
+    "summary": "Prepared the confirmation-required follow-through packet so a live but not-yet-approved correction is treated as a real blocker instead of a shipped outcome. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",

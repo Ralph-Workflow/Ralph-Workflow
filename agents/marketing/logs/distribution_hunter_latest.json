@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-05-30T06:24:26.337245",
+  "timestamp": "2026-05-30T14:04:30.217782",
   "repair_types_seen": [],
   "selected_lane": "measurement_hold",
   "selected_action_type": "measurement_hold_follow_through",
   "execution_status": "executed",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_062426_measurement_hold_follow_through.md",
-  "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Scheduled an automatic post-hold marketer rerun at the exact short-window release time.",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_140430_measurement_hold_follow_through.md",
+  "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
   "expected_outcome": "Advance distribution via lane measurement_hold without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
   "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
@@ -16,12 +16,12 @@
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 live external marketing action(s) already shipped in the last 6 hours.",
-      "If no new outcome lands first, this short-window congestion clears at 2026-05-30T08:36:38. Before then, another live outbound action would mostly blur measurement.",
+      "If no new outcome lands first, this short-window congestion clears at 2026-05-30T16:11:00. Before then, another live outbound action would mostly blur measurement.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
-      "Fresh publisher outreach already shipped in the current 7-day review window (0xWelt/Awesome-Vibe-Coding, AI Coding Stack, AI Dev Setup), so those targets should not be re-queued immediately.",
+      "Fresh publisher outreach already shipped in the current 7-day review window (AI Coding Stack, AI Dev Setup, AI Saying), so those targets should not be re-queued immediately.",
       "An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
@@ -44,7 +44,7 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-30_distribution_action_brief.md",
-    "short_review_window_release_at": "2026-05-30T08:36:38",
+    "short_review_window_release_at": "2026-05-30T16:11:00",
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
   },
@@ -52,8 +52,8 @@
     "lane": "measurement_hold",
     "action_type": "measurement_hold_follow_through",
     "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_062426_measurement_hold_follow_through.md",
-    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Scheduled an automatic post-hold marketer rerun at the exact short-window release time.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_140430_measurement_hold_follow_through.md",
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
     "targets_prepared": [
       "Ralph Workflow curator follow-up — Codeberg CTA"
     ],

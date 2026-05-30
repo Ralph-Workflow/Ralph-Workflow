@@ -4,6 +4,11 @@
       "level": 2,
       "timestamp": "2026-05-30T09:24:56.750161",
       "reason": "churn ratio danger with 3 prior strikes"
+    },
+    {
+      "level": 1,
+      "timestamp": "2026-05-30T14:06:09.401304",
+      "reason": "10 total artifacts in 6h with ZERO distribution actions \u2014 pure churn"
     }
   ],
   "paused_crons": [
