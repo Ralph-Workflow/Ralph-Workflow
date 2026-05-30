@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-30T19:03:23.272332",
+  "ts": "2026-05-30T20:03:37.668552",
   "jobs_checked": 26,
-  "issues_found": 17,
+  "issues_found": 4,
   "issues": [
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
@@ -16,196 +16,37 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "required_text": "Status: independently verified pass",
-      "likely_cause": "Verifier artifact exists but does not show required pass contract"
-    },
-    {
-      "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 2871.87,
+      "artifact_age_minutes": 2932.1,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review",
-      "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "The docs system is coherent and aligned with the positioning document. README \u2192 START_HERE \u2192 docs/README forms a clear journey with distinct page roles. No internal-process residue on top-level surfaces. The positioning themes (simple core, composable framework, strong default, ambitious work, Codeberg primary) are consistently carried through."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_start-here-md-second-paragraph-is-a-clunky-singl",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "START_HERE.md: second paragraph is a clunky single sentence chaining three verbs (runs/turns/gives) \u2014 split for readability",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: START_HERE.md: second paragraph is a clunky single sentence chaining three verbs (runs/turns/gives) \u2014 split for readability"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_docs-ai-agent-orchestration-cli-md-second-bullet",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "docs/ai-agent-orchestration-cli.md: second bullet under 'What Ralph Workflow is trying to solve' uses 'repeated verification instead of one final guess' \u2014 slightly straw-man framing that could erode trust",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: docs/ai-agent-orchestration-cli.md: second bullet under 'What Ralph Workflow is trying to solve' uses 'repeated verification instead of one final guess' \u2014 slightly straw-man framing that could erode trust"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_github-mirror-readme-md-built-in-capabilities-li",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "github-mirror/README.md 'Built-in capabilities' list uses internal-sounding labels ('phase routing', 'repo-based handoff') without the product-value orientation the rest of the page maintains \u2014 minor surface-level inconsistency",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: github-mirror/README.md 'Built-in capabilities' list uses internal-sounding labels ('phase routing', 'repo-based handoff') without the product-value orientation the rest of the page maintains \u2014 minor surface-level inconsistency"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_json",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "last_error": "live_jobs_checked=27 expected 26; live_jobs_enabled=27 expected 26",
-      "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=['docs-stack-aggressive-10min-self-heal', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-reflection', 'ralph-workflow-full-house-docs-audit', 'stackoverflow-post-cooldown-run-check']"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T19:03:12.005686+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
     },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=480",
-      "repeats_in_recent_history": 480,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=493",
+      "repeats_in_recent_history": 493,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     },
     {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_escalation",
+      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
+      "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=315",
-      "repeats_in_recent_history": 315,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_escalation",
-      "category": "escalation_required",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=110",
-      "repeats_in_recent_history": 110,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review::loop_verification_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_start-here-md-second-paragraph-is-a-clunky-singl_escalation",
-      "category": "escalation_required",
-      "last_error": "START_HERE.md: second paragraph is a clunky single sentence chaining three verbs (runs/turns/gives) \u2014 split for readability",
-      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_start-here-md-second-paragraph-is-a-clunky-singl:review_followup_required repeat_count=2",
-      "repeats_in_recent_history": 2,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review_mustFix_start-here-md-second-paragraph-is-a-clunky-singl::review_followup_required",
-      "escalation_level": "owner",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_docs-ai-agent-orchestration-cli-md-second-bullet_escalation",
-      "category": "escalation_required",
-      "last_error": "docs/ai-agent-orchestration-cli.md: second bullet under 'What Ralph Workflow is trying to solve' uses 'repeated verification instead of one final guess' \u2014 slightly straw-man framing that could erode trust",
-      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_docs-ai-agent-orchestration-cli-md-second-bullet:review_followup_required repeat_count=2",
-      "repeats_in_recent_history": 2,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review_mustFix_docs-ai-agent-orchestration-cli-md-second-bullet::review_followup_required",
-      "escalation_level": "owner",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_github-mirror-readme-md-built-in-capabilities-li_escalation",
-      "category": "escalation_required",
-      "last_error": "github-mirror/README.md 'Built-in capabilities' list uses internal-sounding labels ('phase routing', 'repo-based handoff') without the product-value orientation the rest of the page maintains \u2014 minor surface-level inconsistency",
-      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_github-mirror-readme-md-built-in-capabilities-li:review_followup_required repeat_count=2",
-      "repeats_in_recent_history": 2,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review_mustFix_github-mirror-readme-md-built-in-capabilities-li::review_followup_required",
-      "escalation_level": "owner",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_json_escalation",
-      "category": "escalation_required",
-      "last_error": "live_jobs_checked=27 expected 26; live_jobs_enabled=27 expected 26",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=122",
-      "repeats_in_recent_history": 122,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_json::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
-      "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T19:03:12.005686+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=565",
-      "repeats_in_recent_history": 565,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
+      "last_error": "cron: job execution timed out",
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=494",
+      "repeats_in_recent_history": 494,
+      "owner_domain": null,
+      "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
-  "repairs_attempted": [
-    {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": false,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
-    },
-    {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": false,
-      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T19:03:12.005686+02:00\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_json_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    }
-  ]
+  "repairs_attempted": []
 }

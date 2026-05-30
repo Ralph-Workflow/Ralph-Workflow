@@ -19,7 +19,7 @@
   ],
   "verification": {
     "cron_list_check": "Only one StackOverflow cron job existed before this repair: 7a71bb58-75ac-4862-b316-ed3bdff44b0c (scheduled for 2026-05-24T09:30:00.000Z / 11:30 CEST).",
-    "added_with": "openclaw cron add --name stackoverflow-post-cooldown-run-check --at 2026-05-24T11:45:00+02:00 --agent main --session isolated --announce --channel last --delete-after-run --model openai-codex/gpt-5.4 --thinking medium --timeout-seconds 1800 ...",
+    "added_with": "openclaw cron add --name stackoverflow-post-cooldown-run-check --at 2026-05-24T11:45:00+02:00 --agent main --session isolated --announce --channel last --delete-after-run --model openrouter/deepseek/deepseek-v4-pro --thinking medium --timeout-seconds 1800 ...",
     "scheduled_run_at": "2026-05-24T11:45:00+02:00",
     "delete_after_run": true
   },
