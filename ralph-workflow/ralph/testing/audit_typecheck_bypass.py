@@ -479,7 +479,7 @@ def _check_pyproject_mypy(pyproject_path: Path) -> list[TypecheckBypassViolation
 def _collect_py_files(root: Path) -> Iterable[Path]:
     """Yield all Python files under *root*, skipping excluded directories."""
     for path in root.rglob("*.py"):
-        if any(part in _SKIP_DIRS for part in path.parts):
+        if any(part in _SKIP_DIRS for part in path.relative_to(root).parts):
             continue
         yield path
 

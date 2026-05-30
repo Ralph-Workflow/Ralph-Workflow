@@ -369,7 +369,7 @@ def _collect_subprocess_e2e_files(tests_root: Path) -> set[str]:
     e2e_files: set[str] = set()
     for py_file in tests_root.rglob("*.py"):
         # Skip directories.
-        if any(part in _SKIP_DIRS for part in py_file.parts):
+        if any(part in _SKIP_DIRS for part in py_file.relative_to(tests_root).parts):
             continue
         try:
             content = py_file.read_text(encoding="utf-8")
@@ -484,7 +484,7 @@ def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], 
 
     for py_file in sorted(tests_root.rglob("*.py")):
         # Skip excluded directories.
-        if any(part in _SKIP_DIRS for part in py_file.parts):
+        if any(part in _SKIP_DIRS for part in py_file.relative_to(tests_root).parts):
             continue
         # Skip test_process_audit.py itself and this audit file.
         if py_file.name in ("test_process_audit.py", "audit_test_policy.py"):

@@ -824,7 +824,7 @@ def test_ec13_shutdown_all_for_label_only_matching() -> None:
         SpawnOptions(label="other:bystander"),
     )
 
-    with patch("os.kill", return_value=None), patch("os.kill", return_value=None):
+    with patch("os.kill", return_value=None):
         pm.shutdown_all_for_label("worker:", grace_period_s=0)
 
     assert target.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)

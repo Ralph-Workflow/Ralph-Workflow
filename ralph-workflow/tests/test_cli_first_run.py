@@ -12,6 +12,11 @@ import ralph.policy
 from ralph.banner import WELCOME_MESSAGE
 from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL
 from ralph.cli.main import app
+from ralph.config.bootstrap import (
+    ensure_global_config,
+    ensure_global_mcp_config,
+    ensure_global_policy_configs,
+)
 from ralph.policy.validation import PolicyValidationError, validate_required_inputs
 
 _MIN_PROMPT_SIZE_BYTES = 200
@@ -619,13 +624,13 @@ def test_cli_run_with_only_prompt_shows_init_hint(
     """
     runner = CliRunner()
 
-    # Initialize global configs first so the first-run welcome does not contaminate the output.
-    init_dir = tmp_path / "global_init"
-    init_dir.mkdir()
-    monkeypatch.chdir(init_dir)
-    runner.invoke(app, ["--check-config"], catch_exceptions=False)
+    # Bootstrap global configs directly (faster than a full CLI invocation) so the
+    # first-run welcome panel does not contaminate the output of the actual test.
+    ensure_global_config()
+    ensure_global_mcp_config()
+    ensure_global_policy_configs()
 
-    # Switch to a fresh workspace with only an empty PROMPT.md (no .agent).
+    # Fresh workspace with only an empty PROMPT.md (no .agent).
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     (workspace / "PROMPT.md").write_text("")

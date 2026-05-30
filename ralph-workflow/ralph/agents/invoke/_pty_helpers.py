@@ -113,6 +113,10 @@ def _fuzzy_contains_permission_prompt(text: str) -> bool:
     return any(phrase in lower for phrase in permission_phrases)
 
 
+def _option_index_score(pair: tuple[int, int]) -> int:
+    return pair[1]
+
+
 def _simple_auto_approve(text: str) -> str | None:
     """Auto-approve any permission prompt by scoring options for safety.
 
@@ -142,7 +146,7 @@ def _simple_auto_approve(text: str) -> str | None:
     if not option_indices:
         return "\r"
 
-    best_index, best_score = max(option_indices, key=lambda pair: pair[1])  # type: ignore[misc]
+    best_index, best_score = max(option_indices, key=_option_index_score)
     if best_score > 0:
         option_num = lines[best_index].lstrip()[:2].rstrip(".").strip()
         if option_num.isdigit():

@@ -408,7 +408,7 @@ def test_double_terminate_is_idempotent() -> None:
     pm = _make_pm(sync_factory=sync_factory)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    handle.wait()  # process exits
+    handle.wait(timeout=5.0)  # process exits
 
     # First terminate after exit
     handle.terminate(grace_period_s=0.1)
@@ -758,7 +758,7 @@ def test_purge_on_init_clears_terminal_records() -> None:
     )
     handle = pm1.spawn([sys.executable, "-c", "pass"])
     pid = handle.pid
-    handle.wait()
+    handle.wait(timeout=5.0)
 
     # Verify terminal record exists
     assert pm1.get_record(pid, include_terminal=True) is not None

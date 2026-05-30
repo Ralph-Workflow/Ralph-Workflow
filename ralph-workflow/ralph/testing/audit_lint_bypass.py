@@ -81,6 +81,7 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("materialize", "PLC0415"),
     ("supervising", "PLC0415"),
     ("pytest_timeout_plugin", "PLC0415"),
+    ("claude_interactive_transcript_parser", "PLR0911"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).
@@ -359,7 +360,7 @@ def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]: 
 def _collect_py_files(root: Path) -> Iterable[Path]:
     """Yield all Python files under *root*, skipping excluded directories."""
     for path in root.rglob("*.py"):
-        if any(part in _SKIP_DIRS for part in path.parts):
+        if any(part in _SKIP_DIRS for part in path.relative_to(root).parts):
             continue
         yield path
 
