@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-30T18:19:43.218393
+- Generated: 2026-05-30T21:38:28.258363
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -11,7 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was distribution_confirmation_follow_through, but the latest meaningful external/replacement execution remains social_card_deployed; do not confuse follow-through with fresh outcome-bearing distribution.
+- The most recent runtime activity was stack_overflow_cron_live_verification, but the latest meaningful external/replacement execution remains social_card_deployed; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (social_card_deployed), so the system is still shipping output even though outcome movement is not visible yet.
 - A fresh outcome-capability runtime is now logged (distribution_confirmation_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 

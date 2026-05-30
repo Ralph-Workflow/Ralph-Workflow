@@ -430,5 +430,21 @@
         "error": null
       }
     ]
+  },
+  {
+    "timestamp": "2026-05-30T19:36:39.714569+00:00",
+    "ok": true,
+    "batches": 1,
+    "submitted": 97,
+    "total_sitemap_urls": 97,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 97,
+        "total": 97,
+        "status_code": 200,
+        "error": null
+      }
+    ]
   }
 ]

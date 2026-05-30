@@ -1,13 +1,14 @@
 {
-  "generated_at": "2026-05-30T09:48:59.163326+00:00",
+  "generated_at": "2026-05-30T19:27:05.868276+00:00",
   "domain": "ralphworkflow.com",
   "sitemap": {
     "sitemap_url": "https://ralphworkflow.com/sitemap.xml",
     "ok": true,
-    "url_count": 92,
+    "url_count": 96,
     "error": null,
     "urls": [
       "https://ralphworkflow.com/",
+      "https://ralphworkflow.com/start",
       "https://ralphworkflow.com/privacy",
       "https://ralphworkflow.com/terms",
       "https://ralphworkflow.com/install",
@@ -25,10 +26,9 @@
       "https://ralphworkflow.com/docs/advanced-pipeline-configuration",
       "https://ralphworkflow.com/docs/after-your-first-run",
       "https://ralphworkflow.com/docs/agents",
-      "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
-      "https://ralphworkflow.com/docs/ai-agent-workflow-composer"
+      "https://ralphworkflow.com/docs/ai-agent-orchestration-cli"
     ],
-    "blog_url_count": 30
+    "blog_url_count": 33
   },
   "robots": {
     "robots_url": "https://ralphworkflow.com/robots.txt",
@@ -183,7 +183,7 @@
     "canonical_mismatches": []
   },
   "assessment": {
-    "sitemap_urls": 92,
+    "sitemap_urls": 96,
     "google_indexed_approx": 13,
     "ddg_indexed_approx": 0,
     "gsc_source": true,

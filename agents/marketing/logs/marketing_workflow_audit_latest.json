@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-30T18:19:43.218393",
+  "generated_at": "2026-05-30T21:38:28.258363",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -125,7 +125,7 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was distribution_confirmation_follow_through, but the latest meaningful external/replacement execution remains social_card_deployed; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The most recent runtime activity was stack_overflow_cron_live_verification, but the latest meaningful external/replacement execution remains social_card_deployed; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (social_card_deployed), so the system is still shipping output even though outcome movement is not visible yet.",
     "A fresh outcome-capability runtime is now logged (distribution_confirmation_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet."
   ],
@@ -160,10 +160,10 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_distribution_confirmation_follow_through_execution.json",
-    "type": "distribution_confirmation_follow_through",
-    "title": "Distribution lane execution: distribution_confirmation_follow_through",
-    "status": "prepared",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_stackoverflow_cron_live_verification.json",
+    "type": "stack_overflow_cron_live_verification",
+    "title": "stack overflow cron live verification",
+    "status": "executed",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,

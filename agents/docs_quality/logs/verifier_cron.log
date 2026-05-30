@@ -15212,3 +15212,93 @@ AGENTIC
 
 [done] end_turn
  '
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is clean and well-aligned. README leads with orchestration and the operating-system framing, START_HERE delivers a tight first-run path with result-first success criteria, and docs/README routes cleanly without link anxiety. Promoted next-click pages all reinforce the same product story \u2014 no internal leakage, no stale framing, no positioning drift.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with the operating-system tagline and orchestration framing. Comparison table and 'who it's for' section make the target audience and differentiation immediately clear. Result-first language ('runnable, tested software') without internal plumbing leakage. Engineering-practice requirements section is honest and present. Codeberg-primary/GitHub-mirror framing correct."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run, result-first success criteria ('what the software does now and what checks ran'), explicit good/bad first-task selection, no artifact or handoff language, routes to next pages 'only if you need them'."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with four clear routes, 'Keep proof secondary' section, Codeberg-primary notice. Does not fight the README or START_HERE story."
+    },
+    {
+      "path": "github-mirror/docs/unattended-coding-agent.md",
+      "reason": "Model result-first framing \u2014 'software that actually runs or verifies better than before' and 'checks that tell you something real'. No hype, no internal plumbing. Stays on-brand."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces the simple-core/powerful-composition contrast clearly. Positions against single-chat-session tools without internal mechanics."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-aligned. The README \u2192 START_HERE \u2192 docs/README journey is coherent, each surface has a clear role, promoted next-click pages reinforce the same story, and internal process residue is absent from top-level surfaces. No positioning drift, no stale framing, no hype sludge.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'operating system for autonomous coding,' comparison table highlights orchestration vs chat, clear audience fit/non-fit, GitHub framed as mirror, Codeberg as primary. No artifact or plumbing language."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Positions the simple Ralph-loop core first, defines good/bad first tasks, result-oriented success criteria, routes to docs without competing."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Intents-based routing with 'keep proof secondary' guardrail, promotes product-framing pages before process pages."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Opens with exact positioning framing, explains orchestration value in user terms, links back to the canonical journey."
+    },
+    {
+      "path": "github-mirror/docs/unattended-coding-agent.md",
+      "reason": "Frames unattended use around accountability and result-judging honesty, not process receipts."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

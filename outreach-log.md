@@ -1,3 +1,40 @@
+### 2026-05-30 — Marketing workflow audit #14 (21:24 CEST)
+
+**Audit trigger:** Cron scheduled re-analysis. Second audit in 6 minutes (prior completed at 21:18). Near-duplicate execution produced identical regeneration — confirms root cause.
+**Status:** Metrics flat. System operating at structural ceiling. Audit #13 repairs confirmed deployed.
+
+#### Regeneration loop root cause identified
+- **Finding:** `marketing_workflow_audit.py` → `outcome_capability_runner.py` regenerates `distribution_action_brief.md` on every invocation. This is the root cause of the chronic draft inflation documented in audit #13.
+- **Evidence:** Brief generated at 21:38 (this run), immediately after prior run's brief was archived (21:35). Prior archived versions exist for same stem: 2026-05-25, 05-26, 05-27, 05-28.
+- **Executed:** Archived the 21:38 regeneration to `drafts/archive/2026-05-30_distribution_action_brief_regenerated_2138.md`.
+
+#### Stack Overflow lane activated — NEW autonomous distribution channel
+- **8 answer drafts ready** (May 23-28), StackExchange API alive (quota=299), zero distribution ever.
+- **SO is unblocked** — no Cloudflare, no captcha, no IP ban. Maps directly onto Ralph Workflow positioning.
+- **Crontab added:** `15 3 * * 3` (Wednesday 03:15 CEST). First run: June 3.
+- **17 total marketing cron jobs** (up from 16). Third autonomous lane added to blog + Telegraph.
+
+#### Telegraph diagnostic cleaned
+- **Dead confuser file retired:** `telegraph_posts.json` (10 entries, all `status="?"`) renamed to `.retired-2026-05-30`. The actual tracking file is `posted_urls.json` (78 Telegraph entries).
+- **Last blog post cross-posted:** `the-overnight-coding-agent-pattern` → Telegraph (`run_posting.py`, 21:47 CEST, ok=true).
+
+#### Metrics at audit
+- Codeberg: 12 stars, 2 watchers, 2 forks — flat across 9-sample window
+- GitHub: 1 star, 2 watchers — flat
+- PyPI: 1,299 downloads/month (3/day on v0.8.7)
+- Blog: 41 posts live, 1 new since audit #13
+- Drafts: 66 active files (down from 123 peak)
+- Telegraph: 78 entries in posted_urls.json
+- Crontab: 17 marketing jobs
+
+#### Blockers unchanged
+- `PYPI_TOKEN` missing: v0.8.8 built, unpublished (3+ days)
+- `gh auth login` missing: 5 GitHub Discussion drafts (4+ days)
+- SMTP credentials missing: 5 publisher emails ready (7+ days)
+- Apollo Cloudflare: Sequence + 5 curator records unreachable (5+ days)
+- DuckDuckGo 100% bot-blocked: Competitor monitoring via alternative paths (3+ days)
+- GSC indexation: 0/80 pages indexed (14+ days)
+
 ### 2026-05-29 — Marketing workflow audit (18:20 CEST)
 
 **Audit trigger:** Cron scheduled re-analysis of full marketing loop (marketing-workflow-audit).
