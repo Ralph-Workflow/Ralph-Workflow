@@ -70,7 +70,6 @@ _SLOT_PREFIX = "slot-"
 _BASE_LOCK_FILE = ".ralph-exec-base.lock"
 _TRASH_PREFIX = ".ralph-exec-trash-"
 _BASE_PRUNE_INTERVAL_S = 1.0
-_PERIODIC_CLEANUP_INTERVAL_S = 60.0
 _POST_RELEASE_CLEANUP_COOLDOWN_S = 5.0
 _PRE_ACQUIRE_CLEANUP_COOLDOWN_S = 5.0
 _WORKSPACE_SIZE_CACHE_TTL_S = 60.0
@@ -192,7 +191,6 @@ class ExecSandboxManager:
         self._last_cleanup_error: str = ""
         self._last_cleanup_monotonic = 0.0
         self._last_pre_acquire_cleanup_monotonic = 0.0
-        self._last_periodic_cleanup_monotonic: float = 0.0
         self._last_cleanup_summary: ExecCacheCleanupSummary | None = None
         self._workspace_size_cache: dict[str, tuple[int, float]] = {}
 
@@ -200,8 +198,6 @@ class ExecSandboxManager:
     def acquire(self, workspace_root: Path) -> Iterator[Path]:
         """Yield a freshly reset sandbox worktree for the given workspace."""
         self._base_dir.mkdir(parents=True, exist_ok=True)
-        # Periodic cleanup trigger: run cleanup_base() at most once per 60s
-        self._maybe_periodic_cleanup()
         if self._cleanup_in_cooldown():
             cooldown_remaining = max(
                 0.0,
@@ -1012,25 +1008,6 @@ class ExecSandboxManager:
             )
         except Exception:
             return None
-
-    def _maybe_periodic_cleanup(self) -> None:
-        """Trigger cleanup_base() periodically (at most once per 60 seconds)."""
-        now = time.monotonic()
-        if now - self._last_periodic_cleanup_monotonic < _PERIODIC_CLEANUP_INTERVAL_S:
-            return
-        self._last_periodic_cleanup_monotonic = now
-        with suppress(Exception):
-            self.cleanup_base()
-
-    def _check_runaway_growth(self) -> bool:
-        """Return True if base_dir exceeds 90% of max_total_bytes budget."""
-        if self._max_total_bytes <= 0:
-            return False
-        try:
-            current = self._path_size_bytes_via_du(self._base_dir)
-        except Exception:
-            return False
-        return current > 0.9 * self._max_total_bytes
 
     def force_clear_workspace(self, workspace_root: Path) -> None:
         """Emergency admin method: force-clear all slots for a workspace.

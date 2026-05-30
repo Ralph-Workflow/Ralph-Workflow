@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import shutil as _shutil
 from io import StringIO
 from pathlib import Path
@@ -47,6 +48,11 @@ def test_diagnose_renders_agent_path_column(
     monkeypatch.chdir(tmp_path)
 
     runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+
+    # Force GC to flush any deferred file-buffer cleanup from shutil.copy2
+    # that Python 3.14's stricter ResourceWarning would otherwise surface
+    # under xdist process recycling.
+    gc.collect()
 
     result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
 
@@ -262,6 +268,7 @@ def test_diagnose_next_steps_panel_rendered_in_cli(
     monkeypatch.chdir(tmp_path)
 
     runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    gc.collect()
 
     result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
 
