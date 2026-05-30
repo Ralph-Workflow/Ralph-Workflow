@@ -16,6 +16,7 @@ Rules:
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -430,7 +431,7 @@ def _post_guard(results: list[dict]) -> None:
     guard_record("telegraph", ok=any_telegraph_ok or len(results) == 0)
 
 
-def main() -> int:
+def main(dry_run: bool = False) -> int:
     now = datetime.now()
     today = now.strftime("%Y-%m-%d")
 
@@ -458,6 +459,25 @@ def main() -> int:
 
     posted = load_posted()
     results: list[dict] = []
+
+    if dry_run:
+        # ── Dry-run mode (2026-05-30 repair) ── CLI --dry-run flag now
+        # actually halts before any live external action instead of being
+        # silently ignored. Runs discovery-only: finds blog posts that
+        # WOULD be cross-posted but posts nothing.
+        dry_run_results = crosspost_blog_content(posted, today, dry_run=True)
+        posted["last_run"] = now.isoformat()
+        save_posted(posted)
+        discovery = {
+            "timestamp": now.isoformat(),
+            "mode": "dry_run",
+            "pending_crossposts": [
+                {"title": r["title"], "source_path": r.get("source_path", "")}
+                for r in dry_run_results
+            ],
+        }
+        print(json.dumps(discovery, indent=2))
+        return 0
 
     # ── Blog cross-posting stage (repair 2026-05-29) ──────────────────
     # Discover and cross-post Ralph-Site blog posts to Telegraph.
@@ -624,4 +644,7 @@ def should_self_improve() -> bool:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description="Post scheduled drafts to Telegraph")
+    parser.add_argument("--dry-run", action="store_true", help="Discovery only — list what would be posted without posting")
+    args = parser.parse_args()
+    raise SystemExit(main(dry_run=args.dry_run))
