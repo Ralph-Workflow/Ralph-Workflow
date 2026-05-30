@@ -69,7 +69,7 @@ _INITIAL_AVERAGE_SLOTS = 1.0
 _SLOT_PREFIX = "slot-"
 _BASE_LOCK_FILE = ".ralph-exec-base.lock"
 _TRASH_PREFIX = ".ralph-exec-trash-"
-_BASE_PRUNE_INTERVAL_S = 1.0
+_BASE_PRUNE_INTERVAL_S = 10.0
 _POST_RELEASE_CLEANUP_COOLDOWN_S = 5.0
 _PRE_ACQUIRE_CLEANUP_COOLDOWN_S = 5.0
 _WORKSPACE_SIZE_CACHE_TTL_S = 60.0
@@ -193,6 +193,7 @@ class ExecSandboxManager:
         self._last_pre_acquire_cleanup_monotonic = 0.0
         self._last_cleanup_summary: ExecCacheCleanupSummary | None = None
         self._workspace_size_cache: dict[str, tuple[int, float]] = {}
+        self._pool_state_cache: dict[str, dict[str, float | int]] = {}
 
     @contextmanager
     def acquire(self, workspace_root: Path) -> Iterator[Path]:
@@ -413,6 +414,9 @@ class ExecSandboxManager:
         }
 
     def _load_pool_state(self, pool_root: Path) -> dict[str, float | int]:
+        pool_key = str(pool_root)
+        if pool_key in self._pool_state_cache:
+            return self._pool_state_cache[pool_key]
         state_path = self._pool_state_path(pool_root)
         if not state_path.is_file():
             return self._default_pool_state()
@@ -434,14 +438,17 @@ class ExecSandboxManager:
             low_usage_streak = 0
         normalized_target = self._normalize_target_slots(target_slots)
         normalized_average = max(_INITIAL_AVERAGE_SLOTS, float(average_slots))
-        return {
+        result: dict[str, float | int] = {
             "average_slots": normalized_average,
             "target_slots": normalized_target,
             "low_usage_streak": max(0, low_usage_streak),
         }
+        self._pool_state_cache[pool_key] = result
+        return result
 
     def _save_pool_state(self, pool_root: Path, state: dict[str, float | int]) -> None:
         self._pool_state_path(pool_root).write_text(json.dumps(state), encoding="utf-8")
+        self._pool_state_cache[str(pool_root)] = state
 
     def _normalize_target_slots(self, target_slots: int) -> int:
         return max(_MIN_SLOTS, min(self._max_slots, target_slots))
@@ -871,6 +878,13 @@ class ExecSandboxManager:
         )
 
     def _shrink_idle_slots(self, pool_root: Path, workspace_key: str) -> None:
+        pool_key = str(pool_root)
+        cached_state = self._pool_state_cache.get(pool_key)
+        if cached_state is not None:
+            cached_target = int(cached_state.get("target_slots", _MIN_SLOTS))
+            if cached_target <= _MIN_SLOTS:
+                return  # No slots above minimum — skip pool lock entirely
+
         staged_slot_dirs_to_delete: list[Path] = []
         with self._pool_lock(pool_root):
             if self._has_active_slot_locks(pool_root, workspace_key):

@@ -30,6 +30,7 @@ _GENERATED_DIR_NAMES = (
 )
 
 _OVERLAY_OWNER_FILE = ".ralph-exec-owner.json"
+_GIT_FINGERPRINT_FILE = ".ralph-git-fingerprint"
 _LEGACY_PRUNE_MAX_AGE_SECONDS = 60 * 60 * 24
 _START_TIME_TOLERANCE_S = 1e-6
 _PSUTIL = load_psutil_module()
@@ -457,6 +458,60 @@ def _write_private_config(source_gitdir: Path, private_gitdir: Path, overlay_roo
     private_gitdir.write_text(private_config, encoding="utf-8")
 
 
+def _git_state_fingerprint(source_gitdir: Path) -> str:
+    """Return a pipe-delimited fingerprint of all git state that _setup_private_gitdir copies."""
+    parts: list[str] = []
+
+    head_content = ""
+    with suppress(OSError):
+        head_content = (source_gitdir / "HEAD").read_text(encoding="utf-8")
+    parts.append(f"head:{head_content}")
+
+    index_stat = ""
+    try:
+        idx = (source_gitdir / "index").stat()
+        index_stat = f"{idx.st_mtime_ns}:{idx.st_size}"
+    except OSError:
+        pass
+    parts.append(f"index:{index_stat}")
+
+    shared_gitdir = _resolve_shared_gitdir(source_gitdir)
+    parts.append(f"shared:{shared_gitdir}")
+
+    packed_refs_stat = ""
+    try:
+        pr = (shared_gitdir / "packed-refs").stat()
+        packed_refs_stat = f"{pr.st_mtime_ns}:{pr.st_size}"
+    except OSError:
+        pass
+    parts.append(f"packed-refs:{packed_refs_stat}")
+
+    stripped = head_content.strip()
+    if stripped.startswith("ref: "):
+        ref_path = stripped.split(" ", 1)[1].strip()
+        head_ref_stat = ""
+        try:
+            hr = (shared_gitdir / ref_path).stat()
+            head_ref_stat = f"{hr.st_mtime_ns}:{hr.st_size}"
+        except OSError:
+            pass
+        parts.append(f"head-ref:{head_ref_stat}")
+
+    return "|".join(parts)
+
+
+def _read_git_fingerprint(sandbox_root: Path) -> str | None:
+    try:
+        return (sandbox_root / _GIT_FINGERPRINT_FILE).read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def _write_git_fingerprint(sandbox_root: Path, fingerprint: str) -> None:
+    with suppress(OSError):
+        (sandbox_root / _GIT_FINGERPRINT_FILE).write_text(fingerprint, encoding="utf-8")
+
+
 def _copy_worktree_state(source_gitdir: Path, private_gitdir: Path) -> None:
     for filename in (
         "HEAD",
@@ -497,8 +552,20 @@ def _setup_private_gitdir(
     tmp_root: Path,
 ) -> None:
     """Create a private gitdir backed by shared source objects."""
-    shared_gitdir = _resolve_shared_gitdir(source_gitdir)
     private_gitdir = tmp_root / "private-gitdir"
+    new_fingerprint = _git_state_fingerprint(source_gitdir)
+
+    if private_gitdir.is_dir() and overlay_git.is_file():
+        stored = _read_git_fingerprint(tmp_root)
+        if stored is not None and stored == new_fingerprint:
+            try:
+                current_pointer = overlay_git.read_text(encoding="utf-8").strip()
+                if current_pointer == f"gitdir: {private_gitdir}":
+                    return  # Git state unchanged — skip full recreation
+            except OSError:
+                pass
+
+    shared_gitdir = _resolve_shared_gitdir(source_gitdir)
 
     if private_gitdir.exists():
         shutil.rmtree(private_gitdir)
@@ -514,6 +581,7 @@ def _setup_private_gitdir(
     else:
         overlay_git.unlink(missing_ok=True)
     overlay_git.write_text(f"gitdir: {private_gitdir}\n", encoding="utf-8")
+    _write_git_fingerprint(tmp_root, new_fingerprint)
 
 
 def _ensure_git_isolation(source_root: Path, overlay_root: Path, tmp_root: Path) -> None:

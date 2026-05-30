@@ -590,6 +590,7 @@ def test_cleanup_base_prunes_expired_current_workspace_idle_slot(
     expired_at = 1.0
     os.utime(stale_slot, (expired_at, expired_at))
     os.utime(stale_slot_ws, (expired_at, expired_at))
+    os.utime(stale_slot / ".ralph-sandbox-ready", (expired_at, expired_at))
 
     with manager.acquire(workspace) as sandbox:
         assert sandbox.exists()
@@ -1312,6 +1313,111 @@ def test_fast_reset_does_not_pre_delete_worktree_directory(tmp_path: Path) -> No
     assert (sandbox_root / "ws").stat().st_ino == inode_before
     assert not (sandbox_root / "ws" / "dirty.txt").exists()
     assert (sandbox_root / "ws" / "tracked.txt").read_text(encoding="utf-8") == "original"
+
+
+def test_pool_state_cache_survives_file_deletion_after_save(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    pool_root = manager._base_dir / "pool-a"
+    pool_root.mkdir(parents=True)
+
+    manager._save_pool_state(
+        pool_root, {"target_slots": 3, "average_slots": 2.5, "low_usage_streak": 0}
+    )
+    manager._pool_state_path(pool_root).unlink()
+    state = manager._load_pool_state(pool_root)
+
+    assert state["target_slots"] == 3
+
+
+def test_pool_state_cache_is_keyed_by_pool_root(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    pool1 = manager._base_dir / "pool1"
+    pool2 = manager._base_dir / "pool2"
+    pool1.mkdir(parents=True)
+    pool2.mkdir(parents=True)
+
+    manager._save_pool_state(
+        pool1, {"target_slots": 5, "average_slots": 5.0, "low_usage_streak": 0}
+    )
+    manager._save_pool_state(
+        pool2, {"target_slots": 2, "average_slots": 2.0, "low_usage_streak": 0}
+    )
+    manager._pool_state_path(pool1).unlink()
+    manager._pool_state_path(pool2).unlink()
+
+    state1 = manager._load_pool_state(pool1)
+    state2 = manager._load_pool_state(pool2)
+
+    assert state1["target_slots"] == 5
+    assert state2["target_slots"] == 2
+
+
+def test_pool_state_cache_loads_from_file_when_not_in_cache(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    pool_root = manager._base_dir / "pool-b"
+    pool_root.mkdir(parents=True)
+
+    manager._pool_state_path(pool_root).write_text(
+        json.dumps({"target_slots": 4, "average_slots": 3.0, "low_usage_streak": 0}),
+        encoding="utf-8",
+    )
+    state = manager._load_pool_state(pool_root)
+
+    assert state["target_slots"] == 4
+
+
+def test_shrink_idle_slots_skips_pool_lock_when_target_is_minimum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    pool_root = tmp_path / "exec-base" / "pool-x"
+    pool_root.mkdir(parents=True)
+    manager._pool_state_cache[str(pool_root)] = {
+        "target_slots": 1,
+        "average_slots": 1.0,
+        "low_usage_streak": 5,
+    }
+
+    acquire_calls: list[Path] = []
+    orig_acquire = manager._acquire_named_lock
+
+    def recording_acquire(lock_path: Path) -> None:
+        acquire_calls.append(lock_path)
+        orig_acquire(lock_path)
+
+    monkeypatch.setattr(manager, "_acquire_named_lock", recording_acquire)
+
+    manager._shrink_idle_slots(pool_root, "testkey")
+
+    pool_lock_path = manager._pool_lock_path(pool_root)
+    assert not any(p == pool_lock_path for p in acquire_calls)
+
+
+def test_shrink_idle_slots_acquires_lock_when_target_exceeds_minimum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    pool_root = tmp_path / "exec-base" / "pool-y"
+    pool_root.mkdir(parents=True)
+    manager._pool_state_cache[str(pool_root)] = {
+        "target_slots": 3,
+        "average_slots": 3.0,
+        "low_usage_streak": 0,
+    }
+
+    acquire_calls: list[Path] = []
+    orig_acquire = manager._acquire_named_lock
+
+    def recording_acquire(lock_path: Path) -> None:
+        acquire_calls.append(lock_path)
+        orig_acquire(lock_path)
+
+    monkeypatch.setattr(manager, "_acquire_named_lock", recording_acquire)
+
+    manager._shrink_idle_slots(pool_root, "testkey")
+
+    pool_lock_path = manager._pool_lock_path(pool_root)
+    assert any(p == pool_lock_path for p in acquire_calls)
 
 
 def test_fast_reset_clears_sentinel_on_mirror_failure(

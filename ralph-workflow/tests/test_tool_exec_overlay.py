@@ -154,6 +154,146 @@ def test_mirror_workspace_rsync_does_not_call_which_per_invocation(
     assert which_call_count == 0
 
 
+def test_git_state_fingerprint_includes_head_content(tmp_path: Path) -> None:
+    gitdir = tmp_path / "gitdir"
+    gitdir.mkdir()
+    (gitdir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+
+    result = exec_overlay._git_state_fingerprint(gitdir)
+
+    assert "ref: refs/heads/main" in result
+
+
+def test_git_state_fingerprint_changes_when_head_changes(tmp_path: Path) -> None:
+    gitdir = tmp_path / "gitdir"
+    gitdir.mkdir()
+    (gitdir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    fp1 = exec_overlay._git_state_fingerprint(gitdir)
+
+    (gitdir / "HEAD").write_text("ref: refs/heads/other\n", encoding="utf-8")
+    fp2 = exec_overlay._git_state_fingerprint(gitdir)
+
+    assert fp1 != fp2
+
+
+def test_git_state_fingerprint_changes_when_index_mtime_changes(tmp_path: Path) -> None:
+    gitdir = tmp_path / "gitdir"
+    gitdir.mkdir()
+    (gitdir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (gitdir / "index").write_bytes(b"initial")
+    fp1 = exec_overlay._git_state_fingerprint(gitdir)
+
+    (gitdir / "index").write_bytes(b"updated-bytes")
+    fp2 = exec_overlay._git_state_fingerprint(gitdir)
+
+    assert fp1 != fp2
+
+
+def test_git_state_fingerprint_changes_when_branch_commit_changes(tmp_path: Path) -> None:
+    gitdir = tmp_path / "gitdir"
+    gitdir.mkdir()
+    (gitdir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (gitdir / "refs" / "heads").mkdir(parents=True)
+    (gitdir / "refs" / "heads" / "main").write_text("abc\n", encoding="utf-8")
+    fp1 = exec_overlay._git_state_fingerprint(gitdir)
+
+    (gitdir / "refs" / "heads" / "main").write_text("def\n", encoding="utf-8")
+    fp2 = exec_overlay._git_state_fingerprint(gitdir)
+
+    assert fp1 != fp2
+
+
+def test_git_state_fingerprint_tolerates_missing_files(tmp_path: Path) -> None:
+    gitdir = tmp_path / "gitdir"
+    gitdir.mkdir()
+
+    result = exec_overlay._git_state_fingerprint(gitdir)
+
+    assert isinstance(result, str)
+
+
+def test_read_git_fingerprint_returns_none_when_missing(tmp_path: Path) -> None:
+    result = exec_overlay._read_git_fingerprint(tmp_path / "nonexistent")
+
+    assert result is None
+
+
+def test_write_and_read_git_fingerprint_round_trips(tmp_path: Path) -> None:
+    exec_overlay._write_git_fingerprint(tmp_path, "sentinel-value")
+    result = exec_overlay._read_git_fingerprint(tmp_path)
+
+    assert result == "sentinel-value"
+
+
+def _make_workspace_with_git(tmp_path: Path) -> Path:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    git_dir = workspace / ".git"
+    git_dir.mkdir()
+    (git_dir / "objects").mkdir()
+    (git_dir / "refs" / "heads").mkdir(parents=True)
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git_dir / "refs" / "heads" / "main").write_text("abcdef\n", encoding="utf-8")
+    return workspace
+
+
+def test_ensure_git_isolation_preserves_private_gitdir_inode_on_repeat_call_with_same_git_state(
+    tmp_path: Path,
+) -> None:
+    workspace = _make_workspace_with_git(tmp_path)
+    sandbox_root = tmp_path / "sandbox"
+    sandbox_root.mkdir()
+    worktree = sandbox_root / "ws"
+    worktree.mkdir()
+
+    exec_overlay._ensure_git_isolation(workspace, worktree, sandbox_root)
+    inode_before = (sandbox_root / "private-gitdir").stat().st_ino
+
+    exec_overlay._ensure_git_isolation(workspace, worktree, sandbox_root)
+    inode_after = (sandbox_root / "private-gitdir").stat().st_ino
+
+    assert inode_after == inode_before
+
+
+def test_ensure_git_isolation_recreates_private_gitdir_when_head_changes(
+    tmp_path: Path,
+) -> None:
+    workspace = _make_workspace_with_git(tmp_path)
+    sandbox_root = tmp_path / "sandbox"
+    sandbox_root.mkdir()
+    worktree = sandbox_root / "ws"
+    worktree.mkdir()
+
+    exec_overlay._ensure_git_isolation(workspace, worktree, sandbox_root)
+    inode_before = (sandbox_root / "private-gitdir").stat().st_ino
+
+    (workspace / ".git" / "HEAD").write_text("ref: refs/heads/other\n", encoding="utf-8")
+    exec_overlay._ensure_git_isolation(workspace, worktree, sandbox_root)
+    inode_after = (sandbox_root / "private-gitdir").stat().st_ino
+
+    assert inode_after != inode_before
+
+
+def test_ensure_git_isolation_runs_full_setup_when_fingerprint_absent(
+    tmp_path: Path,
+) -> None:
+    workspace = _make_workspace_with_git(tmp_path)
+    sandbox_root = tmp_path / "sandbox"
+    sandbox_root.mkdir()
+    worktree = sandbox_root / "ws"
+    worktree.mkdir()
+
+    private_gitdir = sandbox_root / "private-gitdir"
+    private_gitdir.mkdir()
+    (worktree / ".git").write_text(f"gitdir: {private_gitdir}\n", encoding="utf-8")
+    inode_before = private_gitdir.stat().st_ino
+
+    exec_overlay._ensure_git_isolation(workspace, worktree, sandbox_root)
+    inode_after = (sandbox_root / "private-gitdir").stat().st_ino
+
+    assert inode_after != inode_before
+
+
 def test_mirror_workspace_incremental_hard_links_unchanged_files(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     workspace.mkdir()
