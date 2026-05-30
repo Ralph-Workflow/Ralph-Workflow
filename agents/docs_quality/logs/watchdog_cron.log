@@ -29606,3 +29606,99 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, positioned correctly, and the user should not need to repeat this instruction. The README \u2192 START_HERE \u2192 docs/README journey works as a single route. Every promoted next-click page reinforces the same simple-core/composition/strong-default story. No top-level surface leads with internal mechanics. Artifacts and internal detail are properly gated in deep Sphinx reference pages with 'New to Ralph Workflow?' guards.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'the operating system for autonomous coding.' Uses comparison table to contrast against chat/prompt tools. Clear fit/non-fit. Routes correctly to START_HERE \u2192 docs/README. Codeberg primary, GitHub mirror labeling correct. No internal plumbing on first screen."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run. Good/bad task selection. Only three bash steps. Result-oriented success criteria. Routes to task selection help and docs map. No artifact or review-bundle language."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Intent-based routing switchboard. Each route matches what a user would ask. 'Keep proof secondary' section enforces the information hierarchy. Promoted pages all reinforce the same positioning."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Strong reinforcing page: 'simple at the center, powerful in composition' theme, why default workflow matters, proper call-to-action routes. No internal plumbing."
+    },
+    {
+      "path": "ralph-workflow/docs/sphinx/artifacts.md",
+      "reason": "Properly gated deep reference page -- 'New to Ralph Workflow? See Getting Started first.' Shows artifacts belong in architecture docs, not top-level story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, well-positioned, and does not require re-instruction. README \u2192 START_HERE \u2192 docs/README journey flows cleanly with consistent framing throughout.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'operating system for autonomous coding', comparison table beats framing against single-agent/chats, 'What you wake up to' is evocative without internal plumbing, engineering-practice section honest, and default-workflow-first message prominent."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run \u2014 no artifact/review-bundle language, clear task selection guide, strong emphasis on judging by what software does and what checks ran, Codeberg mirror disclaimer upfront."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with role-specific routes, 'Keep proof secondary' note, product-framing section for users who want positioning before depth, and no internal-leakage in any route."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted next-click that reinforces the same story: simple Ralph-loop core, strong default, composition, honest evaluation \u2014 does not fight the journey."
+    },
+    {
+      "path": "github-mirror/docs/spec-driven-ai-agent.md",
+      "reason": "Honest framing of why specs matter without selling them as ceremony; 'fits the default workflow' section connects back to the core docs story instead of diverging."
+    },
+    {
+      "path": "github-mirror/docs/unattended-coding-agent.md",
+      "reason": "Defuses hype around 'unattended' by staying grounded \u2014 accountable, honest, task-bound, default-workflow-first. Reinforces same positioning language."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
