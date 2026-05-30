@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-05-30T18:28:09.811109",
+  "timestamp": "2026-05-30T19:11:50.670734",
   "type": "outcome_execution_board_runner",
   "status": "executed",
-  "repair_needed_at_start": false,
+  "repair_needed_at_start": true,
   "selected_lane": "manual_outreach_asset_follow_through",
   "selected_action_type": "truth_snapshot_only",
   "executed_lane": null,
@@ -13,15 +13,15 @@
     "ComputingForGeeks",
     "Ralph Workflow curator follow-up — Codeberg CTA"
   ],
-  "execution_board_fingerprint": "906339cb1750cec596863997ad45d43ec06856b5",
+  "execution_board_fingerprint": "8c48758d17677a79a6d01d68e3e89118d162ba15",
   "short_review_window_release_at": "2026-05-30T18:51:42",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Review reply/backlink movement and Codeberg deltas within 7 days.",
   "summary": "Execution board refreshed, but no truthful do-now lane was available; the board itself is the structural truth source.",
   "next_truthful_checkpoint": {
-    "at": "2026-05-30T18:51:42",
-    "source": "short_review_window_release",
-    "reason": "Current short review window clears."
+    "at": "2026-05-31T00:00:00",
+    "source": "directory_secondary_surface_followup",
+    "reason": "Live directory secondary-surface repair reaches its next review checkpoint."
   },
   "structural_capability": {
     "name": "execution_board_follow_through_runner",
