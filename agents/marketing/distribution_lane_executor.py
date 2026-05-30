@@ -30,7 +30,7 @@ from agents.marketing.market_intelligence_runtime import load_market_intelligenc
 from agents.marketing.measurement_hold_runtime import latest_measurement_hold_window
 from agents.marketing.positioning import CODEBERG_PRIMARY, FOUR_QUESTIONS, directory_blurb
 from agents.marketing import stackoverflow_answer_lane
-from agents.marketing.channel_spidering_guard import guard_check
+from agents.marketing.channel_spidering_guard import guard_check, PERMANENTLY_BLOCKED
 from agents.marketing.run_posting import (
     CTA_FOOTER,
     already_posted_successfully,
@@ -1053,6 +1053,22 @@ def _manual_community_discussion_asset_still_actionable(artifact_path: str) -> b
 
 
 def _reddit_manual_discussion_blocked() -> bool:
+    # Permanent architectural block: Reddit is IP-blocked at Hetzner, Tor-blocked,
+    # and architecturally retired since 2026-05-28. No transient status check can
+    # override this; Reddit discussion assets must never appear as "Do now" board packets.
+    if PERMANENTLY_BLOCKED.get("reddit"):
+        return True
+
+    # Also check the spidering guard in case the PERMANENTLY_BLOCKED dict is
+    # imported late or renewed during a runtime reassembly.
+    try:
+        from agents.marketing.channel_spidering_guard import guard_check as _guard_check
+        ok, _, _ = _guard_check("reddit")
+        if not ok:
+            return True
+    except Exception:
+        pass
+
     using_workspace_defaults = (
         LOG_DIR == ROOT / 'agents' / 'marketing' / 'logs'
         and SEO_REPORTS_DIR == ROOT / 'seo-reports'
@@ -5053,14 +5069,16 @@ def _resolve_measurement_hold_release_delivery() -> dict[str, str]:
 
 
 def _live_measurement_hold_release_jobs(now: datetime) -> list[dict[str, str]]:
-    command = ['/home/mistlight/.bun/bin/openclaw', 'cron', 'list', '--json']
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ['/home/mistlight/.bun/bin/openclaw', 'cron', 'list', '--json'],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (FileNotFoundError, PermissionError, OSError) as _subprocess_err:
+        return []
     if result.returncode != 0:
         return []
 
