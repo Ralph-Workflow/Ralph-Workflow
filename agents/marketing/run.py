@@ -44,6 +44,7 @@ from agents.marketing.distribution_lane_executor import (
 from agents.marketing.distribution_lane_selector import choose_distribution_lane
 from agents.marketing.market_intelligence_runtime import load_market_intelligence
 from agents.marketing.measurement_hold_runtime import latest_measurement_hold_window as shared_latest_measurement_hold_window
+from agents.marketing.measurement_hold_runtime import hold_exhausted as measurement_hold_exhausted
 
 AGENTS_DIR = ROOT / "agents/marketing"
 LOG_DIR = AGENTS_DIR / "logs"
@@ -444,10 +445,18 @@ def _apply_repair_mode_overrides(
                 )
             else:
                 redirect = 'measurement_hold'
-                reason_suffix = (
-                    'the comparison/backlink queue is already fully prepared but GitHub auth is blocked here, '
-                    'so hold for truthful follow-through instead of fabricating another comparison execution run.'
-                )
+                # Hold-exhaustion circuit-breaker: if the system has produced 3+ holds
+                # in 24h with zero live external actions between them, the hold is a
+                # deadlock. Override to owned_content to force at least one real action
+                # through before the next measurement check.
+                if measurement_hold_exhausted(now or datetime.now(), LOG_DIR):
+                    redirect = 'owned_content'
+                    reason_suffix = (
+                        'hold deadlock detected: 3+ consecutive measurement holds in the '
+                        'exhaustion window with zero live external actions between them. '
+                        'Circuit-breaking to owned_content to ship a real artifact before '
+                        'the next measurement check.'
+                    )
         else:
             reason_suffix = (
                 'refreshing live directory approval/backlink evidence instead of stacking more low-intent submissions.'

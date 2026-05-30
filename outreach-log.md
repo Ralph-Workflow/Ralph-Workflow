@@ -7858,3 +7858,11 @@ The most important repair in this audit is structural, not analytical: the cron 
 - **New process rule reinforced:** At 72h threshold, write suspension marker file and stop executing Reddit-specific queries. Do not continue indefinitely producing brief outage reports.
 - **Posting note:** No posting attempted. Fail-closed structurally enforced.
 - **Type:** **OUTAGE_REPORT / COUNTDOWN_TO_SUSPENSION**
+
+### Apollo monitor
+- **When:** 2026-05-30 16:55:55
+- **Note:** Apollo status changed from `blocked` to `cloudflare_auth_blocked`.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-30 18:03:11
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

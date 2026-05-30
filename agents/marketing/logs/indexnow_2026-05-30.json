@@ -382,5 +382,37 @@
         "error": null
       }
     ]
+  },
+  {
+    "timestamp": "2026-05-30T14:54:15.858499+00:00",
+    "ok": true,
+    "batches": 1,
+    "submitted": 94,
+    "total_sitemap_urls": 94,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 94,
+        "total": 94,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-05-30T15:14:22.494325+00:00",
+    "ok": true,
+    "batches": 1,
+    "submitted": 95,
+    "total_sitemap_urls": 95,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 95,
+        "total": 95,
+        "status_code": 200,
+        "error": null
+      }
+    ]
   }
 ]

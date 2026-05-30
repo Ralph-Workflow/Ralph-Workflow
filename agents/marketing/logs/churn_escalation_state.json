@@ -1,27 +1,9 @@
 {
-  "strikes": [
-    {
-      "level": 2,
-      "timestamp": "2026-05-30T09:24:56.750161",
-      "reason": "churn ratio danger with 3 prior strikes"
-    },
-    {
-      "level": 1,
-      "timestamp": "2026-05-30T14:06:09.401304",
-      "reason": "10 total artifacts in 6h with ZERO distribution actions \u2014 pure churn"
-    },
-    {
-      "level": 1,
-      "timestamp": "2026-05-30T16:29:43.281283",
-      "reason": "churn ratio danger (distribution=0, churn=3)"
-    }
-  ],
-  "paused_crons": [
-    "5e8746f2-2311-48f6-a113-4ac6880b2376",
-    "ce3f9db8-bb49-4f97-9ee3-d4786314c204"
-  ],
+  "strikes": [],
+  "paused_crons": [],
   "emergency_declared": false,
-  "last_check": "2026-05-28T20:10:14.925680",
+  "last_check": "2026-05-30T17:13:07.432294",
   "history": [],
-  "reset_at": "2026-05-28T20:10:14.925698"
+  "reset_at": "2026-05-30T17:13:07.432316",
+  "reset_reason": "Real distribution action (blog post: ai-coding-agent-testing-strategy) deployed 2026-05-30 17:11 CEST. 38th blog post live on ralphworkflow.com. Churn trigger was correct (zero distribution in 6h window) but root cause was blocked lanes, not repair-loop pathology."
 }

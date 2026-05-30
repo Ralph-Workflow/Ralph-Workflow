@@ -1,28 +1,24 @@
 # Apollo.io Channel Status
 
-**Checked:** 2026-05-27 17:26 UTC (5:22 PM Europe/Berlin)
-**Status:** ✅ Login Succeeded
+**Checked:** 2026-05-30 14:55 UTC (4:55 PM Europe/Berlin)
+**Status:** 🔴 Cloudflare Auth Blocked
 
-## Blocker State: **none**
+## Blocker State: **cloudflare_auth_blocked**
 
-Apollo is authenticated and the UI is fully usable. Real-browser automation path succeeded.
+Apollo is not currently actionable. Cloudflare's challenge interstitial is blocking the login page entirely — automation cannot get past it.
 
 ## Details
 
-- **Final URL:** https://app.apollo.io/#/home
-- **Cloudflare blocked:** No (background challenges seen on ancillary requests but did not interrupt the authenticated UI)
-- **Login attempted:** No (session was already authenticated)
-- **Browserless probe:** Not used — real browser path succeeded
+- **Final URL:** https://app.apollo.io/#/login
+- **Cloudflare blocked:** Yes — interstitial detected in response body from `https://app.apollo.io/`
+- **Login attempted:** No — could not reach the login form
+- **Browserless probe status:** cloudflare_auth_blocked — same result via Browserless
+- **Auth endpoints checked:** None (login page itself was blocked)
 
 ## Notes
 
-Cloudflare interstitial was detected in response bodies from:
-- `https://app.apollo.io/`
-- `https://app.apollo.io/api/v1/contacts/search?...`
-- `https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/...`
-
-These were background challenges on ancillary requests. The authenticated Apollo surface was already active and remained usable throughout.
+Cloudflare is serving a challenge on the root Apollo domain. This prevents both the headless browser (xvfb) and the Browserless remote probe from even seeing the login form. No credential attempt was made because the form was unreachable.
 
 ## Downstream Status
 
-Apollo is a **managed outbound channel** — outbound email/sequence sends are **actionable** via this authenticated session.
+❌ **Blocked.** Apollo is a managed outbound channel but cannot be used until the Cloudflare challenge can be passed. Manual login via a real browser with human-interactive Cloudflare resolution is required to re-establish a session.

@@ -1,6 +1,18 @@
 {
-  "timestamp": "2026-05-30T09:47:05.172148",
+  "timestamp": "2026-05-30T18:11:31.019587",
   "results": [
+    {
+      "date": "2026-05-30",
+      "draft": "ai-coding-agent-testing-strategy.md",
+      "title": "Testing AI-Generated Code: A Strategy for Reviewing Autonomous Coding Output",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/Testing-AI-Generated-Code-A-Strategy-for-Reviewing-Autonomous-Coding-Output-05-30",
+      "error": null,
+      "draft_hash": "283a4ea6521e49776f18eff4ef1fc8c87ee4d2fe7f815cafb0f2488a04c952de",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-testing-strategy.md"
+    },
     {
       "draft": "2026-05-30_usecase_draft.md",
       "ok": true,
