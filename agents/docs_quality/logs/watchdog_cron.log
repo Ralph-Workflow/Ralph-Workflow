@@ -30264,3 +30264,281 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs journey is coherent, positioned correctly, and would not need re-auditing. The README \u2192 START_HERE \u2192 docs/README \u2192 next-click pages form a single consistent route that leads with the simple-loop-core/default-workflow/ambitious-work story and keeps internal plumbing secondary. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": ".openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md",
+      "reason": "Strongest single product pitch: tagline, comparison table, quick start, audience fit/non-fit, result-first evaluation language, Codeberg-primary framing. No internal plumbing on the first screen."
+    },
+    {
+      "path": ".openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Cleanest first-run page. Opens with mirror disclaimer, gives the shortest honest path, defines what success looks like without leading with logs or artifacts, and closes with 'next pages only if you need them.'"
+    },
+    {
+      "path": ".openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Docs switchboard with clear role (after README+START_HERE), clean routing options, explicit 'keep proof secondary' section, and Codeberg-primary framing."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Clean pass. The README \u2192 START_HERE \u2192 docs/README journey is coherent and well-role-separated. The mirror README is the strongest public-facing page (result-first, clear comparison table, no internal leakage). Every promoted next-click page reinforces the same simple-core / composable / strong-default framing. No hard failures. No stale or fighting narrative.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (mirror)",
+      "reason": "Opens with tagline, comparison table surfaces differentiation immediately, result-first framing ('wake up to runnable software'), who-it's-for section right-sized, engineering-practice requirements honesty at the bottom."
+    },
+    {
+      "path": "START_HERE.md (mirror)",
+      "reason": "Leads with Codeberg primary flag, shortest honest first-run path, success criteria is result-oriented, next pages conditional. No internal plumbing."
+    },
+    {
+      "path": "docs/README.md (mirror)",
+      "reason": "Top-level framing repeats the core narrative cleanly. Routes by user intent. Keeps proof secondary. Tight link curation \u2014 no link farm."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs journey is coherent, consistent, and aligned with positioning. No internal leakage, no stale framing, no page-role collapse.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (codeberg primary)",
+      "reason": "Opens with correct tagline and positioning, explicitly narrows its role, routes to canonical public journey without competing."
+    },
+    {
+      "path": "README.md (github mirror)",
+      "reason": "Full product pitch that leads with orchestration framing, not artifacts. Comparison table, good/bad task lists, engineering-practice section, Codeberg-as-primary callout all present and correct."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run. Correct framing, task selection guidance, success criteria aligned with result-first evaluation. No internal plumbing."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clear docs switchboard with audience routing. 'Keep proof secondary' callout. Promoted pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) all reinforce the same story instead of fighting it."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs journey is coherent, consistent, and aligned with positioning. No internal leakage, no stale framing, no page-role collapse.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (codeberg primary)",
+      "reason": "Opens with correct tagline and positioning, explicitly narrows its role, routes to canonical public journey without competing."
+    },
+    {
+      "path": "README.md (github mirror)",
+      "reason": "Full product pitch that leads with orchestration framing, not artifacts. Comparison table, good/bad task lists, engineering-practice section, Codeberg-as-primary callout all present and correct."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run. Correct framing, task selection guidance, success criteria aligned with result-first evaluation. No internal plumbing."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clear docs switchboard with audience routing. 'Keep proof secondary' callout. Promoted pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) all reinforce the same story instead of fighting it."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+[agentic-review] WARNING: all opencode attempts failed, falling back to existing artifact. Last error: opencode review returned no standalone review JSON object: l plumbing. Clean.
+           
+           3. **docs/README.md** - Documentation map. Clear routes. Keeps proof secondary. Correctly positioned.
+           
+           4. **Promoted next-click pages**: ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, first-task-guide.md, unattended-coding-agent.md - All reinforce the same story. Simple core. Composable. Strong default. Ambitious work. No artifact language.
+           
+           Let me check each rubric criterion:
+           
+           **Positioni...
+```json
+{
+  "status": "pass",
+  "summary": "Coherent, disciplined docs system that correctly executes the positioning brief. All top-level surfaces lead with the simple-core-to-composable framing, avoid internal plumbing language, maintain Codeberg-primary discipline, and point evaluators to runnable software over logs or diff language. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {"path": "REPO_ROOT/README.md", "reason": "Leads with 'operating system for autonomous coding' + simple-core-composable framing. Deliberately narrow — points to Codeberg and START_HERE instead of competing. No artifact/plumbing language."},
+    {"path": "github-mirror/START_HERE.md", "reason": "Shortest honest first run centered on one real well-specified task. Result-first evaluation criteria. Clean install flow. No internal process residue."},
+    {"path": "github-mirror/docs/README.md", "reason": "Curated route switchboard that explicitly tells readers to come after README and START_HERE. Keeps proof secondary. Reinforces Codeberg-primary."},
+    {"path": "github-mirror/docs/ai-agent-orchestration-cli.md", "reason": "Promoted next-click page that starts with the simple core, explains why the default workflow matters, and points
+
+[done] end_turn
+REPAIRS
+- No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, aligned with positioning, no internal leakage. README \u2192 START_HERE \u2192 docs/README journey is clean and unified. Promoted next-click pages reinforce the same story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "GitHub mirror README.md",
+      "reason": "Opens with 'The operating system for autonomous coding', immediately frames as orchestrator not chat tool, comparison table works as marketing without leaking internals, Codeberg-primary/GitHub-mirror framing is clear, engineering-practice dependency is explicit, no artifact/plumbing language anywhere on first screen."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run \u2014 result-oriented (real repo change, meaningful checks, reviewable outcome), not process-oriented. Task selection guidance aligns with ambitious/well-specified positioning. Routes cleanly to docs/README.md."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clean docs switchboard with intent-based routing. Explicitly tells users to come after README and START_HERE. 'Keep proof secondary' section stops evaluators from diving into stale framing too early. Routes back to Codeberg primary."
+    },
+    {
+      "path": "All promoted next-click pages",
+      "reason": "ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, first-task-guide.md, unattended-coding-agent.md all open with the same simple-core framing and route back to START_HERE.md or docs/README.md. None fight the journey or leak internal process language."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are clean, coherent, and well-aligned with positioning. No internal leakage, no stale framing, no broken journey.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (root)",
+      "reason": "Intentionally narrow; routes cleanly to Codeberg primary, START_HERE, docs/README. Does not leak product pitch or onboarding into itself."
+    },
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Strong product pitch that follows positioning order: tagline \u2192 orchestrator \u2192 simple core \u2192 composable \u2192 default workflow \u2192 quick start. Comparison table is effective and marketable. No internal jargon."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run. Task selection guidance matches 'ambitious, well-specified work' framing. No artifact/review-bundle language. Result-first evaluation framing."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with user-intent routing. Does not compete with README or START_HERE. Proof pages are kept secondary, not primary."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted next-click page reinforces orchestration framing and default-workflow-first philosophy. Does not fight the main journey."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.

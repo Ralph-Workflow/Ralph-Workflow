@@ -14622,3 +14622,158 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean, consistent, and well-maintained. No positioning drift, no internal leakage, no confusing IA. The user should not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (GitHub mirror)",
+      "reason": "Opens with 'The operating system for autonomous coding', leads with orchestrator framing, comparison table, and ambitious-work fit. No artifact/plumbing language. Clearly marks Codeberg as primary and GitHub as mirror."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first-run path. Guides to real-task selection, result-first evaluation, and clear what-success-looks-like criteria. No internal plumbing or review-bundle framing."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Curated docs switchboard with four clean routes. Explicitly says 'Keep proof secondary' and routes deeper only after product story is understood."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted next-click that reinforces the simple-core / strong-default / ambitious-work story rather than fighting it. Stays in the same framing lane."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs journey is coherent, consistent, and aligned with positioning. No internal leakage, no stale framing, no page-role collapse.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (codeberg primary)",
+      "reason": "Opens with correct tagline and positioning, explicitly narrows its role, routes to canonical public journey without competing."
+    },
+    {
+      "path": "README.md (github mirror)",
+      "reason": "Full product pitch that leads with orchestration framing, not artifacts. Comparison table, good/bad task lists, engineering-practice section, Codeberg-as-primary callout all present and correct."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run. Correct framing, task selection guidance, success criteria aligned with result-first evaluation. No internal plumbing."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clear docs switchboard with audience routing. 'Keep proof secondary' callout. Promoted pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) all reinforce the same story instead of fighting it."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+[agentic-review] WARNING: all opencode attempts failed, falling back to existing artifact. Last error: opencode review returned no standalone review JSON object: [client] initialize (running)
+
+[client] session/new (running)
+
+[thinking] The user wants me to audit Ralph Workflow documentation quality using the provided positioning document and rubric. Let me carefully analyze each surface against the criteria.
+           
+           Let me trace the user journey:
+           
+           1. **README.md** (in RalphWithReviewer) - This is the source-tree README. It's intentionally narrow, points to the canonical public route. It's fine for its role.
+           
+           2. **The GitHub mirror README** - This is the key public-facing README. Let me analyze it against the positioning document.
+           
+           3. **START_HERE.md** - The first-run guide.
+           
+           4. **docs/README.md** - The docs switchboard.
+           
+           And the promoted pages:
+           - `docs/ai-agent-orchestration-cli.md`
+           - `docs/spec-driven-ai-agent.md`
+           - `docs/first-task-guide.md`
+           - `docs/unattended-coding-agent.md`
+           
+           Let me check each against the hard failures and criteria:
+           
+           ### Positioning check:
+           - Does it explain Ralph Workflow as "the operating system for a...
+
+[done] end_turn
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-aligned with positioning, coherent journey from README through START_HERE to docs/README, no internal leakage on promoted surfaces, consistent messaging about simple core / strong default / ambitious work.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Best product pitch on any surface \u2014 opens with positioning tagline, clean comparison table, strong default framing, clear audience fit/non-fit, Codeberg-primary framing correct, no internal plumbing leakage."
+    },
+    {
+      "path": "repo-root/README.md",
+      "reason": "Correctly narrow; does not try to be a second product pitch; points cleanly to canonical route; explicitly lists what it is NOT doing."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Short honest first-run path, good task selection guidance, success criteria focused on runnable software and checks (not artifacts or receipts)."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with role-conscious routing; 'Keep proof secondary' section directly follows positioning guardrails."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces 'simple at the center, stronger in composition' without drifting into internal plumbing; frames the default workflow as the practical starting point."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

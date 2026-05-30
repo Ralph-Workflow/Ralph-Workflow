@@ -1,12 +1,11 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-30T15:13:04
+Generated: 2026-05-30T16:38:50
 Chosen lane: **manual_outreach_asset_follow_through**
 
 ## Why this lane
 - A channel-ready manual publisher outreach asset already exists for an untouched Codeberg-primary target; use that packet as the truthful follow-through surface instead of hiding behind another measurement hold.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 2 live external marketing action(s) already shipped in the last 6 hours.
-- If no new outcome lands first, this short-window congestion clears at 2026-05-30T16:11:00. Before then, another live outbound action would mostly blur measurement.
+- 1 live external marketing action(s) already shipped in the last 6 hours.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
