@@ -63,6 +63,8 @@ _BASE_LOCK_FILE = ".ralph-exec-base.lock"
 _TRASH_PREFIX = ".ralph-exec-trash-"
 _BASE_PRUNE_INTERVAL_S = 1.0
 _POST_RELEASE_CLEANUP_COOLDOWN_S = 5.0
+_PRE_ACQUIRE_CLEANUP_COOLDOWN_S = 5.0
+_WORKSPACE_SIZE_CACHE_TTL_S = 60.0
 
 
 def _workspace_key(workspace_root: Path) -> str:
@@ -179,6 +181,9 @@ class ExecSandboxManager:
         self._consecutive_cleanup_failures = 0
         self._cleanup_cooldown_until_monotonic = 0.0
         self._last_cleanup_monotonic = 0.0
+        self._last_pre_acquire_cleanup_monotonic = 0.0
+        self._last_cleanup_summary: ExecCacheCleanupSummary | None = None
+        self._workspace_size_cache: dict[str, tuple[int, float]] = {}
 
     @contextmanager
     def acquire(self, workspace_root: Path) -> Iterator[Path]:
@@ -189,7 +194,7 @@ class ExecSandboxManager:
                 "exec cache cleanup has failed repeatedly — "
                 "refusing to proceed until cooldown expires"
             )
-        summary = self.cleanup_base()
+        summary = self._pre_acquire_cleanup()
         if (
             self._max_total_bytes > 0
             and summary.remaining_bytes > self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
@@ -243,8 +248,22 @@ class ExecSandboxManager:
                 time.monotonic() - self._last_cleanup_monotonic
                 >= _POST_RELEASE_CLEANUP_COOLDOWN_S
             ):
-                self.cleanup_base()
+                post_summary = self.cleanup_base()
                 self._last_cleanup_monotonic = time.monotonic()
+                self._last_cleanup_summary = post_summary
+
+    def _pre_acquire_cleanup(self) -> ExecCacheCleanupSummary:
+        now = time.monotonic()
+        if (
+            self._last_cleanup_summary is None
+            or now - self._last_pre_acquire_cleanup_monotonic >= _PRE_ACQUIRE_CLEANUP_COOLDOWN_S
+        ):
+            summary = self.cleanup_base()
+            self._last_pre_acquire_cleanup_monotonic = now
+            self._last_cleanup_summary = summary
+        else:
+            summary = self._last_cleanup_summary
+        return summary
 
     def cleanup_base(self) -> ExecCacheCleanupSummary:
         self._base_dir.mkdir(parents=True, exist_ok=True)
@@ -552,7 +571,15 @@ class ExecSandboxManager:
         return self._path_size_bytes(path)
 
     def _workspace_size_bytes(self, workspace_root: Path) -> int:
-        return _compute_workspace_size_bytes(workspace_root)
+        key = str(workspace_root)
+        now = time.monotonic()
+        if key in self._workspace_size_cache:
+            cached_size, cached_at = self._workspace_size_cache[key]
+            if now - cached_at < _WORKSPACE_SIZE_CACHE_TTL_S:
+                return cached_size
+        size = _compute_workspace_size_bytes(workspace_root)
+        self._workspace_size_cache[key] = (size, now)
+        return size
 
     def _slot_owner_is_collectible(self, slot_root: Path) -> bool:
         marker = slot_root / ".ralph-exec-owner.json"
@@ -683,11 +710,10 @@ class ExecSandboxManager:
                     removed_bytes += removed[1]
                     current_total_bytes = max(0, current_total_bytes - removed[1])
 
-        remaining_bytes = self._path_size_bytes_via_du(self._base_dir)
         return ExecCacheCleanupSummary(
             removed_paths=removed_paths,
             removed_bytes=removed_bytes,
-            remaining_bytes=remaining_bytes,
+            remaining_bytes=current_total_bytes,
         )
 
     def _stage_dir_for_deletion(self, path: Path) -> Path | None:
