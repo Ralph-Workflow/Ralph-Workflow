@@ -2,7 +2,7 @@
 
 ## Monitored Competitors
 
-- ✅ **Hermes Agent** (https://hermes-agent.org) ⭐ 173080
+- ✅ **Hermes Agent** (https://hermes-agent.org) ⭐ 173088
 - ✅ **Conductor OSS** (https://conductor-oss.org) ⭐ 31862
 - ✅ **Conductor (Teams)** (https://conductross.com)
 - ✅ **Aider** (https://aider.chat) ⭐ 45529

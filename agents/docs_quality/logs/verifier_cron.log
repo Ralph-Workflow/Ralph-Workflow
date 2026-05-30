@@ -14099,3 +14099,129 @@ AGENTIC
            - "Not for small tweaks, narrow chore...
 
 [done] end_turn
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs journey is coherent, positioning is well-executed, no internal-leakage or stale framing on any top-level surface.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Clear tagline, comparison table, audience fit/non-fit, Codeberg-primary framing, engineering-practice dependency. No artifact/internal language."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run, no feature-dump, immediately usable, points back to Codeberg."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean switchboard with one-question routing, keeps proof secondary, reinforces the journey."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Opens with the core framing, extends the story naturally, links back into the main route."
+    },
+    {
+      "path": "RalphWithReviewer/README.md",
+      "reason": "Intentionally narrow source-tree README that correctly delegates to the canonical public route \u2014 no page-role collapse."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The primary public route is clean, well-positioned, and internally consistent. README \u2192 START_HERE \u2192 docs/README work together as a coherent journey. Promoted next-click pages (ai-agent-orchestration-cli, spec-driven-ai-agent, first-task-guide, unattended-coding-agent, getting-started, quickstart) all reinforce the same positioning: simple Ralph-loop core, composable orchestration, strong default workflow, ambitious tasks. No top-level hard failures. Minor language drift exists in the ralph-workflow CLI source tree surfaces (not on the main promoted route) \u2014 non-blocking for this review.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with operating-system-for-autonomous-coding tagline, explains orchestration not reviewable-output, comparison table shows multi-agent routing vs chat tools, has engineering-practice section, marks Codeberg-primary/GitHub-mirror correctly."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Leads with the honest first-run framing, result-first evaluation, clear good/bad task fit, no internal plumbing language, routes cleanly to docs/README."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Routes by explicit user intent, has a 'Keep proof secondary' section that manages depth correctly, all promoted product-framing pages use current positioning language."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+[agentic-review] WARNING: all opencode attempts failed, falling back to existing artifact. Last error: opencode review returned no standalone review JSON object: agent orchestrator" ✓ - used in README
+           - "built around a simple Ralph-loop core" ✓ - consistently used
+           - "powerful in composition" ✓ - "composable loop framework" etc.
+           - "strong default workflow" ✓ - mentioned consistently
+           - "start with default, extend later" ✓ - mentioned in README
+           
+           What's NOT in the positioning doc but appears: nothing egregious.
+           
+           What IS in the positioning doc but missing: The phrase "composable loop framework" appears in some places.
+           
+           Verdict: **pass** - positioning is solid.
+           
+           ## Accuracy (pass/fail)
+           - README says "Ralph Workflow is an AI agent orchestrator" ✓
+           - GitHub mirror README accurately describes CLI behavior...
+```json
+{
+  "status": "pass",
+  "summary": "Docs holistically satisfy the positioning standard. The system is coherent, aligned, and the user should not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with the canonical 'operating system' tagline, frames simple-core/powerful-composition correctly, shows the comparison table with user-facing benefits (not internal plumbing), correctly presents Codeberg as primary, and closes with the strong-default/extend-later message."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first-run path with clear before-you-start requirements, good/bad first-task framing, result-oriented success criteria, and correct Codeberg-primary reminder."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Well-structured switchboard that routes by user intent
+
+[done] end_turn
+ (

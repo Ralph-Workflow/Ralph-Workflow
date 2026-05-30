@@ -10,20 +10,14 @@ Generated: 2026-05-25T18:53:00
 - Apollo next review: 2026-05-29T09:00:01.629178+02:00
 - Apollo launch review: 2026-06-05T09:00:01.629178+02:00
 - Short review-window congestion clears at: 2026-05-25T23:07:41
-- Post-hold marketer rerun scheduled: 2026-05-31T00:00:00
+- Post-hold marketer rerun scheduled: 2026-05-30T11:02:59
 - StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
-### 1. Manual community discussion asset
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/reddit_discussion_handoff_packet_latest.md
-- Targets: Distribution lane execution: distribution_architecture_repair
-- Why this matters: The same empty-board distribution-architecture failure is still under an active third-strike churn guard, but this review window already reused that pause for the current fingerprint; perform a concrete distribution-architecture repair now instead of logging another guard pause.
-
-### 2. Manual publisher outreach asset
+### 1. Manual publisher outreach asset
 - When: Do now
 - Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md
 - Targets: ComputingForGeeks

@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-05-30T09:10:31.335673",
+  "timestamp": "2026-05-30T10:18:06.992483",
   "type": "outcome_execution_board_runner",
   "status": "executed",
-  "repair_needed_at_start": false,
-  "selected_lane": "measurement_hold",
+  "repair_needed_at_start": true,
+  "selected_lane": "owned_content",
   "selected_action_type": "truth_snapshot_only",
   "executed_lane": null,
   "do_now_lane_available": false,
@@ -12,7 +12,7 @@
   "execution_board_targets": [
     "Ralph Workflow curator follow-up — Codeberg CTA"
   ],
-  "execution_board_fingerprint": "daf36c71d21fb677a1d87bb8a67adfdf97dfce65",
+  "execution_board_fingerprint": "521751ea0cb8ec6c167131e656ad7dd69ed5e3bc",
   "short_review_window_release_at": "2026-05-30T11:02:59",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Review Codeberg-linked movement within 7 days.",

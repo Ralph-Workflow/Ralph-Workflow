@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-30T09:00:29.132345",
+  "generated_at": "2026-05-30T09:13:27.407056",
   "source": "competitor_analysis.py",
   "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
   "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-30.md",
@@ -51,7 +51,7 @@
       "name": "Hermes Agent",
       "positioning": "Self-improving agent that learns from experience",
       "site_status": 200,
-      "github_stars": 173080,
+      "github_stars": 173088,
       "key_features_found": [
         "Persistent memory"
       ]

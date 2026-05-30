@@ -7840,3 +7840,7 @@ The most important repair in this audit is structural, not analytical: the cron 
 - **Self-suspension rule validated:** This pass correctly produced a brief outage confirmation report without carrying the stale shortlist. The transition from "stale shortlist report" → "brief outage confirmation" → "full self-suspension" is structurally sound.
 - **Non-Reddit market intelligence:** Competitor analysis refreshed independently at 20:03 CEST (8 competitors, no drift). Blog pipeline healthy (31 posts). Apollo measurement review due June 1. Codeberg still at 12⭐.
 - **Posting note:** No posting attempted. Fail-closed structurally enforced by complete provider block.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-30 10:00:02
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-30T11:02:59.

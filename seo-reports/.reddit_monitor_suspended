@@ -1,0 +1,22 @@
+# Reddit Monitor Self-Suspension Marker
+
+## Suspension Trigger
+- **Last usable retrieval:** 2026-05-28 11:19 CEST (~46 hours stale at trigger)
+- **Suspension written:** 2026-05-30 09:27 CEST
+- **Approaching 72h mark:** ~2026-05-30 11:19 CEST
+- **Reason:** Total search provider collapse sustained across 7+ consecutive passes.
+  - DuckDuckGo web_search: 100% bot-detection blocked (every query since ~May 28 15:00 CEST)
+  - Reddit direct (web_fetch): 403 IP-blocked (every pass since ~May 23)
+  - Local reddit_monitor.py: Cannot import (module mismatch, known since May 23)
+
+## Conditions to Re-enable
+The monitor should resume normal monitoring when ANY of these is true:
+1. A web_search query returns non-truncated, non-ad Reddit organic results (proving provider recovery)
+2. A direct web_fetch to old.reddit.com/r/ClaudeCode returns HTTP 200 (proving Reddit IP unblock)
+3. The human explicitly deletes or edits this marker to re-enable
+
+## On Re-enable
+1. Delete this marker file
+2. Re-read REDDIT_LEARNINGS.md for full context
+3. Run a fresh content-first scan (do not resurrect stal threads from May 28)
+4. Build a fresh shortlist
