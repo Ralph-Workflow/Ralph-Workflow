@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from typing import cast
 
 from ralph.display.vt_normalizer import normalize_vt_text
@@ -27,11 +28,104 @@ _TUI_STATUSBAR_RE = re.compile(
     re.IGNORECASE,
 )
 _THINKING_STATUS_RE = re.compile(
-    r"^[\s]*[✶✢●]"  # Claude Code thinking / action-in-progress status symbols
-    r"|^[\s]*·\s*thinking\s*\)"  # End marker: "· thinking)"
-    r"|^[\s]*\(\d+s\s*·"  # Duration: "(5s ·"
-    r"|^[\s]*↓\s*\d+\.?\d*[km]?\s*tokens?"  # Token counter: "↓292 tokens"
+    r"^[\s]*[✶✢●✳]"
+    r"|^[\s]*·\s*thinking\s*\)"
+    r"|^[\s]*\(\d+s\s*·"
+    r"|^[\s]*↓\s*\d+\.?\d*[km]?\s*tokens?"
+    r"|^[\s]*\d+thinking\s*·"
+    r"|^[\s]*·\s*\d+s\s*·\s*thinking\s*\)"
 )
+
+# Short fragments (< 20 chars) ending in "thinking" are thinking status
+# remnants from character-by-character PTY reads.  Legitimate prose containing
+# "thinking" is always longer or doesn't end with "thinking".
+_LENIENT_THINKING_MAX_LEN = 20
+_MIN_OUTPUT_LEN = 3
+
+# Box-drawing (U+2500-U+257F) + block elements (U+2580-U+259F) + extras.
+_BOX_DRAWING_CHARS: frozenset[str] = frozenset(
+    "\u2500\u2502\u250c\u2510\u2514\u2518\u251c\u2524\u252c\u2534\u253c"
+    "\u2550\u2551\u2554\u2557\u255a\u255d\u2560\u2563\u2566\u2569\u256c"
+    "\u256d\u256e\u256f\u2570\u2571\u2572\u2573"
+    "\u2580\u2584\u2588\u258c\u2590\u2591\u2592\u2593"
+    "\u2594\u2595\u2596\u2597\u2598\u2599\u259a\u259b\u259c\u259d\u259e\u259f"
+    "\u2574\u2575\u2576\u2577\u2578\u2579\u257a\u257b\u257c\u257d\u257e\u257f"
+)
+
+_TUI_CHROME_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"[╭╰][─━═]+ClaudeCode", re.UNICODE),
+    re.compile(
+        r"[✽✻⚙]\s*(\w*[Ss]pinn?ing|[Ss]ping|Actioning|Tinkering|Clauding|Hullaballooing|Quaing|\w*thinking)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^\s*\d+\.?\d*[km]?\s*tokens?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*\d+\.?\d*[km]\s*$", re.IGNORECASE),
+    re.compile(r"^\d+\s*plugins?\s*failed\s*to\s*install", re.IGNORECASE),
+    re.compile(r"^\s*(Haiku|Sonnet|Opus)\s*[\d.]+\s*·\s*Claude\s*(Max|Pro)\s*·", re.IGNORECASE),
+    re.compile(r"^\s*⏵⏵"),
+    re.compile(r"^\s*(shift\+tab|ctrl\+[cd]|esc)\s+to\s+(cycle|interrupt|cancel)", re.IGNORECASE),
+    re.compile(r"^\s*[⬆↑]\s*[/\w-]+\s*│", re.UNICODE),
+)
+
+_BOX_DRAWING_STRUCTURAL_RATIO = 0.6
+_BOX_DRAWING_FRAME_RATIO = 0.10
+_ALPHANUMERIC_FRAME_MIN_RATIO = 0.25
+_MIN_STRIPPED_WORDS = 3
+_MIN_BOX_COUNT_FOR_STRIPPED_CHECK = 2
+
+
+def _count_box_drawing(text: str) -> int:
+    """Count Unicode box-drawing / block-element characters in *text*."""
+    return sum(1 for ch in text if ch in _BOX_DRAWING_CHARS
+               or (unicodedata.category(ch) == "So"
+                   and "\u2500" <= ch <= "\u259f"))
+
+
+def _is_tui_chrome(text: str) -> bool:  # noqa: PLR0911
+    """Return True when *text* is terminal-render surface noise.
+
+    Detects box-drawing borders, splash screens, spinners, status bars, and
+    other TUI artifacts that should never be classified as agent output.
+    Platform-agnostic: operates on Unicode character properties, not
+    terminal-specific escape sequences (those are handled by the VT normalizer).
+    """
+    if not text:
+        return True
+
+    for pattern in _TUI_CHROME_PATTERNS:
+        if pattern.search(text):
+            return True
+
+    if not any("\u2500" <= ch <= "\u259f" for ch in text):
+        return False
+
+    total_chars = len(text)
+    box_count = _count_box_drawing(text)
+    if box_count == 0:
+        return False
+
+    box_ratio = box_count / total_chars
+    if box_ratio >= _BOX_DRAWING_STRUCTURAL_RATIO:
+        return True
+
+    alpha_count = sum(1 for ch in text if ch.isalnum())
+    alpha_ratio = alpha_count / total_chars if total_chars else 0
+    if box_ratio >= _BOX_DRAWING_FRAME_RATIO and alpha_ratio < _ALPHANUMERIC_FRAME_MIN_RATIO:
+        return True
+
+    stripped = "".join(
+        ch for ch in text
+        if ch not in _BOX_DRAWING_CHARS
+        and unicodedata.category(ch) not in ("So", "Sk", "Cf", "Cc")
+    )
+    meaningful_words = [
+        w for w in stripped.split()
+        if any(c.isalnum() for c in w)
+    ]
+    return (
+        len(meaningful_words) < _MIN_STRIPPED_WORDS
+        and box_count >= _MIN_BOX_COUNT_FOR_STRIPPED_CHECK
+    )
 
 
 def _extract_message_text(value: object) -> str:
@@ -191,4 +285,15 @@ class ClaudeInteractiveTranscriptParser:
             return InteractiveTranscriptEvent(kind="lifecycle", text=text)
         if _THINKING_STATUS_RE.search(text):
             return InteractiveTranscriptEvent(kind="thinking", text=text)
+        if _is_tui_chrome(text):
+            return None
+        cleaned = text.rstrip().rstrip(")")
+        if (
+            len(text) < _LENIENT_THINKING_MAX_LEN
+            and cleaned.endswith("thinking")
+            and " " not in cleaned
+        ):
+            return InteractiveTranscriptEvent(kind="thinking", text=text)
+        if len(text) < _MIN_OUTPUT_LEN:
+            return None
         return InteractiveTranscriptEvent(kind="output", text=text)
