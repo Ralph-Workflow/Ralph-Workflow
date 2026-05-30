@@ -370,6 +370,8 @@ def crosspost_blog_content(posted: dict, today: str, dry_run: bool = False) -> l
     blog_files = sorted(BLOG_DIR.glob('*.md'))
     results: list[dict] = []
     crossposted = 0
+    # Normalize today to ISO string (caller may pass date object or string)
+    today_str = today.isoformat() if hasattr(today, 'isoformat') else today
 
     for blog_path in blog_files:
         # Check if this blog post was already cross-posted via source_path match
@@ -391,7 +393,7 @@ def crosspost_blog_content(posted: dict, today: str, dry_run: bool = False) -> l
 
         if dry_run:
             results.append({
-                "date": today,
+                "date": today_str,
                 "title": title,
                 "platform": "telegraph",
                 "ok": False,
@@ -403,7 +405,7 @@ def crosspost_blog_content(posted: dict, today: str, dry_run: bool = False) -> l
 
         ok_tg, url_tg = post_telegraph(title, body_with_cta, source_path=source_str)
         record = {
-            "date": today,
+            "date": today_str,
             "draft": blog_path.name,
             "title": title,
             "platform": "telegraph",
