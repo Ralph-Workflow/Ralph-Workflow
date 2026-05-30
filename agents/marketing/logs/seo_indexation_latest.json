@@ -1,23 +1,16 @@
 {
-  "generated_at": "2026-05-29T23:21:56.710288+00:00",
+  "generated_at": "2026-05-30T01:54:24.786921+00:00",
   "domain": "ralphworkflow.com",
   "sitemap": {
     "sitemap_url": "https://ralphworkflow.com/sitemap.xml",
     "ok": true,
-    "url_count": 101,
+    "url_count": 83,
     "error": null,
     "urls": [
       "https://ralphworkflow.com/",
       "https://ralphworkflow.com/privacy",
       "https://ralphworkflow.com/terms",
       "https://ralphworkflow.com/install",
-      "https://ralphworkflow.com/aider-alternative",
-      "https://ralphworkflow.com/conductor-alternative",
-      "https://ralphworkflow.com/hermes-alternative",
-      "https://ralphworkflow.com/claude-code-alternative",
-      "https://ralphworkflow.com/cursor-alternative",
-      "https://ralphworkflow.com/continue-alternative",
-      "https://ralphworkflow.com/copilot-alternative",
       "https://ralphworkflow.com/docs/",
       "https://ralphworkflow.com/contact",
       "https://ralphworkflow.com/docs/advanced-artifact-configuration",
@@ -26,9 +19,16 @@
       "https://ralphworkflow.com/docs/after-your-first-run",
       "https://ralphworkflow.com/docs/agents",
       "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
-      "https://ralphworkflow.com/docs/ai-agent-workflow-composer"
+      "https://ralphworkflow.com/docs/ai-agent-workflow-composer",
+      "https://ralphworkflow.com/docs/ai-coding-workflow-automation",
+      "https://ralphworkflow.com/docs/bounded-autonomy-for-unattended-coding",
+      "https://ralphworkflow.com/docs/claude-code-approval-mode",
+      "https://ralphworkflow.com/docs/claude-code-automation",
+      "https://ralphworkflow.com/docs/claude-code-codex-workflow",
+      "https://ralphworkflow.com/docs/claude-code-run-until-done",
+      "https://ralphworkflow.com/docs/cli"
     ],
-    "blog_url_count": 34
+    "blog_url_count": 28
   },
   "robots": {
     "robots_url": "https://ralphworkflow.com/robots.txt",
@@ -182,7 +182,7 @@
     "canonical_mismatches": []
   },
   "assessment": {
-    "sitemap_urls": 101,
+    "sitemap_urls": 83,
     "google_indexed_approx": 0,
     "ddg_indexed_approx": 0,
     "gsc_source": true,

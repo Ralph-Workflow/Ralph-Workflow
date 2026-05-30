@@ -1,9 +1,9 @@
 # Outcome Execution Board Runner
 
-- Generated: `2026-05-30T02:39:02.874913`
+- Generated: `2026-05-30T04:41:42.062735`
 - Repair needed at start: `False`
 - Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md`
-- Selected lane: `owned_content`
+- Selected lane: `measurement_hold`
 - Action type: `truth_snapshot_only`
 - Executed lane: `None`
 - Truthful do-now lane available: `False`

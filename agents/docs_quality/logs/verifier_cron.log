@@ -13511,3 +13511,167 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. Clean hierarchy, no internal plumbing leakage, coherent journey. Promoted next-click pages reinforce the same story instead of fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Operating-system headline, composable loop framing, comparison table, Codeberg primary/GitHub mirror, engineering-practice dependency, strong default workflow emphasis \u2014 no internal plumbing or artifact language"
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Coherent docs map with 'Keep proof secondary' section, clear role separation, routes evaluators to the right depth without link anxiety"
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Clean first-run path with concrete install steps, task selection guidance, result-focused success criteria, no internal plumbing"
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces simple-core/composition story and default-first adoption without drifting into plumbing language"
+    },
+    {
+      "path": "github-mirror/docs/spec-driven-ai-agent.md",
+      "reason": "Correctly frames spec as operational tool for ambitious work rather than ceremony"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is aligned with positioning. README \u2192 START_HERE \u2192 docs/README tells one coherent story, promoted next-click pages reinforce instead of fight, no internal leakage, no stale framing, copy is clean.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Leads with 'operating system for autonomous coding', comparison table is clean, strong default workflow framing, Codeberg-primary mirror notation, engineering-practice dependency section, no internal leakage."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Mirror notice upfront, clean positioning, good/bad first task guidance, result-oriented success criteria, no artifact or plumbing language."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "One of three promoted next-click framing pages; all three open with the same positioning statement and reinforce the same simple-core / strong-default / composition story without fighting the main journey."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The README \u2192 START_HERE \u2192 docs/README journey is coherent, well-aligned with the positioning document, and free of internal leakage. Every promoted next-click page reinforces the same story (simple core \u2192 composable \u2192 strong default \u2192 ambitious work). Copy is clean and marketable. No hard failures detected.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with 'operating system for autonomous coding', immediately establishes simple Ralph-loop core, leads with orchestration value (comparison table), follows the prescribed writing order (core \u2192 composition \u2192 default \u2192 extension), clearly marks Codeberg primary vs GitHub mirror, and calls out engineering-practice dependency."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Opens with same core framing, shortest honest first-run path, pairs strong task selection guidance (good/bad examples), result-focused success criteria, routes forward only conditionally ('Next pages only if you need them'). No internal plumbing or artifact language."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with 'Choose one route' sections and 'Keep proof secondary' guard. Promoted product-framing pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) all open with the same positioning and route back to START_HERE.md, creating a coherent self-reinforcing loop."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, well-positioned, and requires no repeat instruction. The README -> START_HERE -> docs/README journey is cleanly separated by page role, promoted next-click pages all reinforce the same \"simple core / composable orchestration / strong default\" story, and no internal leakage, positioning drift, or journey confusion exists.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with the tagline, positions as orchestrator around simple core, shows fit/non-fit, has engineering-practice honesty, handles Codeberg/GitHub correctly, zero internal leakage."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run, good task selection advice, result-oriented success criteria, next pages only if needed \u2014 clean evaluation path."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly knows its place after README + START_HERE, 'Keep proof secondary' section directly implements positioning, routes are well-grouped, no link anxiety."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Opens with the positioning framing, 'Why the default workflow matters' and 'simple at the center, stronger in composition' are direct hits, no internal leakage."
+    },
+    {
+      "path": "docs/unattended-coding-agent.md",
+      "reason": "'Unattended should still mean accountable' \u2014 result-oriented, honest about fit, reinforces default workflow, no plumbing language."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
