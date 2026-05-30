@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-05-30T09:08:24.937473",
+  "timestamp": "2026-05-30T09:10:31.335673",
   "type": "outcome_execution_board_runner",
   "status": "executed",
-  "repair_needed_at_start": true,
+  "repair_needed_at_start": false,
   "selected_lane": "measurement_hold",
   "selected_action_type": "truth_snapshot_only",
   "executed_lane": null,
