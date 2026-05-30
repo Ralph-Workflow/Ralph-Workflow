@@ -18,14 +18,19 @@
   },
   "independent_verification": {
     "status": "performed",
-    "verdict": "qualified_pass",
+    "verdict": null,
     "qualified_pass": true,
     "architecture_errors": [],
     "remaining_blockers": [
       "stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json, /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
       "marketing independent verification is not pass: 'fail'"
     ],
-    "checked_at": "2026-05-30T05:04:30.504576+02:00"
+    "checked_at": "2026-05-30T06:12:02.148971+02:00",
+    "artifacts": [
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
+    ],
+    "summary": "Independent verification found architecture blockers that prevent a healthy verifier pass."
   },
   "gate_summary": {
     "architecture_runtime_topology": "green",
@@ -49,5 +54,13 @@
     "Architecture verifier path, loop integrity, docs ownership, shared intelligence reuse are all green.",
     "Independent verification confirms no architecture-owned blockers remain.",
     "The single remaining red is external: marketing owner loop must produce measurable primary-repo movement."
+  ],
+  "runtime_assertions": {
+    "independent_architecture_verdict": null,
+    "architecture_verifier_checked_at": "2026-05-30T06:12:02.148971+02:00",
+    "architecture_verifier_status": "fail"
+  },
+  "what_still_needs_independent_verification": [
+    "Fresh architecture independent verification against the refreshed live topology."
   ]
 }

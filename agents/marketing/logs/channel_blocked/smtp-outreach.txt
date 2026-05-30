@@ -1,4 +1,4 @@
 CHANNEL PERMANENTLY BLOCKED: smtp-outreach
 Reason: SMTP_USER environment variable not set. No send capability. Requires human credential handoff.
-Blocked at: 2026-05-28T20:09:33.050275+00:00
+Blocked at: 2026-05-30T04:02:00.900706+00:00
 To unblock: delete this file AND fix the underlying issue.

@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-30T05:42:06
+Generated: 2026-05-30T06:14:07
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -17,13 +17,7 @@ Generated: 2026-05-30T05:42:06
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
-### 1. Manual community discussion asset
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/reddit_discussion_handoff_packet_latest.md
-- Targets: Distribution lane execution: distribution_architecture_repair
-- Why this matters: The same empty-board distribution-architecture failure is still under an active third-strike churn guard, but this review window already reused that pause for the current fingerprint; perform a concrete distribution-architecture repair now instead of logging another guard pause.
-
-### 2. Apollo runtime-blocker review packet
+### 1. Apollo runtime-blocker review packet
 - When: Do now
 - Packet: /home/mistlight/.openclaw/workspace/drafts/2026-05-30_apollo_runtime_blocker_review_packet.md
 - Targets: Ralph Workflow curator follow-up — Codeberg CTA
@@ -38,7 +32,7 @@ Generated: 2026-05-30T05:42:06
 - stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
 
 ## Verified infrastructure state (programmatic, not fabricated)
-- **Telegraph guard**: clear
+- **Telegraph guard**: cooldown (cooldown_active) — clears ~06:14 UTC
 - **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
 - **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
 - **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED

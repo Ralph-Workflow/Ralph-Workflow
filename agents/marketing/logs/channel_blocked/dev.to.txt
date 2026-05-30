@@ -1,4 +1,4 @@
 CHANNEL PERMANENTLY BLOCKED: dev.to
 Reason: reCAPTCHA on signup — headless browser cannot solve. 6+ consecutive failures. Requires human CAPTCHA solve or different IP.
-Blocked at: 2026-05-28T20:09:33.050031+00:00
+Blocked at: 2026-05-30T04:02:00.900357+00:00
 To unblock: delete this file AND fix the underlying issue.

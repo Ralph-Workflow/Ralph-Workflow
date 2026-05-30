@@ -1,1 +1,4 @@
-8 prepared comparison PRs, 0 delivery path. gh auth login missing — cannot submit PRs to GitHub. Prepared-but-undeliverable across 3+ consecutive execution cycles. Structurally identical to the directory submission flood pattern fixed on 2026-05-28. Must not be selected as a default distribution lane until gh auth succeeds.
+CHANNEL PERMANENTLY BLOCKED: comparison_backlink
+Reason: 8 prepared comparison PRs, 0 delivery path. gh auth login missing — cannot submit PRs. Prepared-but-undeliverable across 3+ cycles. Must not be selected as a distribution lane until gh auth succeeds.
+Blocked at: 2026-05-30T04:02:00.901019+00:00
+To unblock: delete this file AND fix the underlying issue.
