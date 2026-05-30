@@ -517,7 +517,6 @@ def _get_sandbox_manager(workspace_root: Path) -> ExecSandboxManager:
                     max_total_bytes=total,
                     max_pool_bytes=pool,
                     max_workspace_bytes=ws_safety,
-                    workspace_size_bytes=workspace_size,
                 )
                 with contextlib.suppress(Exception):
                     _SandboxManagerCache.instances[key].cleanup_base()

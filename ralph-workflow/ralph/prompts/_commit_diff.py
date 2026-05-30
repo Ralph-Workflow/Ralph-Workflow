@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.executor.process import ProcessRunOptions, run_process
+
+if TYPE_CHECKING:
+    from pathlib import Path
 from ralph.prompts.payload_refs import sanitize_surrogates as _sanitize_surrogates
 
 

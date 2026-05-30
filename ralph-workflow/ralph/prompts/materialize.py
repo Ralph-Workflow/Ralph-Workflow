@@ -31,6 +31,12 @@ from ralph.phases.required_artifacts import (
     retry_hint_path,
 )
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
+from ralph.pipeline.phase_entry_cleaner import (
+    clear_phase_entry_drains as _clear_phase_entry_drains,
+)
+from ralph.pipeline.phase_entry_cleaner import (
+    is_fresh_phase_entry,
+)
 from ralph.policy.models import ROLE_REVIEW
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
@@ -53,15 +59,13 @@ from ralph.prompts.materialize_support import (
     current_prompt_variables as _current_prompt_variables,
 )
 from ralph.prompts.materialize_support import (
+    merged_variables as _merged_variables,
+)
+from ralph.prompts.materialize_support import (
     persist_current_prompt as _persist_current_prompt,
 )
 from ralph.prompts.materialize_support import (
-    merged_variables as _merged_variables,
     phase_payload_variables,
-)
-from ralph.pipeline.phase_entry_cleaner import (
-    clear_phase_entry_drains as _clear_phase_entry_drains,
-    is_fresh_phase_entry,
 )
 from ralph.prompts.payload_refs import (
     sanitize_surrogates as _sanitize_surrogates,
@@ -69,7 +73,6 @@ from ralph.prompts.payload_refs import (
 from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
-from ralph.prompts.types import SessionCapabilities, capability_template_variables
 from ralph.skills._skill_resolver import get_inline_skill_content
 from ralph.skills.manager import SkillManager
 
@@ -90,6 +93,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import ArtifactsPolicy, PhaseDefinition, PipelinePolicy
     from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
+    from ralph.prompts.types import SessionCapabilities
     from ralph.workspace.protocol import Workspace
 
 
@@ -124,7 +128,7 @@ class PromptPhaseOptions:
 
 def __getattr__(name: str) -> object:
     if name == "MultimodalSidecarEntry":
-        from ralph.prompts._multimodal_sidecar_entry import (
+        from ralph.prompts._multimodal_sidecar_entry import (  # noqa: PLC0415
             MultimodalSidecarEntry as _Entry,
         )
 

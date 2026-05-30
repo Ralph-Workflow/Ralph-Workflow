@@ -7,14 +7,12 @@ platform detection and injected FakePsutil. No real OS processes spawned.
 
 from __future__ import annotations
 
+import builtins
 import os
 from unittest.mock import patch
 
-import pytest
-
 from ralph.process.manager import LivenessResult, verify_process_liveness
 from ralph.testing.fake_process import FakePsutil, FakePsutilProcess
-
 
 # ────────────────────────────────────────────────────────────────────────────
 # POSIX path: os.kill(pid, 0) based liveness checks
@@ -84,7 +82,6 @@ def test_liveness_check_windows_no_kill() -> None:
         patch("os.__dict__", {}),
     ):
         # Force hasattr check to return False for 'kill'
-        import builtins
         _orig_hasattr = builtins.hasattr
 
         def _fake_hasattr(obj: object, name: str) -> bool:
@@ -103,14 +100,12 @@ def test_liveness_check_windows_no_kill() -> None:
             return True
 
     fake_psutil = _PsutilWithPidExists()
-
-    import builtins
-    _orig_hasattr = builtins.hasattr
+    _orig_hasattr2 = builtins.hasattr
 
     def _fake_hasattr2(obj: object, name: str) -> bool:
         if obj is os and name == "kill":
             return False
-        return _orig_hasattr(obj, name)
+        return _orig_hasattr2(obj, name)
 
     with patch("builtins.hasattr", _fake_hasattr2):
         result = verify_process_liveness(1, psutil_mod=fake_psutil)

@@ -54,6 +54,7 @@ _DEFAULT_MAX_IDLE_SLOT_AGE_S = 10 * 60.0
 _DEFAULT_MAX_IDLE_POOL_AGE_S = 30 * 60.0
 _DEFAULT_FORCED_MAX_SLOT_AGE_S = 24 * 60 * 60.0
 _DEFAULT_HARD_CAP_MULTIPLIER = 2
+_LOW_USAGE_STREAK_THRESHOLD = 2
 _MAX_CONSECUTIVE_CLEANUP_FAILURES = 5
 _CLEANUP_COOLDOWN_S = 300.0
 _INITIAL_AVERAGE_SLOTS = 1.0
@@ -819,7 +820,7 @@ class ExecSandboxManager:
             target_slots = int(state["target_slots"])
             average_slots = float(state["average_slots"])
             low_usage_streak = int(state["low_usage_streak"])
-            if target_slots > _MIN_SLOTS and low_usage_streak >= 2:
+            if target_slots > _MIN_SLOTS and low_usage_streak >= _LOW_USAGE_STREAK_THRESHOLD:
                 average_slots = (average_slots + _MIN_SLOTS) / 2.0
                 target_slots = self._normalize_target_slots(round(average_slots))
                 state = {

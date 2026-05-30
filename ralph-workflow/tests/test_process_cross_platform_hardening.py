@@ -12,6 +12,7 @@ from __future__ import annotations
 import itertools
 import os
 import sys
+from typing import Never
 from unittest.mock import patch
 
 import pytest
@@ -19,6 +20,7 @@ import pytest
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessTerminationError
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing.fake_process import (
+    FakeImmortalPopen,
     FakePsutil,
     FakePsutilProcess,
     make_async_process_factory,
@@ -33,7 +35,7 @@ _FAST_POLICY = ProcessManagerPolicy(
 )
 
 
-def _make_pm(*, psutil_mod=None):
+def _make_pm(*, psutil_mod: FakePsutil | None = None) -> ProcessManager:
     """Build a ProcessManager with injected fake process factories."""
     return ProcessManager(
         policy=_FAST_POLICY,
@@ -61,9 +63,8 @@ def test_psutil_none_fallback_terminate_escalates() -> None:
 
 def test_psutil_none_fallback_force_kill_failure() -> None:
     """Force kill failure with psutil=None marks record FAILED."""
-    from ralph.testing.fake_process import FakeImmortalPopen
 
-    def immortal_factory(*args, **kwargs):
+    def immortal_factory(*args: object, **kwargs: object) -> FakeImmortalPopen:
         return FakeImmortalPopen(pid=1)
 
     pm = ProcessManager(
@@ -106,7 +107,7 @@ def test_psutil_none_shutdown_all() -> None:
 def test_os_getpgid_unavailable_fallback_to_pid() -> None:
     """When os.getpgid is unavailable (simulated Windows), pgid == pid."""
 
-    def no_getpgid():
+    def no_getpgid() -> Never:
         raise AttributeError("getpgid not available")
 
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)

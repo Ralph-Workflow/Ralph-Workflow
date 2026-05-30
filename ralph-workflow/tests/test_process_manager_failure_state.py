@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
+from ralph.process import get_process_manager, process_phase_scope
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessTerminationError
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing.fake_process import (
@@ -224,7 +225,6 @@ async def test_escalate_termination_async_access_denied_marks_record_failed() ->
 
 def test_process_phase_scope_raises_on_termination_error() -> None:
     """process_phase_scope must not report a clean exit when cleanup fails."""
-    from ralph.process import get_process_manager, process_phase_scope
 
     def _raise_termination_error(label_prefix: str, *, grace_period_s: float | None = None) -> None:
         raise ProcessTerminationError(pid=99999, pgid=99999)

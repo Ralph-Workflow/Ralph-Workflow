@@ -100,7 +100,6 @@ __all__ = [
     "ManagedPtyProcess",
     "ProcessEvent",
     "ProcessManager",
-    "verify_process_liveness",
     "ProcessManagerPolicy",
     "ProcessRecord",
     "ProcessStatus",
@@ -111,4 +110,5 @@ __all__ = [
     "get_process_manager",
     "process_phase_scope",
     "reset_process_manager",
+    "verify_process_liveness",
 ]

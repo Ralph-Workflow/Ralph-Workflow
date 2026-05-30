@@ -4,9 +4,12 @@ import json
 import os
 import threading
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from ralph.mcp.tools import exec_sandbox
 

@@ -12,7 +12,8 @@ from loguru import logger
 
 from ralph.config.enums import Verbosity
 from ralph.display.artifact_renderer import render_commit_message
-from ralph.git.operations import create_commit, stage_all, stage_files as _stage_files
+from ralph.git.operations import create_commit, stage_all
+from ralph.git.operations import stage_files as _stage_files
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,

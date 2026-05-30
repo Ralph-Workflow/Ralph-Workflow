@@ -19,6 +19,26 @@ class LivenessResult(enum.Enum):
     UNKNOWN = "unknown"
 
 
+def _posix_liveness(pid: int) -> LivenessResult:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return LivenessResult.GONE
+    except PermissionError:
+        return LivenessResult.ALIVE
+    except OSError:
+        return LivenessResult.UNKNOWN
+    return LivenessResult.ALIVE
+
+
+def _psutil_pid_exists_liveness(psutil_mod: _PsutilModuleLike, pid: int) -> LivenessResult:
+    try:
+        exists = psutil_mod.pid_exists(pid)
+        return LivenessResult.ALIVE if exists else LivenessResult.GONE
+    except Exception:
+        return LivenessResult.UNKNOWN
+
+
 def verify_process_liveness(
     pid: int,
     *,
@@ -43,31 +63,12 @@ def verify_process_liveness(
     if psutil_mod is not None:
         try:
             proc = psutil_mod.process_from_pid(pid)
-            status = proc.status()
-            if status == "zombie":
+            if proc.status() == "zombie":
                 return LivenessResult.ZOMBIE
         except Exception:
             pass
-
     if hasattr(os, "kill"):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return LivenessResult.GONE
-        except PermissionError:
-            return LivenessResult.ALIVE
-        except OSError:
-            return LivenessResult.UNKNOWN
-        else:
-            return LivenessResult.ALIVE
-
+        return _posix_liveness(pid)
     if psutil_mod is not None:
-        try:
-            exists = psutil_mod.pid_exists(pid)
-            if exists:
-                return LivenessResult.ALIVE
-            return LivenessResult.GONE
-        except Exception:
-            return LivenessResult.UNKNOWN
-
+        return _psutil_pid_exists_liveness(psutil_mod, pid)
     return LivenessResult.UNKNOWN

@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 import sys
 import threading
-import types
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -23,12 +22,31 @@ from ralph.verify_timeout import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+    from typing import Protocol
+
     import pytest
 
-_psutil: types.ModuleType | None
+    class _PsutilProcess(Protocol):
+        def children(self, *, recursive: bool = ...) -> list[_PsutilProcess]: ...
+        def terminate(self) -> None: ...
+        def kill(self) -> None: ...
+
+    class _PsutilMod(Protocol):
+        Error: type[BaseException]
+        Process: Callable[[int], _PsutilProcess]
+
+        def wait_procs(
+            self,
+            procs: Sequence[_PsutilProcess],
+            timeout: float | None = ...,
+        ) -> tuple[list[_PsutilProcess], list[_PsutilProcess]]: ...
+
+
+_psutil: _PsutilMod | None
 try:
     import psutil as _psutil_imported
-    _psutil = _psutil_imported
+    _psutil = cast("_PsutilMod", _psutil_imported)
 except ImportError:
     _psutil = None
 

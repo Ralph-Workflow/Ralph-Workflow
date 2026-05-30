@@ -10,6 +10,7 @@ import asyncio
 import itertools
 import os
 import sys
+import threading
 import time as _time
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -748,8 +749,6 @@ def test_ec8_concurrent_shutdown_all_single_event() -> None:
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
     spawned_pid = handle.record.pid
-
-    import threading
 
     barrier = threading.Barrier(2)
 

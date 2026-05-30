@@ -9,6 +9,8 @@ from ralph.prompts._commit_diff import commit_cleanup_diff
 from ralph.prompts.commit import _format_submit_artifact_tool_instructions
 from ralph.prompts.materialize_support import (
     current_prompt_variables as _current_prompt_variables,
+)
+from ralph.prompts.materialize_support import (
     merged_variables as _merged_variables,
 )
 from ralph.prompts.payload_refs import (

@@ -13,6 +13,7 @@ from __future__ import annotations
 import itertools
 import sys
 import threading
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -22,7 +23,7 @@ from ralph.process.manager import (
     ProcessManager,
     ProcessManagerPolicy,
     ProcessTerminationError,
-    verify_process_liveness,
+    SpawnOptions,
 )
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.testing.fake_process import (
@@ -30,9 +31,12 @@ from ralph.testing.fake_process import (
     FakePsutil,
     FakePsutilProcess,
     FakeStubbornPopen,
-    FakeTimeoutPopen,
     make_sync_process_factory,
 )
+
+if TYPE_CHECKING:
+    from ralph.process.manager._process_event import ProcessEvent
+    from ralph.testing.fake_process import SyncFactoryCallable
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.1,
@@ -45,11 +49,15 @@ _FAST_POLICY = ProcessManagerPolicy(
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _make_pm(*, psutil_mod=None):
+def _make_pm(
+    *,
+    sync_factory: SyncFactoryCallable | None = None,
+    psutil_mod: FakePsutil | None = None,
+) -> ProcessManager:
     """Build a ProcessManager with injected fake process factories."""
     return ProcessManager(
         policy=_FAST_POLICY,
-        sync_process_factory=make_sync_process_factory(itertools.count(1)),
+        sync_process_factory=sync_factory or make_sync_process_factory(itertools.count(1)),
         async_process_factory=make_sync_process_factory(itertools.count(100)),
         psutil=psutil_mod,
     )
@@ -519,8 +527,6 @@ def test_cleanup_success_not_reported_as_failure() -> None:
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
 
-    from ralph.process.manager._process_event import ProcessEvent
-
     terminal_events: list[ProcessEvent] = []
     pm.register_listener(terminal_events.append)
 
@@ -551,7 +557,7 @@ def test_concurrent_readers_during_shutdown() -> None:
     def reader_loop() -> None:
         while not stop.is_set():
             try:
-                active = pm.list_active()
+                pm.list_active()
                 record = pm.get_record(handle.pid)
                 # Records should either be active or terminal, never inconsistent
                 if record is not None:
@@ -593,8 +599,6 @@ def test_exec_vs_mcp_server_lifetime_contract() -> None:
     """Exec helper and MCP server both use the same tracking contract."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
-
-    from ralph.process.manager import SpawnOptions
 
     exec_handle = pm.spawn(
         [sys.executable, "-c", "pass"],
