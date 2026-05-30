@@ -1,17 +1,17 @@
 {
-  "generated_at": "2026-05-30T18:03:11.018538+02:00",
+  "generated_at": "2026-05-31T00:05:06.209739+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 2.61,
+  "report_age_hours": 5.53,
   "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest_healthy.md",
-  "latest_healthy_report_age_hours": 54.73,
-  "latest_post_age_hours": 97.26,
+  "latest_healthy_report_age_hours": 60.76,
+  "latest_post_age_hours": 103.29,
   "reddit_monitor_runtime": {
     "status": "fresh_report_reused",
-    "age_hours": 56.8
+    "age_hours": 62.84
   },
   "reddit_execution_status": {
     "status": "permanently_blocked",
-    "age_hours": 45.44,
+    "age_hours": 51.47,
     "blocking_reason": "Reddit is IP-blocked at Hetzner Helsinki. ARCHITECTURALLY RETIRED 2026-05-28."
   },
   "adoption_flat": true,
@@ -19,7 +19,7 @@
   "blocked_distribution_channels": [],
   "apollo": {
     "status": "cloudflare_auth_blocked",
-    "age_hours": 1.12,
+    "age_hours": 2.8,
     "cloudflare_blocked": true
   },
   "measurement_hold": {

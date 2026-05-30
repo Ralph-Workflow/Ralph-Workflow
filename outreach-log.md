@@ -7903,3 +7903,81 @@ The most important repair in this audit is structural, not analytical: the cron 
 ### Marketing momentum watchdog
 - **When:** 2026-05-30 18:03:11
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-31 00:05:06
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+---
+
+## 2026-05-31 00:20 CEST — Audit #15: Doorway-page indexation unblock + vendor-neutral blog post (runtime actions, not just audit)
+
+### What changed (concrete runtime actions, not recommendations)
+
+**1. Doorway-page cluster unblocked — 8 vs pages fixed for indexation:**
+- Removed `noindex: true` from all 8 `ralph-workflow-vs-*.md` pages
+- Removed `canonical_url` → comparison guide hub redirect from all 8 pages
+- Added unique "When You'd Use Both Together" section to each page, with a genuinely different pairing narrative per tool (aider=git-native precision, claude-code=agent-wrapper integration, cursor=explore-then-execute, copilot=verification for OSS maintainers, continue=review-phase assistant, conductor-oss=infra vs delivery loop, conductor-teams=coordination vs execution, hermes-agent=skill-memory vs deterministic output)
+- **Reason:** 8 vs pages with `noindex:true`, `canonical_url` → hub, identical section structure, and <1,000 words each formed a textbook doorway-page cluster. GSC confirms 0/80 pages indexed. Google's doorway-page quality suppression can penalize the entire domain when 8+ near-identical templated pages exist.
+
+**2. Net-new top-of-funnel blog post — `vendor-neutral-ai-coding-platform-independent-workflow`:**
+- 3,500+ words, targets the uncovered keyword "vendor-neutral AI coding"
+- Makes the structural case: model/tool lock-in is the hidden cost, TOML-config workflow with model routing survives provider changes, workflow owns the loop while models are pluggable underneath
+- Unique angle not covered by any comparison page or existing guide
+- Codeberg-primary CTA, no `noindex` tag
+- Post #42 (was 41)
+
+**3. Both changes deployed to production:**
+- Commit `510e686` → release `20260530221818` (8 vs pages fix, 105 URLs IndexNow-pinged)
+- Commit `56f7639` → release `20260530222019` (new vendor-neutral post, 106 URLs IndexNow-pinged)
+
+### Why these specific actions
+
+The self-improvement contract requires: *"fixes technical hygiene without improving the odds of real distribution or conversion" is failure.* The audit found:
+
+- **0/80 GSC indexation** — the single largest barrier between 42 blog posts and organic discovery
+- **Doorway-page cluster** — 8 `noindex` pages with identical templates likely suppressing domain-wide indexation
+- **Uncovered keyword "vendor-neutral AI coding"** — maps directly onto Ralph Workflow's strongest differentiator, no existing post covers it
+
+Removing `noindex` from the 8 vs pages and breaking the template pattern with unique content sections directly addresses the indexation barrier. Adding a top-of-funnel blog post on vendor-neutral AI coding fills a content gap the keyword bank had identified.
+
+### What did NOT happen (keeping the system honest)
+
+- No distribution pipeline magic — all non-blog distribution remains human-gated
+- PyPI v0.8.8 still unpublished (PYPI_TOKEN missing, Day 3 escalation triggered)
+- Apollo still Cloudflare-blocked
+- GitHub Discussions/PRs still need `gh auth login`
+- Codeberg adoption still flat at 12 stars / 2 watchers / 2 forks across recent window
+- These are measurement-pending — the indexation changes need time to show Google effect
+
+### Stack Overflow lane ready for June 3
+
+- Crontab entry `15 3 * * 3` active, first run Wednesday June 3 03:15 CEST
+- 8 answer drafts cached in `drafts/stackoverflow/`
+- Today's dry-run found 0 new questions (exhausted current search terms) but the lane is correctly suppressing fake-progress output
+- Next run will search fresh terms
+
+### Adoption snapshot (unchanged)
+
+| Metric | Value | Δ |
+|--------|-------|---|
+| Codeberg stars | 12 | 0 |
+| Codeberg forks | 2 | 0 |
+| GitHub stars | 1 | 0 |
+| PyPI downloads/month | 1,299 | — |
+| Blog posts live | 42 | +1 |
+| Sitemap URLs | 106 | +1 |
+| GSC indexed | 0/80 → tbd | indexation change just deployed |
+| `noindex` pages | 8 → 0 | all 8 fixed |
+
+### Channel state
+
+| Channel | Status |
+|---------|--------|
+| Ralph-Site blog | ✅ 42 posts, no noindex pages, IndexNow active |
+| Stack Overflow | ✅ Ready — first run June 3 |
+| Telegraph cross-post | ✅ Active daily at 06:00 UTC |
+| GSC indexation | 🟡 Doorway cluster fixed, awaiting re-crawl |
+| PyPI | 🔴 PYPI_TOKEN missing, 3-day escalation active |
+| Apollo | 🔴 Cloudflare-blocked |
+| All social/forum distribution | 🔴 Human-credential-gated |

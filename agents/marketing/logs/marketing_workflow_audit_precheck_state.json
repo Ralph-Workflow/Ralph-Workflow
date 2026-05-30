@@ -1,5 +1,5 @@
 {
-  "last_triggered_at": 1780157040.834316,
-  "last_reason_signature": "dependency_newer:agents/marketing/logs/adoption_metrics_latest.json|dependency_newer:agents/marketing/logs/apollo_status.json|dependency_newer:agents/marketing/logs/marketing_momentum_watchdog.json|dependency_newer:seo-reports/reddit_monitor_latest.md|dependency_newer:outreach-log.md",
+  "last_triggered_at": 1780178892.8044677,
+  "last_reason_signature": "dependency_newer:agents/marketing/logs/adoption_metrics_latest.json|dependency_newer:agents/marketing/logs/marketing_momentum_watchdog.json|dependency_newer:outreach-log.md",
   "last_target_job": "marketing-workflow-audit"
 }

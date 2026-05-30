@@ -1,9 +1,9 @@
 # Outcome Capability Runner
 
-- Generated: `2026-05-30T14:03:19.304475`
-- Lane executed: `distribution_confirmation_follow_through`
-- Action type: `distribution_confirmation_follow_through`
-- Artifact: `/home/mistlight/.openclaw/workspace/drafts/distribution_confirmation_follow_through_latest.md`
+- Generated: `2026-05-31T00:45:01.723950`
+- Lane executed: `directory_confirmation`
+- Action type: `directory_confirmation_execution`
+- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-31_directory_confirmation_execution.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
 - Prepared comparison/backlink targets in queue: `8`
 
@@ -13,4 +13,4 @@
 - The generated lane artifact becomes the next real execution surface the main loop can reuse.
 
 ## Summary
-Prepared the confirmation-required follow-through packet so a live but not-yet-approved correction is treated as a real blocker instead of a shipped outcome. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.
+Refreshed live directory-listing and backlink evidence so the loop can reuse real approvals (3 live listing(s)) instead of stacking more low-intent submissions. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.
