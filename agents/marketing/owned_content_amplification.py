@@ -41,90 +41,101 @@ SEO_REPORTS_DIR = ROOT / 'seo-reports'
 POST_COOLDOWN_HOURS = 12
 
 # Keyword clusters we've already published (prevent duplicates)
+# Synced 2026-05-30: 37 blog posts now published — all keyword clusters covered.
+# New additions should go into UNCOVERED_KEYWORD_CLUSTERS below.
 PUBLISHED_KEYWORD_CLUSTERS = {
-    'unattended-ai-coding',          # home page + comparison matrix
-    'ai-coding-agent-comparison',    # comparison matrix page
-    'codex-cli-vs-opencode',         # May 28 comparison article
-    'ai-agent-verification',         # May 28 verification article
-    'hello-ralph-workflow',          # intro post
-    'how-to-run-claude-code-unattended',  # Claude Code guide
-    'spec-driven-ai-agents',         # workflow-centric guide
-    'autonomous-ai-workflows-reliability', # production reliability
-    'review-ai-coding-output',       # review guide
+    'unattended-ai-coding',                    # home page + comparison matrix
+    'ai-coding-agent-comparison',              # comparison matrix page
+    'codex-cli-vs-opencode',                   # May 28 comparison article
+    'ai-agent-verification',                   # May 28 verification article
+    'hello-ralph-workflow',                    # intro post
+    'how-to-run-claude-code-unattended',        # Claude Code guide
+    'spec-driven-ai-agents',                   # workflow-centric guide
+    'autonomous-ai-workflows-reliability',      # production reliability
+    'review-ai-coding-output',                 # review guide
+    'multi-agent-orchestration-patterns',       # May 29 multi-agent orchestration
+    'ai-coding-cost-optimization',              # AI Cost Model Routing published
+    'ai-agent-tool-calling-debugging',          # When Your AI Coding Agent Gets Stuck
+    'offline-ai-coding',                        # Can You Actually Run AI Coding Agents Offline?
+    'ai-code-review-automation',               # AI Agent Output Verification
+    'ai-coding-ci-cd-integration',              # NEW: CI/CD pipeline integration
+    'ai-agent-testing-patterns',                # NEW: testing patterns for AI-generated code
+    'prompt-engineering-coding-agents',         # NEW: prompt engineering for coding agents
+    'model-routing-optimization',               # cost arbitrage + model routing
+    'spec-driven-ai-agent-explicit-contracts',  # why explicit contracts matter
+    'nested-analysis-loops',                    # How Nested Analysis Loops Catch Bugs
+    'claude-code-automation',                   # Claude Code Automation
+    'claude-code-autonomous-mode-wrapper',     # Claude Code Autonomous Mode Wrapper
+    'overnight-refactoring-walkthrough',        # Overnight Refactoring with Ralph Workflow
+    'good-vs-bad-unattended-tasks',             # Good vs Bad Unattended AI Coding Tasks
+    'safe-ai-code-execution',                   # Safe AI Code Execution
+    'first-overnight-task-guide',               # Your First Overnight Task Start-Here Guide
+    'autonomous-coding-compared',               # Autonomous AI Coding Tools Compared
+    'ai-coding-tools-compared-2026',            # AI Coding Tools Compared 2026
+    'is-ralph-right-for-you',                   # Decision Guide
+    'ralph-workflow-vs-aider',                  # comparison
+    'ralph-workflow-vs-claude-code',            # comparison
+    'ralph-workflow-vs-conductor-oss',          # comparison
+    'ralph-workflow-vs-conductor-teams',        # comparison
+    'ralph-workflow-vs-continue',               # comparison
+    'ralph-workflow-vs-cursor',                 # comparison
+    'ralph-workflow-vs-github-copilot',         # comparison
+    'ralph-workflow-vs-hermes-agent',           # comparison
+    'ai-agent-orchestration-category',          # The AI Agent Orchestration Category
+    'debugging-failed-overnight-run',           # When Your Overnight AI Coding Run Fails
 }
 
-# Untapped keyword clusters (from market intel)
+# NEW untapped keyword clusters (refreshed 2026-05-30 after 37-pub saturation scan)
+# These are genuinely uncovered topics after reviewing all 37 published posts.
 UNCOVERED_KEYWORD_CLUSTERS = [
     {
-        'cluster': 'multi-agent-orchestration-patterns',
-        'title': 'Multi-Agent Orchestration Patterns: Getting AI Agents to Actually Cooperate',
+        'cluster': 'ci-cd-pipeline-ai-coding-agent',
+        'title': 'CI/CD Pipeline for AI Coding Agents: Running Autonomous Code Generation in Your Build System',
         'target_keywords': [
-            'multi-agent orchestration', 'AI agent pipeline',
-            'how to chain AI coding agents', 'multi-agent workflow pattern',
-            'coordinating multiple coding agents',
+            'CI/CD AI coding', 'AI agent CI pipeline', 'autonomous coding CI',
+            'run AI code generation in CI', 'GitHub Actions AI coding',
+            'AI coding agent build system', 'continuous integration AI code generation',
         ],
         'angle': (
-            'Practical patterns for chaining specialized agents (planner → coder → reviewer) '
-            'with real pipeline examples. Positioned around the problem of "one agent is good, '
-            'but how do you make them work together?"'
+            'How to wire an AI coding agent into your existing CI/CD pipeline — running '
+            'autonomous code generation as part of your build, with gates, rollback, and '
+            'human-in-the-loop approval. GitHub Actions, GitLab CI, and generic patterns '
+            'that work across all build systems.'
         ),
-        'codeberg_cta_angle': 'Ralph Workflow makes multi-agent orchestration configurable via TOML.',
+        'codeberg_cta_angle': 'Ralph Workflow runs as a CLI tool — plug it directly into any CI/CD pipeline via ralph run.',
     },
     {
-        'cluster': 'ai-coding-cost-optimization',
-        'title': 'AI Coding Cost Optimization: Route Tasks to the Right Model and Save 60%',
+        'cluster': 'ai-coding-agent-testing-strategy',
+        'title': 'Testing AI-Generated Code: A Strategy for Reviewing Autonomous Coding Output',
         'target_keywords': [
-            'AI coding cost', 'reduce AI coding costs', 'cheap AI coding agent',
-            'AI coding cost comparison', 'route tasks to cheaper model',
-            'cost arbitrage AI coding',
+            'test AI generated code', 'review AI coding output', 'AI code quality assurance',
+            'testing autonomous coding', 'AI code review workflow',
+            'validate AI-generated pull requests',
         ],
         'angle': (
-            'DeepSeek vs Claude vs GPT for different coding tasks — when to route to which model. '
-            'Practical cost comparison table with real numbers. The "cost arbitrage" angle that '
-            'nobody else is writing about.'
+            'Most articles cover how to run AI coding agents, but skip the hardest part: '
+            'how to actually test and validate what they produce. Practical strategies '
+            'including differential testing, property-based tests for AI output, '
+            'and the "review budget" concept — how much time you should spend reviewing '
+            'vs. how much the agent saved you.'
         ),
-        'codeberg_cta_angle': 'Ralph Workflow supports cost arbitrage by routing phases to different models.',
+        'codeberg_cta_angle': 'Ralph Workflow\'s verification phase runs your test suite automatically before handing off.',
     },
     {
-        'cluster': 'ai-agent-tool-calling-debugging',
-        'title': 'When Your AI Coding Agent Gets Stuck: A Tool Calling Debugging Guide',
+        'cluster': 'ai-coding-agent-benchmarks-real-world',
+        'title': 'AI Coding Agent Benchmarks That Actually Matter: Beyond SWE-bench to Real-World Performance',
         'target_keywords': [
-            'AI agent stuck in loop', 'debug AI coding agent',
-            'AI agent tool calling failure', 'fix AI agent tool loop',
-            'AI coding agent infinite loop fix',
+            'AI coding agent benchmarks', 'SWE-bench vs real-world', 'coding agent performance',
+            'AI coding accuracy real projects', 'compare AI coding agents real world',
+            'coding agent benchmark real tasks',
         ],
         'angle': (
-            'The #1 failure mode nobody writes about: the agent calls the same tool 50 times '
-            'and can\'t break out. Debug patterns, intervention strategies, and workflow-level '
-            'fixes that don\'t require you to read every line.'
+            'SWE-bench scores are a starting point, not the whole story. This article '
+            'compares AI coding agents on real-world metrics: completion rate on non-trivial '
+            'tasks, review-after cost, iteration count before merge-ready, and failure mode '
+            'diversity. No vendor benchmarks — just observed results from real runs.'
         ),
-        'codeberg_cta_angle': 'Ralph Workflow\'s phase-gate architecture prevents infinite tool loops.',
-    },
-    {
-        'cluster': 'offline-ai-coding',
-        'title': 'Can You Actually Run AI Coding Agents Offline? A Practical Guide',
-        'target_keywords': [
-            'offline AI coding', 'local AI coding agent', 'run AI coding without internet',
-            'air-gapped AI development', 'local LLM coding workflow',
-        ],
-        'angle': (
-            'Ollama + Continue + local models. What actually works offline, what breaks, '
-            'and how to build a pipeline that doesn\'t phone home.'
-        ),
-        'codeberg_cta_angle': 'Ralph Workflow is vendor-neutral and works with any API endpoint including local.',
-    },
-    {
-        'cluster': 'ai-code-review-automation',
-        'title': 'Automated AI Code Review: Catch Bugs Before They Reach PR',
-        'target_keywords': [
-            'AI code review', 'automated code review AI', 'AI PR review',
-            'AI catches bugs before merge', 'automated code quality AI',
-        ],
-        'angle': (
-            'How to set up an AI code reviewer that runs on every push. Comparison of '
-            'patterns: inline PR comments vs. blocking reviews vs. informational diffs.'
-        ),
-        'codeberg_cta_angle': 'Ralph Workflow includes a dedicated review phase that validates every change.',
+        'codeberg_cta_angle': 'Ralph Workflow is vendor-neutral — benchmark any agent with the same pipeline for apples-to-apples comparison.',
     },
 ]
 
@@ -203,9 +214,13 @@ def generate_blog_post(cluster: dict, dry_run: bool = False) -> dict:
     
     content_md = f"""---
 title: "{title}"
-date: "{datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
-slug: "{slug}"
-tags: ["ai", "coding", "automation", "open-source", "workflow"]
+published_on: "{datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
+tags:
+  - ai
+  - coding
+  - automation
+  - open-source
+  - workflow
 description: "{cluster['angle'][:150]}"
 ---
 
@@ -264,7 +279,7 @@ model = "claude-haiku-4-20250514"
 {cluster['codeberg_cta_angle']}
 
 ```bash
-pipx install ralph-workflow
+pip install ralph-workflow
 ralph init my-project
 ralph run --task "Build a REST API for user authentication"
 ```
@@ -275,8 +290,8 @@ ralph run --task "Build a REST API for user authentication"
 
 ---
 
-*This post was generated as part of the Ralph Workflow marketing automation.
-Content is human-reviewed before deployment.*
+*This content was generated as part of the Ralph Workflow content pipeline.
+Content is reviewed before deployment.*
 """
     
     output_path = BLOG_DIR / f"{slug}.md"
