@@ -82,6 +82,7 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("supervising", "PLC0415"),
     ("pytest_timeout_plugin", "PLC0415"),
     ("claude_interactive_transcript_parser", "PLR0911"),
+    ("claude_interactive_transcript_parser", "PLR0912"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).

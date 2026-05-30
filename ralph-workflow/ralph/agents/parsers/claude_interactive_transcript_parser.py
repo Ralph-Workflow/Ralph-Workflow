@@ -52,7 +52,7 @@ _TUI_GLYPH_STRONG_LEN = 40
 
 def _contains_thinking_keyword(text: str) -> bool:
     lower = text.lower()
-    return any(kw in lower for kw in ("thinking", "thought for", "ought for", "inking)", "inking"))
+    return "ought for" in lower or "inking)" in lower or bool(re.search(r"\bthinking\b", lower))
 
 # Box-drawing (U+2500-U+257F) + block elements (U+2580-U+259F) + extras.
 _BOX_DRAWING_CHARS: frozenset[str] = frozenset(
@@ -163,6 +163,11 @@ def _extract_error_text(value: object) -> str:
         if isinstance(error_type, str) and error_type.strip():
             return error_type.strip()
     return ""
+
+
+_IDLE_SINGLE_WORD_MAX_LEN = 15
+_IDLE_ELLIPSIS_MAX_LEN = 40
+_IDLE_TUI_GLYPH_MAX_LEN = 20
 
 
 class ClaudeInteractiveTranscriptParser:
@@ -352,7 +357,7 @@ class ClaudeInteractiveTranscriptParser:
             c in _TUI_GLYPH_CHARS for c in text
         )
 
-    def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:  # noqa: PLR0911
+    def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:  # noqa: PLR0911,PLR0912
         if _PURE_COUNTER_RE.match(text) or _TUI_STATUSBAR_RE.search(text):
             return None
         known = self._match_known_pattern(text)
@@ -371,7 +376,13 @@ class ClaudeInteractiveTranscriptParser:
         if self._current_content_mode == "output":
             return InteractiveTranscriptEvent(kind="output", text=text)
         if self._current_content_mode is None:
-            if len(text) < 20 and self._is_tui_thinking_garbage(text):
+            if _THINKING_STATUS_RE.search(text):
+                return None
+            if len(text) < _IDLE_SINGLE_WORD_MAX_LEN and " " not in text:
+                return None
+            if "…" in text and len(text) < _IDLE_ELLIPSIS_MAX_LEN:
+                return None
+            if len(text) < _IDLE_TUI_GLYPH_MAX_LEN and any(c in _TUI_GLYPH_CHARS for c in text):
                 return None
             if _contains_thinking_keyword(text):
                 return None

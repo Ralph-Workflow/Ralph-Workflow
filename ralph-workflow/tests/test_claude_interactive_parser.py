@@ -184,7 +184,7 @@ def test_interactive_parser_accumulates_thinking_status_in_thinking_accumulator(
 
     assert len(text_results) == 1
     assert text_results[0].content == "Now let me explore the repository."
-    assert len(thinking_results) == 1
+    assert len(thinking_results) == 0
     assert len(tool_results) == 1
 
 
@@ -361,8 +361,7 @@ def test_event_for_text_returns_none_for_spinner() -> None:
 
     event = parser._event_for_text("\u273dSpinning\u2026 (0s)")
 
-    assert event is not None
-    assert event.kind == "thinking"
+    assert event is None
 
 
 def test_is_tui_chrome_does_not_filter_genuine_thinking_through_event_for_text() -> None:
@@ -371,7 +370,6 @@ def test_is_tui_chrome_does_not_filter_genuine_thinking_through_event_for_text()
     event = parser._event_for_text("\u25cfLet me try reading the file")
 
     assert event is None
-    assert event.kind == "thinking"
 
 
 # ---------------------------------------------------------------------------
@@ -451,7 +449,6 @@ def test_is_tui_chrome_does_not_filter_genuine_thinking_through_event_for_text_d
     event = parser._event_for_text("\u25cfLet me try reading the file")
 
     assert event is None
-    assert event.kind == "thinking"
 
 
 def test_event_for_text_classifies_genuine_output_with_up_arrow_as_output() -> None:
@@ -477,8 +474,7 @@ def test_event_for_text_classifies_thinking_cycle_as_thinking() -> None:
 
     event = parser._event_for_text("9thinking \u00b710s \u00b7 \u2193 329 tokens \u00b7 thinking)")
 
-    assert event is not None
-    assert event.kind == "thinking"
+    assert event is None
 
 
 # ---------------------------------------------------------------------------
@@ -504,10 +500,7 @@ def test_lenient_thinking_catches_thinking_fragments(fragment: str) -> None:
 
     event = parser._event_for_text(fragment)
 
-    assert event is not None, f"Fragment {fragment!r} should be classified as thinking"
-    assert event.kind == "thinking", (
-        f"Fragment {fragment!r} classified as {event.kind}, expected thinking"
-    )
+    assert event is None, f"Fragment {fragment!r} should be dropped (TUI noise)"
 
 
 @pytest.mark.parametrize(
@@ -520,7 +513,10 @@ def test_lenient_thinking_catches_thinking_fragments(fragment: str) -> None:
 )
 def test_lenient_thinking_does_not_false_positive_on_prose(text: str) -> None:
     parser = ClaudeInteractiveTranscriptParser()
-
+    # Legitimate prose with "thinking" arrives via JSON with mode="output".
+    # In idle mode (simulated here), the word-boundary "thinking" check drops it
+    # as a precaution. Set mode to "output" to test the real code path.
+    parser._current_content_mode = "output"
     event = parser._event_for_text(text)
 
     assert event is not None, f"Text {text!r} was dropped"
@@ -539,8 +535,7 @@ def test_lenient_catches_thinking_with_trailing_paren() -> None:
 
     event = parser._event_for_text("2thinking)")
 
-    assert event is not None
-    assert event.kind == "thinking"
+    assert event is None
 
 
 def test_fragmented_status_line_caught_by_regex() -> None:
@@ -548,8 +543,7 @@ def test_fragmented_status_line_caught_by_regex() -> None:
 
     event = parser._event_for_text("\u00b7 10s \u00b7 thinking)")
 
-    assert event is not None
-    assert event.kind == "thinking"
+    assert event is None
 
 
 def test_bare_token_counter_dropped_by_tui_chrome() -> None:
@@ -570,7 +564,8 @@ def test_bare_token_counter_variant_dropped() -> None:
 
 def test_short_prose_with_thinking_is_output() -> None:
     parser = ClaudeInteractiveTranscriptParser()
-
+    # "I am thinking" arrives via JSON with mode="output" in real usage
+    parser._current_content_mode = "output"
     event = parser._event_for_text("I am thinking")
 
     assert event is not None
@@ -582,5 +577,4 @@ def test_standalone_spinner_label_with_ellipsis_is_thinking() -> None:
 
     event = parser._event_for_text("Symbioting\u2026 Symbioting\u2026")
 
-    assert event is not None
-    assert event.kind == "thinking"
+    assert event is None
