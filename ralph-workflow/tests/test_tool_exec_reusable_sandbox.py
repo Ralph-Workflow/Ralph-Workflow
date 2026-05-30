@@ -925,27 +925,17 @@ def test_cleanup_per_pool_failure_does_not_block_other_pools(
     # assertion is that pool B was processed and cleaned.
 
 
-def test_cleanup_worktree_survives_rmtree_oserror(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """_cleanup_worktree must not crash when rmtree fails with OSError."""
+def test_cleanup_worktree_preserves_worktree(tmp_path: Path) -> None:
     worktree = tmp_path / "ws"
     worktree.mkdir(parents=True)
     (worktree / "file.txt").write_text("content", encoding="utf-8")
 
-    # Make rmtree fail with PermissionError (a subclass of OSError)
-    def failing_rmtree(path: str, ignore_errors: bool = False) -> None:
-        del ignore_errors
-        if str(path).endswith("/ws"):
-            raise PermissionError("simulated permission error")
-        exec_sandbox.shutil.rmtree(path)
-
-    monkeypatch.setattr(exec_sandbox.shutil, "rmtree", failing_rmtree)
-
     manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
 
-    # Must not raise — the suppressed exception should be caught.
     manager._cleanup_worktree(worktree)
+
+    assert worktree.exists()
+    assert (worktree / "file.txt").exists()
 
 
 def test_delete_expired_pool_does_not_walk_tree_before_rmtree(
@@ -1054,3 +1044,295 @@ def test_path_size_bytes_via_du_uses_du_when_available(
     size = manager._path_size_bytes_via_du(test_dir)
 
     assert size == 42 * 1024
+
+
+def test_workspace_size_bytes_delegates_to_compute_workspace_size_bytes(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "a.txt").write_text("hello")
+    pycache = workspace / "__pycache__"
+    pycache.mkdir()
+    (pycache / "cached.pyc").write_text("ignored_content")
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    result = manager._workspace_size_bytes(workspace)
+    expected = exec_sandbox._compute_workspace_size_bytes(workspace)
+    assert result == expected
+    assert result == 5
+
+
+def test_path_size_bytes_excludes_lock_files(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    slot = tmp_path / "slot"
+    slot.mkdir()
+    (slot / "data.bin").write_bytes(b"abc")
+    (slot / exec_sandbox._LOCK_FILE).write_bytes(b"xxxxxxxxxx")
+    (slot / exec_sandbox._POOL_LOCK_FILE).write_bytes(b"yyyyyy")
+    assert manager._path_size_bytes(slot) == 3
+
+
+def test_path_size_bytes_counts_nested_files(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    root = tmp_path / "root"
+    root.mkdir()
+    sub = root / "sub"
+    sub.mkdir()
+    (root / "a.txt").write_bytes(b"aa")
+    (sub / "b.txt").write_bytes(b"bbb")
+    assert manager._path_size_bytes(root) == 5
+
+
+def test_path_size_bytes_returns_zero_for_missing_path(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    assert manager._path_size_bytes(tmp_path / "nonexistent") == 0
+
+
+def test_path_size_bytes_handles_scandir_oserror_gracefully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "a.txt").write_bytes(b"x")
+    original_scandir = exec_sandbox.os.scandir
+
+    def failing_scandir(path: object) -> object:
+        if str(path) == str(root):
+            raise OSError("simulated")
+        return original_scandir(path)
+
+    monkeypatch.setattr(exec_sandbox.os, "scandir", failing_scandir)
+    assert manager._path_size_bytes(root) == 0
+
+
+def test_acquire_skips_post_release_cleanup_when_cleanup_was_recent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    cleanup_call_count = 0
+    original_cleanup = manager.cleanup_base
+
+    def counting_cleanup() -> exec_sandbox.ExecCacheCleanupSummary:
+        nonlocal cleanup_call_count
+        cleanup_call_count += 1
+        return original_cleanup()
+
+    monkeypatch.setattr(manager, "cleanup_base", counting_cleanup)
+
+    with manager.acquire(workspace):
+        pass
+    assert cleanup_call_count == 2  # first acquire: pre+post
+
+    cleanup_call_count = 0
+    with manager.acquire(workspace):
+        pass
+    assert cleanup_call_count == 0  # rapid second: both pre and post throttled
+
+
+def test_acquire_runs_post_release_cleanup_after_cooldown_expires(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    cleanup_call_count = 0
+    original_cleanup = manager.cleanup_base
+
+    def counting_cleanup() -> exec_sandbox.ExecCacheCleanupSummary:
+        nonlocal cleanup_call_count
+        cleanup_call_count += 1
+        return original_cleanup()
+
+    monkeypatch.setattr(manager, "cleanup_base", counting_cleanup)
+
+    with manager.acquire(workspace):
+        pass
+    assert cleanup_call_count == 2
+
+    manager._last_cleanup_monotonic = 0.0  # simulate cooldown expired
+    manager._last_pre_acquire_cleanup_monotonic = 0.0
+    manager._last_cleanup_summary = None
+
+    cleanup_call_count = 0
+    with manager.acquire(workspace):
+        pass
+    assert cleanup_call_count == 2  # both pre and post run
+
+
+def test_cleanup_base_calls_du_once_per_invocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    du_call_count = 0
+    original_du = manager._path_size_bytes_via_du
+
+    def counting_du(path: Path) -> int:
+        nonlocal du_call_count
+        du_call_count += 1
+        return original_du(path)
+
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", counting_du)
+    manager.cleanup_base()
+    assert du_call_count == 1
+
+
+def test_workspace_size_bytes_caches_result_within_ttl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "file.txt").write_bytes(b"hello")
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    scan_count = 0
+    original_compute = exec_sandbox._compute_workspace_size_bytes
+
+    def counting_compute(root: Path) -> int:
+        nonlocal scan_count
+        scan_count += 1
+        return original_compute(root)
+
+    monkeypatch.setattr(exec_sandbox, "_compute_workspace_size_bytes", counting_compute)
+    manager._workspace_size_bytes(workspace)
+    manager._workspace_size_bytes(workspace)
+    assert scan_count == 1
+
+
+def test_workspace_size_bytes_cache_does_not_apply_for_different_workspaces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ws1 = tmp_path / "ws1"
+    ws2 = tmp_path / "ws2"
+    ws1.mkdir()
+    ws2.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    scan_count = 0
+    original_compute = exec_sandbox._compute_workspace_size_bytes
+
+    def counting_compute(root: Path) -> int:
+        nonlocal scan_count
+        scan_count += 1
+        return original_compute(root)
+
+    monkeypatch.setattr(exec_sandbox, "_compute_workspace_size_bytes", counting_compute)
+    manager._workspace_size_bytes(ws1)
+    manager._workspace_size_bytes(ws2)
+    assert scan_count == 2
+
+
+def test_workspace_size_bytes_cache_expires_after_ttl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    scan_count = 0
+    original_compute = exec_sandbox._compute_workspace_size_bytes
+
+    def counting_compute(root: Path) -> int:
+        nonlocal scan_count
+        scan_count += 1
+        return original_compute(root)
+
+    monkeypatch.setattr(exec_sandbox, "_compute_workspace_size_bytes", counting_compute)
+    manager._workspace_size_bytes(workspace)
+    key = str(workspace)
+    cached_size, _ = manager._workspace_size_cache[key]
+    manager._workspace_size_cache[key] = (cached_size, 0.0)  # backdate to expire
+    manager._workspace_size_bytes(workspace)
+    assert scan_count == 2
+
+
+def test_acquire_throttles_pre_acquire_cleanup_when_recent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    cleanup_call_count = 0
+    original_cleanup = manager.cleanup_base
+
+    def counting_cleanup() -> exec_sandbox.ExecCacheCleanupSummary:
+        nonlocal cleanup_call_count
+        cleanup_call_count += 1
+        return original_cleanup()
+
+    monkeypatch.setattr(manager, "cleanup_base", counting_cleanup)
+    with manager.acquire(workspace):
+        pass
+    first_run_count = cleanup_call_count
+    cleanup_call_count = 0
+    with manager.acquire(workspace):
+        pass
+    assert cleanup_call_count == 0
+    assert first_run_count >= 1
+
+
+def test_acquire_pre_acquire_cleanup_runs_after_cooldown_expires(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    cleanup_call_count = 0
+    original_cleanup = manager.cleanup_base
+
+    def counting_cleanup() -> exec_sandbox.ExecCacheCleanupSummary:
+        nonlocal cleanup_call_count
+        cleanup_call_count += 1
+        return original_cleanup()
+
+    monkeypatch.setattr(manager, "cleanup_base", counting_cleanup)
+    with manager.acquire(workspace):
+        pass
+    manager._last_pre_acquire_cleanup_monotonic = 0.0
+    manager._last_cleanup_summary = None
+    cleanup_call_count = 0
+    with manager.acquire(workspace):
+        pass
+    assert cleanup_call_count >= 1
+
+
+def test_fast_reset_does_not_pre_delete_worktree_directory(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "tracked.txt").write_text("original", encoding="utf-8")
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+
+    sandbox_root: Path
+    with manager.acquire(workspace) as worktree:
+        sandbox_root = worktree.parent
+
+    (sandbox_root / "ws").mkdir(exist_ok=True)
+    (sandbox_root / "ws" / "dirty.txt").write_text("dirty", encoding="utf-8")
+    inode_before = (sandbox_root / "ws").stat().st_ino
+
+    manager._reset(workspace, sandbox_root, sandbox_root / "ws")
+
+    assert (sandbox_root / "ws").stat().st_ino == inode_before
+    assert not (sandbox_root / "ws" / "dirty.txt").exists()
+    assert (sandbox_root / "ws" / "tracked.txt").read_text(encoding="utf-8") == "original"
+
+
+def test_fast_reset_clears_sentinel_on_mirror_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+
+    sandbox_root: Path
+    with manager.acquire(workspace) as worktree:
+        sandbox_root = worktree.parent
+
+    assert (sandbox_root / ".ralph-sandbox-ready").exists()
+
+    def raising_mirror(*args: object, **kwargs: object) -> None:
+        raise OSError("simulated")
+
+    monkeypatch.setattr(exec_sandbox, "_mirror_workspace", raising_mirror)
+
+    with pytest.raises(OSError):
+        manager._fast_reset(workspace, sandbox_root, sandbox_root / "ws")
+
+    assert not (sandbox_root / ".ralph-sandbox-ready").exists()

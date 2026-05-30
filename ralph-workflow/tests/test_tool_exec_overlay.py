@@ -97,6 +97,63 @@ def test_sync_dir_copies_nested_directories(tmp_path: Path) -> None:
     assert (dst / "sub" / "nested.txt").read_text() == "deep"
 
 
+def test_mirror_workspace_rsync_excludes_dot_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured_cmd: list[str] = []
+
+    class FakeResult:
+        returncode = 0
+
+    def fake_run(cmd: list[str], **kwargs: object) -> FakeResult:
+        if cmd[0].endswith("rsync"):
+            captured_cmd.extend(cmd)
+        return FakeResult()
+
+    monkeypatch.setattr(
+        exec_overlay.shutil, "which", lambda cmd: "/usr/bin/rsync" if cmd == "rsync" else None
+    )
+    monkeypatch.setattr(exec_overlay, "_RSYNC_BIN", "/usr/bin/rsync", raising=False)
+    monkeypatch.setattr(exec_overlay.subprocess, "run", fake_run)
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".git").mkdir()
+
+    overlay = tmp_path / "overlay"
+    exec_overlay._mirror_workspace(workspace, overlay)
+
+    assert "--exclude=/.git" in captured_cmd
+
+
+def test_mirror_workspace_rsync_does_not_call_which_per_invocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    which_call_count = 0
+
+    def counting_which(cmd: str) -> str | None:
+        nonlocal which_call_count
+        which_call_count += 1
+        return "/usr/bin/rsync"
+
+    class FakeResult:
+        returncode = 0
+
+    monkeypatch.setattr(exec_overlay, "_RSYNC_BIN", "/usr/bin/rsync", raising=False)
+    monkeypatch.setattr(exec_overlay.shutil, "which", counting_which)
+    monkeypatch.setattr(exec_overlay.subprocess, "run", lambda *a, **kw: FakeResult())
+
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.mkdir()
+    dst.mkdir()
+
+    exec_overlay._mirror_workspace_rsync(src, dst, [])
+    exec_overlay._mirror_workspace_rsync(src, dst, [])
+
+    assert which_call_count == 0
+
+
 def test_mirror_workspace_incremental_hard_links_unchanged_files(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     workspace.mkdir()

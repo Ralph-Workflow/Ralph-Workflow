@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import os
 import shutil
 import subprocess
@@ -72,6 +71,9 @@ _BASE_LOCK_FILE = ".ralph-exec-base.lock"
 _TRASH_PREFIX = ".ralph-exec-trash-"
 _BASE_PRUNE_INTERVAL_S = 1.0
 _PERIODIC_CLEANUP_INTERVAL_S = 60.0
+_POST_RELEASE_CLEANUP_COOLDOWN_S = 5.0
+_PRE_ACQUIRE_CLEANUP_COOLDOWN_S = 5.0
+_WORKSPACE_SIZE_CACHE_TTL_S = 60.0
 
 
 def _workspace_key(workspace_root: Path) -> str:
@@ -188,8 +190,11 @@ class ExecSandboxManager:
         self._consecutive_cleanup_failures = 0
         self._cleanup_cooldown_until_monotonic = 0.0
         self._last_cleanup_error: str = ""
+        self._last_cleanup_monotonic = 0.0
+        self._last_pre_acquire_cleanup_monotonic = 0.0
         self._last_periodic_cleanup_monotonic: float = 0.0
-        self._logger = logging.getLogger(__name__)
+        self._last_cleanup_summary: ExecCacheCleanupSummary | None = None
+        self._workspace_size_cache: dict[str, tuple[int, float]] = {}
 
     @contextmanager
     def acquire(self, workspace_root: Path) -> Iterator[Path]:
@@ -209,7 +214,7 @@ class ExecSandboxManager:
                 cooldown_remaining_s=cooldown_remaining,
                 last_error=self._last_cleanup_error or "unknown",
             )
-        summary = self.cleanup_base()
+        summary = self._pre_acquire_cleanup()
         if (
             self._max_total_bytes > 0
             and summary.remaining_bytes > self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
@@ -265,7 +270,26 @@ class ExecSandboxManager:
             self._release_lock(sandbox_root)
 
             self._shrink_idle_slots(pool_root, workspace_key)
-            self.cleanup_base()
+            if (
+                time.monotonic() - self._last_cleanup_monotonic
+                >= _POST_RELEASE_CLEANUP_COOLDOWN_S
+            ):
+                post_summary = self.cleanup_base()
+                self._last_cleanup_monotonic = time.monotonic()
+                self._last_cleanup_summary = post_summary
+
+    def _pre_acquire_cleanup(self) -> ExecCacheCleanupSummary:
+        now = time.monotonic()
+        if (
+            self._last_cleanup_summary is None
+            or now - self._last_pre_acquire_cleanup_monotonic >= _PRE_ACQUIRE_CLEANUP_COOLDOWN_S
+        ):
+            summary = self.cleanup_base()
+            self._last_pre_acquire_cleanup_monotonic = now
+            self._last_cleanup_summary = summary
+        else:
+            summary = self._last_cleanup_summary
+        return summary
 
     def cleanup_base(self) -> ExecCacheCleanupSummary:
         self._base_dir.mkdir(parents=True, exist_ok=True)
@@ -303,11 +327,13 @@ class ExecSandboxManager:
     def _fast_reset(self, workspace_root: Path, sandbox_root: Path, worktree: Path) -> bool:
         if not self._is_ready(sandbox_root):
             return False
-        if worktree.exists():
-            shutil.rmtree(worktree, ignore_errors=True)
         _write_overlay_owner_metadata(sandbox_root)
-        _mirror_workspace(workspace_root, worktree)
-        _ensure_git_isolation(workspace_root, worktree, sandbox_root)
+        try:
+            _mirror_workspace(workspace_root, worktree)
+            _ensure_git_isolation(workspace_root, worktree, sandbox_root)
+        except Exception:
+            self._ready_path(sandbox_root).unlink(missing_ok=True)
+            raise
         return True
 
     def _clear_sandbox_contents(self, sandbox_root: Path) -> None:
@@ -321,8 +347,7 @@ class ExecSandboxManager:
                 child.unlink(missing_ok=True)
 
     def _cleanup_worktree(self, worktree: Path) -> None:
-        with suppress(OSError):
-            shutil.rmtree(worktree)
+        pass
 
     def _ready_path(self, sandbox_root: Path) -> Path:
         return sandbox_root / _READY_FILE
@@ -529,12 +554,20 @@ class ExecSandboxManager:
             except OSError:
                 return 0
         total = 0
-        for child in path.rglob("*"):
+        stack: list[Path] = [path]
+        while stack:
+            current = stack.pop()
             try:
-                if child.is_file():
-                    if child.name in {_LOCK_FILE, _POOL_LOCK_FILE, _BASE_LOCK_FILE}:
-                        continue
-                    total += child.stat().st_size
+                with os.scandir(current) as entries:
+                    for entry in entries:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(current / entry.name)
+                        elif (
+                            entry.is_file(follow_symlinks=False)
+                            and entry.name not in {_LOCK_FILE, _POOL_LOCK_FILE, _BASE_LOCK_FILE}
+                        ):
+                            with suppress(OSError):
+                                total += entry.stat().st_size
             except OSError:
                 continue
         return total
@@ -565,24 +598,15 @@ class ExecSandboxManager:
         return self._path_size_bytes(path)
 
     def _workspace_size_bytes(self, workspace_root: Path) -> int:
-        total = 0
-        ignored_relative_paths = _ignored_workspace_relative_paths(workspace_root)
-        for child in workspace_root.rglob("*"):
-            relative_path = child.relative_to(workspace_root)
-            relative_parts = relative_path.parts
-            if any(part in _GENERATED_DIR_NAMES for part in relative_parts):
-                continue
-            if any(
-                relative_path == ignored_path or relative_path.is_relative_to(ignored_path)
-                for ignored_path in ignored_relative_paths
-            ):
-                continue
-            try:
-                if child.is_file():
-                    total += child.stat().st_size
-            except OSError:
-                continue
-        return total
+        key = str(workspace_root)
+        now = time.monotonic()
+        if key in self._workspace_size_cache:
+            cached_size, cached_at = self._workspace_size_cache[key]
+            if now - cached_at < _WORKSPACE_SIZE_CACHE_TTL_S:
+                return cached_size
+        size = _compute_workspace_size_bytes(workspace_root)
+        self._workspace_size_cache[key] = (size, now)
+        return size
 
     def _slot_owner_is_collectible(self, slot_root: Path) -> bool:
         marker = slot_root / ".ralph-exec-owner.json"
@@ -716,11 +740,10 @@ class ExecSandboxManager:
                     removed_bytes += removed[1]
                     current_total_bytes = max(0, current_total_bytes - removed[1])
 
-        remaining_bytes = self._path_size_bytes_via_du(self._base_dir)
         return ExecCacheCleanupSummary(
             removed_paths=removed_paths,
             removed_bytes=removed_bytes,
-            remaining_bytes=remaining_bytes,
+            remaining_bytes=current_total_bytes,
         )
 
     def _stage_dir_for_deletion(self, path: Path) -> Path | None:
