@@ -5,12 +5,19 @@ that MCP exec runs in. Each `acquire()` returns a clean sandbox slot selected
 from a pool keyed by the workspace path hash; repeated same-workspace execs can
 run concurrently by leasing different slots, while each individual slot still
 resets before use and cleans up after release.
+
+**Lock hierarchy** (must ALWAYS be acquired in this order):
+
+    base_lock -> pool_lock -> slot_lock
+
+Never acquire locks in a different order — doing so causes deadlocks.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -20,6 +27,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.tools._exec_cache_cleanup_summary import ExecCacheCleanupSummary
+from ralph.mcp.tools._exec_execution_error import ExecutionError
 from ralph.mcp.tools._exec_sandbox_busy_error import ExecSandboxBusyError
 from ralph.mcp.tools.exec_overlay import (
     _GENERATED_DIR_NAMES,
@@ -57,6 +65,7 @@ _DEFAULT_HARD_CAP_MULTIPLIER = 2
 _LOW_USAGE_STREAK_THRESHOLD = 2
 _MAX_CONSECUTIVE_CLEANUP_FAILURES = 5
 _CLEANUP_COOLDOWN_S = 300.0
+_MAX_CONSECUTIVE_RSYNC_FAILURES = 3
 _INITIAL_AVERAGE_SLOTS = 1.0
 _SLOT_PREFIX = "slot-"
 _BASE_LOCK_FILE = ".ralph-exec-base.lock"
@@ -177,15 +186,29 @@ class ExecSandboxManager:
         self._managed_workspace_keys: set[str] = set()
         self._consecutive_cleanup_failures = 0
         self._cleanup_cooldown_until_monotonic = 0.0
+        self._consecutive_rsync_failures = 0
+        self._rsync_disabled_until_monotonic = 0.0
+        self._last_cleanup_error: str = ""
+        self._last_periodic_cleanup_monotonic: float = 0.0
+        self._logger = logging.getLogger(__name__)
 
     @contextmanager
     def acquire(self, workspace_root: Path) -> Iterator[Path]:
         """Yield a freshly reset sandbox worktree for the given workspace."""
         self._base_dir.mkdir(parents=True, exist_ok=True)
+        # Periodic cleanup trigger: run cleanup_base() at most once per 60s
+        self._maybe_periodic_cleanup()
         if self._cleanup_in_cooldown():
-            raise OSError(
+            cooldown_remaining = max(
+                0.0,
+                self._cleanup_cooldown_until_monotonic - time.monotonic(),
+            )
+            raise ExecutionError(
                 "exec cache cleanup has failed repeatedly — "
-                "refusing to proceed until cooldown expires"
+                "refusing to proceed until cooldown expires",
+                consecutive_failures=self._consecutive_cleanup_failures,
+                cooldown_remaining_s=cooldown_remaining,
+                last_error=getattr(self, "_last_cleanup_error", "unknown"),
             )
         summary = self.cleanup_base()
         if (
@@ -193,15 +216,22 @@ class ExecSandboxManager:
             and summary.remaining_bytes > self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
         ):
             cap = self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
-            raise OSError(
-                "exec cache exceeds hard cap even after cleanup: "
-                f"{summary.remaining_bytes} bytes > {cap} bytes"
+            diag = self._try_cache_diagnostics()
+            raise ExecutionError(
+                "exec cache exceeds hard cap even after cleanup",
+                current_bytes=summary.remaining_bytes,
+                cap_bytes=cap,
+                removed_paths=summary.removed_paths,
+                removed_bytes=summary.removed_bytes,
+                remaining_bytes=summary.remaining_bytes,
+                diagnostics=diag,
             )
         workspace_bytes = self._workspace_size_bytes(workspace_root)
         if workspace_bytes > self._max_workspace_bytes:
-            raise OSError(
-                "sandbox workspace exceeds safety limit "
-                f"({workspace_bytes} bytes > {self._max_workspace_bytes} bytes)"
+            raise ExecutionError(
+                "sandbox workspace exceeds safety limit",
+                workspace_bytes=workspace_bytes,
+                max_workspace_bytes=self._max_workspace_bytes,
             )
         workspace_key = _workspace_key(workspace_root)
         pool_root = self._base_dir / workspace_key
@@ -268,7 +298,7 @@ class ExecSandboxManager:
         self._clear_sandbox_contents(sandbox_root)
         _write_overlay_owner_metadata(sandbox_root)
         rebuilt_worktree = sandbox_root / "ws"
-        _mirror_workspace(workspace_root, rebuilt_worktree)
+        self._mirror_with_rsync_tracking(workspace_root, rebuilt_worktree)
         _ensure_git_isolation(workspace_root, rebuilt_worktree, sandbox_root)
         self._write_ready_sentinel(sandbox_root)
 
@@ -278,7 +308,7 @@ class ExecSandboxManager:
         if worktree.exists():
             shutil.rmtree(worktree, ignore_errors=True)
         _write_overlay_owner_metadata(sandbox_root)
-        _mirror_workspace(workspace_root, worktree)
+        self._mirror_with_rsync_tracking(workspace_root, worktree)
         _ensure_git_isolation(workspace_root, worktree, sandbox_root)
         return True
 
@@ -291,6 +321,39 @@ class ExecSandboxManager:
                 shutil.rmtree(child, ignore_errors=True)
             else:
                 child.unlink(missing_ok=True)
+
+    def _mirror_with_rsync_tracking(
+        self, workspace_root: Path, overlay_root: Path
+    ) -> None:
+        """Mirror workspace with broken-rsync tracking.
+
+        If rsync fails 3 times consecutively, skip it for the rest of
+        the session (until the first successful sync resets the counter).
+        """
+        rsync_disabled = (
+            self._consecutive_rsync_failures >= _MAX_CONSECUTIVE_RSYNC_FAILURES
+            and time.monotonic() < self._rsync_disabled_until_monotonic
+        )
+        new_failures = _mirror_workspace(
+            workspace_root,
+            overlay_root,
+            rsync_failures=self._consecutive_rsync_failures,
+            rsync_disabled=rsync_disabled,
+        )
+        if new_failures == 0:
+            self._consecutive_rsync_failures = 0
+        elif new_failures > self._consecutive_rsync_failures:
+            self._consecutive_rsync_failures = new_failures
+            if self._consecutive_rsync_failures >= _MAX_CONSECUTIVE_RSYNC_FAILURES:
+                self._rsync_disabled_until_monotonic = (
+                    time.monotonic() + _CLEANUP_COOLDOWN_S * 2
+                )
+                self._logger.warning(
+                    "rsync is present but consistently failing "
+                    "(%d consecutive failures) — falling back to diff-based sync "
+                    "for this session",
+                    self._consecutive_rsync_failures,
+                )
 
     def _cleanup_worktree(self, worktree: Path) -> None:
         with suppress(OSError):
@@ -617,6 +680,9 @@ class ExecSandboxManager:
         return retained, removed_paths, removed_bytes
 
     def _delete_expired_pool_locked(self, pool_root: Path, current_time: float) -> tuple[int, int]:
+        # NOTE: Intentionally does NOT call _path_size_bytes before rmtree.
+        # Walking the tree to count bytes before deleting is unnecessary and
+        # slow for large caches — just remove it and return zero byte count.
         if self._pool_has_live_leases(pool_root) or self._pool_lock_is_live(pool_root):
             return 0, 0
         last_used_at = self._pool_last_used_at(pool_root)
@@ -765,11 +831,21 @@ class ExecSandboxManager:
                     break
             if leased_slot is None:
                 if warm_slots >= self._max_slots:
-                    raise ExecSandboxBusyError(f"sandbox busy: {pool_root}")
+                    raise ExecSandboxBusyError(
+                        f"sandbox busy: {pool_root}",
+                        active_slots=warm_slots,
+                        max_slots=self._max_slots,
+                        wait_time=self._lock_timeout_s,
+                    )
                 slot_index = warm_slots + 1
                 while True:
                     if slot_index > self._max_slots:
-                        raise ExecSandboxBusyError(f"sandbox busy: {pool_root}")
+                        raise ExecSandboxBusyError(
+                            f"sandbox busy: {pool_root}",
+                            active_slots=self._max_slots,
+                            max_slots=self._max_slots,
+                            wait_time=self._lock_timeout_s,
+                        )
                     slot_root = self._slot_root(pool_root, workspace_key, slot_index)
                     if self._try_acquire_lock(slot_root):
                         leased_slot = (slot_root, slot_index)
@@ -864,6 +940,11 @@ class ExecSandboxManager:
             return None
         if not self._try_acquire_lock(slot_dir):
             return None
+        # Re-check existence after lock acquisition — may have been deleted
+        # by a concurrent cleanup/staging operation.
+        if not slot_dir.exists():
+            self._release_lock(slot_dir)
+            return None
         return self._stage_dir_for_deletion(slot_dir)
 
     def _rmtree_with_escalation(self, path: Path) -> bool:
@@ -912,11 +993,147 @@ class ExecSandboxManager:
         self._consecutive_cleanup_failures = 0
 
     def _record_cleanup_failure(self) -> None:
+        import sys
+        exc_info = sys.exc_info()
+        if exc_info[1] is not None:
+            self._last_cleanup_error = str(exc_info[1])
         self._consecutive_cleanup_failures += 1
         if self._consecutive_cleanup_failures >= _MAX_CONSECUTIVE_CLEANUP_FAILURES:
             self._cleanup_cooldown_until_monotonic = (
                 time.monotonic() + _CLEANUP_COOLDOWN_S
             )
+
+    def _try_cache_diagnostics(self) -> str | None:
+        """Return a one-line diagnostic summary, or None if unavailable."""
+        try:
+            diag = self.cache_diagnostics()
+            total = diag.get("total_base_bytes", 0)
+            pools = len(diag.get("pools", []))
+            active = sum(
+                p.get("active_leases", 0) for p in diag.get("pools", [])
+            )
+            cooldown = "yes" if diag.get("cooldown_active", False) else "no"
+            return (
+                f"total={total} bytes, pools={pools}, "
+                f"active_leases={active}, cooldown={cooldown}"
+            )
+        except Exception:
+            return None
+
+    def _maybe_periodic_cleanup(self) -> None:
+        """Trigger cleanup_base() periodically (at most once per 60 seconds)."""
+        now = time.monotonic()
+        if now - self._last_periodic_cleanup_monotonic < 60.0:
+            return
+        self._last_periodic_cleanup_monotonic = now
+        try:
+            self.cleanup_base()
+        except Exception:
+            pass
+
+    def _check_runaway_growth(self) -> bool:
+        """Return True if base_dir exceeds 90% of max_total_bytes budget."""
+        if self._max_total_bytes <= 0:
+            return False
+        try:
+            current = self._path_size_bytes_via_du(self._base_dir)
+        except Exception:
+            return False
+        return current > 0.9 * self._max_total_bytes
+
+    def force_clear_workspace(self, workspace_root: Path) -> None:
+        """Emergency admin method: force-clear all slots for a workspace.
+
+        Acquires ``_base_lock``, ignores cooldown, locates the pool by
+        workspace key, skips any slot whose lock is held by a live process,
+        removes all other slots, resets pool state, and removes the workspace
+        key from tracked keys.
+
+        Safety: refuses to clear if the calling process owns any locked slot
+        in that pool (prevents self-deletion).
+
+        This is NOT for routine use — it is an emergency recovery path for
+        stuck-cache scenarios.
+        """
+        workspace_key = _workspace_key(workspace_root)
+        pool_root = self._base_dir / workspace_key
+        if not pool_root.exists():
+            return
+
+        # Safety: refuse self-deletion
+        if self._pool_owned_by_current_process(pool_root):
+            return
+
+        self._acquire_named_lock(self._base_lock_path())
+        try:
+            for slot_root in list(self._all_slot_dirs(pool_root)):
+                if self._slot_is_locked_by_live_process(slot_root):
+                    continue
+                shutil.rmtree(slot_root, ignore_errors=True)
+            # Reset pool state
+            state_path = self._pool_state_path(pool_root)
+            state_path.unlink(missing_ok=True)
+            # Remove from tracked keys
+            self._managed_workspace_keys.discard(workspace_key)
+            # Remove pool dir if empty
+            remaining = self._all_slot_dirs(pool_root)
+            if not remaining:
+                shutil.rmtree(pool_root, ignore_errors=True)
+            # Reset cooldown to allow normal operation
+            self._consecutive_cleanup_failures = 0
+            self._cleanup_cooldown_until_monotonic = 0.0
+        finally:
+            self._base_lock_path().unlink(missing_ok=True)
+
+    def cache_diagnostics(self) -> dict[str, object]:
+        """Return structured cache diagnostics using stat-only operations.
+
+        Uses ``os.scandir()`` and ``stat()`` only — never ``rglob()`` or
+        ``_path_size_bytes``.
+
+        Returns a dict with keys: ``total_base_bytes``, ``pools`` (list of
+        per-pool dicts), ``cooldown_active``, ``consecutive_failures``.
+        """
+        total_bytes = self._path_size_bytes_via_du(self._base_dir)
+        pools: list[dict[str, object]] = []
+        try:
+            with os.scandir(self._base_dir) as entries:
+                for entry in entries:
+                    if not entry.is_dir():
+                        continue
+                    if entry.name.startswith(_TRASH_PREFIX):
+                        continue
+                    pool_root = Path(entry.path)
+                    try:
+                        pool_stat = entry.stat()
+                        pool_size = pool_stat.st_size
+                    except OSError:
+                        pool_size = 0
+                    all_slots = self._all_slot_dirs(pool_root)
+                    slot_count = len(all_slots)
+                    active_leases = sum(
+                        1 for s in all_slots
+                        if self._slot_is_locked_by_live_process(s)
+                    )
+                    idle_slots = slot_count - active_leases
+                    last_used = self._pool_last_used_at(pool_root)
+                    pools.append({
+                        "workspace_key": entry.name,
+                        "slot_count": slot_count,
+                        "active_leases": active_leases,
+                        "idle_slots": idle_slots,
+                        "last_used": last_used,
+                        "size": pool_size,
+                    })
+        except OSError:
+            pass
+
+        return {
+            "total_base_bytes": total_bytes,
+            "pools": pools,
+            "cooldown_active": self._cleanup_in_cooldown(),
+            "consecutive_failures": self._consecutive_cleanup_failures,
+        }
 
     def _cleanup_in_cooldown(self) -> bool:
         return (
@@ -926,9 +1143,13 @@ class ExecSandboxManager:
 
     def _delete_paths(self, paths: list[Path]) -> None:
         for path in paths:
+            # Gracefully handle paths already deleted by another thread/process
             if not path.exists():
                 continue
-            shutil.rmtree(path, ignore_errors=True)
+            try:
+                shutil.rmtree(path, ignore_errors=True)
+            except FileNotFoundError:
+                pass
 
     def _release_lock(self, sandbox_root: Path) -> None:
         self._lock_path(sandbox_root).unlink(missing_ok=True)
@@ -1010,4 +1231,9 @@ class ExecSandboxManager:
         return True
 
 
-__all__ = ["ExecCacheCleanupSummary", "ExecSandboxBusyError", "ExecSandboxManager"]
+__all__ = [
+    "ExecCacheCleanupSummary",
+    "ExecSandboxBusyError",
+    "ExecSandboxManager",
+    "_MAX_CONSECUTIVE_RSYNC_FAILURES",
+]

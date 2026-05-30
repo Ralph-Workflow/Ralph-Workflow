@@ -622,6 +622,18 @@ def _run_subprocess(
     )
 
 
+def _format_exec_error(exc: Exception) -> str:
+    """Format an exec error into a self-explanatory agent-actionable message.
+
+    Delegates to ``__str__`` for ``ExecutionError`` and ``ExecSandboxBusyError``
+    (which use structured templates), and wraps generic exceptions in a
+    minimal format.
+    """
+    if isinstance(exc, (ExecutionError, ExecSandboxBusyError)):
+        return str(exc)
+    return f"Error: {exc}"
+
+
 def format_exec_result(
     command: str,
     args: list[str],
@@ -670,6 +682,7 @@ __all__ = [
     "ExecRunDeps",
     "ExecutionError",
     "WorkspaceWithRoot",
+    "_format_exec_error",
     "apply_exec_policy",
     "check_command",
     "format_exec_result",
