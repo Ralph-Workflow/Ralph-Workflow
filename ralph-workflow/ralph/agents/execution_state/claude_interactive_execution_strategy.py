@@ -34,6 +34,7 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
         if events:
             tool_result_event = None
             lifecycle_event = None
+            thinking_event = None
             output_event = None
             for event in events:
                 if event.kind == "tool_use":
@@ -43,6 +44,9 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
                     continue
                 if event.kind == "tool_result" and tool_result_event is None:
                     tool_result_event = event
+                    continue
+                if event.kind == "thinking" and thinking_event is None:
+                    thinking_event = event
                     continue
                 if output_event is None:
                     output_event = event
@@ -55,6 +59,10 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
                 )
             if output_event is not None:
                 return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=output_event.text)
+            if thinking_event is not None:
+                return AgentActivitySignal(
+                    AgentActivityKind.OUTPUT_LINE, raw=thinking_event.text
+                )
         return super().classify_activity_line(line)
 
     def supports_session_continuation(self) -> bool:

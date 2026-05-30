@@ -26,8 +26,11 @@ _TUI_STATUSBAR_RE = re.compile(
     r"thought for \d+s",
     re.IGNORECASE,
 )
-_TUI_FRAGMENT_RE = re.compile(
-    r"^[\s\d\W]*?([A-Za-z]+)[\s\d\W]*$"
+_THINKING_STATUS_RE = re.compile(
+    r"^[\s]*[✶✢●]"  # Claude Code thinking / action-in-progress status symbols
+    r"|^[\s]*·\s*thinking\s*\)"  # End marker: "· thinking)"
+    r"|^[\s]*\(\d+s\s*·"  # Duration: "(5s ·"
+    r"|^[\s]*↓\s*\d+\.?\d*[km]?\s*tokens?"  # Token counter: "↓292 tokens"
 )
 
 
@@ -186,4 +189,6 @@ class ClaudeInteractiveTranscriptParser:
             return InteractiveTranscriptEvent(kind="tool_result", text=text)
         if text.startswith("[claude]:") or text.startswith("claude ") or text.startswith("claude/"):
             return InteractiveTranscriptEvent(kind="lifecycle", text=text)
+        if _THINKING_STATUS_RE.search(text):
+            return InteractiveTranscriptEvent(kind="thinking", text=text)
         return InteractiveTranscriptEvent(kind="output", text=text)
