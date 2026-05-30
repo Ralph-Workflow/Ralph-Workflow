@@ -1,6 +1,6 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-05-30T06:05:33
-- Hold release at: 2026-05-31T00:00:00
+Generated: 2026-05-30T06:24:26
+- Hold release at: 2026-05-30T08:36:38
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot
@@ -21,3 +21,7 @@ Generated: 2026-05-30T06:05:33
 - Treat another idle hold as a process failure.
 
 ## Shared findings reused
+- adoption_metrics_latest.json: Codeberg movement is the primary success gate
+- channel_discovery.json: validated easy-submit directory lanes
+- outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
+- market_intelligence_latest.json: reusable competitor comparisons and positioning truths
