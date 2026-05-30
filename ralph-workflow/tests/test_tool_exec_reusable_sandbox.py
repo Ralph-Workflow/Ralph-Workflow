@@ -925,27 +925,17 @@ def test_cleanup_per_pool_failure_does_not_block_other_pools(
     # assertion is that pool B was processed and cleaned.
 
 
-def test_cleanup_worktree_survives_rmtree_oserror(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """_cleanup_worktree must not crash when rmtree fails with OSError."""
+def test_cleanup_worktree_preserves_worktree(tmp_path: Path) -> None:
     worktree = tmp_path / "ws"
     worktree.mkdir(parents=True)
     (worktree / "file.txt").write_text("content", encoding="utf-8")
 
-    # Make rmtree fail with PermissionError (a subclass of OSError)
-    def failing_rmtree(path: str, ignore_errors: bool = False) -> None:
-        del ignore_errors
-        if str(path).endswith("/ws"):
-            raise PermissionError("simulated permission error")
-        exec_sandbox.shutil.rmtree(path)
-
-    monkeypatch.setattr(exec_sandbox.shutil, "rmtree", failing_rmtree)
-
     manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
 
-    # Must not raise — the suppressed exception should be caught.
     manager._cleanup_worktree(worktree)
+
+    assert worktree.exists()
+    assert (worktree / "file.txt").exists()
 
 
 def test_delete_expired_pool_does_not_walk_tree_before_rmtree(
@@ -1301,3 +1291,48 @@ def test_acquire_pre_acquire_cleanup_runs_after_cooldown_expires(
     with manager.acquire(workspace):
         pass
     assert cleanup_call_count >= 1
+
+
+def test_fast_reset_does_not_pre_delete_worktree_directory(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "tracked.txt").write_text("original", encoding="utf-8")
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+
+    sandbox_root: Path
+    with manager.acquire(workspace) as worktree:
+        sandbox_root = worktree.parent
+
+    (sandbox_root / "ws").mkdir(exist_ok=True)
+    (sandbox_root / "ws" / "dirty.txt").write_text("dirty", encoding="utf-8")
+    inode_before = (sandbox_root / "ws").stat().st_ino
+
+    manager._reset(workspace, sandbox_root, sandbox_root / "ws")
+
+    assert (sandbox_root / "ws").stat().st_ino == inode_before
+    assert not (sandbox_root / "ws" / "dirty.txt").exists()
+    assert (sandbox_root / "ws" / "tracked.txt").read_text(encoding="utf-8") == "original"
+
+
+def test_fast_reset_clears_sentinel_on_mirror_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+
+    sandbox_root: Path
+    with manager.acquire(workspace) as worktree:
+        sandbox_root = worktree.parent
+
+    assert (sandbox_root / ".ralph-sandbox-ready").exists()
+
+    def raising_mirror(*args: object, **kwargs: object) -> None:
+        raise OSError("simulated")
+
+    monkeypatch.setattr(exec_sandbox, "_mirror_workspace", raising_mirror)
+
+    with pytest.raises(OSError):
+        manager._fast_reset(workspace, sandbox_root, sandbox_root / "ws")
+
+    assert not (sandbox_root / ".ralph-sandbox-ready").exists()

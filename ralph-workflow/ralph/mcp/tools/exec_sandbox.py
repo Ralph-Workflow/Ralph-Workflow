@@ -301,11 +301,13 @@ class ExecSandboxManager:
     def _fast_reset(self, workspace_root: Path, sandbox_root: Path, worktree: Path) -> bool:
         if not self._is_ready(sandbox_root):
             return False
-        if worktree.exists():
-            shutil.rmtree(worktree, ignore_errors=True)
         _write_overlay_owner_metadata(sandbox_root)
-        _mirror_workspace(workspace_root, worktree)
-        _ensure_git_isolation(workspace_root, worktree, sandbox_root)
+        try:
+            _mirror_workspace(workspace_root, worktree)
+            _ensure_git_isolation(workspace_root, worktree, sandbox_root)
+        except Exception:
+            self._ready_path(sandbox_root).unlink(missing_ok=True)
+            raise
         return True
 
     def _clear_sandbox_contents(self, sandbox_root: Path) -> None:
@@ -319,8 +321,7 @@ class ExecSandboxManager:
                 child.unlink(missing_ok=True)
 
     def _cleanup_worktree(self, worktree: Path) -> None:
-        with suppress(OSError):
-            shutil.rmtree(worktree)
+        pass
 
     def _ready_path(self, sandbox_root: Path) -> Path:
         return sandbox_root / _READY_FILE

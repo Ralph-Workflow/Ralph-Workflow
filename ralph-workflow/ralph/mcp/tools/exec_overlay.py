@@ -34,6 +34,7 @@ _LEGACY_PRUNE_MAX_AGE_SECONDS = 60 * 60 * 24
 _START_TIME_TOLERANCE_S = 1e-6
 _PSUTIL = load_psutil_module()
 _CURRENT_PROCESS_IDENTITY: list[tuple[int, float | None]] = []
+_RSYNC_BIN: str | None = shutil.which("rsync")
 
 
 def _relative_path_sort_key(path: Path) -> tuple[int, str]:
@@ -225,7 +226,7 @@ def _mirror_workspace_rsync(
     *,
     link_dest: Path | None = None,
 ) -> bool:
-    rsync = shutil.which("rsync")
+    rsync = _RSYNC_BIN
     if rsync is None:
         return False
     excludes = [f"--exclude={n}" for n in excluded_names]
@@ -319,9 +320,17 @@ def _mirror_workspace(
         str(p.parts[0]) for p in ignored_relative_paths if len(p.parts) > 1
     )
     excluded_paths = frozenset(ignored_relative_paths)
+    # Root-anchored rsync patterns for single-component ignored paths (e.g. .git)
+    # prevent excluding identically-named entries at deeper levels (e.g. submodule .git files).
+    rsync_root_excludes = sorted(
+        f"/{p.parts[0]!s}"
+        for p in ignored_relative_paths
+        if len(p.parts) == 1
+    )
+    rsync_excludes = sorted(excluded_names) + rsync_root_excludes
     overlay_root.mkdir(parents=True, exist_ok=True)
     if not _mirror_workspace_rsync(
-        source_root, overlay_root, sorted(excluded_names),
+        source_root, overlay_root, rsync_excludes,
         link_dest=link_dest,
     ):
         _sync_dir(source_root, overlay_root, excluded_names, excluded_paths)

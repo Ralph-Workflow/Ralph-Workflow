@@ -213,12 +213,14 @@ def test_passes_through_unrelated_env_values(
 
 def test_run_command_reuses_stable_sandbox_path(tmp_path: Path) -> None:
     seen_cwds: list[Path] = []
+    clean_on_entry: list[bool] = []
 
     def fake_runner(
         command: list[str], cwd: Path, timeout_seconds: float | None
     ) -> exec_completed_process._CompletedProcessAdapter:
         del command, timeout_seconds
         seen_cwds.append(cwd)
+        clean_on_entry.append(not (cwd / "dirty.txt").exists())
         (cwd / "dirty.txt").write_text("dirty", encoding="utf-8")
         return exec_completed_process._CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
 
@@ -229,7 +231,9 @@ def test_run_command_reuses_stable_sandbox_path(tmp_path: Path) -> None:
 
     assert len(seen_cwds) == 2
     assert seen_cwds[0] == seen_cwds[1]
-    assert not (seen_cwds[1] / "dirty.txt").exists()
+    # Sandbox is clean at the start of each run; dirty files from one run are
+    # removed by rsync --delete before the next acquire, not by release cleanup.
+    assert clean_on_entry == [True, True]
 
 
 def _make_concurrent_overlay_factory(tmp_path: Path) -> object:
