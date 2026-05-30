@@ -57,11 +57,10 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
                     AgentActivityKind.OUTPUT_LINE,
                     raw=tool_result_event.text,
                 )
-            if output_event is not None:
-                return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=output_event.text)
-            if thinking_event is not None:
+            priority_event = output_event or thinking_event
+            if priority_event is not None:
                 return AgentActivitySignal(
-                    AgentActivityKind.OUTPUT_LINE, raw=thinking_event.text
+                    AgentActivityKind.OUTPUT_LINE, raw=priority_event.text
                 )
         if self._transcript_parser._current_content_mode == "thinking":
             return None

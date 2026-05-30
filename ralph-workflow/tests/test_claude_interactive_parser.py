@@ -141,15 +141,15 @@ def test_claude_interactive_parser_surfaces_subscription_limit_errors() -> None:
 @pytest.mark.parametrize(
     "raw_line, expected_kinds",
     [
-        ("\r✢Tinkering… (5s · ↓292 tokens)\n", ["thinking"]),
-        ("\r✶Actioning… (14s · ↓1.2k tokens)\n", ["thinking"]),
-        ("\r✢Hullaballooing… (23s · ↓ 1.9k tokens)\n", ["thinking"]),
-        ("\r✶Quaing\n", ["thinking"]),
-        ("\r· thinking)\n", ["thinking"]),
-        ("\r✢Clauding…\n", ["thinking"]),
-        ("\r●Let me try reading the file\n", ["thinking"]),
-        ("\r↓292 tokens\n", ["thinking"]),
-        ("\r(5s · thinking)\n", ["thinking"]),
+        ("\r✢Tinkering… (5s · ↓292 tokens)\n", []),
+        ("\r✶Actioning… (14s · ↓1.2k tokens)\n", []),
+        ("\r✢Hullaballooing… (23s · ↓ 1.9k tokens)\n", []),
+        ("\r✶Quaing\n", []),
+        ("\r· thinking)\n", []),
+        ("\r✢Clauding…\n", []),
+        ("\r●Let me try reading the file\n", []),
+        ("\r↓292 tokens\n", []),
+        ("\r(5s · thinking)\n", []),
         # Normal output text must still be classified as output
         ("\rNow let me explore the repository\n", ["output"]),
         ("\rRendered help text includes tool: read_file as an example.\n", ["output"]),
@@ -370,7 +370,7 @@ def test_is_tui_chrome_does_not_filter_genuine_thinking_through_event_for_text()
 
     event = parser._event_for_text("\u25cfLet me try reading the file")
 
-    assert event is not None
+    assert event is None
     assert event.kind == "thinking"
 
 
@@ -450,7 +450,7 @@ def test_is_tui_chrome_does_not_filter_genuine_thinking_through_event_for_text_d
 
     event = parser._event_for_text("\u25cfLet me try reading the file")
 
-    assert event is not None
+    assert event is None
     assert event.kind == "thinking"
 
 
@@ -469,7 +469,7 @@ def test_interactive_parser_classifies_thinking_cycle_as_thinking() -> None:
     events = parser.feed("9thinking \u00b710s \u00b7 \u2193 329 tokens \u00b7 thinking)\n")
 
     kinds = [event.kind for event in events]
-    assert kinds == ["thinking"], f"Expected [thinking], got {kinds}"
+    assert kinds == [], f"Expected [thinking], got {kinds}"
 
 
 def test_event_for_text_classifies_thinking_cycle_as_thinking() -> None:
@@ -575,3 +575,12 @@ def test_short_prose_with_thinking_is_output() -> None:
 
     assert event is not None
     assert event.kind == "output"
+
+
+def test_standalone_spinner_label_with_ellipsis_is_thinking() -> None:
+    parser = ClaudeInteractiveTranscriptParser()
+
+    event = parser._event_for_text("Symbioting\u2026 Symbioting\u2026")
+
+    assert event is not None
+    assert event.kind == "thinking"

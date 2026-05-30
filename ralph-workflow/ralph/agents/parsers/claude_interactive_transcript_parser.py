@@ -28,15 +28,16 @@ _TUI_STATUSBAR_RE = re.compile(
     re.IGNORECASE,
 )
 _THINKING_STATUS_RE = re.compile(
-    r"^[\s]*[✽✶✢●✳✻]"
-    r"|^[\s]*·\s*thinking\s*\)"
-    r"|^[\s]*\(\d+s\s*·"
-    r"|^[\s]*↓\s*\d+\.?\d*[km]?\s*tokens?"
-    r"|^[\s]*✻\s*↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*thinking\s*\)"
-    r"|^[\s]*\d+thinking\s*·"
-    r"|^[\s]*\d+\s*·\s*thinking\s*\)"
-    r"|^[\s]*·\s*\d+s\s*·\s*(?:↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*)?thinking\s*\)"
-    r"|^[\s]*\d+s\s*·\s*(?:↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*)?thinking\s*\)"
+    r"[\s]*[✽✶✢●✳✻]"
+    r"|[\s]*·\s*thinking\s*\)"
+    r"|[\s]*\(\d+s\s*·"
+    r"|[\s]*↓\s*\d+\.?\d*[km]?\s*tokens?"
+    r"|[\s]*✻\s*↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*thinking\s*\)"
+    r"|[\s]*\d+thinking[\s)]*$"
+    r"|[\s]*\d+\.?\d*[km]?\s*tokens?\s*\)?"
+    r"|[\s]*\d+\s*·\s*thinking\s*\)"
+    r"|[\s]*·\s*\d+s\s*·\s*(?:↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*)?thinking\s*\)"
+    r"|[\s]*\d+s\s*·\s*(?:↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*)?thinking\s*\)"
 )
 
 # Short fragments (< 20 chars) ending in "thinking" are thinking status
@@ -46,6 +47,7 @@ _LENIENT_THINKING_MAX_LEN = 30
 _MIN_OUTPUT_LEN = 6
 _MAX_THINKING_PREFIX_ALPHA = 2
 _TUI_GLYPH_CHARS: frozenset[str] = frozenset("↑↓·✽✶✢●✳✻→←↳…▌█")
+_TUI_GLYPH_STRONG_LEN = 40
 
 
 def _contains_thinking_keyword(text: str) -> bool:
@@ -229,28 +231,26 @@ class ClaudeInteractiveTranscriptParser:
         self, item: dict[str, object]
     ) -> list[InteractiveTranscriptEvent]:
         item_type = str(item.get("type", ""))
+        result: list[InteractiveTranscriptEvent] = []
         if item_type == "tool_use":
             self._current_content_mode = "tool_use"
             tool_name = str(item.get("name", "tool"))
-            return [InteractiveTranscriptEvent(kind="tool_use", text=f"claude tool: {tool_name}")]
-        if item_type == "thinking":
+            result.append(
+                InteractiveTranscriptEvent(kind="tool_use", text=f"claude tool: {tool_name}")
+            )
+        elif item_type == "thinking":
             self._current_content_mode = "thinking"
             text = str(item.get("thinking", "")).strip()
-            if text:
-                return [InteractiveTranscriptEvent(kind="thinking", text=text)]
-            return []
-        if item_type == "text":
+            if text and not self._is_tui_thinking_garbage(text):
+                result.append(InteractiveTranscriptEvent(kind="thinking", text=text))
+        elif item_type == "text":
+            self._current_content_mode = "output"
             text = str(item.get("text", "")).strip()
-            if not text:
-                return []
-            # Route through _event_for_text so ALL TUI/thinking/spinner
-            # filtering is applied — same as non-JSON PTY text lines.
-            event = self._event_for_text(text)
-            if event is not None:
-                self._current_content_mode = "output"
-                return [event]
-            return []
-        return []
+            if text:
+                event = self._event_for_text(text)
+                if event is not None:
+                    result.append(event)
+        return result
 
     def _events_from_assistant_message(self, message: object) -> list[InteractiveTranscriptEvent]:
         if not isinstance(message, dict):
@@ -313,48 +313,71 @@ class ClaudeInteractiveTranscriptParser:
                 )
         return events
 
-    def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:  # noqa: PLR0911
-        if _PURE_COUNTER_RE.match(text):
-            return None
-        if _TUI_STATUSBAR_RE.search(text):
-            return None
+    def _match_known_pattern(self, text: str) -> InteractiveTranscriptEvent | None:
+        """Match text against known regex/prefix patterns, returning event or None."""
+        result: InteractiveTranscriptEvent | None = None
         for pattern in _SESSION_ID_PATTERNS:
             match = pattern.search(text)
             if match is not None:
                 self.session_id = match.group(1)
-                return InteractiveTranscriptEvent(kind="session", text=text)
-        if _TOOL_USE_PATTERN.match(text):
-            return InteractiveTranscriptEvent(kind="tool_use", text=text)
-        if text.startswith("claude result:"):
-            return InteractiveTranscriptEvent(kind="tool_result", text=text)
-        if text.startswith("[claude]:") or text.startswith("claude ") or text.startswith("claude/"):
-            return InteractiveTranscriptEvent(kind="lifecycle", text=text)
-        if _THINKING_STATUS_RE.search(text):
-            return InteractiveTranscriptEvent(kind="thinking", text=text)
+                result = InteractiveTranscriptEvent(kind="session", text=text)
+                break
+        if result is None and _TOOL_USE_PATTERN.match(text):
+            result = InteractiveTranscriptEvent(kind="tool_use", text=text)
+        if result is None and text.startswith("claude result:"):
+            result = InteractiveTranscriptEvent(kind="tool_result", text=text)
+        if result is None and (
+            text.startswith("[claude]:") or text.startswith("claude ") or text.startswith("claude/")
+        ):
+            result = InteractiveTranscriptEvent(kind="lifecycle", text=text)
+        if result is None and _THINKING_STATUS_RE.search(text):
+            result = None
+        return result
+
+    @staticmethod
+    def _detect_thinking_idle(text: str) -> InteractiveTranscriptEvent | None:
+        """Detect thinking content in idle mode — always None.
+
+        In idle mode (before JSON sets content mode), there is no legitimate
+        thinking content.  All real thinking arrives via JSON ``"type":"thinking"``
+        items that set ``_current_content_mode``.  The ``"ends with thinking"``
+        heuristic would only catch TUI status-bar counter fragments.
+        """
+        return None
+
+    @staticmethod
+    def _is_tui_thinking_garbage(text: str) -> bool:
+        """Return True if *text* is TUI spinner/status garbage, not real content."""
+        return bool(_THINKING_STATUS_RE.search(text)) or any(
+            c in _TUI_GLYPH_CHARS for c in text
+        )
+
+    def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:  # noqa: PLR0911
+        if _PURE_COUNTER_RE.match(text) or _TUI_STATUSBAR_RE.search(text):
+            return None
+        known = self._match_known_pattern(text)
+        if known is not None:
+            return known
         if _is_tui_chrome(text):
             return None
         if self._current_content_mode == "thinking":
+            if _THINKING_STATUS_RE.search(text):
+                return None
+            if any(c in _TUI_GLYPH_CHARS for c in text):
+                return None
             return InteractiveTranscriptEvent(kind="thinking", text=text)
         if self._current_content_mode == "tool_use":
-            return InteractiveTranscriptEvent(kind="thinking", text=text)
+            return None
         if self._current_content_mode == "output":
             return InteractiveTranscriptEvent(kind="output", text=text)
-        cleaned = text.rstrip().rstrip(")")
-        if len(text) < _LENIENT_THINKING_MAX_LEN and cleaned.endswith("thinking"):
-            prefix = cleaned[: -len("thinking")]
-            prefix_alpha = re.sub(r"[^a-zA-Z]", "", prefix)
-            if len(prefix_alpha) <= _MAX_THINKING_PREFIX_ALPHA:
-                return InteractiveTranscriptEvent(kind="thinking", text=text)
-        if len(text) < _LENIENT_THINKING_MAX_LEN and _contains_thinking_keyword(text):
-            if any(c in _TUI_GLYPH_CHARS for c in text):
-                return InteractiveTranscriptEvent(kind="thinking", text=text)
-            lower = text.lower()
-            if "thinking" in lower and " " not in text:
-                return InteractiveTranscriptEvent(kind="thinking", text=text)
-            if "ought for" in lower:
-                return InteractiveTranscriptEvent(kind="thinking", text=text)
-        if len(text) < 20 and any(c in _TUI_GLYPH_CHARS for c in text):
-            return InteractiveTranscriptEvent(kind="thinking", text=text)
+        if self._current_content_mode is None:
+            if len(text) < 20 and self._is_tui_thinking_garbage(text):
+                return None
+            if _contains_thinking_keyword(text):
+                return None
+        thinking = self._detect_thinking_idle(text)
+        if thinking is not None:
+            return thinking
         if len(text) <= _MIN_OUTPUT_LEN:
             return None
         return InteractiveTranscriptEvent(kind="output", text=text)
