@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-30T14:10:35
-Chosen lane: **measurement_hold**
+Generated: 2026-05-30T15:13:04
+Chosen lane: **manual_outreach_asset_follow_through**
 
 ## Why this lane
-- No unpublished repo-native guide remains for owned-content publication, so do not let the selector drift into an owned-content noop; hold for the next truthful execution window instead.
+- A channel-ready manual publisher outreach asset already exists for an untouched Codeberg-primary target; use that packet as the truthful follow-through surface instead of hiding behind another measurement hold.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 2 live external marketing action(s) already shipped in the last 6 hours.
 - If no new outcome lands first, this short-window congestion clears at 2026-05-30T16:11:00. Before then, another live outbound action would mostly blur measurement.
@@ -12,6 +12,7 @@ Chosen lane: **measurement_hold**
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
 - Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.
 - Fresh publisher outreach already shipped in the current 7-day review window (AI Coding Stack, AI Dev Setup, AI Saying), so those targets should not be re-queued immediately.
+- A channel-ready manual publisher outreach asset already exists (ComputingForGeeks), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.
 - An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.
 - Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.
 - All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.
@@ -31,8 +32,8 @@ Chosen lane: **measurement_hold**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 
-## Immediate measurement-hold work
-- Do not ship another fresh outreach/reset action in this short review window
-- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
-- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
-- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map
+## Immediate manual outreach follow-through
+- Reuse the existing single-target manual outreach asset instead of generating another packet
+- Treat that asset as the truthful follow-through surface during this hold window
+- Keep Codeberg as the primary CTA and do not dilute the target-specific proof angle
+- Do not claim the board is empty while a current manual outreach asset still exists

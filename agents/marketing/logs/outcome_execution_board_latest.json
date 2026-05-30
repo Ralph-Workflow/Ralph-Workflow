@@ -1,21 +1,22 @@
 {
-  "timestamp": "2026-05-30T14:10:04.657719",
+  "timestamp": "2026-05-30T15:13:04.606468",
   "type": "outcome_execution_board_runner",
   "status": "executed",
   "repair_needed_at_start": true,
-  "selected_lane": "measurement_hold",
+  "selected_lane": "manual_outreach_asset_follow_through",
   "selected_action_type": "truth_snapshot_only",
   "executed_lane": null,
   "do_now_lane_available": false,
   "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md",
   "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md",
   "execution_board_targets": [
+    "ComputingForGeeks",
     "Ralph Workflow curator follow-up — Codeberg CTA"
   ],
-  "execution_board_fingerprint": "4f9076f1603a5a0658929c1a7c2abeebe909fd8a",
+  "execution_board_fingerprint": "b450768685e6a17a89d4bc5b0a7c89e82d8d6bfb",
   "short_review_window_release_at": "2026-05-30T16:11:00",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
-  "measurement_window": "Review Codeberg-linked movement within 7 days.",
+  "measurement_window": "Review reply/backlink movement and Codeberg deltas within 7 days.",
   "summary": "Execution board refreshed, but no truthful do-now lane was available; the board itself is the structural truth source.",
   "next_truthful_checkpoint": {
     "at": "2026-05-30T16:11:00",
@@ -45,7 +46,7 @@
       "distribution_architecture_guard_pause",
       "distribution_architecture_repair"
     ],
-    "board_target_count": 1
+    "board_target_count": 2
   },
   "fake_green_guard": "This runner only counts if it refreshes the consolidated execution board and either advances one of its executable lanes or explicitly records that no truthful do-now lane exists yet.",
   "shared_findings_used": [
