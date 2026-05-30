@@ -205,6 +205,14 @@ class SkillManager:
             )
             updated_state = state.model_copy(update={"skills": updated_entry})
             self._save_state(updated_state)
+        else:
+            healthy_entry = CapabilityEntry(
+                status=CapabilityStatus.INSTALLED_HEALTHY,
+                last_check_ok_iso=_now_iso(),
+                update_available=False,
+            )
+            updated_state = state.model_copy(update={"skills": healthy_entry})
+            self._save_state(updated_state)
         return update_available
 
     def get_docs_mcp_available(self, *, workspace_root: Path) -> bool:

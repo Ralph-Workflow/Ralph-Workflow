@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from importlib.resources import files
 from typing import TYPE_CHECKING, TypedDict, cast
@@ -49,10 +50,11 @@ def get_skill_metadata() -> SkillMetadata:
     return _read_skill_metadata()
 
 
-def managed_skill_marker(name: str) -> dict[str, str]:
+def managed_skill_marker(name: str, *, installed_sha256: str) -> dict[str, str]:
     return {
         "managed_by": "ralph-workflow",
         "skill": name,
+        "installed_content_sha256": installed_sha256,
     }
 
 
@@ -77,9 +79,28 @@ def materialize_skills_to_claude_dir(target: Path) -> list[str]:
     for name in BASELINE_SKILL_NAMES:
         skill_dir = target / name
         skill_dir.mkdir(parents=True, exist_ok=True)
-        (skill_dir / "SKILL.md").write_text(get_skill_content(name), encoding="utf-8")
-        (skill_dir / _MANAGED_MARKER).write_text(
-            json.dumps(managed_skill_marker(name), indent=2) + "\n",
+        skill_file = skill_dir / "SKILL.md"
+        marker_file = skill_dir / _MANAGED_MARKER
+        if skill_file.exists() and marker_file.exists():
+            stored_sha: str = ""
+            try:
+                marker_data = cast(
+                    "dict[str, object]",
+                    json.loads(marker_file.read_text(encoding="utf-8")),
+                )
+                sha_val = marker_data.get("installed_content_sha256", "")
+                stored_sha = sha_val if isinstance(sha_val, str) else ""
+            except Exception:
+                pass
+            if stored_sha:
+                current_sha = hashlib.sha256(skill_file.read_bytes()).hexdigest()
+                if current_sha != stored_sha:
+                    continue  # user manually edited; preserve
+        content = get_skill_content(name)
+        skill_file.write_text(content, encoding="utf-8")
+        content_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        marker_file.write_text(
+            json.dumps(managed_skill_marker(name, installed_sha256=content_sha), indent=2) + "\n",
             encoding="utf-8",
         )
         written_names.append(name)
