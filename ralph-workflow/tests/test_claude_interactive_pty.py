@@ -18,7 +18,7 @@ from tests.test_claude_interactive_pty_helper__fakeptymanager import _FakePtyMan
 def test_pending_vt_snapshot_line_surfaces_semantic_activity_without_newline() -> None:
     assert (
         invoke_module.pending_vt_snapshot_line("\x1b[2K\rclaude tool: write_file")
-        == "claude tool: write_file\n"
+        == "claude tool: write_file"
     )
 
 

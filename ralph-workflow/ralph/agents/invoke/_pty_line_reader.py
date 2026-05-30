@@ -193,6 +193,8 @@ class PtyLineReader:
                         self._lines_event.set()
                     last_snapshot = None
                     continue
+                if "\r" not in pending:
+                    continue
                 snapshot_line = _pending_vt_snapshot_line(pending)
                 if snapshot_line is not None and snapshot_line != last_snapshot:
                     with self._lines_lock:

@@ -172,9 +172,9 @@ def test_interactive_parser_accumulates_thinking_status_in_thinking_accumulator(
     parser = ClaudeInteractiveParser()
     lines = iter(
         [
-            "✢Tinkering… (5s · ↓292 tokens)",
-            "Now let me explore the repository.",
-            "claude tool: read_file",
+            "\u2722Tinkering\u2026 (5s \u00b7 \u2193292 tokens)\n",
+            "Now let me explore the repository.\n",
+            "claude tool: read_file\n",
         ]
     )
 

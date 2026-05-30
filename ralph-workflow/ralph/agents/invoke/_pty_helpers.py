@@ -60,8 +60,6 @@ def _pending_vt_snapshot_line(text: str) -> str | None:
     normalized = normalize_vt_text(text).rstrip()
     if not normalized:
         return None
-    if not normalized.endswith("\n"):
-        return f"{normalized}\n"
     return normalized
 
 

@@ -28,12 +28,14 @@ _TUI_STATUSBAR_RE = re.compile(
     re.IGNORECASE,
 )
 _THINKING_STATUS_RE = re.compile(
-    r"^[\s]*[✶✢●✳]"
+    r"^[\s]*[✶✢●✳✻]"
     r"|^[\s]*·\s*thinking\s*\)"
     r"|^[\s]*\(\d+s\s*·"
     r"|^[\s]*↓\s*\d+\.?\d*[km]?\s*tokens?"
+    r"|^[\s]*✻\s*↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*thinking\s*\)"
     r"|^[\s]*\d+thinking\s*·"
-    r"|^[\s]*·\s*\d+s\s*·\s*thinking\s*\)"
+    r"|^[\s]*\d+\s*·\s*thinking\s*\)"
+    r"|^[\s]*·\s*\d+s\s*·\s*(?:↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*)?thinking\s*\)"
 )
 
 # Short fragments (< 20 chars) ending in "thinking" are thinking status
@@ -41,6 +43,7 @@ _THINKING_STATUS_RE = re.compile(
 # "thinking" is always longer or doesn't end with "thinking".
 _LENIENT_THINKING_MAX_LEN = 20
 _MIN_OUTPUT_LEN = 3
+_MAX_THINKING_PREFIX_ALPHA = 2
 
 # Box-drawing (U+2500-U+257F) + block elements (U+2580-U+259F) + extras.
 _BOX_DRAWING_CHARS: frozenset[str] = frozenset(
@@ -159,14 +162,27 @@ class ClaudeInteractiveTranscriptParser:
     def __init__(self) -> None:
         self.session_id: str | None = None
         self._last_emitted_signature: tuple[str, str] | None = None
+        self._buffer = ""
 
     def feed(self, raw_text: str) -> list[InteractiveTranscriptEvent]:
         json_events = self._events_from_json(raw_text)
         if json_events is not None:
             return json_events
-        normalized = normalize_vt_text(raw_text)
+        self._buffer += raw_text
+        if "\n" not in self._buffer:
+            return []
+        normalized = normalize_vt_text(self._buffer)
+        lines = normalized.split("\n")
+        if not lines:
+            return []
+        if not normalized.endswith("\n"):
+            self._buffer = lines.pop()
+            if not lines:
+                return []
+        else:
+            self._buffer = ""
         events: list[InteractiveTranscriptEvent] = []
-        for line in normalized.splitlines():
+        for line in lines:
             text = line.strip()
             if not text:
                 continue
@@ -288,12 +304,11 @@ class ClaudeInteractiveTranscriptParser:
         if _is_tui_chrome(text):
             return None
         cleaned = text.rstrip().rstrip(")")
-        if (
-            len(text) < _LENIENT_THINKING_MAX_LEN
-            and cleaned.endswith("thinking")
-            and " " not in cleaned
-        ):
-            return InteractiveTranscriptEvent(kind="thinking", text=text)
-        if len(text) < _MIN_OUTPUT_LEN:
+        if len(text) < _LENIENT_THINKING_MAX_LEN and cleaned.endswith("thinking"):
+            prefix = cleaned[: -len("thinking")]
+            prefix_alpha = re.sub(r"[^a-zA-Z]", "", prefix)
+            if len(prefix_alpha) <= _MAX_THINKING_PREFIX_ALPHA:
+                return InteractiveTranscriptEvent(kind="thinking", text=text)
+        if len(text) <= _MIN_OUTPUT_LEN:
             return None
         return InteractiveTranscriptEvent(kind="output", text=text)
