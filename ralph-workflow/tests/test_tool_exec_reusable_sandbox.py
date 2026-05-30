@@ -1054,3 +1054,115 @@ def test_path_size_bytes_via_du_uses_du_when_available(
     size = manager._path_size_bytes_via_du(test_dir)
 
     assert size == 42 * 1024
+
+
+def test_workspace_size_bytes_delegates_to_compute_workspace_size_bytes(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "a.txt").write_text("hello")
+    pycache = workspace / "__pycache__"
+    pycache.mkdir()
+    (pycache / "cached.pyc").write_text("ignored_content")
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    result = manager._workspace_size_bytes(workspace)
+    expected = exec_sandbox._compute_workspace_size_bytes(workspace)
+    assert result == expected
+    assert result == 5
+
+
+def test_path_size_bytes_excludes_lock_files(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    slot = tmp_path / "slot"
+    slot.mkdir()
+    (slot / "data.bin").write_bytes(b"abc")
+    (slot / exec_sandbox._LOCK_FILE).write_bytes(b"xxxxxxxxxx")
+    (slot / exec_sandbox._POOL_LOCK_FILE).write_bytes(b"yyyyyy")
+    assert manager._path_size_bytes(slot) == 3
+
+
+def test_path_size_bytes_counts_nested_files(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    root = tmp_path / "root"
+    root.mkdir()
+    sub = root / "sub"
+    sub.mkdir()
+    (root / "a.txt").write_bytes(b"aa")
+    (sub / "b.txt").write_bytes(b"bbb")
+    assert manager._path_size_bytes(root) == 5
+
+
+def test_path_size_bytes_returns_zero_for_missing_path(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    assert manager._path_size_bytes(tmp_path / "nonexistent") == 0
+
+
+def test_path_size_bytes_handles_scandir_oserror_gracefully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "a.txt").write_bytes(b"x")
+    original_scandir = exec_sandbox.os.scandir
+
+    def failing_scandir(path: object) -> object:
+        if str(path) == str(root):
+            raise OSError("simulated")
+        return original_scandir(path)
+
+    monkeypatch.setattr(exec_sandbox.os, "scandir", failing_scandir)
+    assert manager._path_size_bytes(root) == 0
+
+
+def test_acquire_skips_post_release_cleanup_when_cleanup_was_recent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    cleanup_call_count = 0
+    original_cleanup = manager.cleanup_base
+
+    def counting_cleanup() -> exec_sandbox.ExecCacheCleanupSummary:
+        nonlocal cleanup_call_count
+        cleanup_call_count += 1
+        return original_cleanup()
+
+    monkeypatch.setattr(manager, "cleanup_base", counting_cleanup)
+
+    with manager.acquire(workspace):
+        pass
+    assert cleanup_call_count == 2  # first acquire: pre+post
+
+    cleanup_call_count = 0
+    with manager.acquire(workspace):
+        pass
+    assert cleanup_call_count == 1  # rapid second: only pre-acquire; post throttled
+
+
+def test_acquire_runs_post_release_cleanup_after_cooldown_expires(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    cleanup_call_count = 0
+    original_cleanup = manager.cleanup_base
+
+    def counting_cleanup() -> exec_sandbox.ExecCacheCleanupSummary:
+        nonlocal cleanup_call_count
+        cleanup_call_count += 1
+        return original_cleanup()
+
+    monkeypatch.setattr(manager, "cleanup_base", counting_cleanup)
+
+    with manager.acquire(workspace):
+        pass
+    assert cleanup_call_count == 2
+
+    manager._last_cleanup_monotonic = 0.0  # simulate cooldown expired
+
+    cleanup_call_count = 0
+    with manager.acquire(workspace):
+        pass
+    assert cleanup_call_count == 2  # both pre and post run

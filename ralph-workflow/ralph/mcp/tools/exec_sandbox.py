@@ -62,6 +62,7 @@ _SLOT_PREFIX = "slot-"
 _BASE_LOCK_FILE = ".ralph-exec-base.lock"
 _TRASH_PREFIX = ".ralph-exec-trash-"
 _BASE_PRUNE_INTERVAL_S = 1.0
+_POST_RELEASE_CLEANUP_COOLDOWN_S = 5.0
 
 
 def _workspace_key(workspace_root: Path) -> str:
@@ -177,6 +178,7 @@ class ExecSandboxManager:
         self._managed_workspace_keys: set[str] = set()
         self._consecutive_cleanup_failures = 0
         self._cleanup_cooldown_until_monotonic = 0.0
+        self._last_cleanup_monotonic = 0.0
 
     @contextmanager
     def acquire(self, workspace_root: Path) -> Iterator[Path]:
@@ -237,7 +239,12 @@ class ExecSandboxManager:
             self._release_lock(sandbox_root)
 
             self._shrink_idle_slots(pool_root, workspace_key)
-            self.cleanup_base()
+            if (
+                time.monotonic() - self._last_cleanup_monotonic
+                >= _POST_RELEASE_CLEANUP_COOLDOWN_S
+            ):
+                self.cleanup_base()
+                self._last_cleanup_monotonic = time.monotonic()
 
     def cleanup_base(self) -> ExecCacheCleanupSummary:
         self._base_dir.mkdir(parents=True, exist_ok=True)
@@ -501,12 +508,20 @@ class ExecSandboxManager:
             except OSError:
                 return 0
         total = 0
-        for child in path.rglob("*"):
+        stack: list[Path] = [path]
+        while stack:
+            current = stack.pop()
             try:
-                if child.is_file():
-                    if child.name in {_LOCK_FILE, _POOL_LOCK_FILE, _BASE_LOCK_FILE}:
-                        continue
-                    total += child.stat().st_size
+                with os.scandir(current) as entries:
+                    for entry in entries:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(current / entry.name)
+                        elif (
+                            entry.is_file(follow_symlinks=False)
+                            and entry.name not in {_LOCK_FILE, _POOL_LOCK_FILE, _BASE_LOCK_FILE}
+                        ):
+                            with suppress(OSError):
+                                total += entry.stat().st_size
             except OSError:
                 continue
         return total
@@ -537,24 +552,7 @@ class ExecSandboxManager:
         return self._path_size_bytes(path)
 
     def _workspace_size_bytes(self, workspace_root: Path) -> int:
-        total = 0
-        ignored_relative_paths = _ignored_workspace_relative_paths(workspace_root)
-        for child in workspace_root.rglob("*"):
-            relative_path = child.relative_to(workspace_root)
-            relative_parts = relative_path.parts
-            if any(part in _GENERATED_DIR_NAMES for part in relative_parts):
-                continue
-            if any(
-                relative_path == ignored_path or relative_path.is_relative_to(ignored_path)
-                for ignored_path in ignored_relative_paths
-            ):
-                continue
-            try:
-                if child.is_file():
-                    total += child.stat().st_size
-            except OSError:
-                continue
-        return total
+        return _compute_workspace_size_bytes(workspace_root)
 
     def _slot_owner_is_collectible(self, slot_root: Path) -> bool:
         marker = slot_root / ".ralph-exec-owner.json"
