@@ -54,7 +54,7 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
                 return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=lifecycle_event.text)
             if tool_result_event is not None:
                 return AgentActivitySignal(
-                    AgentActivityKind.OUTPUT_LINE,
+                    AgentActivityKind.TOOL_RESULT,
                     raw=tool_result_event.text,
                 )
             priority_event = output_event or thinking_event

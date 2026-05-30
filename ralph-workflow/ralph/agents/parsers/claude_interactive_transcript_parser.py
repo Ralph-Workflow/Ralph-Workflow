@@ -248,6 +248,12 @@ class ClaudeInteractiveTranscriptParser:
             text = str(item.get("thinking", "")).strip()
             if text and not self._is_tui_thinking_garbage(text):
                 result.append(InteractiveTranscriptEvent(kind="thinking", text=text))
+        elif item_type == "tool_result":
+            text = _extract_message_text(item.get("content")).strip()
+            if text:
+                result.append(
+                    InteractiveTranscriptEvent(kind="tool_result", text=f"claude result: {text}")
+                )
         elif item_type == "text":
             self._current_content_mode = "output"
             text = str(item.get("text", "")).strip()

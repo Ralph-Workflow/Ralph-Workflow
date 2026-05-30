@@ -70,6 +70,53 @@ def test_interactive_parser_suppresses_repeated_json_tool_use_event() -> None:
     assert second_events == []
 
 
+def test_interactive_parser_extracts_tool_result_from_assistant_message_content() -> None:
+    parser = ClaudeInteractiveTranscriptParser()
+    payload = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_exec_1",
+                        "content": [{"type": "text", "text": "Exit code: 0\nStdout:\nhello"}],
+                    }
+                ],
+            },
+        }
+    )
+
+    events = parser.feed(payload)
+
+    assert [event.kind for event in events] == ["tool_result"]
+    assert events[0].text == "claude result: Exit code: 0\nStdout:\nhello"
+
+
+def test_claude_interactive_strategy_classifies_assistant_tool_result_as_tool_result() -> None:
+    strategy = ClaudeInteractiveExecutionStrategy()
+    payload = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_exec_1",
+                        "content": [{"type": "text", "text": "Exit code: 0\nStdout:\nhello"}],
+                    }
+                ],
+            },
+        }
+    )
+
+    signal = strategy.classify_activity_line(payload)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.TOOL_RESULT
+    assert signal.raw == "claude result: Exit code: 0\nStdout:\nhello"
+
+
 def test_vt_normalizer_collapses_repaint_duplicates_to_single_semantic_line() -> None:
     raw = "\rclaude tool: read_file\rclaude tool: read_file\n"
 

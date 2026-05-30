@@ -44,6 +44,10 @@ def _transcript_lines_from_assistant_content(content: list[object]) -> list[str]
         item_type = str(item.get("type", ""))
         if item_type == "tool_use":
             lines.append(f"claude tool: {item.get('name', 'tool')!s}\n")
+        elif item_type == "tool_result":
+            result_content = _extract_message_text(item.get("content"))
+            if result_content:
+                lines.append(f"claude tool result: {result_content}\n")
         elif item_type == "text":
             text = str(item.get("text", "")).strip()
             if text:
