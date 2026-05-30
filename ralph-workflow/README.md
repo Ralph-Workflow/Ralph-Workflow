@@ -39,7 +39,9 @@ A good first run looks like:
 2. **Run `ralph`** — the orchestrator plans, builds, tests, and iterates
 3. **Review the PR** — come back to committed, tested code
 
-**[Your first overnight task →](https://ralphworkflow.com/blog/your-first-overnight-task-start-here-guide)**
+**[Start here: your first overnight task →](https://ralphworkflow.com/start)**
+
+New to autonomous coding? The 4-step guide walks you through picking a task, writing a short spec, running Ralph Workflow, and judging the result honestly — all in one page. Prefer a deeper narrative? [Read the blog version →](https://ralphworkflow.com/blog/your-first-overnight-task-start-here-guide)
 
 ## Install
 
@@ -55,6 +57,21 @@ ralph --help
 ```bash
 pip install ralph-workflow
 ralph --help
+```
+
+### Docker
+
+```bash
+docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralphworkflow/ralph --help
+```
+
+Build from source:
+
+```bash
+git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+cd Ralph-Workflow/ralph-workflow
+docker build -t ralph-workflow .
+docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
 ```
 
 ### From source

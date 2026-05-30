@@ -1,0 +1,71 @@
+# Ralph Workflow – Docker
+#
+# Files excluded from the Docker build context to keep the image small
+# and avoid accidentally shipping secrets or dev artifacts.
+
+# Dependencies / venvs
+.venv
+.venv-*
+*.egg-info
+uv.lock
+.python-version
+
+# Build output
+dist/
+build/
+*.whl
+*.tar.gz
+
+# Git (cloned fresh inside the container if needed)
+.git
+.gitmodules
+
+# Tests / dev tooling
+tests/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+
+# CI / dev config
+Makefile
+pytest.ini
+mypy.ini
+conftest.py
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Docker itself (prevent recursion)
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Temp / runtime state that shouldn't ship
+checkpoint.json
+tmp/
+*.log
+
+# Homebrew formula (only relevant for macOS)
+Formula/
+
+# Docs (built separately, not needed at runtime)
+docs/
+
+# Sorbet (Ralph-Site only, not this package)
+sorbet/
+
+# Misc
+skills-package/
+run_verify_internal.sh
+stubs/

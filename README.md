@@ -47,12 +47,32 @@ Write your task in `PROMPT.md` before you sleep. Ralph reads it, runs planning â
 
 ## Quick start
 
+### Docker (no Python required)
+
+```bash
+docker run --rm -it \
+  -v "$(pwd):/workspace" \
+  -v "$HOME/.ralph:/root/.ralph" \
+  ralphworkflow/ralph --help
+```
+
+Build from source:
+
+```bash
+git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+cd Ralph-Workflow/ralph-workflow
+docker build -t ralph-workflow .
+docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
+```
+
+### pipx (Python 3.12+)
+
 ```bash
 pipx install ralph-workflow
 ralph --init        # one-time setup: installs agent bundles and capabilities
 ```
 
-Requires Python 3.12+. Full docs at [ralphworkflow.com](https://ralphworkflow.com/docs).
+Full docs at [ralphworkflow.com](https://ralphworkflow.com/docs).
 
 1. Run `ralph --diagnose` to confirm healthy helpers
 2. Write your task in `PROMPT.md` in your project root
