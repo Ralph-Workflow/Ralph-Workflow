@@ -1,8 +1,19 @@
 {
-  "ts": "2026-05-30T00:35:23.877743",
-  "jobs_checked": 23,
-  "issues_found": 4,
+  "ts": "2026-05-30T01:59:32.762822",
+  "jobs_checked": 24,
+  "issues_found": 5,
   "issues": [
+    {
+      "job_id": "50578fdf-ea83-46bd-8580-36d2bae7ba54",
+      "name": "marketing-workflow-audit",
+      "category": "live_error",
+      "consecutive_errors": 1,
+      "last_status": "error",
+      "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+      "timeout_seconds": 3600,
+      "last_duration_ms": 1671629,
+      "likely_cause": "CONTEXT_OVERFLOW: prompt/runtime context exceeded safe model limit; reduce prompt size or split work"
+    },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery",
@@ -19,19 +30,19 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 1763.88,
+      "artifact_age_minutes": 1848.02,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
     {
-      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
-      "name": "blocked-channel-recovery_escalation",
+      "job_id": "50578fdf-ea83-46bd-8580-36d2bae7ba54",
+      "name": "marketing-workflow-audit_escalation",
       "category": "escalation_required",
-      "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=302",
-      "repeats_in_recent_history": 302,
-      "owner_domain": null,
-      "incident_key": "blocked-channel-recovery::timeout",
+      "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=49",
+      "repeats_in_recent_history": 49,
+      "owner_domain": "marketing",
+      "incident_key": "marketing-workflow-audit::live_error",
       "escalation_level": "critical",
       "blocked_by": []
     },
@@ -40,13 +51,20 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=303",
-      "repeats_in_recent_history": 303,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=313",
+      "repeats_in_recent_history": 313,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
-  "repairs_attempted": []
+  "repairs_attempted": [
+    {
+      "type": "owner_loop_escalation",
+      "job": "marketing-workflow-audit_escalation",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780099167338:8\"\n}"
+    }
+  ]
 }

@@ -1,16 +1,16 @@
 # Outcome Execution Board Runner
 
-- Generated: `2026-05-30T01:30:09.711629`
+- Generated: `2026-05-30T02:39:02.874913`
 - Repair needed at start: `False`
 - Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md`
-- Selected lane: `measurement_hold`
+- Selected lane: `owned_content`
 - Action type: `truth_snapshot_only`
 - Executed lane: `None`
 - Truthful do-now lane available: `False`
 - Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
 - Measurement window: Review Codeberg-linked movement within 7 days.
-- Next truthful checkpoint: `2026-05-31T00:00:00` (short_review_window_release)
+- Next truthful checkpoint: `2026-05-30T08:36:38` (short_review_window_release)
 - Checkpoint reason: Current short review window clears.
 
 ## Structural capability added

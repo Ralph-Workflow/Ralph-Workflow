@@ -1,18 +1,18 @@
 {
-  "timestamp": "2026-05-30T01:28:18.858564",
+  "timestamp": "2026-05-30T02:15:01.838412",
   "repair_types_seen": [],
-  "selected_lane": "measurement_hold",
-  "selected_action_type": "measurement_hold_follow_through",
-  "execution_status": "executed",
+  "selected_lane": "owned_content",
+  "selected_action_type": "owned_content_lane_noop",
+  "execution_status": "skipped",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_012818_measurement_hold_follow_through.md",
-  "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Scheduled an automatic post-hold marketer rerun at the exact short-window release time. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
-  "expected_outcome": "Advance distribution via lane measurement_hold without defaulting back to monitoring-only work.",
+  "artifact_path": null,
+  "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph.",
+  "expected_outcome": "Advance distribution via lane owned_content without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
   "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
   "decision": {
-    "lane": "measurement_hold",
-    "reason": "No unpublished repo-native guide remains for owned-content publication, so do not let the selector drift into an owned-content noop; hold for the next truthful execution window instead.",
+    "lane": "owned_content",
+    "reason": "No stronger autonomous lane detected.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
@@ -48,14 +48,12 @@
     "skip_curator_outreach": false
   },
   "execution": {
-    "lane": "measurement_hold",
-    "action_type": "measurement_hold_follow_through",
-    "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_012818_measurement_hold_follow_through.md",
-    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Scheduled an automatic post-hold marketer rerun at the exact short-window release time. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
-    "targets_prepared": [
-      "Ralph Workflow curator follow-up — Codeberg CTA"
-    ],
+    "lane": "owned_content",
+    "action_type": "owned_content_lane_noop",
+    "status": "skipped",
+    "artifact_path": null,
+    "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph.",
+    "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -63,6 +61,8 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "live_external_action": false,
-    "blocking_factors": []
+    "blocking_factors": [
+      "No unpublished owned-content guide was available for Telegraph publication."
+    ]
   }
 }

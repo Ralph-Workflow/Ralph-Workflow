@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-29T22:35:23.872937+00:00",
+  "updated_at": "2026-05-29T23:59:32.756260+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 273,
+      "repeat_count": 275,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1017,15 +1017,23 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=273"
+        },
+        {
+          "at": "2026-05-29T23:59:07.374261+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=275"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-29T20:47:11.371112+00:00",
+      "last_seen": "2026-05-29T23:59:00.055331+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-05-29T20:47:56.087433+00:00"
+      "closed_at": "2026-05-29T23:59:07.374277+00:00"
     },
     "marketing_independent_verification::loop_verification_fail": {
       "key": "marketing_independent_verification::loop_verification_fail",
@@ -3005,7 +3013,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 495,
+      "repeat_count": 499,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -5301,15 +5309,31 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780094060578:1\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T00:02:54.473309+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=495"
+        },
+        {
+          "at": "2026-05-29T23:34:32.219228+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780097672177:4\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T00:37:47.761154+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=496"
+        },
+        {
+          "at": "2026-05-29T23:59:10.062830+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T01:57:58.045252+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=499"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-29T22:34:15.934981+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T00:02:54.473309+02:00\"\n}",
+      "last_seen": "2026-05-29T23:59:00.055342+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T01:57:58.045252+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-05-29T22:34:20.620616+00:00"
+      "closed_at": "2026-05-29T23:59:10.062848+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -9397,7 +9421,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 348,
+      "repeat_count": 358,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -9601,7 +9625,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-29T22:35:23.872923+00:00",
+      "last_seen": "2026-05-29T23:59:32.756246+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -12820,7 +12844,7 @@
       "name": "agent_architecture_json",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-24T06:57:01.168631+00:00",
-      "repeat_count": 86,
+      "repeat_count": 88,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -13126,15 +13150,23 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=None expected 24::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=84"
+        },
+        {
+          "at": "2026-05-29T23:34:29.462965+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780097669430:3\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=23 expected 24; live_jobs_enabled=23 expected 24::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=87"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-29T17:33:05.103545+00:00",
-      "last_error": "live_jobs_checked=None expected 24",
-      "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=['docs-stack-aggressive-10min-self-heal', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-momentum-watchdog', 'marketing-reflection', 'marketing-workflow-audit-precheck', 'ralph-workflow-full-house-docs-audit', 'stackoverflow-post-cooldown-run-check']",
+      "last_seen": "2026-05-29T23:34:37.405866+00:00",
+      "last_error": "live_jobs_checked=23 expected 24; live_jobs_enabled=23 expected 24",
+      "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=['docs-stack-aggressive-10min-self-heal', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-momentum-watchdog', 'marketing-reflection', 'marketing-workflow-audit-precheck', 'ralph-workflow-full-house-docs-audit', 'stackoverflow-post-cooldown-run-check']",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "closed_at": "2026-05-29T17:32:58.728502+00:00"
+      "closed_at": "2026-05-29T23:34:29.462982+00:00"
     },
     "content-poster::timeout_risk": {
       "key": "content-poster::timeout_risk",
@@ -14976,7 +15008,7 @@
       "name": "marketing-workflow-audit",
       "category": "live_error",
       "first_seen": "2026-05-28T06:16:07.362295+00:00",
-      "repeat_count": 39,
+      "repeat_count": 49,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -15107,15 +15139,55 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779970030555:41\"\n}",
           "outcome": "resolved",
           "issue_signature": "marketing-workflow-audit_escalation::escalation_required::Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=38"
+        },
+        {
+          "at": "2026-05-29T23:34:27.117398+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780097667066:2\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=40"
+        },
+        {
+          "at": "2026-05-29T23:58:50.084467+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780099130053:5\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=42"
+        },
+        {
+          "at": "2026-05-29T23:59:05.026027+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780099144993:6\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=44"
+        },
+        {
+          "at": "2026-05-29T23:59:16.162318+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780099156126:7\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=45"
+        },
+        {
+          "at": "2026-05-29T23:59:27.367390+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780099167338:8\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=48"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-28T12:07:19.840105+00:00",
+      "last_seen": "2026-05-29T23:59:32.756228+00:00",
       "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
       "likely_cause": "CONTEXT_OVERFLOW: prompt/runtime context exceeded safe model limit; reduce prompt size or split work",
       "path": null,
-      "closed_at": "2026-05-28T12:07:10.582569+00:00"
+      "closed_at": "2026-05-29T23:59:27.367406+00:00"
     },
     "marketing-active-loop::timeout_risk": {
       "key": "marketing-active-loop::timeout_risk",
@@ -15349,13 +15421,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 303,
+      "repeat_count": 313,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-05-29T22:35:23.872909+00:00",
+      "last_seen": "2026-05-29T23:59:32.756242+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null
