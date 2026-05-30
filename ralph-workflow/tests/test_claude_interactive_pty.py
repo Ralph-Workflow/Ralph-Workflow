@@ -59,7 +59,7 @@ def test_auto_response_for_interactive_prompt_handles_auto_mode_gate() -> None:
         invoke_module.interactive_auto_response_for_prompt(
             "Enable auto mode?", auto_mode_prompt_seen=False
         )
-        is None
+        == "\r"
     )
     assert (
         invoke_module.interactive_auto_response_for_prompt(

@@ -31,7 +31,10 @@ class PtyProcess:
     def poll(self) -> int | None:
         if self._returncode is not None:
             return self._returncode
-        pid, status = os.waitpid(self.pid, os.WNOHANG)
+        try:
+            pid, status = os.waitpid(self.pid, os.WNOHANG)
+        except ChildProcessError:
+            return self._returncode
         if pid == 0:
             return None
         self._returncode = _status_to_returncode(status)
@@ -41,7 +44,10 @@ class PtyProcess:
         if self._returncode is not None:
             return self._returncode
         if timeout is None:
-            _pid, status = os.waitpid(self.pid, 0)
+            try:
+                _pid, status = os.waitpid(self.pid, 0)
+            except ChildProcessError:
+                raise
             self._returncode = _status_to_returncode(status)
             return self._returncode
 

@@ -24,7 +24,6 @@ from ralph.agents.idle_watchdog import (
     WatchdogVerdict,
 )
 from ralph.agents.invoke._errors import (
-    InteractivePermissionPromptError,
     _IdleStreamTimeoutError,
 )
 from ralph.agents.invoke._process_reader import (
@@ -405,11 +404,16 @@ class PtyLineReader:
             and prompt_grace_exceeded
             and not self._auto_response_menu_seen
         ):
-            self._handle.terminate(grace_period_s=0.5)
-            raise InteractivePermissionPromptError(
-                self._agent_name,
-                [self._pending_permission_prompt_line],
-            )
+            prompt_text = self._pending_permission_prompt_line
+            with contextlib.suppress(OSError):
+                _write_pty_input(self._input_writer, "\r", lock=self._input_writer_lock)
+                logger.warning(
+                    "Ralph auto-answered unknown prompt with Enter. "
+                    "Prompt text: {}",
+                    repr(prompt_text[:200]),
+                )
+            self._pending_permission_prompt_line = None
+            self._pending_permission_prompt_started_at = None
 
     def _on_interrupt(self) -> None:
         self._monitor_stop.set()

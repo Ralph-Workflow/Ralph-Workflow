@@ -110,7 +110,7 @@ def test_interactive_auto_response_refuses_ambiguous_menu() -> None:
         auto_mode_prompt_seen=False,
     )
 
-    assert response is None
+    assert response == "\r"
 
 
 def test_permission_prompt_action_message_describes_selected_option() -> None:

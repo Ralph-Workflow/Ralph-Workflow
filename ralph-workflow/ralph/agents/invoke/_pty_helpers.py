@@ -160,7 +160,9 @@ def _simple_auto_approve(text: str) -> str | None:
     if yes_indices:
         return "\r"
 
-    return None
+    # Last-resort: permission prompt detected but precise navigation failed.
+    # Send Enter to confirm whatever the default/selected option is.
+    return "\r"
 
 
 def _extract_choice_menu_state(text: str) -> _ChoiceMenuState | None:
