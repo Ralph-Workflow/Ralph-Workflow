@@ -15302,3 +15302,88 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-aligned with positioning. Strong product framing, clear information hierarchy, no internal leakage, honest engineering-dependency messaging. One minor journey-coherence issue: the GitHub-mirror README's 'Documentation' table links directly to the external Sphinx docs site instead of routing through START_HERE.md \u2192 docs/README.md. This competes with the intended local route but does not break the overall journey enough to fail.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "README.md 'Documentation' section routes to external docs site pages instead of START_HERE.md first; the positioning document specifies START_HERE.md as step 2 and docs/README.md as step 3, but the README bypasses both for direct-to-sphinx links.",
+    "docs/README.md 'Keep proof secondary' paragraph sounds slightly defensive for a routing page; could be softened or removed."
+  ],
+  "strongestEvidence": [
+    {
+      "path": ".openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md",
+      "reason": "Lead framing ('The operating system for autonomous coding', 'AI agent orchestrator', 'composable loop framework') matches positioning exactly. Result-first language. Good/bad fit clarity. Engineering-dependency honesty. Codeberg primary / GitHub mirror framing correct. No internal artifact/plumbing language on first screen."
+    },
+    {
+      "path": ".openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Clean first-run guide. Captures the positioning (simple-core, default workflow, result-first evaluation, good/bad task selection). Routes to docs/README.md rather than competing. Low link anxiety."
+    },
+    {
+      "path": ".openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Clear route-switchboard with audience-based options. The four 'choose one route' groups map well to different user intents. Routes to embedded product-framing pages that reinforce the same story."
+    },
+    {
+      "path": ".openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted next-click page that opens with correct positioning and reinforces the 'simple at the center, stronger in composition' narrative. Routes back into the canonical journey."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is in strong health. README, START_HERE, and docs/README form a coherent journey that consistently frames Ralph Workflow as a composable loop framework with a simple core and a strong default. Promoted next-click pages reinforce the same story. No positioning drift, no internal leakage, no stale framing.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with 'operating system for autonomous coding', leads with the simple-loop-core/composable-framework story, has a strong comparison table, clearly segments audience, states engineering-practice dependency, and correctly flags Codeberg primary + GitHub mirror."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run. No artifact/plumbing language. Result-first evaluation: 'judge by what the software does now and what checks ran.' Good/bad task selection matches positioning. Next-pages section is genuinely optional."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Switchboard with clear user-intent routes. 'Keep proof secondary' section shows the hierarchy has been internalized. Links to three product-framing pages that all open with the same core positioning."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Entirely about 'why the default workflow matters' and 'simple at the center, stronger in composition' \u2014 no internal mechanics. Reinforces the README story perfectly."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

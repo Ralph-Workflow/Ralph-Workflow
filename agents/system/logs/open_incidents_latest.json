@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-30T19:50:39.079711+00:00",
+  "updated_at": "2026-05-30T21:06:24.438156+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 317,
+      "repeat_count": 321,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1209,15 +1209,23 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780170625121:2\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=316"
+        },
+        {
+          "at": "2026-05-30T21:04:56.743291+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780175096691:6\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=321"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T19:50:39.079673+00:00",
+      "last_seen": "2026-05-30T21:04:52.148863+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-05-30T19:50:25.173732+00:00"
+      "closed_at": "2026-05-30T21:04:56.743313+00:00"
     },
     "marketing_independent_verification::loop_verification_fail": {
       "key": "marketing_independent_verification::loop_verification_fail",
@@ -3197,7 +3205,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 572,
+      "repeat_count": 578,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -5885,15 +5893,31 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780170630583:3\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  ::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=571"
+        },
+        {
+          "at": "2026-05-30T20:34:02.397963+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780173242364:5\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T22:24:12.737742+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=573"
+        },
+        {
+          "at": "2026-05-30T21:04:58.947316+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T22:50:58.305017+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=578"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T19:50:39.079684+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T21:50:17.688797+02:00\"\n}",
+      "last_seen": "2026-05-30T21:04:52.148872+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T22:50:58.305017+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-05-30T19:50:30.662721+00:00"
+      "closed_at": "2026-05-30T21:04:58.947332+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -9290,7 +9314,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T05:06:09.078715+00:00",
-      "repeat_count": 110,
+      "repeat_count": 116,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -9698,9 +9722,9 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T17:03:23.267295+00:00",
+      "last_seen": "2026-05-30T20:53:05.830582+00:00",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "The docs system is coherent and aligned with the positioning document. README \u2192 START_HERE \u2192 docs/README forms a clear journey with distinct page roles. No internal-process residue on top-level surfaces. The positioning themes (simple core, composable framework, strong default, ambitious work, Codeberg primary) are consistently carried through.",
+      "likely_cause": "Docs are well-aligned with positioning. Strong product framing, clear information hierarchy, no internal leakage, honest engineering-dependency messaging. One minor journey-coherence issue: the GitHub-mirror README's 'Documentation' table links directly to the external Sphinx docs site instead of routing through START_HERE.md \u2192 docs/README.md. This competes with the intended local route but does not break the overall journey enough to fail.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
       "closed_at": "2026-05-30T03:43:56.729100+00:00"
     },
@@ -9989,7 +10013,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 543,
+      "repeat_count": 557,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -10193,7 +10217,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-30T19:50:39.079679+00:00",
+      "last_seen": "2026-05-30T21:06:24.438132+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -16454,13 +16478,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 498,
+      "repeat_count": 512,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-05-30T19:50:39.079666+00:00",
+      "last_seen": "2026-05-30T21:06:24.438111+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null
@@ -17624,9 +17648,9 @@
       "name": "Push research findings to git repo",
       "category": "live_error",
       "first_seen": "2026-05-30T18:59:18.395934+00:00",
-      "repeat_count": 4,
+      "repeat_count": 6,
       "owner_domain": "site",
-      "escalation_level": "owner",
+      "escalation_level": "critical",
       "owner_actions": [
         {
           "at": "2026-05-30T19:50:21.553892+00:00",
@@ -17635,15 +17659,57 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780170621456:1\"\n}",
           "outcome": "resolved",
           "issue_signature": "Push research findings to git repo_escalation::escalation_required::cron: job interrupted by gateway restart::Incident escalation level=owner: Push research findings to git repo:live_error repeat_count=3"
+        },
+        {
+          "at": "2026-05-30T20:34:00.190125+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780173240144:4\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "Push research findings to git repo_escalation::escalation_required::Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.::Incident escalation level=critical: Push research findings to git repo:live_error repeat_count=5"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T19:50:39.079645+00:00",
-      "last_error": "cron: job interrupted by gateway restart",
-      "likely_cause": "GATEWAY_RESTART_INTERRUPT: transient scheduler interruption; rerun or wait for next scheduled execution before treating as a real job fault",
+      "last_seen": "2026-05-30T20:34:07.255060+00:00",
+      "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+      "likely_cause": "CONTEXT_OVERFLOW: prompt/runtime context exceeded safe model limit; reduce prompt size or split work",
       "path": null,
-      "closed_at": "2026-05-30T19:50:21.553919+00:00"
+      "closed_at": "2026-05-30T20:34:00.190147+00:00"
+    },
+    "docs_agentic_review_mustFix_readme-md-documentation-section-routes-to-extern::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_readme-md-documentation-section-routes-to-extern::review_followup_required",
+      "name": "docs_agentic_review_mustFix_readme-md-documentation-section-routes-to-extern",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-30T20:51:25.812078+00:00",
+      "repeat_count": 6,
+      "owner_domain": "docs",
+      "escalation_level": "critical",
+      "owner_actions": [],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-30T20:53:05.830589+00:00",
+      "last_error": "README.md 'Documentation' section routes to external docs site pages instead of START_HERE.md first; the positioning document specifies START_HERE.md as step 2 and docs/README.md as step 3, but the README bypasses both for direct-to-sphinx links.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: README.md 'Documentation' section routes to external docs site pages instead of START_HERE.md first; the positioning document specifies START_HERE.md as step 2 and docs/README.md as step 3, but the README bypasses both for direct-to-sphinx links.",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-30T21:04:52.148888+00:00"
+    },
+    "docs_agentic_review_mustFix_docs-readme-md-keep-proof-secondary-paragraph-so::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_docs-readme-md-keep-proof-secondary-paragraph-so::review_followup_required",
+      "name": "docs_agentic_review_mustFix_docs-readme-md-keep-proof-secondary-paragraph-so",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-30T20:51:25.812091+00:00",
+      "repeat_count": 6,
+      "owner_domain": "docs",
+      "escalation_level": "critical",
+      "owner_actions": [],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-30T20:53:05.830594+00:00",
+      "last_error": "docs/README.md 'Keep proof secondary' paragraph sounds slightly defensive for a routing page; could be softened or removed.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: docs/README.md 'Keep proof secondary' paragraph sounds slightly defensive for a routing page; could be softened or removed.",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-30T21:04:52.148890+00:00"
     }
   }
 }
