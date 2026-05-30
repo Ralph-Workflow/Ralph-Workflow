@@ -1,8 +1,8 @@
 {
   "telegraph": {
-    "last_attempt_ts": "2026-05-30T16:11:31.317644+00:00",
+    "last_attempt_ts": "2026-05-30T18:56:02.406870+00:00",
     "last_ok": true,
-    "total_attempts": 8,
+    "total_attempts": 9,
     "total_failures": 1,
     "last_fingerprint": "",
     "recent_cooldown_hits": 1

@@ -2942,8 +2942,10 @@ class MarketingWorkflowAuditBurstTests(unittest.TestCase):
             tmp = Path(tmpdir)
             log_dir = tmp / 'logs'
             drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
             log_dir.mkdir()
             drafts_dir.mkdir()
+            seo_dir.mkdir()
             adoption_path = log_dir / 'adoption.json'
             channel_path = log_dir / 'channels.json'
             outreach_path = tmp / 'outreach-log.md'
@@ -2952,12 +2954,16 @@ class MarketingWorkflowAuditBurstTests(unittest.TestCase):
             queue_path = log_dir / 'curator_outreach_queue_latest.json'
             comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
             market_path = log_dir / 'market_intelligence.json'
+            reddit_monitor_path = seo_dir / 'reddit_monitor_latest.md'
+            audit_json_path = log_dir / 'marketing_workflow_audit_latest.json'
             adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
             channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
             outreach_path.write_text(outreach_text, encoding='utf-8')
             queue_path.write_text(json.dumps(queue_payload), encoding='utf-8')
             comparison_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
             market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            reddit_monitor_path.write_text('# Reddit monitor\n\n- **Threads/posts scanned:** 0\n- **Shortlisted:** 0\n', encoding='utf-8')
+            audit_json_path.write_text(json.dumps({}), encoding='utf-8')
             (log_dir / 'marketing_a.json').write_text(json.dumps({"timestamp": "2026-05-21T22:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post A", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
             (log_dir / 'marketing_b.json').write_text(json.dumps({"timestamp": "2026-05-22T01:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post B", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
 
@@ -2971,7 +2977,11 @@ class MarketingWorkflowAuditBurstTests(unittest.TestCase):
                  patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
                  patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', queue_path), \
                  patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
-                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path):
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', reddit_monitor_path), \
+                 patch.object(distribution_lane_selector, 'AUDIT_LATEST_JSON', audit_json_path), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=True), \
+                 patch.object(distribution_lane_selector, '_comparison_backlink_lane_manual_only_blocked', return_value=False):
                 decision = distribution_lane_selector.choose_distribution_lane(now)
 
             self.assertEqual(decision.lane, 'comparison_backlink_outreach')

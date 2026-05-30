@@ -1,8 +1,19 @@
 {
-  "ts": "2026-05-30T20:03:37.668552",
+  "ts": "2026-05-30T20:59:29.567605",
   "jobs_checked": 26,
-  "issues_found": 4,
+  "issues_found": 5,
   "issues": [
+    {
+      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
+      "name": "Push research findings to git repo",
+      "category": "live_error",
+      "consecutive_errors": 1,
+      "last_status": "error",
+      "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+      "timeout_seconds": 0,
+      "last_duration_ms": 2894849,
+      "likely_cause": "CONTEXT_OVERFLOW: prompt/runtime context exceeded safe model limit; reduce prompt size or split work"
+    },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery",
@@ -19,20 +30,20 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 2932.1,
+      "artifact_age_minutes": 2987.97,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
     {
-      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
-      "name": "blocked-channel-recovery_escalation",
+      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
+      "name": "Push research findings to git repo_escalation",
       "category": "escalation_required",
-      "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=493",
-      "repeats_in_recent_history": 493,
-      "owner_domain": null,
-      "incident_key": "blocked-channel-recovery::timeout",
-      "escalation_level": "critical",
+      "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+      "likely_cause": "Incident escalation level=owner: Push research findings to git repo:live_error repeat_count=2",
+      "repeats_in_recent_history": 2,
+      "owner_domain": "site",
+      "incident_key": "Push research findings to git repo::live_error",
+      "escalation_level": "owner",
       "blocked_by": []
     },
     {
@@ -40,13 +51,32 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=494",
-      "repeats_in_recent_history": 494,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=496",
+      "repeats_in_recent_history": 496,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
-  "repairs_attempted": []
+  "repairs_attempted": [
+    {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T20:59:21.284463+02:00\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780167563625:61\"\n}"
+    }
+  ]
 }

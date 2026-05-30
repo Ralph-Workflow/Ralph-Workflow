@@ -31206,3 +31206,79 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs cohere across the full journey. Positioning is consistent, internal mechanics stay off top-level surfaces, and the README\u2192START_HERE\u2192docs/README route tells one story instead of fighting itself.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with 'The operating system for autonomous coding' and immediately explains the simple-core / composable-contrast. Comparison table cleanly external-differentiated. Audience fit/non-fit explicit. Codeberg-primary framed throughout. No artifact or plumbing language on first screen."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Codeberg-primary banner first line. Centers the first run on one real task with result-oriented success criteria. No internal mechanics. Routes cleanly to docs/README next."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Intent-based routing with clear tiers. Contains the explicit 'Keep proof secondary' guardrail \u2014 the strongest architectural signal that deep/internal pages (review-bundle, finish-receipt, etc.) are correctly gated behind the primary product story rather than promoted onto it."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Positioning is clean, consistent, and well-maintained across all surfaces. No internal leakage, no process-residue framing, no stale positioning drift. The README \u2192 START_HERE \u2192 docs/README journey is coherent and each page has a defined role that respects the others.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Opens with 'operating system for autonomous coding', uses simple-core/composition framing, has clear fit/non-fit, Codeberg-primary note, engineering-practice dependency section, and comparison table that avoids internal plumbing language."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first-run path that leads with result-oriented success criteria ('real repo change', 'meaningful checks'), not artifacts or process receipts. Explicitly mirrors the Codeberg-primary framing."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with user-intent routing, clear separation of concerns, and an explicit 'keep proof secondary' section that prevents internal mechanics from becoming the lead story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
