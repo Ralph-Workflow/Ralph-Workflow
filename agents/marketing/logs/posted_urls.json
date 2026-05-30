@@ -1009,6 +1009,18 @@
       "error": null,
       "draft_hash": "18f4b1ac6cd4cc7dfe7d09625c808400540ccb9905f61a994bca5b47ee0962b4",
       "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ci-cd-pipeline-ai-coding-agent.md"
+    },
+    {
+      "date": "2026-05-30",
+      "draft": "ralph-workflow-docker-install-container.md",
+      "title": "Ralph Workflow Now Ships with Docker: One Command to an AI Coding Orchestrator",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/Ralph-Workflow-Now-Ships-with-Docker-One-Command-to-an-AI-Coding-Orchestrator-05-30-2",
+      "error": null,
+      "draft_hash": "58e7aefd06c8e04a35ccd778655802156596f847ee5d42ad9038b685fd7cffde",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-docker-install-container.md"
     }
   ],
   "last_run": "2026-05-30T11:05:55.419798"

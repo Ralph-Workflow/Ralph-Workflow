@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-05-30T07:27:59.893813+00:00",
+  "generated_at": "2026-05-30T08:57:49.074241+00:00",
   "domain": "ralphworkflow.com",
   "sitemap": {
     "sitemap_url": "https://ralphworkflow.com/sitemap.xml",
     "ok": true,
-    "url_count": 91,
+    "url_count": 92,
     "error": null,
     "urls": [
       "https://ralphworkflow.com/",
@@ -28,7 +28,7 @@
       "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
       "https://ralphworkflow.com/docs/ai-agent-workflow-composer"
     ],
-    "blog_url_count": 29
+    "blog_url_count": 30
   },
   "robots": {
     "robots_url": "https://ralphworkflow.com/robots.txt",
@@ -48,8 +48,8 @@
         "https://ralphworkflow.com/",
         "https://ralphworkflow.com/contact",
         "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended",
-        "https://ralphworkflow.com/blog",
         "https://ralphworkflow.com/copilot-alternative",
+        "https://ralphworkflow.com/blog",
         "https://ralphworkflow.com/docs/",
         "https://ralphworkflow.com/docs/first-task-guide",
         "https://ralphworkflow.com/docs/example-review-bundle",
@@ -76,14 +76,14 @@
       "gsc_analytics": {
         "ok": true,
         "total_clicks": 19,
-        "total_impressions": 306,
+        "total_impressions": 318,
         "pages_with_data": 13,
         "top_pages": [
           {
             "url": "https://ralphworkflow.com/",
-            "impressions": 266,
+            "impressions": 277,
             "clicks": 19,
-            "ctr": 7.1
+            "ctr": 6.9
           },
           {
             "url": "https://ralphworkflow.com/contact",
@@ -98,13 +98,13 @@
             "ctr": 0.0
           },
           {
-            "url": "https://ralphworkflow.com/blog",
-            "impressions": 4,
+            "url": "https://ralphworkflow.com/copilot-alternative",
+            "impressions": 5,
             "clicks": 0,
             "ctr": 0.0
           },
           {
-            "url": "https://ralphworkflow.com/copilot-alternative",
+            "url": "https://ralphworkflow.com/blog",
             "impressions": 4,
             "clicks": 0,
             "ctr": 0.0
@@ -159,7 +159,7 @@
           }
         ],
         "error": null,
-        "ctr": 6.21
+        "ctr": 5.97
       },
       "indexed_source": "search_analytics"
     },
@@ -183,7 +183,7 @@
     "canonical_mismatches": []
   },
   "assessment": {
-    "sitemap_urls": 91,
+    "sitemap_urls": 92,
     "google_indexed_approx": 13,
     "ddg_indexed_approx": 0,
     "gsc_source": true,
@@ -191,13 +191,13 @@
     "gsc_sitemap_indexed": 0,
     "gsc_indexation_rate": 0.0,
     "gsc_total_clicks_28d": 19,
-    "gsc_total_impressions_28d": 306,
+    "gsc_total_impressions_28d": 318,
     "gsc_pages_with_data": 13,
     "gsc_has_search_presence": true,
     "indexed_source": "search_analytics",
     "confidence": "medium",
     "searchable": true,
     "verdict": "PARTIALLY_INDEXED: 13 pages with search presence (impressions/clicks in 28d), sitemap reports 0/80 indexed. Sitemap-indexed count undercounts true indexation \u2014 search analytics confirms pages are live.",
-    "recommendation": "Indexation is happening (13 pages visible in search) but sitemap processing is behind. This is not an indexation failure \u2014 focus on backlinks and domain authority instead of gate-repair. Current visibility: 306 impressions, 19 clicks over 28 days. Primary blocker is ranking, not indexing."
+    "recommendation": "Indexation is happening (13 pages visible in search) but sitemap processing is behind. This is not an indexation failure \u2014 focus on backlinks and domain authority instead of gate-repair. Current visibility: 318 impressions, 19 clicks over 28 days. Primary blocker is ranking, not indexing."
   }
 }

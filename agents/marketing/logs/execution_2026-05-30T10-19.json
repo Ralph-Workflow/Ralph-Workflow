@@ -1,0 +1,66 @@
+{
+  "run_id": "marketing-active-loop_2026-05-30T10-19_CEST",
+  "generated_at": "2026-05-30T08:42:00Z",
+  "hold_window": {
+    "active": true,
+    "clears_at": "2026-05-30T11:02:59 CEST",
+    "hold_rule": "two external actions in last 6h — measurement-blur guard active"
+  },
+  "previous_turn": {
+    "commit": "0c7c713",
+    "status": "committed but not pushed/deployed",
+    "gap": "previous run authored the code but left it unpushed; this run completed the deployment"
+  },
+  "executed_lane": "distribution_architecture_repair",
+  "action": "BlogPosting JSON-LD enrichment + inline Codeberg CTA on blog posts",
+  "code_changes": {
+    "files_changed": 3,
+    "insertions": 34,
+    "deletions": 4,
+    "commit": "5feeb81",
+    "deployed_revision": "5feeb81e999448d858a8d10d36e7b69f5f17e95d",
+    "deploy_time": "2026-05-30T08:40:34Z"
+  },
+  "repairs": [
+    {
+      "file": "app/helpers/application_helper.rb",
+      "change": "Added author, publisher (Organization with logo), image, dateModified, and mainEntityOfPage fields to json_ld_article",
+      "rationale": "Google requires author, publisher, and image for BlogPosting rich result eligibility. Without these, no Article rich results — potentially explaining 0-click blog impression data despite search presence"
+    },
+    {
+      "file": "app/views/shared/_meta_tags.html.erb",
+      "change": "Pass og_image to json_ld_article so blog posts with custom OG images get proper image field",
+      "rationale": "Previously json_ld_article always used icon.png; now passes the article's og_image when set"
+    },
+    {
+      "file": "app/views/blog/show.html.erb",
+      "change": "Added inline Codeberg-first CTA banner between post header and main content",
+      "rationale": "The bottom-only blog_repo_cta is below the fold for readers who don't finish the article. This inline CTA puts 'Inspect the primary repo on Codeberg' before every reader's eyes, targeting the 87% of impressions that currently hit pages with 0% CTR"
+    }
+  ],
+  "verification": {
+    "BlogPosting_jsonld": {
+      "@type": "BlogPosting",
+      "author": {"@type": "Organization", "name": "Ralph Workflow"},
+      "publisher": {"@type": "Organization", "name": "Ralph Workflow", "logo": {"@type": "ImageObject", "url": "https://ralphworkflow.com/icon.png"}},
+      "image": "https://ralphworkflow.com/icon.png",
+      "datePublished": "2026-05-11",
+      "dateModified": "2026-05-11",
+      "mainEntityOfPage": {"@type": "WebPage"},
+      "verified_on": "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended"
+    },
+    "inline_cta": {
+      "present": true,
+      "verified_on": ["https://ralphworkflow.com/blog/how-to-run-claude-code-unattended", "https://ralphworkflow.com/blog/ci-cd-pipeline-integration-for-ai-coding-agents"]
+    },
+    "indexnow": {
+      "submitted": 92,
+      "batches": 1,
+      "status": "ok"
+    }
+  },
+  "outcome": "deployed_and_verified",
+  "defect_surface": "previous run committed but did not push/deploy — this run detected the gap, completed push+deploy, verified live",
+  "next_reentry": "2026-05-30T11:02:59 CEST — post-hold rerun scheduled",
+  "post_hold_note": "Post-hold must either pick an untouched truthful lane or perform concrete runtime/process repair with code/test changes. No idle hold allowed. Both prompt_repair and reentry_contract_repair already exist in this window — do not create another."
+}

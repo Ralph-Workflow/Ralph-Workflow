@@ -1,5 +1,5 @@
 {
-  "ts": "2026-05-30T09:26:49.397479",
+  "ts": "2026-05-30T10:45:53.929352",
   "jobs_checked": 24,
   "issues_found": 5,
   "issues": [
@@ -30,7 +30,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 2295.28,
+      "artifact_age_minutes": 2374.38,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -39,8 +39,8 @@
       "name": "marketing-workflow-audit_escalation",
       "category": "escalation_required",
       "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
-      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=88",
-      "repeats_in_recent_history": 88,
+      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=102",
+      "repeats_in_recent_history": 102,
       "owner_domain": "marketing",
       "incident_key": "marketing-workflow-audit::live_error",
       "escalation_level": "critical",
@@ -51,8 +51,8 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=352",
-      "repeats_in_recent_history": 352,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=366",
+      "repeats_in_recent_history": 366,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
