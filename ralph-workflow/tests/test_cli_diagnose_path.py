@@ -37,6 +37,7 @@ def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]
     return env
 
 
+@pytest.mark.timeout_seconds(3)
 def test_diagnose_renders_agent_path_column(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -257,6 +258,7 @@ def test_build_next_steps_all_ok_recommends_run() -> None:
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_diagnose_next_steps_panel_rendered_in_cli(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -280,6 +282,7 @@ def test_diagnose_next_steps_panel_rendered_in_cli(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_diagnose_next_steps_points_to_getting_started_when_no_prompt(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

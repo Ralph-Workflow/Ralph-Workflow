@@ -251,50 +251,61 @@ def _sync_dir(  # noqa: PLR0912
     dst.mkdir(parents=True, exist_ok=True)
     try:
         with os.scandir(src) as src_entries:
-            src_children = [(entry.name, Path(entry.path)) for entry in src_entries]
+            src_children: list[tuple[str, Path, bool, bool, bool]] = [
+                (
+                    entry.name,
+                    Path(entry.path),
+                    entry.is_symlink(),
+                    entry.is_file(follow_symlinks=False),
+                    entry.is_dir(follow_symlinks=False),
+                )
+                for entry in src_entries
+            ]
     except OSError:
         return
-    src_names = {name for name, _ in src_children}
+    src_names = {name for name, _, _, _, _ in src_children}
 
-    dst_children: dict[str, Path] = {}
+    dst_children: dict[str, tuple[Path, bool, bool]] = {}
     if dst.exists():
         try:
             with os.scandir(dst) as dst_entries:
                 for entry in dst_entries:
-                    dst_children[entry.name] = Path(entry.path)
+                    dst_children[entry.name] = (
+                        Path(entry.path),
+                        entry.is_file(follow_symlinks=False),
+                        entry.is_dir(follow_symlinks=False),
+                    )
         except OSError:
             pass
 
-    for name, src_child in src_children:
+    for name, src_child, is_sym, is_file_val, is_dir_val in src_children:
         if name in excluded_names:
             continue
 
         d = dst / name
-        try:
-            rel = src_child.resolve().relative_to(src.resolve())
-        except ValueError:
+        if ignored_paths:
             rel = Path(name)
-        if rel in ignored_paths or any(
-            p.is_relative_to(rel) for p in ignored_paths
-        ):
-            continue
+            if rel in ignored_paths or any(p.is_relative_to(rel) for p in ignored_paths):
+                continue
 
-        if src_child.is_symlink():
+        if is_sym:
             d.unlink(missing_ok=True)
             _clonefile_or_copy(str(src_child), str(d), follow_symlinks=True)
-        elif src_child.is_file():
-            if name in dst_children and dst_children[name].is_file():
-                s_stat = src_child.stat()
-                d_stat = dst_children[name].stat()
-                if s_stat.st_mtime == d_stat.st_mtime and s_stat.st_size == d_stat.st_size:
-                    continue
+        elif is_file_val:
+            if name in dst_children:
+                d_path, d_is_file, _ = dst_children[name]
+                if d_is_file:
+                    s_stat = src_child.stat()
+                    d_stat = d_path.stat()
+                    if s_stat.st_mtime == d_stat.st_mtime and s_stat.st_size == d_stat.st_size:
+                        continue
             _clonefile_or_copy(str(src_child), str(d), follow_symlinks=False)
-        elif src_child.is_dir():
+        elif is_dir_val:
             _sync_dir(src_child, d, excluded_names, ignored_paths)
 
-    for name, dst_child in dst_children.items():
+    for name, (dst_child, _, dst_is_dir) in dst_children.items():
         if name not in src_names:
-            if dst_child.is_dir():
+            if dst_is_dir:
                 shutil.rmtree(dst_child, ignore_errors=True)
             else:
                 dst_child.unlink(missing_ok=True)

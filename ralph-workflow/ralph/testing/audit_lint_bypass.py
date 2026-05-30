@@ -71,6 +71,7 @@ def _string_key_mapping(value: object) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("exec_overlay", "PLR0912"),
+    ("exec_sandbox", "PLR0912"),
     ("audit_test_policy", "PLR0911"),
     ("audit_test_policy", "PLW0603"),
     ("audit_typecheck_bypass", "PLR0912"),

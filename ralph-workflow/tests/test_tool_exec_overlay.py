@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.tools import exec_overlay
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import pytest
 
 
@@ -292,6 +291,37 @@ def test_ensure_git_isolation_runs_full_setup_when_fingerprint_absent(
     inode_after = (sandbox_root / "private-gitdir").stat().st_ino
 
     assert inode_after != inode_before
+
+
+def test_sync_dir_copies_symlink_in_source(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.mkdir()
+    target = src / "real.txt"
+    target.write_text("content")
+    link = src / "link.txt"
+    link.symlink_to(target)
+
+    exec_overlay._sync_dir(src, dst, frozenset(), frozenset())
+
+    assert (dst / "real.txt").exists()
+    assert (dst / "link.txt").exists()
+
+
+def test_sync_dir_skips_entry_matching_ignored_path(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.mkdir()
+    (src / ".git").mkdir()
+    (src / ".git" / "config").write_text("gitconfig")
+    (src / "code.py").write_text("code")
+
+    exec_overlay._sync_dir(
+        src, dst, frozenset(), frozenset({Path(".git")})
+    )
+
+    assert (dst / "code.py").exists()
+    assert not (dst / ".git").exists()
 
 
 def test_mirror_workspace_incremental_hard_links_unchanged_files(tmp_path: Path) -> None:

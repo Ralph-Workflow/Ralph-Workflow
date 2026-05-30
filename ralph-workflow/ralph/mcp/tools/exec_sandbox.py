@@ -331,6 +331,7 @@ class ExecSandboxManager:
         except Exception:
             self._ready_path(sandbox_root).unlink(missing_ok=True)
             raise
+        self._write_ready_sentinel(sandbox_root)
         return True
 
     def _clear_sandbox_contents(self, sandbox_root: Path) -> None:
@@ -536,15 +537,14 @@ class ExecSandboxManager:
         return all(not self._slot_is_live(slot_root) for slot_root in slot_dirs)
 
     def _slot_last_used_at(self, slot_root: Path) -> float:
-        candidates = [slot_root, self._ready_path(slot_root), slot_root / "ws"]
-        latest = 0.0
-        for candidate in candidates:
-            try:
-                if candidate.exists():
-                    latest = max(latest, candidate.stat().st_mtime)
-            except OSError:
-                continue
-        return latest
+        try:
+            return self._ready_path(slot_root).stat().st_mtime
+        except OSError:
+            pass
+        try:
+            return slot_root.stat().st_mtime
+        except OSError:
+            return 0.0
 
     def _path_size_bytes(self, path: Path) -> int:
         if not path.exists():
@@ -632,15 +632,17 @@ class ExecSandboxManager:
 
     def _prune_expired_and_broken_slots_locked(
         self, pool_root: Path, current_time: float
-    ) -> tuple[list[_IdleSlotCandidate], int, int]:
+    ) -> tuple[list[_IdleSlotCandidate], int, int, bool]:
         idle_candidates: list[_IdleSlotCandidate] = []
         removed_paths = 0
         removed_bytes = 0
+        has_remaining_slots = False
         for slot_root in self._all_slot_dirs(pool_root):
             if self._slot_is_collectible(slot_root, current_time):
                 self._rmtree_with_escalation(slot_root)
                 removed_paths += 1
                 continue
+            has_remaining_slots = True
             if self._slot_is_locked_by_live_process(slot_root):
                 continue
             idle_candidates.append(
@@ -651,7 +653,7 @@ class ExecSandboxManager:
                     size_bytes=self._path_size_bytes(slot_root),
                 )
             )
-        return idle_candidates, removed_paths, removed_bytes
+        return idle_candidates, removed_paths, removed_bytes, has_remaining_slots
 
     def _enforce_pool_byte_budget_locked(
         self, idle_candidates: list[_IdleSlotCandidate]
@@ -700,7 +702,7 @@ class ExecSandboxManager:
             if not pool_root.is_dir() or pool_root.name.startswith(_TRASH_PREFIX):
                 continue
             try:
-                idle_candidates, pool_removed_paths, pool_removed_bytes = (
+                idle_candidates, pool_removed_paths, pool_removed_bytes, has_remaining_slots = (
                     self._prune_expired_and_broken_slots_locked(pool_root, current_time)
                 )
                 removed_paths += pool_removed_paths
@@ -710,7 +712,7 @@ class ExecSandboxManager:
                 )
                 removed_paths += budget_removed_paths
                 removed_bytes += budget_removed_bytes
-                if not any(self._all_slot_dirs(pool_root)):
+                if not has_remaining_slots:
                     removed = self._delete_expired_pool_locked(pool_root, current_time)
                     removed_paths += removed[0]
                     removed_bytes += removed[1]
@@ -803,17 +805,33 @@ class ExecSandboxManager:
         self._managed_workspace_keys.difference_update(deleted_pool_keys)
         self._delete_paths(staged_pool_dirs)
 
-    def _lease_slot(self, pool_root: Path, workspace_key: str) -> tuple[Path, int]:
+    def _lease_slot(self, pool_root: Path, workspace_key: str) -> tuple[Path, int]:  # noqa: PLR0912
         staged_stale_slot_dirs: list[Path] = []
         leased_slot: tuple[Path, int] | None = None
         with self._pool_lock(pool_root):
             state = self._load_pool_state(pool_root)
             target_slots = int(state["target_slots"])
-            existing_indices = [
-                slot_index
-                for slot_index in self._slot_indices(pool_root, workspace_key)
-                if slot_index <= self._max_slots
-            ]
+            slot_prefix = f"{_SLOT_PREFIX}{workspace_key}-"
+            existing_indices: list[int] = []
+            candidate_stale: list[Path] = []
+            for child in pool_root.iterdir():
+                if not child.is_dir():
+                    continue
+                name = child.name
+                if not name.startswith(_SLOT_PREFIX):
+                    continue
+                if name.startswith(slot_prefix):
+                    suffix = name.removeprefix(slot_prefix)
+                    if suffix.isdigit():
+                        idx = int(suffix)
+                        if idx <= self._max_slots:
+                            existing_indices.append(idx)
+                owner_pid, owner_started_at = _overlay_owner_metadata(child)
+                if owner_pid is not None and not _process_identity_matches(
+                    owner_pid, owner_started_at
+                ):
+                    candidate_stale.append(child)
+            existing_indices.sort()
             warm_slots = max(target_slots, max(existing_indices, default=0))
             for slot_index in range(1, warm_slots + 1):
                 slot_root = self._slot_root(pool_root, workspace_key, slot_index)
@@ -843,11 +861,9 @@ class ExecSandboxManager:
                         break
                     slot_index += 1
             assert leased_slot is not None
-            stale_slot_dirs = [
-                path for path in self._stale_slot_dirs(pool_root) if path != leased_slot[0]
-            ]
-            for stale_slot_dir in stale_slot_dirs:
-                staged_path = self._stage_locked_slot_dir_for_deletion(stale_slot_dir)
+            stale_dirs = [p for p in candidate_stale if p != leased_slot[0]]
+            for stale_dir in stale_dirs:
+                staged_path = self._stage_locked_slot_dir_for_deletion(stale_dir)
                 if staged_path is not None:
                     staged_stale_slot_dirs.append(staged_path)
             self._record_slot_usage_locked(pool_root, leased_slot[1])
@@ -921,17 +937,6 @@ class ExecSandboxManager:
             if self._lock_path(slot_root).exists():
                 return True
         return False
-
-    def _stale_slot_dirs(self, pool_root: Path) -> list[Path]:
-        stale_slot_dirs: list[Path] = []
-        for child in pool_root.iterdir():
-            if not child.is_dir():
-                continue
-            owner_pid, owner_started_at = _overlay_owner_metadata(child)
-            if owner_pid is None or _process_identity_matches(owner_pid, owner_started_at):
-                continue
-            stale_slot_dirs.append(child)
-        return stale_slot_dirs
 
     def _stage_locked_slot_dir_for_deletion(self, slot_dir: Path) -> Path | None:
         if not slot_dir.exists():

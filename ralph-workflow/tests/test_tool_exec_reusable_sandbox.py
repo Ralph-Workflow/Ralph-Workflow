@@ -1442,3 +1442,74 @@ def test_fast_reset_clears_sentinel_on_mirror_failure(
         manager._fast_reset(workspace, sandbox_root, sandbox_root / "ws")
 
     assert not (sandbox_root / ".ralph-sandbox-ready").exists()
+
+
+def test_slot_last_used_at_returns_ready_sentinel_mtime(tmp_path: Path) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    slot_root = tmp_path / "slot"
+    slot_root.mkdir()
+    sentinel = slot_root / ".ralph-sandbox-ready"
+    sentinel.write_text('{"ready": true}', encoding="utf-8")
+    expected_mtime = sentinel.stat().st_mtime
+
+    result = manager._slot_last_used_at(slot_root)
+
+    assert result == expected_mtime
+
+
+def test_slot_last_used_at_falls_back_to_slot_root_mtime_when_sentinel_absent(
+    tmp_path: Path,
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(base_dir=tmp_path / "exec-base")
+    slot_root = tmp_path / "slot"
+    slot_root.mkdir()
+    expected_mtime = slot_root.stat().st_mtime
+
+    result = manager._slot_last_used_at(slot_root)
+
+    assert result == expected_mtime
+
+
+def test_prune_expired_returns_no_remaining_when_all_slots_collected(
+    tmp_path: Path,
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_idle_slot_age_s=0.0,
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    key = exec_sandbox._workspace_key(workspace)
+    pool_root = manager._base_dir / key
+    pool_root.mkdir(parents=True)
+    slot = manager._slot_root(pool_root, key, 1)
+    slot.mkdir()
+    (slot / ".ralph-exec-owner.json").write_text(
+        json.dumps({"pid": -1}), encoding="utf-8"
+    )
+
+    _, _, _, has_remaining = manager._prune_expired_and_broken_slots_locked(
+        pool_root, time.time()
+    )
+
+    assert has_remaining is False
+
+
+def test_prune_expired_returns_has_remaining_when_active_slot_exists(
+    tmp_path: Path,
+) -> None:
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_idle_slot_age_s=3600.0,
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    key = exec_sandbox._workspace_key(workspace)
+    pool_root = manager._base_dir / key
+    pool_root.mkdir(parents=True)
+
+    with manager.acquire(workspace):
+        _, _, _, has_remaining = manager._prune_expired_and_broken_slots_locked(
+            pool_root, time.time()
+        )
+    assert has_remaining is True
