@@ -13,6 +13,7 @@ from ralph.banner import SupportsPrint, show_banner
 from ralph.display.context import DisplayContext
 from ralph.onboarding import (
     CODEBERG_STAR_CTA,
+    ERROR_REPORTING_DISCLOSURE,
     getting_started_pointer_sentence,
     welcome_panel_next_steps,
 )
@@ -182,6 +183,8 @@ def emit_first_run_welcome(
     _append_file_section(content, "Local config files:", local_files)
 
     content.append(_build_next_steps_text())
+
+    content.append(Text(ERROR_REPORTING_DISCLOSURE, style="theme.text.muted"))
 
     # Star CTA — highest-leverage conversion from install → repo adoption
     content.append(Text())  # blank line

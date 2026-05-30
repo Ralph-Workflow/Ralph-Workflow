@@ -3041,3 +3041,9 @@ ralph.testing.pytest_timeout_plugin
 .. automodule:: ralph.testing.pytest_timeout_plugin
    :members:
    :show-inheritance:
+
+ralph.telemetry
+~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.telemetry
+   :no-members:

@@ -11,6 +11,10 @@ INIT_LOCAL_CONFIG_COMMAND: Final[str] = "ralph --init-local-config"
 DIAGNOSE_COMMAND: Final[str] = "ralph --diagnose"
 RUN_COMMAND: Final[str] = "ralph"
 CODEBERG_REPO: Final[str] = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+ERROR_REPORTING_DISCLOSURE: Final[str] = (
+    "Error reporting: Ralph Workflow sends anonymous crash data and performance metrics. "
+    "No personal data is collected. See ~/.config/ralph-workflow-user.ini for details."
+)
 CODEBERG_STAR_CTA: Final[str] = (
     f"⭐ Star {CODEBERG_REPO} so we know you're using it — "
     "stars drive development priority"

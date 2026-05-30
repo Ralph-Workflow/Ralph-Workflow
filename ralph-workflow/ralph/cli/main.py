@@ -317,6 +317,18 @@ def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
         c.print(Text("No configs found to regenerate", style="theme.text.muted"))
 
 
+def _init_telemetry() -> None:
+    try:
+        from ralph.telemetry._sentry import init_sentry
+        from ralph.telemetry._user_identity import generate_session_id, get_or_create_user_id
+
+        user_id = get_or_create_user_id()
+        session_id = generate_session_id()
+        init_sentry(user_id, session_id)
+    except Exception as exc:
+        logger.warning("Telemetry unavailable: {}", exc)
+
+
 def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
     """Create the full project-local config override set from the global config set."""
     console = display_context.console
@@ -583,8 +595,7 @@ def main(
 ) -> None:
     """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation."""
     # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
-    raw_counter_entries: list[str] = list(counter) if counter else []
-    counter_overrides = _parse_counter_overrides(raw_counter_entries)
+    counter_overrides = _parse_counter_overrides(list(counter) if counter else [])
 
     _handle_early_exit_flags(
         version=version,
@@ -602,6 +613,7 @@ def main(
     _console = _cli_ctx.console
 
     bootstrap_global_configs(display_context=_cli_ctx)
+    _init_telemetry()
 
     # Set up logging based on verbosity
     configure_logging(verbosity)
@@ -956,6 +968,7 @@ def _build_cli_overrides(
 
 
 # Public aliases — test-accessible names and monkeypatch interception points.
+init_telemetry = _init_telemetry
 bootstrap_global_configs = _bootstrap_global_configs
 configure_logging = _configure_logging
 handle_check_config = _handle_check_config

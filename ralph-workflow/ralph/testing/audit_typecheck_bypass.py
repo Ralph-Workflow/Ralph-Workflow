@@ -68,6 +68,8 @@ def _nested_mapping(root: dict[str, object], *keys: str) -> dict[str, object]:
 _TYPE_IGNORE_ALLOWLIST: set[tuple[str, str]] = {
     ("commit_cleanup", "misc"),
     ("exec_overlay", "misc"),
+    ("_sentry", "arg-type"),
+    ("_sentry", "misc"),
 }
 
 # Policy-compliant reason markers (must appear on the same logical line
