@@ -29,7 +29,7 @@ class ClaudeInteractiveParser:
                     self._text_accumulator.raw_lines.append(raw)
                     continue
                 if event.kind == "thinking":
-                    self._thinking_accumulator.buffer += event.text + "\n"
+                    self._thinking_accumulator.buffer += event.text + " "
                     self._thinking_accumulator.raw_lines.append(raw)
                     continue
                 yield from self._flush_accumulators()
@@ -51,7 +51,6 @@ class ClaudeInteractiveParser:
                     continue
                 if event.kind == "tool_result":
                     yield AgentOutputLine(type="tool_result", content=event.text, raw=raw)
-            yield from self._flush_accumulators()
         yield from self._flush_accumulators()
 
     def _flush_accumulators(self) -> Iterator[AgentOutputLine]:

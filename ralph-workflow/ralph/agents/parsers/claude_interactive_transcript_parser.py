@@ -28,7 +28,7 @@ _TUI_STATUSBAR_RE = re.compile(
     re.IGNORECASE,
 )
 _THINKING_STATUS_RE = re.compile(
-    r"^[\s]*[✶✢●✳✻]"
+    r"^[\s]*[✽✶✢●✳✻]"
     r"|^[\s]*·\s*thinking\s*\)"
     r"|^[\s]*\(\d+s\s*·"
     r"|^[\s]*↓\s*\d+\.?\d*[km]?\s*tokens?"
@@ -36,14 +36,21 @@ _THINKING_STATUS_RE = re.compile(
     r"|^[\s]*\d+thinking\s*·"
     r"|^[\s]*\d+\s*·\s*thinking\s*\)"
     r"|^[\s]*·\s*\d+s\s*·\s*(?:↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*)?thinking\s*\)"
+    r"|^[\s]*\d+s\s*·\s*(?:↓\s*\d+\.?\d*[km]?\s*tokens?\s*·\s*)?thinking\s*\)"
 )
 
 # Short fragments (< 20 chars) ending in "thinking" are thinking status
 # remnants from character-by-character PTY reads.  Legitimate prose containing
 # "thinking" is always longer or doesn't end with "thinking".
-_LENIENT_THINKING_MAX_LEN = 20
-_MIN_OUTPUT_LEN = 3
+_LENIENT_THINKING_MAX_LEN = 30
+_MIN_OUTPUT_LEN = 6
 _MAX_THINKING_PREFIX_ALPHA = 2
+_TUI_GLYPH_CHARS: frozenset[str] = frozenset("↑↓·✽✶✢●✳✻→←↳…▌█")
+
+
+def _contains_thinking_keyword(text: str) -> bool:
+    lower = text.lower()
+    return any(kw in lower for kw in ("thinking", "thought for", "ought for", "inking)", "inking"))
 
 # Box-drawing (U+2500-U+257F) + block elements (U+2580-U+259F) + extras.
 _BOX_DRAWING_CHARS: frozenset[str] = frozenset(
@@ -157,12 +164,27 @@ def _extract_error_text(value: object) -> str:
 
 
 class ClaudeInteractiveTranscriptParser:
-    """Extract semantic events from a normalized Claude interactive transcript."""
+    """Extract semantic events from a normalized Claude interactive transcript.
+
+    Architecture: the transcript file delivers structured JSON events that tell us
+    which mode the session is in (thinking / output / tool_use).  Non-JSON text
+    fragments that arrive between JSON events are classified by *mode*, not by
+    per-line regex heuristics:
+
+      - *thinking* mode → every non-JSON fragment is TUI status-bar noise → drop.
+      - *tool_use*  mode → every non-JSON fragment is TUI rendering noise → drop.
+      - *output*    mode → non-JSON fragments are genuine agent output → emit.
+      - *idle*      (no mode yet) → conservative heuristics (drop short / TUI-ish).
+
+    This eliminates the whack-a-mole regex approach where every new Claude Code
+    thinking-status variant needed a dedicated pattern.
+    """
 
     def __init__(self) -> None:
         self.session_id: str | None = None
         self._last_emitted_signature: tuple[str, str] | None = None
         self._buffer = ""
+        self._current_content_mode: str | None = None
 
     def feed(self, raw_text: str) -> list[InteractiveTranscriptEvent]:
         json_events = self._events_from_json(raw_text)
@@ -186,8 +208,6 @@ class ClaudeInteractiveTranscriptParser:
             text = line.strip()
             if not text:
                 continue
-            if not any(character.isalnum() for character in text):
-                continue
             stripped = text.replace(" ", "").replace(".", "")
             if len(text) <= _MIN_MEANINGFUL_LEN and stripped.isdigit():
                 continue
@@ -210,16 +230,26 @@ class ClaudeInteractiveTranscriptParser:
     ) -> list[InteractiveTranscriptEvent]:
         item_type = str(item.get("type", ""))
         if item_type == "tool_use":
+            self._current_content_mode = "tool_use"
             tool_name = str(item.get("name", "tool"))
             return [InteractiveTranscriptEvent(kind="tool_use", text=f"claude tool: {tool_name}")]
-        if item_type == "text":
-            text = str(item.get("text", "")).strip()
-            if text:
-                return [InteractiveTranscriptEvent(kind="output", text=text)]
         if item_type == "thinking":
+            self._current_content_mode = "thinking"
             text = str(item.get("thinking", "")).strip()
             if text:
                 return [InteractiveTranscriptEvent(kind="thinking", text=text)]
+            return []
+        if item_type == "text":
+            text = str(item.get("text", "")).strip()
+            if not text:
+                return []
+            # Route through _event_for_text so ALL TUI/thinking/spinner
+            # filtering is applied — same as non-JSON PTY text lines.
+            event = self._event_for_text(text)
+            if event is not None:
+                self._current_content_mode = "output"
+                return [event]
+            return []
         return []
 
     def _events_from_assistant_message(self, message: object) -> list[InteractiveTranscriptEvent]:
@@ -303,12 +333,28 @@ class ClaudeInteractiveTranscriptParser:
             return InteractiveTranscriptEvent(kind="thinking", text=text)
         if _is_tui_chrome(text):
             return None
+        if self._current_content_mode == "thinking":
+            return InteractiveTranscriptEvent(kind="thinking", text=text)
+        if self._current_content_mode == "tool_use":
+            return InteractiveTranscriptEvent(kind="thinking", text=text)
+        if self._current_content_mode == "output":
+            return InteractiveTranscriptEvent(kind="output", text=text)
         cleaned = text.rstrip().rstrip(")")
         if len(text) < _LENIENT_THINKING_MAX_LEN and cleaned.endswith("thinking"):
             prefix = cleaned[: -len("thinking")]
             prefix_alpha = re.sub(r"[^a-zA-Z]", "", prefix)
             if len(prefix_alpha) <= _MAX_THINKING_PREFIX_ALPHA:
                 return InteractiveTranscriptEvent(kind="thinking", text=text)
+        if len(text) < _LENIENT_THINKING_MAX_LEN and _contains_thinking_keyword(text):
+            if any(c in _TUI_GLYPH_CHARS for c in text):
+                return InteractiveTranscriptEvent(kind="thinking", text=text)
+            lower = text.lower()
+            if "thinking" in lower and " " not in text:
+                return InteractiveTranscriptEvent(kind="thinking", text=text)
+            if "ought for" in lower:
+                return InteractiveTranscriptEvent(kind="thinking", text=text)
+        if len(text) < 20 and any(c in _TUI_GLYPH_CHARS for c in text):
+            return InteractiveTranscriptEvent(kind="thinking", text=text)
         if len(text) <= _MIN_OUTPUT_LEN:
             return None
         return InteractiveTranscriptEvent(kind="output", text=text)

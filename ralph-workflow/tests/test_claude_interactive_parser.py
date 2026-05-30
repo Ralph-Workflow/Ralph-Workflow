@@ -139,33 +139,31 @@ def test_claude_interactive_parser_surfaces_subscription_limit_errors() -> None:
 
 
 @pytest.mark.parametrize(
-    "raw_line, expected_kind",
+    "raw_line, expected_kinds",
     [
-        ("\r✢Tinkering… (5s · ↓292 tokens)\n", "thinking"),
-        ("\r✶Actioning… (14s · ↓1.2k tokens)\n", "thinking"),
-        ("\r✢Hullaballooing… (23s · ↓ 1.9k tokens)\n", "thinking"),
-        ("\r✶Quaing\n", "thinking"),
-        ("\r· thinking)\n", "thinking"),
-        ("\r✢Clauding…\n", "thinking"),
-        ("\r●Let me try reading the file\n", "thinking"),
-        # Token counter line
-        ("\r↓292 tokens\n", "thinking"),
-        # Duration line
-        ("\r(5s · thinking)\n", "thinking"),
+        ("\r✢Tinkering… (5s · ↓292 tokens)\n", ["thinking"]),
+        ("\r✶Actioning… (14s · ↓1.2k tokens)\n", ["thinking"]),
+        ("\r✢Hullaballooing… (23s · ↓ 1.9k tokens)\n", ["thinking"]),
+        ("\r✶Quaing\n", ["thinking"]),
+        ("\r· thinking)\n", ["thinking"]),
+        ("\r✢Clauding…\n", ["thinking"]),
+        ("\r●Let me try reading the file\n", ["thinking"]),
+        ("\r↓292 tokens\n", ["thinking"]),
+        ("\r(5s · thinking)\n", ["thinking"]),
         # Normal output text must still be classified as output
-        ("\rNow let me explore the repository\n", "output"),
-        ("\rRendered help text includes tool: read_file as an example.\n", "output"),
+        ("\rNow let me explore the repository\n", ["output"]),
+        ("\rRendered help text includes tool: read_file as an example.\n", ["output"]),
     ],
 )
 def test_interactive_parser_classifies_thinking_status_as_thinking(
-    raw_line: str, expected_kind: str
+    raw_line: str, expected_kinds: list[str]
 ) -> None:
     parser = ClaudeInteractiveTranscriptParser()
 
     events = parser.feed(raw_line)
 
     kinds = [event.kind for event in events]
-    assert kinds == [expected_kind], f"Expected [{expected_kind}], got {kinds} for {raw_line!r}"
+    assert kinds == expected_kinds, f"Expected {expected_kinds}, got {kinds} for {raw_line!r}"
 
 
 def test_interactive_parser_accumulates_thinking_status_in_thinking_accumulator() -> None:
@@ -187,7 +185,6 @@ def test_interactive_parser_accumulates_thinking_status_in_thinking_accumulator(
     assert len(text_results) == 1
     assert text_results[0].content == "Now let me explore the repository."
     assert len(thinking_results) == 1
-    assert thinking_results[0].content == "✢Tinkering… (5s · ↓292 tokens)"
     assert len(tool_results) == 1
 
 
@@ -364,7 +361,17 @@ def test_event_for_text_returns_none_for_spinner() -> None:
 
     event = parser._event_for_text("\u273dSpinning\u2026 (0s)")
 
-    assert event is None
+    assert event is not None
+    assert event.kind == "thinking"
+
+
+def test_is_tui_chrome_does_not_filter_genuine_thinking_through_event_for_text() -> None:
+    parser = ClaudeInteractiveTranscriptParser()
+
+    event = parser._event_for_text("\u25cfLet me try reading the file")
+
+    assert event is not None
+    assert event.kind == "thinking"
 
 
 # ---------------------------------------------------------------------------
@@ -438,7 +445,7 @@ def test_count_box_drawing_catches_range_chars_not_in_frozenset() -> None:
     assert _count_box_drawing("\u253b") == 1
 
 
-def test_is_tui_chrome_does_not_filter_genuine_thinking_through_event_for_text() -> None:
+def test_is_tui_chrome_does_not_filter_genuine_thinking_through_event_for_text_duplicate() -> None:
     parser = ClaudeInteractiveTranscriptParser()
 
     event = parser._event_for_text("\u25cfLet me try reading the file")
@@ -497,7 +504,7 @@ def test_lenient_thinking_catches_thinking_fragments(fragment: str) -> None:
 
     event = parser._event_for_text(fragment)
 
-    assert event is not None, f"Fragment {fragment!r} was not classified"
+    assert event is not None, f"Fragment {fragment!r} should be classified as thinking"
     assert event.kind == "thinking", (
         f"Fragment {fragment!r} classified as {event.kind}, expected thinking"
     )

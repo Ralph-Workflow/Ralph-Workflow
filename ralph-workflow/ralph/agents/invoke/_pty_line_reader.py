@@ -173,7 +173,6 @@ class PtyLineReader:
     def _read_thread(self) -> None:
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         pending = ""
-        last_snapshot: str | None = None
         try:
             while True:
                 if self._handle.poll() is not None and not wait_for_master_readable(
@@ -191,16 +190,6 @@ class PtyLineReader:
                     with self._lines_lock:
                         self._lines_queue.extend(completed)
                         self._lines_event.set()
-                    last_snapshot = None
-                    continue
-                if "\r" not in pending:
-                    continue
-                snapshot_line = _pending_vt_snapshot_line(pending)
-                if snapshot_line is not None and snapshot_line != last_snapshot:
-                    with self._lines_lock:
-                        self._lines_queue.append(snapshot_line)
-                        self._lines_event.set()
-                    last_snapshot = snapshot_line
             tail = pending + decoder.decode(b"", final=True)
             if tail:
                 snapshot_line = _pending_vt_snapshot_line(tail)

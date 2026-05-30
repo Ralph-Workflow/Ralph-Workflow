@@ -63,6 +63,8 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
                 return AgentActivitySignal(
                     AgentActivityKind.OUTPUT_LINE, raw=thinking_event.text
                 )
+        if self._transcript_parser._current_content_mode == "thinking":
+            return None
         return super().classify_activity_line(line)
 
     def supports_session_continuation(self) -> bool:
