@@ -6,10 +6,17 @@ autonomous coding, and unattended coding workflows from sites not yet contacted.
 Produces a ranked discovery queue for the next manual-outreach window.
 Replaces the directory-submission flood with targeted publisher contact.
 
-Usage: python3 publisher_discovery_lane.py
+Usage:
+  python3 publisher_discovery_lane.py                    # auto-discovery (DDG HTML)
+  python3 publisher_discovery_lane.py --from-json FILE   # inject agent-discovered results
+
+When the DDG HTML endpoint is blocked (the default state as of 2026-05-30),
+the marketing agent loop can inject discovery results directly via
+web_fetch or web_search tool output using the --from-json flag.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -156,16 +163,52 @@ def rank(discovered: list[dict]) -> list[dict]:
     return scored
 
 
-def main() -> int:
+def inject_results(results: list[dict]) -> tuple[list[dict], int]:
+    """Inject pre-discovered results into the pipeline (bypasses blocked DDG search).
+    
+    Expected JSON format (one object or array of objects):
+      {"title": "...", "url": "https://...", "source": "domain.com"}
+    
+    Returns (ranked_results, exit_code).
+    """
     saturated = _load_outreach_log_domains()
-    discovered = discover(saturated)
-    ranked = rank(discovered)
+    
+    # Normalize: each result should have title, url, source
+    normalized: list[dict] = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url", "").strip()
+        title = item.get("title", "").strip()
+        source = item.get("source", "").strip()
+        if not url or not title:
+            continue
+        # Derive source domain from URL if not provided
+        if not source:
+            dom_match = re.match(r'https?://([^/]+)', url)
+            source = dom_match.group(1) if dom_match else url
+        # Skip saturated
+        skip = False
+        for sat in saturated:
+            if sat.lower() in source.lower() or sat.lower() in title.lower():
+                skip = True
+                break
+        if not skip:
+            normalized.append({"title": title, "url": url, "source": source, "query": "agent-injected"})
+    
+    ranked = rank(normalized)
+    return ranked, len(normalized)
 
+
+def write_outputs(ranked: list[dict], discovered_count: int, source: str = "discovery"):
+    """Write the discovery log and queue files."""
+    saturated = _load_outreach_log_domains()
     result = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "source": source,
         "saturated_domains_count": len(saturated),
-        "discovered_count": len(discovered),
-        "ranked": ranked[:10],  # top 10
+        "discovered_count": discovered_count,
+        "ranked": ranked[:10],
         "next_action": (
             "Review the ranked list for publisher outreach candidates."
             if ranked else "No fresh publishers found. Try broadening search queries."
@@ -177,12 +220,43 @@ def main() -> int:
         json.dump(result, f, indent=2, default=str)
     with open(QUEUE, "w") as f:
         json.dump(ranked[:15], f, indent=2, default=str)
-
+    
     print(json.dumps({
         "status": "ok" if ranked else "empty",
-        "discovered": len(discovered),
+        "source": source,
+        "discovered": discovered_count,
         "ranked_top": len(ranked[:10]),
     }, indent=2))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Publisher discovery lane — find outreach targets for insertions"
+    )
+    parser.add_argument(
+        "--from-json", type=str, metavar="FILE",
+        help="Inject pre-discovered results from JSON file (bypasses DDG search)"
+    )
+    args = parser.parse_args()
+
+    if args.from_json:
+        try:
+            with open(args.from_json) as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"ERROR reading {args.from_json}: {e}", file=sys.stderr)
+            return 1
+        # Accept single object or array
+        results = data if isinstance(data, list) else [data]
+        ranked, discovered_count = inject_results(results)
+        write_outputs(ranked, discovered_count, source="agent-injected")
+        return 0 if ranked else 0  # empty is not an error for injection
+
+    # Default: auto-discovery via DDG HTML (known-blocked path)
+    saturated = _load_outreach_log_domains()
+    discovered = discover(saturated)
+    ranked = rank(discovered)
+    write_outputs(ranked, len(discovered), source="ddg-html")
     return 0
 
 
