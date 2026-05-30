@@ -32,7 +32,7 @@ from ralph.process.manager import (
     get_process_manager,
     reset_process_manager,
 )
-from ralph.testing.fake_process import make_sync_process_factory
+from ralph.testing.fake_process import FakePsutil, make_sync_process_factory
 from ralph.workspace.scope import WorkspaceScope
 
 _FAST_POLICY = ProcessManagerPolicy(
@@ -103,7 +103,7 @@ def test_runner_phase_scope_kills_phase_labeled_child(
     must be dead after runner.run() exits, because the phase scope tears it down.
     """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
-    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     spawned_pid: list[int] = []
 
     def fake_execute_agent_effect(
@@ -155,7 +155,7 @@ def test_runner_phase_scope_does_not_kill_other_labels(
 ) -> None:
     """process_phase_scope only kills processes whose label starts with 'phase:<phase_name>'."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
-    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     spawned: dict[str, int] = {}
 
     def fake_execute_agent_effect(
@@ -222,7 +222,7 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     prefix cleanup alone.
     """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
-    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     spawned_pid: list[int] = []
 
     def fake_execute_agent_effect(

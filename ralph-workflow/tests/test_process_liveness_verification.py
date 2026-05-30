@@ -77,10 +77,7 @@ def test_liveness_check_no_psutil_fallback() -> None:
 def test_liveness_check_windows_no_kill() -> None:
     """hasattr(os, 'kill') is False → uses psutil fallback."""
     # Simulate Windows: os.kill not available
-    with (
-        patch("os.kill", side_effect=AttributeError("no kill on Windows")),
-        patch("os.__dict__", {}),
-    ):
+    with patch("os.kill", side_effect=AttributeError("no kill on Windows")):
         # Force hasattr check to return False for 'kill'
         _orig_hasattr = builtins.hasattr
 

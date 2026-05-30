@@ -15,7 +15,6 @@ from rich.console import Console
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.pipeline import commit_executor as commit_executor_module
-from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -381,7 +380,7 @@ class TestExecuteCommitEffect:
         message_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
-        monkeypatch.setattr(effect_executor_module, "stage_files", stage_files)
+        monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
             commit_executor_module,
             "_changed_commit_paths",
@@ -431,7 +430,7 @@ class TestExecuteCommitEffect:
         message_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
-        monkeypatch.setattr(effect_executor_module, "stage_files", stage_files)
+        monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         message_file.write_text(
             json.dumps(
                 {
@@ -473,7 +472,7 @@ class TestExecuteCommitEffect:
         message_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
-        monkeypatch.setattr(effect_executor_module, "stage_files", stage_files)
+        monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
             commit_executor_module,
             "_changed_commit_paths",
@@ -520,7 +519,7 @@ class TestExecuteCommitEffect:
         message_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
-        monkeypatch.setattr(effect_executor_module, "stage_files", stage_files)
+        monkeypatch.setattr(commit_executor_module, "_stage_files", stage_files)
         monkeypatch.setattr(
             commit_executor_module,
             "_changed_commit_paths",

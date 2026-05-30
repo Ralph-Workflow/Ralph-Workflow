@@ -11,6 +11,7 @@ All tests use deterministic fake processes — no real OS processes are spawned.
 from __future__ import annotations
 
 import itertools
+import os
 import sys
 import threading
 from typing import TYPE_CHECKING
@@ -70,12 +71,13 @@ def _make_pm(
 
 def test_process_exits_before_graceful_terminate() -> None:
     """Process exits before terminate() is called — marked KILLED as already gone."""
-    pm = _make_pm(psutil_mod=None)
-    handle = pm.spawn([sys.executable, "-c", "pass"])
-    # Simulate: process already exited (returncode set)
-    handle._proc._returncode = 0
+    with patch("os.kill", side_effect=ProcessLookupError):
+        pm = _make_pm(psutil_mod=None)
+        handle = pm.spawn([sys.executable, "-c", "pass"])
+        # Simulate: process already exited (returncode set)
+        handle._proc._returncode = 0
 
-    handle.terminate(grace_period_s=0.1)
+        handle.terminate(grace_period_s=0.1)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "already_gone"
@@ -255,7 +257,15 @@ def test_parent_terminates_but_descendant_survives() -> None:
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
-    stubborn_child = FakePsutilProcess(pid=1001, stubborn=True)
+
+    class _ImmortalChild(FakePsutilProcess):
+        def terminate(self) -> None:
+            pass  # Ignore SIGTERM
+
+        def kill(self) -> None:
+            pass  # Also ignore SIGKILL
+
+    stubborn_child = _ImmortalChild(pid=1001)
 
     class _RootWithStubbornChild(FakePsutilProcess):
         def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
@@ -315,7 +325,15 @@ def test_multiple_descendants_partial_termination() -> None:
 
     parent_pid = 1
     obedient = FakePsutilProcess(pid=1001)
-    stubborn = FakePsutilProcess(pid=1002, stubborn=True)
+
+    class _ImmortalDescendant(FakePsutilProcess):
+        def terminate(self) -> None:
+            pass
+
+        def kill(self) -> None:
+            pass
+
+    stubborn = _ImmortalDescendant(pid=1002)
 
     class _RootWithMixedChildren(FakePsutilProcess):
         def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
@@ -345,7 +363,15 @@ def test_descendant_outlives_parent_and_is_detected() -> None:
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
-    orphan = FakePsutilProcess(pid=3001, stubborn=True)
+
+    class _ImmortalOrphan(FakePsutilProcess):
+        def terminate(self) -> None:
+            pass
+
+        def kill(self) -> None:
+            pass
+
+    orphan = _ImmortalOrphan(pid=3001)
 
     class _RootWithOrphan(FakePsutilProcess):
         def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
@@ -458,7 +484,7 @@ def test_os_killpg_unavailable_uses_psutil_fallback() -> None:
 
     # killpg is not used by ProcessManager (psutil handles it), but verify
     # the system doesn't break when killpg is missing
-    with patch.object("os", "killpg", None, raising=False):
+    with patch.object(os, "killpg", None):
         pm.shutdown_all(grace_period_s=0.1)
 
     assert handle.record.status == ProcessStatus.KILLED

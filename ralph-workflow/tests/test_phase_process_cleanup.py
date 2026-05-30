@@ -21,7 +21,7 @@ from ralph.process.manager import (
     get_process_manager,
     reset_process_manager,
 )
-from ralph.testing.fake_process import FakeTimeoutPopen, make_sync_process_factory
+from ralph.testing.fake_process import FakePsutil, FakeTimeoutPopen, make_sync_process_factory
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -43,7 +43,7 @@ def _reset_pm() -> object:
 def test_phase_scope_kills_labeled_processes() -> None:
     """All processes labeled 'phase:review' are killed when the scope exits."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
-    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     handles = [
         pm.spawn(
             [sys.executable, "-c", "pass"],
@@ -67,7 +67,7 @@ def test_phase_scope_kills_labeled_processes() -> None:
 def test_phase_scope_does_not_kill_other_labels() -> None:
     """Processes with non-matching labels are not affected by the phase scope."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
-    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     target = pm.spawn(
         [sys.executable, "-c", "pass"],
         SpawnOptions(label="phase:review"),
@@ -94,7 +94,7 @@ def test_phase_scope_does_not_kill_other_labels() -> None:
 def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Path) -> None:
     """run_git with phase= creates a 'phase:<phase>:git:<label>' record label."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
-    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     original_singleton = _mgr._pm_state.instance
     _mgr._pm_state.instance = pm
     try:
@@ -116,7 +116,7 @@ def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Pat
 def test_run_git_without_phase_uses_plain_label(tmp_git_repo: Path) -> None:
     """run_git without phase= uses the label as-is."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
-    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     original_singleton = _mgr._pm_state.instance
     _mgr._pm_state.instance = pm
     try:

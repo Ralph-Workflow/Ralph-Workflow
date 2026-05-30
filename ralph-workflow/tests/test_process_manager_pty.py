@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import patch
 
 import pytest
 
@@ -93,11 +94,12 @@ def test_terminate_pty_process_kills_process_group(tmp_path: Path) -> None:
 def test_terminate_pty_process_root_only_handles_builtin_timeout(tmp_path: Path) -> None:
     factory = _TimeoutThenKillPtyFactory()
     pm = ProcessManager(policy=_FAST_POLICY, pty_process_factory=factory, psutil=None)
-
     handle = pm.spawn_pty(["claude", "PROMPT.md"], cwd=str(tmp_path), label="invoke:claude")
     proc = cast("_TimeoutThenKillPtyProcess", handle._proc)
 
-    handle.terminate(grace_period_s=0.0)
+    # Mock os.kill to succeed so the liveness check returns ALIVE
+    with patch("os.kill", return_value=None):
+        handle.terminate(grace_period_s=0.0)
 
     assert handle.record.status == ProcessStatus.KILLED
     assert proc.terminated is True

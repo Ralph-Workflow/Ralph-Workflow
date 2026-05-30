@@ -343,7 +343,7 @@ class ProcessManager:
         """Return all records for processes that have not yet terminated."""
         return [
             r
-            for r in self._records.values()
+            for r in list(self._records.values())
             if r.status in (ProcessStatus.SPAWNED, ProcessStatus.RUNNING)
         ]
 

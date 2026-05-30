@@ -10,11 +10,19 @@ if TYPE_CHECKING:
     from ralph.process.manager._process_manager_types import _PsutilProcessLike
 
 
+class _FakeNoSuchProcessError(Exception):
+    """Simulates psutil.NoSuchProcess."""
+
+
+class _FakeAccessDeniedError(Exception):
+    """Simulates psutil.AccessDenied."""
+
+
 class FakePsutil:
     """Fake psutil module for testing without real process operations."""
 
-    NoSuchProcess: type[BaseException] = Exception
-    AccessDenied: type[BaseException] = Exception
+    NoSuchProcess: type[BaseException] = _FakeNoSuchProcessError
+    AccessDenied: type[BaseException] = _FakeAccessDeniedError
     Process: Callable[[int], FakePsutilProcess]
 
     def __init__(self) -> None:
@@ -26,6 +34,11 @@ class FakePsutil:
             self._processes[pid] = FakePsutilProcess(pid=pid)
         return self._processes[pid]
 
+    def pid_exists(self, pid: int) -> bool:
+        if pid not in self._processes:
+            return False
+        return self._processes[pid].is_running()
+
     def process_iter(self, attrs: Sequence[str] | None = None) -> list[FakePsutilProcess]:
         del attrs
         return list(self._processes.values())
@@ -35,10 +48,11 @@ class FakePsutil:
         procs: Sequence[_PsutilProcessLike],
         timeout: float | None = None,
     ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
+        del timeout
         dead: list[_PsutilProcessLike] = []
         alive: list[_PsutilProcessLike] = []
         for p in procs:
-            if not p.is_running() or p.status() == "zombie":
+            if not p.is_running():
                 dead.append(p)
             else:
                 alive.append(p)

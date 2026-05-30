@@ -26,7 +26,6 @@ class FakePsutilProcess:
             self._running
             and not self._terminated
             and not self._killed
-            and self.status() != "zombie"
         )
 
     def status(self) -> str:

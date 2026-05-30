@@ -46,9 +46,9 @@ def verify_process_liveness(
 ) -> LivenessResult:
     """Check whether a PID is still alive, gone, zombie, or unknown.
 
-    On POSIX, uses os.kill(pid, 0) to probe process existence.
-    On Windows, falls back to psutil.pid_exists() if available.
-    Uses psutil for zombie detection when available.
+    When psutil_mod is available, uses it as the primary liveness check
+    (pid_exists + zombie detection). Falls back to os.kill(pid, 0) on
+    POSIX only when psutil_mod is None.
 
     Does NOT use _SuppressMissingProcess — each exception type is handled
     explicitly to avoid conflating "process gone" with "no permission".
@@ -61,14 +61,19 @@ def verify_process_liveness(
         LivenessResult indicating the process state.
     """
     if psutil_mod is not None:
+        # Zombie detection via psutil
         try:
             proc = psutil_mod.process_from_pid(pid)
             if proc.status() == "zombie":
                 return LivenessResult.ZOMBIE
         except Exception:
+            # process_from_pid failed — fall through to OS-level check
             pass
+        else:
+            # process_from_pid succeeded — use psutil for primary liveness check
+            return _psutil_pid_exists_liveness(psutil_mod, pid)
+
+    # No psutil — fall back to OS-level check
     if hasattr(os, "kill"):
         return _posix_liveness(pid)
-    if psutil_mod is not None:
-        return _psutil_pid_exists_liveness(psutil_mod, pid)
     return LivenessResult.UNKNOWN

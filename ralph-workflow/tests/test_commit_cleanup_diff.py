@@ -12,10 +12,10 @@ from ralph.policy.models import (
     PhaseTransition,
     PipelinePolicy,
 )
+from ralph.prompts._commit_diff import commit_cleanup_diff
 from ralph.prompts.materialize import (
     PromptPhaseContext,
     PromptPhaseOptions,
-    commit_cleanup_diff,
     materialize_prompt_for_phase,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain

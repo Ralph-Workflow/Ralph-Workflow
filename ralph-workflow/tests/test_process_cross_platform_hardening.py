@@ -12,7 +12,6 @@ from __future__ import annotations
 import itertools
 import os
 import sys
-from typing import Never
 from unittest.mock import patch
 
 import pytest
@@ -35,11 +34,17 @@ _FAST_POLICY = ProcessManagerPolicy(
 )
 
 
-def _make_pm(*, psutil_mod: FakePsutil | None = None) -> ProcessManager:
+def _make_pm(
+    *,
+    sync_factory: object = None,
+    psutil_mod: FakePsutil | None = None,
+) -> ProcessManager:
     """Build a ProcessManager with injected fake process factories."""
+    if psutil_mod is None:
+        psutil_mod = FakePsutil()
     return ProcessManager(
         policy=_FAST_POLICY,
-        sync_process_factory=make_sync_process_factory(itertools.count(1)),
+        sync_process_factory=sync_factory or make_sync_process_factory(itertools.count(1)),
         async_process_factory=make_async_process_factory(itertools.count(100)),
         psutil=psutil_mod,
     )
@@ -106,10 +111,6 @@ def test_psutil_none_shutdown_all() -> None:
 
 def test_os_getpgid_unavailable_fallback_to_pid() -> None:
     """When os.getpgid is unavailable (simulated Windows), pgid == pid."""
-
-    def no_getpgid() -> Never:
-        raise AttributeError("getpgid not available")
-
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = ProcessManager(
         policy=_FAST_POLICY,
@@ -117,7 +118,16 @@ def test_os_getpgid_unavailable_fallback_to_pid() -> None:
         async_process_factory=make_async_process_factory(itertools.count(100)),
     )
 
-    with patch.object(os, "getpgid", no_getpgid, create=True):
+    # Simulate Windows: os.getpgid doesn't exist (hasattr returns False)
+    with patch("builtins.hasattr") as mock_hasattr:
+        _orig_hasattr = hasattr
+
+        def _fake_hasattr(obj: object, name: str) -> bool:
+            if obj is os and name == "getpgid":
+                return False
+            return _orig_hasattr(obj, name)
+
+        mock_hasattr.side_effect = _fake_hasattr
         handle = pm.spawn([sys.executable, "-c", "pass"])
 
     # pgid should equal pid when getpgid is unavailable
@@ -156,7 +166,7 @@ def test_os_killpg_unavailable_uses_os_kill_fallback() -> None:
 
     # os.killpg is only used in _cleanup_exec_orphans (deprecated),
     # but verify the process manager doesn't break when killpg is missing
-    with patch.object(os, "killpg", None, raising=False):
+    with patch.object(os, "killpg", None):
         pm.shutdown_all(grace_period_s=0.1)
 
     assert handle.record.status == ProcessStatus.KILLED
