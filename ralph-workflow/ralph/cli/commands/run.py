@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 from importlib import import_module
 from inspect import signature
 from pathlib import Path
@@ -497,6 +497,17 @@ def _warn_if_capabilities_degraded(console: Console, workspace_root: Path) -> No
         )
 
 
+def _sync_shipped_skills_on_pipeline_run() -> None:
+    state_path = default_state_path()
+    if not state_path.exists():
+        return  # no state yet; skip until ralph --init creates it
+    with suppress(Exception):
+        SkillManager().check_skills_for_updates()
+
+
+sync_shipped_skills_on_pipeline_run = _sync_shipped_skills_on_pipeline_run
+
+
 def _status_text(label: str, detail: str, style: str) -> Text:
     text = Text()
     text.append(f"{label}:", style=style)
@@ -597,8 +608,9 @@ def run_pipeline(
     if preflight_result != _EXIT_SUCCESS:
         return preflight_result
 
-    # Phase 2b: capability degradation warning (file read + version compare; no network I/O)
+    # Phase 2b: sync shipped skills (TTL-cached), then warn if capabilities are degraded
     if load_result.workspace_scope is not None:
+        _sync_shipped_skills_on_pipeline_run()
         _warn_if_capabilities_degraded(ctx.console, load_result.workspace_scope.root)
 
     # Phase 3: Handle dry-run

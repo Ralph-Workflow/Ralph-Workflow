@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,6 +13,7 @@ from ralph.skills._content import (
     get_skill_content,
     get_skill_metadata,
     list_skill_names,
+    materialize_skills_to_claude_dir,
     materialize_skills_to_dir,
 )
 
@@ -62,6 +65,48 @@ def test_skill_metadata_exposes_upstream_provenance() -> None:
         metadata["skill_sources"]["open-design--frontend-slides"]["repo"]
         == "https://github.com/zarazhangrui/frontend-slides"
     )
+
+
+def test_materialize_skills_to_claude_dir_writes_managed_marker_with_content_hash(
+    tmp_path: Path,
+) -> None:
+    materialize_skills_to_claude_dir(tmp_path)
+    first_name = BASELINE_SKILL_NAMES[0]
+    marker_path = tmp_path / first_name / ".ralph-managed.json"
+    assert marker_path.exists()
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert "installed_content_sha256" in marker
+    expected_sha = hashlib.sha256(get_skill_content(first_name).encode("utf-8")).hexdigest()
+    assert marker["installed_content_sha256"] == expected_sha
+
+
+def test_materialize_skills_to_claude_dir_skips_manually_edited_skill(
+    tmp_path: Path,
+) -> None:
+    first_name = BASELINE_SKILL_NAMES[0]
+    skill_dir = tmp_path / first_name
+    skill_dir.mkdir(parents=True)
+    original_sha = hashlib.sha256(b"# original content\n").hexdigest()
+    (skill_dir / "SKILL.md").write_text("# original content\n", encoding="utf-8")
+    (skill_dir / ".ralph-managed.json").write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": first_name,
+                "installed_content_sha256": original_sha,
+            },
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
+    # Simulate user manual edit
+    (skill_dir / "SKILL.md").write_text("# user edited\n", encoding="utf-8")
+
+    written = materialize_skills_to_claude_dir(tmp_path)
+
+    assert first_name not in written
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == "# user edited\n"
+    assert len(written) == len(BASELINE_SKILL_NAMES) - 1
 
 
 def test_materialize_skills_to_dir_writes_all_skills(tmp_path: Path) -> None:

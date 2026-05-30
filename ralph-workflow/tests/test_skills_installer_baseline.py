@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -115,6 +117,43 @@ def test_install_baseline_skills_updates_ralph_managed_skill_in_place(
     assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
     assert failures == []
     assert skill_file.read_text(encoding="utf-8").startswith("---\nname: using-superpowers")
+
+
+def test_install_baseline_skills_preserves_manually_edited_managed_skill(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    target_dir = tmp_path / "skills"
+    managed_skill_dir = target_dir / "using-superpowers"
+    managed_skill_dir.mkdir(parents=True)
+    original_content = "# original ralph-installed content\n"
+    original_sha = hashlib.sha256(original_content.encode("utf-8")).hexdigest()
+    skill_file = managed_skill_dir / "SKILL.md"
+    skill_file.write_text(original_content, encoding="utf-8")
+    (managed_skill_dir / ".ralph-managed.json").write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": "using-superpowers",
+                "installed_content_sha256": original_sha,
+            },
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
+    # Simulate manual user edit after ralph installed the skill
+    user_edited_content = "# user edited — do not overwrite\n"
+    skill_file.write_text(user_edited_content, encoding="utf-8")
+
+    monkeypatch.setattr("ralph.skills._installer._installed_skills_dir", lambda: target_dir)
+
+    entry, failures = install_baseline_skills()
+
+    # All other skills are installed; the edited one is skipped — overall still healthy
+    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
+    assert failures == []
+    # The manually edited file must NOT be overwritten
+    assert skill_file.read_text(encoding="utf-8") == user_edited_content
 
 
 def test_install_baseline_skills_adopts_unmarked_identical_skill(
