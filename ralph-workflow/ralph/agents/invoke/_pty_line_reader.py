@@ -46,10 +46,10 @@ from ralph.agents.invoke._pty_helpers import (
     _write_pty_input,
 )
 from ralph.agents.invoke._pty_transcript import (
-    find_claude_transcript_path,
+    find_claude_transcript_entry,
     transcript_lines_from_event,
 )
-from ralph.agents.invoke._session import _TURN_BOUNDARY_MARKER
+from ralph.agents.invoke._session import _TURN_BOUNDARY_MARKER, _extract_session_id_from_line
 from ralph.process.child_liveness import AliveBy, ChildLivenessRegistry, classify_child_snapshot
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
@@ -108,6 +108,10 @@ class PtyLineReader:
         self._pending_permission_prompt_line: str | None = None
         self._pending_permission_prompt_started_at: float | None = None
         self._recent_choice_lines: list[str] = []
+        self._transcript_session_ids: list[str] = []
+        self._transcript_session_ids_lock = threading.Lock()
+        if self._expected_session_id:
+            self._transcript_session_ids.append(self._expected_session_id)
 
     def _start_thread(self, target: Callable[[], None]) -> threading.Thread:
         thread = threading.Thread(target=target, daemon=True)
@@ -204,20 +208,46 @@ class PtyLineReader:
             with self._lines_lock:
                 self._reader_done[0] = True
             self._lines_event.set()
-            self._monitor_stop.set()
+
+    def _record_transcript_session_id(self, raw_line: str) -> None:
+        session_id = _extract_session_id_from_line(raw_line)
+        if session_id is None:
+            session_id = _extract_session_id_from_line(_visible_tui_text(raw_line))
+        if session_id is None:
+            return
+        with self._transcript_session_ids_lock:
+            if session_id in self._transcript_session_ids:
+                self._transcript_session_ids.remove(session_id)
+            self._transcript_session_ids.insert(0, session_id)
+
+    def _transcript_session_id_candidates(self) -> tuple[str, ...]:
+        with self._transcript_session_ids_lock:
+            return tuple(self._transcript_session_ids)
 
     def _transcript_thread(self) -> None:
         if self._expected_session_id is None:
             return
         transcript_path: Path | None = None
+        transcript_session_id: str | None = None
         file_obj = None
         while not self._monitor_stop.is_set():
-            if transcript_path is None:
-                transcript_path = find_claude_transcript_path(self._expected_session_id)
-                if transcript_path is None:
+            candidate_ids = self._transcript_session_id_candidates()
+            if transcript_path is None or (
+                candidate_ids
+                and transcript_session_id is not None
+                and candidate_ids[0] != transcript_session_id
+            ):
+                entry = find_claude_transcript_entry(candidate_ids)
+                if entry is None:
                     self._monitor_stop.wait(0.1)
                     continue
-                file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
+                next_path, matched_session_id = entry
+                if transcript_path != next_path:
+                    if file_obj is not None:
+                        file_obj.close()
+                    transcript_path = next_path
+                    file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
+                transcript_session_id = matched_session_id
             assert file_obj is not None
             line = file_obj.readline()
             if not line:
@@ -438,6 +468,7 @@ class PtyLineReader:
         unsubscribe()
 
     def _handle_queued_line(self, queued_line: str, watchdog: IdleWatchdog) -> Iterator[str]:
+        self._record_transcript_session_id(queued_line)
         self._observe_queued_line(queued_line)
         activity_signal = self._strategy.classify_activity_line(queued_line)
         if activity_signal is not None:
