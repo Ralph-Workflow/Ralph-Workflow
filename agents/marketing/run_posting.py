@@ -422,6 +422,14 @@ def crosspost_blog_content(posted: dict, today: str, dry_run: bool = False) -> l
         if crossposted > 0 and crossposted % 3 == 0:
             time.sleep(1.0)
 
+    # Persist any newly-added records.  The in-memory `posted` dict is mutated
+    # incrementally inside the loop, so we must flush to disk before returning
+    # to avoid the "cross-posted to Telegraph but DB doesn't know" leak.
+    # (Repair 2026-05-30: function was unsafe to call outside main() because
+    # only main() called save_posted().)
+    if crossposted > 0 or results:
+        save_posted(posted)
+
     return results
 
 

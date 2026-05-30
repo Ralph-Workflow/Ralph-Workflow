@@ -40,3 +40,14 @@ Generated: 2026-05-30T10:18:06
 ## Process rule now in force
 - Do not generate another siloed packet when one of the assets above is already current.
 - During a hold window, refresh stale packets if needed, then point back to this board instead of inventing another reset artifact.
+
+## Distribution architecture repair completed (2026-05-30 ~10:40)
+- **Commit**: 5feeb81 — BlogPosting JSON-LD enrichment + inline Codeberg CTA
+- **Deployed**: release 20260530084034, verified live at 2026-05-30T08:40:57Z
+- **What changed**:
+  - `json_ld_article` now includes author, publisher (Organization w/ logo), image, dateModified, mainEntityOfPage — all 4 required fields for Google Article rich result eligibility
+  - `_meta_tags.html.erb` passes og_image to json_ld_article
+  - `blog/show.html.erb` now has an inline Codeberg-first CTA between header and content on every post
+- **Verified**: BlogPosting JSON-LD confirmed live, inline CTA confirmed on all blog posts
+- **IndexNow**: 92 pages submitted post-deploy
+- **Current hold**: still active until 11:02:59 CEST — post-hold reentry scheduled

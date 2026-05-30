@@ -997,7 +997,19 @@
       "draft_hash": "b0c9f765b198a648a73d7502aa842fdd12d0ede305c106d371e3084de37a2754",
       "experiment_id": "2026-05-30-usecase",
       "source_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-30_usecase_draft.md"
+    },
+    {
+      "date": "2026-05-30",
+      "draft": "ci-cd-pipeline-ai-coding-agent.md",
+      "title": "CI/CD Pipeline for AI Coding Agents: Running Autonomous Code Generation in Your Build System",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/CICD-Pipeline-for-AI-Coding-Agents-Running-Autonomous-Code-Generation-in-Your-Build-System-05-30",
+      "error": null,
+      "draft_hash": "18f4b1ac6cd4cc7dfe7d09625c808400540ccb9905f61a994bca5b47ee0962b4",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ci-cd-pipeline-ai-coding-agent.md"
     }
   ],
-  "last_run": "2026-05-30T09:47:05.172148"
+  "last_run": "2026-05-30T11:05:55.419798"
 }
