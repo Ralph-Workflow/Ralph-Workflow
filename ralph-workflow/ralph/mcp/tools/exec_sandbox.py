@@ -21,9 +21,11 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import time
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.tools._exec_cache_cleanup_summary import ExecCacheCleanupSummary
@@ -42,7 +44,6 @@ from ralph.mcp.tools.exec_overlay import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
 _READY_FILE = ".ralph-sandbox-ready"
 _LOCK_FILE = ".ralph-sandbox.lock"
@@ -65,12 +66,12 @@ _DEFAULT_HARD_CAP_MULTIPLIER = 2
 _LOW_USAGE_STREAK_THRESHOLD = 2
 _MAX_CONSECUTIVE_CLEANUP_FAILURES = 5
 _CLEANUP_COOLDOWN_S = 300.0
-_MAX_CONSECUTIVE_RSYNC_FAILURES = 3
 _INITIAL_AVERAGE_SLOTS = 1.0
 _SLOT_PREFIX = "slot-"
 _BASE_LOCK_FILE = ".ralph-exec-base.lock"
 _TRASH_PREFIX = ".ralph-exec-trash-"
 _BASE_PRUNE_INTERVAL_S = 1.0
+_PERIODIC_CLEANUP_INTERVAL_S = 60.0
 
 
 def _workspace_key(workspace_root: Path) -> str:
@@ -186,8 +187,6 @@ class ExecSandboxManager:
         self._managed_workspace_keys: set[str] = set()
         self._consecutive_cleanup_failures = 0
         self._cleanup_cooldown_until_monotonic = 0.0
-        self._consecutive_rsync_failures = 0
-        self._rsync_disabled_until_monotonic = 0.0
         self._last_cleanup_error: str = ""
         self._last_periodic_cleanup_monotonic: float = 0.0
         self._logger = logging.getLogger(__name__)
@@ -208,7 +207,7 @@ class ExecSandboxManager:
                 "refusing to proceed until cooldown expires",
                 consecutive_failures=self._consecutive_cleanup_failures,
                 cooldown_remaining_s=cooldown_remaining,
-                last_error=getattr(self, "_last_cleanup_error", "unknown"),
+                last_error=self._last_cleanup_error or "unknown",
             )
         summary = self.cleanup_base()
         if (
@@ -228,10 +227,9 @@ class ExecSandboxManager:
             )
         workspace_bytes = self._workspace_size_bytes(workspace_root)
         if workspace_bytes > self._max_workspace_bytes:
-            raise ExecutionError(
-                "sandbox workspace exceeds safety limit",
-                workspace_bytes=workspace_bytes,
-                max_workspace_bytes=self._max_workspace_bytes,
+            raise OSError(
+                f"sandbox workspace exceeds safety limit: "
+                f"{workspace_bytes} bytes > {self._max_workspace_bytes} bytes"
             )
         workspace_key = _workspace_key(workspace_root)
         pool_root = self._base_dir / workspace_key
@@ -298,7 +296,7 @@ class ExecSandboxManager:
         self._clear_sandbox_contents(sandbox_root)
         _write_overlay_owner_metadata(sandbox_root)
         rebuilt_worktree = sandbox_root / "ws"
-        self._mirror_with_rsync_tracking(workspace_root, rebuilt_worktree)
+        _mirror_workspace(workspace_root, rebuilt_worktree)
         _ensure_git_isolation(workspace_root, rebuilt_worktree, sandbox_root)
         self._write_ready_sentinel(sandbox_root)
 
@@ -308,7 +306,7 @@ class ExecSandboxManager:
         if worktree.exists():
             shutil.rmtree(worktree, ignore_errors=True)
         _write_overlay_owner_metadata(sandbox_root)
-        self._mirror_with_rsync_tracking(workspace_root, worktree)
+        _mirror_workspace(workspace_root, worktree)
         _ensure_git_isolation(workspace_root, worktree, sandbox_root)
         return True
 
@@ -321,39 +319,6 @@ class ExecSandboxManager:
                 shutil.rmtree(child, ignore_errors=True)
             else:
                 child.unlink(missing_ok=True)
-
-    def _mirror_with_rsync_tracking(
-        self, workspace_root: Path, overlay_root: Path
-    ) -> None:
-        """Mirror workspace with broken-rsync tracking.
-
-        If rsync fails 3 times consecutively, skip it for the rest of
-        the session (until the first successful sync resets the counter).
-        """
-        rsync_disabled = (
-            self._consecutive_rsync_failures >= _MAX_CONSECUTIVE_RSYNC_FAILURES
-            and time.monotonic() < self._rsync_disabled_until_monotonic
-        )
-        new_failures = _mirror_workspace(
-            workspace_root,
-            overlay_root,
-            rsync_failures=self._consecutive_rsync_failures,
-            rsync_disabled=rsync_disabled,
-        )
-        if new_failures == 0:
-            self._consecutive_rsync_failures = 0
-        elif new_failures > self._consecutive_rsync_failures:
-            self._consecutive_rsync_failures = new_failures
-            if self._consecutive_rsync_failures >= _MAX_CONSECUTIVE_RSYNC_FAILURES:
-                self._rsync_disabled_until_monotonic = (
-                    time.monotonic() + _CLEANUP_COOLDOWN_S * 2
-                )
-                self._logger.warning(
-                    "rsync is present but consistently failing "
-                    "(%d consecutive failures) — falling back to diff-based sync "
-                    "for this session",
-                    self._consecutive_rsync_failures,
-                )
 
     def _cleanup_worktree(self, worktree: Path) -> None:
         with suppress(OSError):
@@ -993,7 +958,6 @@ class ExecSandboxManager:
         self._consecutive_cleanup_failures = 0
 
     def _record_cleanup_failure(self) -> None:
-        import sys
         exc_info = sys.exc_info()
         if exc_info[1] is not None:
             self._last_cleanup_error = str(exc_info[1])
@@ -1008,9 +972,15 @@ class ExecSandboxManager:
         try:
             diag = self.cache_diagnostics()
             total = diag.get("total_base_bytes", 0)
-            pools = len(diag.get("pools", []))
+            pools_raw = diag.get("pools", [])
+            pools_list: list[dict[str, object]] = (
+                pools_raw if isinstance(pools_raw, list) else []
+            )
+            pools = len(pools_list)
             active = sum(
-                p.get("active_leases", 0) for p in diag.get("pools", [])
+                v for p in pools_list
+                for v in (p.get("active_leases", 0),)
+                if isinstance(v, int)
             )
             cooldown = "yes" if diag.get("cooldown_active", False) else "no"
             return (
@@ -1023,13 +993,11 @@ class ExecSandboxManager:
     def _maybe_periodic_cleanup(self) -> None:
         """Trigger cleanup_base() periodically (at most once per 60 seconds)."""
         now = time.monotonic()
-        if now - self._last_periodic_cleanup_monotonic < 60.0:
+        if now - self._last_periodic_cleanup_monotonic < _PERIODIC_CLEANUP_INTERVAL_S:
             return
         self._last_periodic_cleanup_monotonic = now
-        try:
+        with suppress(Exception):
             self.cleanup_base()
-        except Exception:
-            pass
 
     def _check_runaway_growth(self) -> bool:
         """Return True if base_dir exceeds 90% of max_total_bytes budget."""
@@ -1146,10 +1114,8 @@ class ExecSandboxManager:
             # Gracefully handle paths already deleted by another thread/process
             if not path.exists():
                 continue
-            try:
+            with suppress(FileNotFoundError):
                 shutil.rmtree(path, ignore_errors=True)
-            except FileNotFoundError:
-                pass
 
     def _release_lock(self, sandbox_root: Path) -> None:
         self._lock_path(sandbox_root).unlink(missing_ok=True)
@@ -1235,5 +1201,4 @@ __all__ = [
     "ExecCacheCleanupSummary",
     "ExecSandboxBusyError",
     "ExecSandboxManager",
-    "_MAX_CONSECUTIVE_RSYNC_FAILURES",
 ]

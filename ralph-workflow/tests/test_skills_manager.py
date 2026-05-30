@@ -201,3 +201,20 @@ def test_check_skills_for_updates_auto_repairs_when_update_found(tmp_path: Path)
     repaired_state = manager._load_state()
     assert repaired_state.skills.status == CapabilityStatus.INSTALLED_HEALTHY
     assert repaired_state.skills.update_available is False
+
+
+def test_check_skills_for_updates_saves_healthy_state_when_no_update_available(
+    tmp_path: Path,
+) -> None:
+    manager = SkillManager(state_path=tmp_path / "state.json")
+    with patch(
+        "ralph.skills.manager.check_skills_update_available",
+        return_value=False,
+    ):
+        result = manager.check_skills_for_updates()
+
+    assert result is False
+    saved = manager._load_state()
+    assert saved.skills.status == CapabilityStatus.INSTALLED_HEALTHY
+    assert saved.skills.last_check_ok_iso != ""
+    assert saved.skills.update_available is False

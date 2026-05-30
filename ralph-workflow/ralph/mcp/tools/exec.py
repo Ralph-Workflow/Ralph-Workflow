@@ -29,6 +29,7 @@ from ralph.mcp.tools.coordination import (
 )
 from ralph.mcp.tools.exec_overlay import _get_workspace_exec_base
 from ralph.mcp.tools.exec_sandbox import (
+    ExecSandboxBusyError,
     ExecSandboxManager,
     _compute_sandbox_limits,
     _compute_workspace_size_bytes,

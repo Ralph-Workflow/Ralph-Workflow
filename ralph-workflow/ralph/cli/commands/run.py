@@ -498,9 +498,6 @@ def _warn_if_capabilities_degraded(console: Console, workspace_root: Path) -> No
 
 
 def _sync_shipped_skills_on_pipeline_run() -> None:
-    state_path = default_state_path()
-    if not state_path.exists():
-        return  # no state yet; skip until ralph --init creates it
     with suppress(Exception):
         SkillManager().check_skills_for_updates()
 
