@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-05-30T01:54:24.786921+00:00",
+  "generated_at": "2026-05-30T06:51:06.491696+00:00",
   "domain": "ralphworkflow.com",
   "sitemap": {
     "sitemap_url": "https://ralphworkflow.com/sitemap.xml",
     "ok": true,
-    "url_count": 83,
+    "url_count": 91,
     "error": null,
     "urls": [
       "https://ralphworkflow.com/",
@@ -12,6 +12,13 @@
       "https://ralphworkflow.com/terms",
       "https://ralphworkflow.com/install",
       "https://ralphworkflow.com/docs/",
+      "https://ralphworkflow.com/aider-alternative",
+      "https://ralphworkflow.com/claude-code-alternative",
+      "https://ralphworkflow.com/conductor-alternative",
+      "https://ralphworkflow.com/continue-alternative",
+      "https://ralphworkflow.com/copilot-alternative",
+      "https://ralphworkflow.com/cursor-alternative",
+      "https://ralphworkflow.com/hermes-alternative",
       "https://ralphworkflow.com/contact",
       "https://ralphworkflow.com/docs/advanced-artifact-configuration",
       "https://ralphworkflow.com/docs/advanced-mcp-configuration",
@@ -19,16 +26,9 @@
       "https://ralphworkflow.com/docs/after-your-first-run",
       "https://ralphworkflow.com/docs/agents",
       "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
-      "https://ralphworkflow.com/docs/ai-agent-workflow-composer",
-      "https://ralphworkflow.com/docs/ai-coding-workflow-automation",
-      "https://ralphworkflow.com/docs/bounded-autonomy-for-unattended-coding",
-      "https://ralphworkflow.com/docs/claude-code-approval-mode",
-      "https://ralphworkflow.com/docs/claude-code-automation",
-      "https://ralphworkflow.com/docs/claude-code-codex-workflow",
-      "https://ralphworkflow.com/docs/claude-code-run-until-done",
-      "https://ralphworkflow.com/docs/cli"
+      "https://ralphworkflow.com/docs/ai-agent-workflow-composer"
     ],
-    "blog_url_count": 28
+    "blog_url_count": 29
   },
   "robots": {
     "robots_url": "https://ralphworkflow.com/robots.txt",
@@ -42,7 +42,7 @@
     "google": {
       "method": "gsc_api",
       "ok": true,
-      "indexed_count_approx": 0,
+      "indexed_count_approx": 13,
       "error": null,
       "sample_urls": [
         "https://ralphworkflow.com/",
@@ -160,7 +160,8 @@
         ],
         "error": null,
         "ctr": 6.21
-      }
+      },
+      "indexed_source": "search_analytics"
     },
     "duckduckgo": {
       "method": "ddg_html",
@@ -182,8 +183,8 @@
     "canonical_mismatches": []
   },
   "assessment": {
-    "sitemap_urls": 83,
-    "google_indexed_approx": 0,
+    "sitemap_urls": 91,
+    "google_indexed_approx": 13,
     "ddg_indexed_approx": 0,
     "gsc_source": true,
     "gsc_sitemap_submitted": 80,
@@ -192,8 +193,11 @@
     "gsc_total_clicks_28d": 19,
     "gsc_total_impressions_28d": 306,
     "gsc_pages_with_data": 13,
-    "searchable": false,
-    "verdict": "NOT_INDEXED: 80 pages submitted via sitemap, 0 indexed by Google",
-    "recommendation": "CRITICAL: Google knows about 80 pages via sitemap but has indexed ZERO. Most likely causes: (1) domain is too new or has no backlinks signaling authority, (2) content is detected as thin/auto-generated/doorway pages, (3) Google needs manual reconsideration. Highest-leverage next action: get ONE quality backlink from an established domain (TechCrunch-style dev publication, GitHub repo with stars, etc). A single backlink will trigger Google to crawl and evaluate the content properly."
+    "gsc_has_search_presence": true,
+    "indexed_source": "search_analytics",
+    "confidence": "medium",
+    "searchable": true,
+    "verdict": "PARTIALLY_INDEXED: 13 pages with search presence (impressions/clicks in 28d), sitemap reports 0/80 indexed. Sitemap-indexed count undercounts true indexation \u2014 search analytics confirms pages are live.",
+    "recommendation": "Indexation is happening (13 pages visible in search) but sitemap processing is behind. This is not an indexation failure \u2014 focus on backlinks and domain authority instead of gate-repair. Current visibility: 306 impressions, 19 clicks over 28 days. Primary blocker is ranking, not indexing."
   }
 }

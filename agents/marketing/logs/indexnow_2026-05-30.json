@@ -190,5 +190,69 @@
         "error": null
       }
     ]
+  },
+  {
+    "timestamp": "2026-05-30T06:02:48.923652+00:00",
+    "ok": true,
+    "batches": 1,
+    "submitted": 91,
+    "total_sitemap_urls": 91,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 91,
+        "total": 91,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-05-30T06:14:00.349412+00:00",
+    "ok": true,
+    "batches": 1,
+    "submitted": 91,
+    "total_sitemap_urls": 91,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 91,
+        "total": 91,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-05-30T06:58:05.466588+00:00",
+    "ok": true,
+    "batches": 1,
+    "submitted": 91,
+    "total_sitemap_urls": 91,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 91,
+        "total": 91,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-05-30T07:00:05.785379+00:00",
+    "ok": true,
+    "batches": 1,
+    "submitted": 91,
+    "total_sitemap_urls": 91,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 91,
+        "total": 91,
+        "status_code": 200,
+        "error": null
+      }
+    ]
   }
 ]

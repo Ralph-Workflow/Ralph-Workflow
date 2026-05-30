@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-05-30T01:21:02.756047",
+  "generated_at": "2026-05-30T06:58:47.894192+00:00",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
-  "articles_logged": 6,
+  "articles_logged": 7,
   "reddit_posts_analyzed": 3,
   "repeated_openings": [
-    "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+    "Which of the five made the most difference for your team? Worth thinking about explicitly \u2014 most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "adoption_metrics": [
     {
@@ -58,7 +58,7 @@
       "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
-      "PyPI has 1428 downloads/month (0/day) — real usage signal that repo metrics don't capture."
+      "PyPI has 1428 downloads/month (0/day) \u2014 real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [
       "primary_repo_flat"
@@ -77,7 +77,7 @@
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
-    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly \u2014 most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
     "Recent live external action exists (deployed_blog_post), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
@@ -86,7 +86,7 @@
   ],
   "should_change_now": [
     "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
-    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
+    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving."
   ],
   "dormant_risks": [
     "reddit_style_repetition_suspended_while_channel_blocked"
@@ -106,7 +106,7 @@
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
-      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
+      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving.",
       "kill_condition": "N/A (mirror, not primary)",
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
@@ -190,11 +190,11 @@
     "live_list_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_apollo_list_verification.json",
     "outbound_verification_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_083102_apollo_outbound_verification.json",
     "record_count": 5,
-    "sequence_name": "Ralph Workflow curator follow-up — Codeberg CTA",
+    "sequence_name": "Ralph Workflow curator follow-up \u2014 Codeberg CTA",
     "final_url": "https://app.apollo.io/#/lists?sortByField=updated_at&sortAscending=false&groupBy[]=labelModality",
     "verification_timestamp": "2026-05-29T08:30:01.492075+02:00",
     "evidence": [
-      "Apollo UI shows list 'Ralph Workflow — curator follow-up 2026-05-22' with 5 visible records.",
+      "Apollo UI shows list 'Ralph Workflow \u2014 curator follow-up 2026-05-22' with 5 visible records.",
       "The curator follow-up asset is now usable for sequence launch with a Codeberg-primary CTA."
     ],
     "needs_live_verification": true,
@@ -215,8 +215,48 @@
     "selected_lane": "measurement_hold",
     "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-30_marketing_execution_board.md",
     "execution_board_targets": [
-      "Ralph Workflow curator follow-up — Codeberg CTA"
+      "Ralph Workflow curator follow-up \u2014 Codeberg CTA"
     ],
     "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json"
-  }
+  },
+  "distribution_repairs": [
+    {
+      "timestamp": "2026-05-30T06:58:47.894234+00:00",
+      "action": "distribution_architecture_repair",
+      "repair_type": "structured-data-enrichment",
+      "summary": "Added SoftwareApplication JSON-LD to homepage and install page. Google uses this schema for software rich results (OS badges, open-source signals, codeRepository). codeRepository points to Codeberg as canonical source. Targeting the 87% of search impressions on homepage (266/306).",
+      "files_changed": [
+        "app/helpers/application_helper.rb (+33 lines: json_ld_software_application method)",
+        "app/views/pages/home.html.erb (+1: content_for :software_application)",
+        "app/views/pages/install.html.erb (+1: content_for :software_application)",
+        "app/views/shared/_meta_tags.html.erb (+3: conditional SoftwareApplication inject)"
+      ],
+      "deploy": {
+        "commit": "21c977b",
+        "branch": "main",
+        "deploy_success": true,
+        "verified_live": true,
+        "live_pages": [
+          "https://ralphworkflow.com/",
+          "https://ralphworkflow.com/install"
+        ]
+      },
+      "schema_details": {
+        "@type": "SoftwareApplication",
+        "codeRepository": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+        "operatingSystem": [
+          "Linux",
+          "macOS",
+          "Windows"
+        ],
+        "softwareVersion": "0.8.8",
+        "offers": {
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      },
+      "rationale": "Homepage gets 266/306 search impressions (87%). SoftwareApplication is Google's richest structured data hook for open-source CLI tools \u2014 triggers software-rich results with install badges, OS compatibility chips, and code repository signals. This directly improves CTR from existing impressions without needing new backlinks.",
+      "preceding_hold_window_repair": "GSC seo_indexation_diagnostic.py false-zero fix (assessment logic now cross-checks sitemap against search analytics, distinguishes permission-errors from real zero-indexation)"
+    }
+  ]
 }

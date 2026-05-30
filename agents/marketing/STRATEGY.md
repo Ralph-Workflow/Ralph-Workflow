@@ -565,3 +565,33 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 ### Priority Actions (from SEO analysis)
 - Create content targeting: AI agent workflow composer
 - Build backlinks: submit to directories, guest post, earn citations
+
+## Weekly Review — 2026-05-30
+
+### SEO Health
+**SEO Score:** 0/100 (F) | Ranked keywords: 0 | Backlinks: 0 | DR: None
+**Trends:** ranks 0.0
+
+### Content Performance
+- conversion-asset: 1 posts, 128 total views, 128.0 avg views/publish
+- philosophy: 1 posts, 0 total views, 0.0 avg views/publish
+- seo-guide: 1 posts, 133 total views, 133.0 avg views/publish
+- technical: 1 posts, 0 total views, 0.0 avg views/publish
+- unknown: 77 posts, 3562 total views, 46.26 avg views/publish
+- usecase: 1 posts, 0 total views, 0.0 avg views/publish
+
+### Weekly Decisions
+- **[HIGH]** MARK AS FAILING: Current content/distribution tactics are not driving repo adoption. — Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)
+- **[HIGH]** Fix on-page SEO issues before investing in new content. — SEO score is 0/100 — technical foundation needs attention.
+- **[MEDIUM]** Keep publishing seo-guide content. — Best avg views: 133.0 — lean into what's working.
+- **[MEDIUM]** Shift one future slot away from usecase toward seo-guide. — seo-guide outperforms usecase on avg views.
+- **[MEDIUM]** Fix top on-page SEO issues (current score: 0/100) — Identified by daily SEO analysis as a top priority.
+- **[MEDIUM]** Build backlinks: submit to directories, guest post, earn citations — Identified by daily SEO analysis as a top priority.
+- **[MEDIUM]** Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move. — Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes.
+- **[MEDIUM]** Ship comparison-led backlink outreach packets whenever the curator queue is already full. — A follow-through note is not enough when the queue is saturated; the loop needs a fresh executable distribution asset tied to existing comparison pages.
+- **[MEDIUM]** Leverage competitor comparison pages in content and outreach. — Monitoring 8 competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked.
+- **[INFO]** Note: hermes-agent has 173080 GitHub stars — lean into Ralph's cost and flexibility advantages. — Competitor intelligence for positioning decisions.
+
+### Priority Actions (from SEO analysis)
+- Fix top on-page SEO issues (current score: 0/100)
+- Build backlinks: submit to directories, guest post, earn citations

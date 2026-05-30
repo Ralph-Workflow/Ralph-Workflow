@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-05-30T06:24:26.337245",
+  "timestamp": "2026-05-30T09:00:01.999518",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "measurement_hold_follow_through",
     "channel": "measurement_hold",
     "title": "Distribution lane execution: measurement_hold",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_062426_measurement_hold_follow_through.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_090001_measurement_hold_follow_through.md"
   },
   "why_this_action": {
-    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Scheduled an automatic post-hold marketer rerun at the exact short-window release time.",
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",

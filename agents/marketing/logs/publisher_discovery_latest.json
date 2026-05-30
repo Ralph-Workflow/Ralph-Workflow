@@ -1,7 +1,16 @@
 {
-  "timestamp": "2026-05-30T00:30:02.494131+00:00",
+  "timestamp": "2026-05-30T06:09:21.687986+00:00",
+  "source": "agent-injected",
   "saturated_domains_count": 470,
-  "discovered_count": 0,
-  "ranked": [],
-  "next_action": "No fresh publishers found. Try broadening search queries."
+  "discovered_count": 1,
+  "ranked": [
+    {
+      "title": "Top 5 Open-Source Agent Orchestration Platforms in 2026",
+      "url": "https://orloj.dev/blog/top-5-open-source-agent-orchestration-platforms-2026",
+      "source": "orloj.dev",
+      "query": "agent-injected",
+      "score": 3
+    }
+  ],
+  "next_action": "Review the ranked list for publisher outreach candidates."
 }

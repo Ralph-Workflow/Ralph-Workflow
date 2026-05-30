@@ -1,8 +1,8 @@
 # Codeberg CTA Audit Report
-Generated: 2026-05-29T07:00:25.827927+00:00
+Generated: 2026-05-30T07:00:29.275767+00:00
 
 ## Summary: FAIL
-- Files with repo links: 473
+- Files with repo links: 486
 - High severity issues: 1
 - Medium severity issues: 11
 
@@ -18,8 +18,8 @@ Generated: 2026-05-29T07:00:25.827927+00:00
 - **/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_are-vs-code-copilot-agent-debug-log-token-counts-t.md**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
 - **/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-do-i-use-agents-in-langgraph-workflow.md**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
 - **/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-to-combine-conversationalretrievalqachain-agen.md**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
-- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-19.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
-- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-20.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
+- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive/2026-05-29/marketing_2026-05-19.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
+- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive/2026-05-29/marketing_2026-05-20.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
 - **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-21.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
 - **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
 - **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.

@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-05-29T09:00:25.759436",
+  "generated_at": "2026-05-30T09:00:29.156210",
   "priority_keywords": [
-    "Create content targeting: AI agent workflow composer",
+    "Fix top on-page SEO issues (current score: 0/100)",
     "Build backlinks: submit to directories, guest post, earn citations"
   ],
-  "gaps": [
-    "AI agent workflow composer"
-  ],
-  "onpage_score": "100/100 (A)",
+  "gaps": [],
+  "onpage_score": "0/100 (F)",
   "ranked_keywords": 0,
   "backlinks_approx": 0,
   "weekly_decisions": [
     "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
+    "Fix on-page SEO issues before investing in new content.",
     "Keep publishing seo-guide content.",
     "Shift one future slot away from usecase toward seo-guide.",
+    "Fix top on-page SEO issues (current score: 0/100)",
     "Build backlinks: submit to directories, guest post, earn citations",
     "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
     "Ship comparison-led backlink outreach packets whenever the curator queue is already full.",

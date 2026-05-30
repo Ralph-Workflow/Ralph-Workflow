@@ -50,8 +50,6 @@
 - Performed: yes
 - Verdict: qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Previous artifact verdict: qualified_pass
-- Previous artifact checked at: 2026-05-30T06:47:18.852543+02:00
 
 ## Small gate passed
 

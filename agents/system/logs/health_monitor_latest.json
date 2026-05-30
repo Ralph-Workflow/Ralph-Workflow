@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-30T06:45:38.224044",
+  "ts": "2026-05-30T08:15:23.210584",
   "jobs_checked": 24,
-  "issues_found": 5,
+  "issues_found": 7,
   "issues": [
     {
       "job_id": "50578fdf-ea83-46bd-8580-36d2bae7ba54",
@@ -27,10 +27,19 @@
     },
     {
       "job_id": "__artifacts__",
+      "name": "shared_market_intelligence",
+      "category": "stale_artifact",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+      "artifact_age_minutes": 732.11,
+      "max_age_minutes": 720,
+      "likely_cause": "Required runtime artifact is stale"
+    },
+    {
+      "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 2134.12,
+      "artifact_age_minutes": 2223.87,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -39,8 +48,8 @@
       "name": "marketing-workflow-audit_escalation",
       "category": "escalation_required",
       "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
-      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=74",
-      "repeats_in_recent_history": 74,
+      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=76",
+      "repeats_in_recent_history": 76,
       "owner_domain": "marketing",
       "incident_key": "marketing-workflow-audit::live_error",
       "escalation_level": "critical",
@@ -51,11 +60,23 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=338",
-      "repeats_in_recent_history": 338,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=340",
+      "repeats_in_recent_history": 340,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "shared_market_intelligence_escalation",
+      "category": "escalation_required",
+      "last_error": "",
+      "likely_cause": "Incident escalation level=owner: shared_market_intelligence:stale_artifact repeat_count=2",
+      "repeats_in_recent_history": 2,
+      "owner_domain": null,
+      "incident_key": "shared_market_intelligence::stale_artifact",
+      "escalation_level": "owner",
       "blocked_by": []
     }
   ],
@@ -70,25 +91,19 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T06:45:27.049067+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-30T08:15:14.145897+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing-workflow-audit_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780116329187:28\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780121718502:29\"\n}"
     }
   ]
 }
