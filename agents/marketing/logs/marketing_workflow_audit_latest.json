@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-31T00:08:44.061305",
+  "generated_at": "2026-05-31T06:12:29.497829",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -17,11 +17,11 @@
     },
     {
       "platform": "PyPI",
-      "downloads_month": 1299,
-      "downloads_week": 22,
-      "downloads_day": 3,
+      "downloads_month": 1297,
+      "downloads_week": 25,
+      "downloads_day": 5,
       "total_downloads": null,
-      "version": "0.8.7",
+      "version": "0.8.8",
       "html_url": "https://pypi.org/project/ralph-workflow/"
     },
     {
@@ -58,7 +58,7 @@
       "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
-      "PyPI has 1299 downloads/month (3/day) — real usage signal that repo metrics don't capture."
+      "PyPI has 1297 downloads/month (5/day) — real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [
       "primary_repo_flat"
@@ -80,7 +80,7 @@
     "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
-    "Recent live external action exists (social_card_deployed), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
+    "Recent live external action exists (distribution_architecture_repair), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
   ],
@@ -125,9 +125,8 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was manual_outreach_asset_follow_through, but the latest meaningful external/replacement execution remains social_card_deployed; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (social_card_deployed), so the system is still shipping output even though outcome movement is not visible yet.",
-    "A fresh outcome-capability runtime is now logged (distribution_confirmation_follow_through), so the system-design repair should be treated as shipped even though repo adoption has not moved yet."
+    "The active loop did execute a live marketing action recently (distribution_architecture_repair), so the system is still shipping output even though outcome movement is not visible yet.",
+    "A fresh outcome-capability runtime is now logged (directory_confirmation), so the system-design repair should be treated as shipped even though repo adoption has not moved yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -162,18 +161,18 @@
   "latest_marketing_activity": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_0257_distribution_architecture_repair.json",
     "type": "distribution_architecture_repair",
-    "title": "Consolidated 7 doorway alternative pages into 1 canonical comparison hub (/compare)",
+    "title": "distribution architecture repair",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
     "outcome_ready": true,
     "warning": null,
-    "url": "https://ralphworkflow.com/compare"
+    "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_1238_social_card_deployed.json",
-    "type": "social_card_deployed",
-    "title": "social card deployed",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_0257_distribution_architecture_repair.json",
+    "type": "distribution_architecture_repair",
+    "title": "distribution architecture repair",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
@@ -212,9 +211,12 @@
   },
   "shared_artifact_sync": {
     "status": "synced",
-    "selected_lane": "directory_confirmation",
+    "selected_lane": "measurement_hold",
     "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md",
     "execution_board_targets": [
+      "Aider",
+      "Claude Code",
+      "Conductor (Teams)",
       "Ralph Workflow curator follow-up — Codeberg CTA"
     ],
     "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json"

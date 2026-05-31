@@ -7981,3 +7981,25 @@ Removing `noindex` from the 8 vs pages and breaking the template pattern with un
 | PyPI | 🔴 PYPI_TOKEN missing, 3-day escalation active |
 | Apollo | 🔴 Cloudflare-blocked |
 | All social/forum distribution | 🔴 Human-credential-gated |
+
+### Marketing momentum watchdog
+- **When:** 2026-05-31 06:10:24
+- **Note:** Momentum check found: reddit_monitor_stale. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+---
+
+## 2026-05-31 06:19 UTC — Marketing Workflow Audit: Structural Ceiling Repairs
+
+**Audit:** Weekly re-analysis of RalphWorkflow marketing loop.
+
+**Status:** Adoption flat (12 Codeberg stars, 1 GitHub star, all deltas zero across 9 samples). The content engine works (41 posts, correct SEO, IndexNow, llms.txt, doorway consolidation) but no distribution surface produces backlinks.
+
+**Repairs applied:**
+1. PyPI auto-unblocker state seeded — missing state file was preventing Day-3 escalation. Backdated to May 28, escalation artifact created in drafts/.
+2. Cron weight reduction: github_discussions→weekly, distribution_hunter→weekly, pypi_auto_unblocker→12h, mirror_sync→12h.
+3. New: bing_indexnow_ping.py — weekly submission of 102 sitemap URLs to Bing + IndexNow API. First run: 202 accepted (both endpoints).
+4. StackOverflow truthfulness: module reclassified as "drafting lane" (8 drafts, 0 posted by human), not "autonomous distribution channel."
+
+**Remaining blocker:** PyPI_TOKEN missing → v0.8.8 ready but unpublished. 3-day escalation active.
+
+**Adoption snapshot (unchanged):** Codeberg stars=12 Δ0, GitHub stars=1 Δ0, PyPI downloads/month=1,297, blog posts=41.

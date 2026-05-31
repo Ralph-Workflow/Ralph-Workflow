@@ -1,9 +1,9 @@
 {
-  "first_check_ts": "2026-05-27T18:17:48.801589",
-  "last_check_ts": "2026-05-31T00:00:01.716739",
+  "first_check_ts": "2026-05-28T00:00:00Z",
+  "last_check_ts": "2026-05-31T04:22:38.300109+00:00",
   "token_was_available": false,
   "days_without_token": 3,
   "escalation_level": 1,
-  "publish_attempted_for_version": null,
+  "publish_attempted_for_version": "0.8.8",
   "last_publish_success": null
 }

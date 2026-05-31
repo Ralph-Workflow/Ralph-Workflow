@@ -15896,3 +15896,96 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is healthy and well-aligned with the positioning document. The README \u2192 START_HERE \u2192 docs/README journey works as a coherent route. Promoted next-click pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md, reviewable-output.md) all start with the positioning paragraph, route back to the main journey, and properly frame themselves as secondary or supporting content. Internal plumbing, artifacts, and review bundle language are correctly gated away from top-level surfaces. The 'operating system for autonomous coding' / 'composable loop framework' / 'strong default workflow' framing is consistent across all surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Primary README 'What you wake up to' block shows `$ ralph --init` / `$EDITOR PROMPT.md` / `$ ralph` but omits `ralph --diagnose` between init and editing PROMPT.md, while the Quick Start section beneath it does include it \u2014 minor inconsistency that could confuse a first-time reader"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Strong top-level page: positions as OS for autonomous coding, composable loop framework, strong default workflow, clear fit/non-fit, Codeberg primary, engineering-practice dependency. No internal plumbing on the first screen."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/START_HERE.md",
+      "reason": "Concise first-run page with honest framing ('shortest honest first run'), good/bad task guidance, result-oriented success criteria, and 'Next pages only if you need them' \u2014 secondary design pattern done right."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/docs/README.md",
+      "reason": "Clean docs switchboard with 'Use this page after README.md and START_HERE.md' \u2014 explicit journey ordering. Route-based navigation with four clear entry points. 'Keep proof secondary' section explicitly gates evidence pages."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/docs/reviewable-output.md",
+      "reason": "Exemplary secondary page: opens with 'This page is supporting proof... not the main product pitch.' Leads evaluation with working behavior first, logs/diffs last. Routes back to START_HERE and first-task-guide. Does not fight the journey."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/ralph-workflow/README.md",
+      "reason": "PyPI page that adds depth without contradicting positioning. Honest 'What to expect from a run' section. Explicit fit/does-not-fit list. Clear CLI reference and docs index."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are in good shape. Positioning is well-implemented, the product story is clear, and internal plumbing is not leaking into top-level surfaces. The journey has one weak link (README doesn't route to START_HERE) but the chain works through natural repo browsing and the external web path. The promoted downstream pages reinforce rather than fight the story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Link root/mirror READMEs to START_HERE.md (or ensure START_HERE.md exists in root repo and README explicitly routes to it as next step)",
+    "Reframe 'Built-in capabilities' from internal plumbing terms ('Repo-based handoff', 'Recovery + retry') to user-facing value \u2014 e.g. 'Automatic handoff between agents' and 'Self-healing on failures'",
+    "Replace 'review artifacts' phrasing in ralph-workflow/README.md with 'run summary' or 'review notes' to avoid artifact-first framing",
+    "Root README should lead with pipx (the primary install path) instead of Docker in Quick Start, or at minimum put them on equal footing with clearer guidance on which to choose"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md:1-16",
+      "reason": "Tagline + lead paragraph cleanly implements the positioning doc's core framing: 'operating system for autonomous coding', 'AI agent orchestrator', composable loop framework, strong default workflow."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1-11",
+      "reason": "Opens with Codeberg-primary statement, then succinctly explains the product in positioning-aligned terms before any instructions."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Downstream product-framing page that cleanly extends the README story without introducing internal plumbing. Keeps the simple-core / composition contrast front and center."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Docs map has a clear 'use this after README and START_HERE' instruction, routes by user intent, and explicitly keeps proof secondary."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
