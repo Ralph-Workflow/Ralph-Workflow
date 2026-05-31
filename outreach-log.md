@@ -8003,3 +8003,7 @@ Removing `noindex` from the 8 vs pages and breaking the template pattern with un
 **Remaining blocker:** PyPI_TOKEN missing → v0.8.8 ready but unpublished. 3-day escalation active.
 
 **Adoption snapshot (unchanged):** Codeberg stars=12 Δ0, GitHub stars=1 Δ0, PyPI downloads/month=1,297, blog posts=41.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-31 10:00:02
+- **Note:** Momentum check found: reddit_monitor_stale. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Cloudflare/auth protection blocks login. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
