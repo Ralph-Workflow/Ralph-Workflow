@@ -19,6 +19,8 @@ Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and 
 
 **This is not a chat window or a prompt tool.** It's an orchestrator that runs real engineering pipelines unattended — overnight, while you sleep. The default workflow ships strong enough to start with immediately; customize it later when you need more control.
 
+The name comes from the original Ralph loop: repeat a strong prompt until the model can make real progress. Ralph Workflow takes that simple, powerful idea and adds planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines so unattended runs keep moving and teams can review the results with confidence.
+
 ## Why it's different
 
 | What most tools do | What Ralph Workflow does |
@@ -42,6 +44,8 @@ A good first run looks like:
 **[Start here: your first overnight task →](https://ralphworkflow.com/start)**
 
 New to autonomous coding? The 4-step guide walks you through picking a task, writing a short spec, running Ralph Workflow, and judging the result honestly — all in one page. Prefer a deeper narrative? [Read the blog version →](https://ralphworkflow.com/blog/your-first-overnight-task-start-here-guide)
+
+Start with tasks that are easy to verify: add tests to an existing module, fix known lint failures, refactor one narrow subsystem, or update documentation backed by existing code.
 
 ## Install
 
@@ -114,6 +118,14 @@ What happens in that flow:
 
 After `ralph --init`, review the generated `.agent/` support files. If this repository needs a project-local main-config override, run `ralph --init-local-config` to create `.agent/ralph-workflow.toml`, then point the workflow at the agent CLIs you already use for planning, development, and review.
 
+Depth presets control iteration intensity:
+
+```bash
+ralph -Q     # quick: small fixes, single iteration
+ralph        # standard: most features and tasks
+ralph -T     # thorough: complex refactors, ten iterations
+```
+
 ## A fast way to tell whether Ralph Workflow fits
 
 1. Pick one real backlog task that is small enough to review in one sitting.
@@ -138,40 +150,21 @@ A good run should leave you with:
 
 That may be a finished small task, or it may be a substantial first pass toward production on a larger one.
 
-## Good first tasks
+## When Ralph Workflow fits (and when it doesn't)
 
-Start with work that is easy to verify:
-
-- add tests to an existing module
-- fix known lint failures
-- refactor one narrow subsystem
-- update documentation backed by existing code
-
-## Depth presets
-
-```bash
-ralph -Q     # quick: small fixes, single iteration
-ralph        # standard: most features and tasks
-ralph -T     # thorough: complex refactors, ten iterations
-```
-
-## When Ralph Workflow fits
+**Fits:**
 
 - Multi-step tasks that outgrow one prompt
 - Work you want to review after the fact instead of steering live
 - Teams that want AI execution to stay in the repo
 - Runs where you want to mix stronger and cheaper models by phase
 
-## When it does not fit
+**Does not fit:**
 
 - One-shot interactive prompts
 - Pair-programming sessions with constant human steering
 - Tiny tasks where setup overhead is not worth it
 - Workflows that need unpredictable mid-run human input
-
-## Where the name comes from
-
-Ralph Workflow builds on the original Ralph idea: repeat a strong prompt until the model can make real progress. That loop was simple and powerful. In practice, Ralph Workflow is the Ralph loop on steroids: planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines so unattended runs keep moving and teams can review the results with confidence.
 
 ## Documentation
 
