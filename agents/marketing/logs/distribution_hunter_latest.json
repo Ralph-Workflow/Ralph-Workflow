@@ -1,18 +1,18 @@
 {
-  "timestamp": "2026-05-31T13:44:45.818231",
+  "timestamp": "2026-05-31T18:24:18.972640",
   "repair_types_seen": [],
-  "selected_lane": "primary_repo_flat_contact_handoff_packet",
-  "selected_action_type": "primary_repo_flat_contact_handoff_packet_execution",
+  "selected_lane": "measurement_hold",
+  "selected_action_type": "measurement_hold_execution",
   "execution_status": "prepared",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_primary_repo_flat_contact_handoff_packet.md",
-  "summary": "Converted the fresh primary-repo-flat publisher discovery into one canonical Codeberg-first execution packet so the loop can use a genuinely different contact lane during the current measurement window.",
-  "expected_outcome": "Move primary-repo-flat repair toward manual-executable publisher outreach.",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_182418_measurement_hold.md",
+  "summary": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions. Scheduled an automatic post-hold marketer rerun at the exact short-window release time.",
+  "expected_outcome": "Advance distribution via lane measurement_hold without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
   "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
   "decision": {
-    "lane": "primary_repo_flat_contact_handoff_packet",
-    "reason": "Fresh primary-repo-flat publisher targets now have verified public contact paths; turn them into one Codeberg-first execution packet instead of stalling inside measurement hold, even when the remaining path is human-executable rather than runtime-sendable.",
+    "lane": "measurement_hold",
+    "reason": "Directory confirmation has never produced a Codeberg backlink; no postable external lane is open and no unpublished guide remains. Hold for the next truthful execution window.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
@@ -22,12 +22,14 @@
       "Fresh publisher outreach already shipped in the current 7-day review window (AI Saying, Beam, Codersera), so those targets should not be re-queued immediately.",
       "An active manual publisher handoff already covers (AI Saying, Codivox, Reddit reddit.com › r/ai_agents › genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents), so those targets should stay out of fresh packet selection until their review window expires.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
-      "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (SitePoint), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
+      "The primary-repo-flat publisher contact packet was already manually delivered in the current review window, so another packet refresh right now would be fake progress.",
+      "A refreshed primary-repo-flat packet already has a live review window, so the loop should not re-select that same packet until the window expires or the target set materially changes.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
       "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
       "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
+      "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
       "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
       "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.",
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress."
@@ -46,15 +48,12 @@
     "skip_curator_outreach": false
   },
   "execution": {
-    "lane": "primary_repo_flat_contact_handoff_packet",
-    "action_type": "primary_repo_flat_contact_handoff_packet_execution",
+    "lane": "measurement_hold",
+    "action_type": "measurement_hold_execution",
     "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_primary_repo_flat_contact_handoff_packet.md",
-    "summary": "Converted the fresh primary-repo-flat publisher discovery into one canonical Codeberg-first execution packet so the loop can use a genuinely different contact lane during the current measurement window.",
-    "targets_prepared": [
-      "ctxt.dev / Signum",
-      "SitePoint"
-    ],
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_182418_measurement_hold.md",
+    "summary": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions. Scheduled an automatic post-hold marketer rerun at the exact short-window release time.",
+    "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",

@@ -1,6 +1,6 @@
 {
-  "ts": "2026-05-31T18:05:19.877513",
-  "jobs_checked": 26,
+  "ts": "2026-05-31T19:04:28.125922",
+  "jobs_checked": 27,
   "issues_found": 3,
   "issues": [
     {
@@ -19,7 +19,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 4253.8,
+      "artifact_age_minutes": 4312.93,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -28,8 +28,8 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=769",
-      "repeats_in_recent_history": 769,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=787",
+      "repeats_in_recent_history": 787,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
@@ -38,10 +38,22 @@
   ],
   "repairs_attempted": [
     {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-31T19:04:17.402742+02:00\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780247060403:12\"\n}"
     }
   ]
 }

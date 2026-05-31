@@ -1,6 +1,6 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-05-31T09:00:02
-- Hold release at: 2026-05-31T10:00:02
+Generated: 2026-05-31T18:24:18
+- Hold release at: 2026-05-31T19:24:18
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot
@@ -10,7 +10,7 @@ Generated: 2026-05-31T09:00:02
 
 ## Current blocked-lane truth to preserve
 - Remaining publisher discovery is still non-runtime-sendable here and requires public-path/Telegram follow-through: ctxt.dev / Signum, TLDL, ComputingForGeeks.
-- Manual-executable primary-repo-flat publisher targets would still be: ctxt.dev / Signum.
+- Manual-executable primary-repo-flat publisher targets would still be: ctxt.dev / Signum, SitePoint.
 - Curator/comparison/manual-contact packets that were already delivered in the current review window remain reference artifacts, not fresh actions.
 - Apollo remains inside its existing review window, so do not mistake "still measuring" for a reason to idle again.
 
