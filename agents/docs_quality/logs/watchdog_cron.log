@@ -32441,3 +32441,195 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Strong docs system. Positioning is tight and consistent across all surfaces. The README properly leads with 'operating system for autonomous coding,' composable loop framework, and orchestration value. The promoted next-click pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent, first-task-guide) all reinforce the same story without drifting into internal plumbing. Copy is well-edited, confident, and avoids hype sludge. The journey from README \u2192 ralphworkflow.com/docs is coherent for the designed path. One structural orphan in the GitHub mirror. Not a positioning failure \u2014 the docs team does not need re-education.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "fail"
+  },
+  "mustFix": [
+    "GitHub mirror README does not link to the mirror's own START_HERE.md. A user landing on GitHub sees the README then must discover START_HERE.md via file browsing or guesswork. Either add a link from the mirror README to the mirror's START_HERE.md, or remove the orphaned START_HERE.md from the mirror release."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md:3-5",
+      "reason": "Opens with exact positioning tagline and orchestrator framing"
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md:14-16",
+      "reason": "Composable loop framework + strong default workflow in first paragraph"
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md:82",
+      "reason": "Default-first, extend-later call to action"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md:43-46",
+      "reason": "Docs map explicitly routes proof to secondary position \u2014 correct hierarchy"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Clean first-run guide, no internal plumbing, result-first evaluation framing"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs align cleanly with positioning. README, START_HERE, and docs/README form a coherent journey. Promoted sub-pages reinforce the same story. No hard failures detected.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md:3-5",
+      "reason": "Opens with tagline 'The operating system for autonomous coding' and positions as orchestrator immediately"
+    },
+    {
+      "path": "README.md:14-16",
+      "reason": "Frames as composable loop framework from simple core, default-workflow-first"
+    },
+    {
+      "path": "README.md:7-8",
+      "reason": "Correctly presents Codeberg primary, GitHub mirror"
+    },
+    {
+      "path": "START_HERE.md:6-11",
+      "reason": "Opens with positioning, result-first framing, no internal plumbing"
+    },
+    {
+      "path": "docs/README.md:7-10",
+      "reason": "Explicitly places itself after README+START_HERE, routes by user intent, keeps proof secondary"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-maintained and closely aligned with the positioning document. All top-level surfaces lead with the correct framing (operating system for autonomous coding, AI agent orchestrator, composable loop framework, simple core, strong default). Internal/plumbing concepts are correctly kept in secondary surfaces. The docs/README acts as a thoughtful switchboard that explicitly manages the reader journey. One minor journey gap: the Ralph-Workflow repo READMEs do not link to START_HERE.md, so first-time readers on Codeberg/GitHub land directly on a quick-start section instead of being routed through the structured onboarding path.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "fail"
+  },
+  "mustFix": [
+    "Add a \"New here?\" link from the Ralph-Workflow repo-root README to START_HERE.md so first-time visitors on Codeberg/GitHub are routed through the structured onboarding path before the inline quick start."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md (all surfaces)",
+      "reason": "Consistent tagline and product framing across Codeberg primary, GitHub mirror, and PyPI subpackage. Never collapses into generic 'Ralph.'"
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Cleanest onboarding surface. Zero internal plumbing. Routes clearly through install, task selection, run, and success evaluation."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Exemplary document map. Explicitly acknowledges sequence (after README and START_HERE), routes by user intent, and includes a 'Keep proof secondary' section that correctly scopes evidence pages."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted framing page that reinforces the core story without drifting into internal mechanics. Routes back to START_HERE and operator manual."
+    },
+    {
+      "path": "docs/unattended-coding-agent.md",
+      "reason": "Another promoted framing page that correctly frames unattended use around accountability and engineering discipline, not magic."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-positioned and structurally coherent, with consistent 'operating system for autonomous coding' framing across all surfaces. No hard failures triggered. Three concrete issues need attention before the loop can be called fully healthy: the main repo README doesn't link to START_HERE, the install section prioritizes Docker over pipx (inverting user-friction order), and the three README variants have drifted apart in detail and structure.",
+  "loopHealthy": false,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Main repo README: add an explicit link from README to START_HERE.md as the intended next step after the tagline \u2014 currently the README routes readers to 'Full docs at ralphworkflow.com/docs' and a doc table instead of leading into START_HERE, which is the canonical onboarding page",
+    "Main repo README: move pipx install before Docker in Quick Start; Docker is the higher-friction path and leads for readers who don't need it, while pipx is the recommended path for most users (the PyPI README already gets this right, confirming the drift)",
+    "Harmonize the three README variants (main repo, PyPI/ralph-workflow, GitHub mirror): the PyPI README is significantly more detailed with sections like 'Before your first run', depth presets, and a 'Fast way to tell whether Ralph Workflow fits' that do not exist in the repo-root README. Either backport the improvements or decide they belong only on PyPI. Drift will worsen without a deliberate strategy"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md (lines 1-10)",
+      "reason": "Tagline + description perfectly match positioning doc: 'operating system for autonomous coding', 'free and open-source AI agent orchestrator', Codeberg-primary framing. This is the highest-value surface and it nails the opening."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/START_HERE.md (lines 6-11)",
+      "reason": "Concise value prop in three lines \u2014 'simple Ralph-loop core', 'composable workflow', 'strong default workflow before you customize anything'. Then immediately pivots to honest first-run action. This is exactly what the positioning doc asks for."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/docs/README.md (lines 1-9, 43-46)",
+      "reason": "Clean docs switchboard that explicitly says 'Use this page after README.md and START_HERE.md' and includes a 'Keep proof secondary' signal. The IA hierarchy is explicit and well-signed."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/ralph-workflow/README.md (lines 121-138)",
+      "reason": "The 'Fast way to tell whether Ralph Workflow fits' section is the best evaluation heuristic in the docs system \u2014 concrete, honest, actionable. It should exist everywhere or at least be linked from the main repo README."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/START_HERE.md (lines 65-69)",
+      "reason": "'Next pages only if you need them' is respectful of reader time and sets the right tone for a secondary-surface relationship. This is the positioning doc's 'simple at the center' principle applied to IA."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
