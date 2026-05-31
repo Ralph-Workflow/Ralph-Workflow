@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-31T12:45:54.832040",
+  "generated_at": "2026-05-31T13:10:58.619162",
   "status": "ok",
   "rate_limited": false,
   "cooldown_active": false,
@@ -8,14 +8,14 @@
   "halted_after_rate_limit": false,
   "total_questions_found": 7,
   "questions_scored": 7,
-  "drafts_created": 1,
-  "skipped_existing_drafts": 1,
+  "drafts_created": 2,
+  "skipped_existing_drafts": 2,
   "reused_existing_draft": {
     "question_title": "Boss wants us to add more AI to our workflow",
     "question_url": "https://stackoverflow.com/questions/79928220/boss-wants-us-to-add-more-ai-to-our-workflow",
     "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-31_boss-wants-us-to-add-more-ai-to-our-workflow.md",
     "packet_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md",
-    "question_score": 3.55,
+    "question_score": 4.35,
     "pain_family": "verification-review"
   },
   "manual_follow_through": false,
@@ -23,16 +23,30 @@
     {
       "title": "Boss wants us to add more AI to our workflow",
       "url": "https://stackoverflow.com/questions/79928220/boss-wants-us-to-add-more-ai-to-our-workflow",
-      "score": 3.55,
+      "score": 4.35,
       "votes": 2,
       "answers": 1
     },
     {
       "title": "What are the best-practice architectural workflows for LLM-based contract compliance agents?",
       "url": "https://stackoverflow.com/questions/79907967/what-are-the-best-practice-architectural-workflows-for-llm-based-contract-compli",
-      "score": 2.7,
+      "score": 3.5,
       "votes": 2,
       "answers": 1
+    },
+    {
+      "title": "What is the best way to use Obsidian for vibe coding with GitHub and AI coding assistants?",
+      "url": "https://stackoverflow.com/questions/79947663/what-is-the-best-way-to-use-obsidian-for-vibe-coding-with-github-and-ai-coding-a",
+      "score": 2.7,
+      "votes": 0,
+      "answers": 2
+    },
+    {
+      "title": "Best Way to a Multi-Agent Orchestration System?",
+      "url": "https://stackoverflow.com/questions/79903962/best-way-to-a-multi-agent-orchestration-system",
+      "score": 2.3,
+      "votes": 0,
+      "answers": 2
     },
     {
       "title": "Natural language to JSON for N8N workflows",
@@ -42,40 +56,34 @@
       "answers": 0
     },
     {
-      "title": "What is the best way to use Obsidian for vibe coding with GitHub and AI coding assistants?",
-      "url": "https://stackoverflow.com/questions/79947663/what-is-the-best-way-to-use-obsidian-for-vibe-coding-with-github-and-ai-coding-a",
-      "score": 1.9,
-      "votes": 0,
-      "answers": 2
-    },
-    {
-      "title": "Best Way to a Multi-Agent Orchestration System?",
-      "url": "https://stackoverflow.com/questions/79903962/best-way-to-a-multi-agent-orchestration-system",
-      "score": 1.5,
-      "votes": 0,
-      "answers": 2
+      "title": "Chaining multiple GPT-4 Turbo API calls with function calling and dynamic memory/context injection",
+      "url": "https://stackoverflow.com/questions/79598199/chaining-multiple-gpt-4-turbo-api-calls-with-function-calling-and-dynamic-memory",
+      "score": 1.7,
+      "votes": 1,
+      "answers": 1
     },
     {
       "title": "Why is every new AI IDE forcing a minimalist, \"chat-first\" UI on us?",
       "url": "https://stackoverflow.com/questions/79943845/why-is-every-new-ai-ide-forcing-a-minimalist-chat-first-ui-on-us",
-      "score": 0.3,
+      "score": 1.1,
       "votes": 6,
       "answers": 6
-    },
-    {
-      "title": "Chaining multiple GPT-4 Turbo API calls with function calling and dynamic memory/context injection",
-      "url": "https://stackoverflow.com/questions/79598199/chaining-multiple-gpt-4-turbo-api-calls-with-function-calling-and-dynamic-memory",
-      "score": 0.0,
-      "votes": 1,
-      "answers": 1
     }
   ],
   "drafts": [
     {
-      "question_title": "What are the best-practice architectural workflows for LLM-based contract compliance agents?",
-      "question_url": "https://stackoverflow.com/questions/79907967/what-are-the-best-practice-architectural-workflows-for-llm-based-contract-compli",
+      "question_title": "What is the best way to use Obsidian for vibe coding with GitHub and AI coding assistants?",
+      "question_url": "https://stackoverflow.com/questions/79947663/what-is-the-best-way-to-use-obsidian-for-vibe-coding-with-github-and-ai-coding-a",
       "question_score": 2.7,
-      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-31_what-are-the-best-practice-architectural-workflows.md",
+      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-31_what-is-the-best-way-to-use-obsidian-for-vibe-codi.md",
+      "answer_length": 823,
+      "pain_family": "workflow-orchestration"
+    },
+    {
+      "question_title": "Best Way to a Multi-Agent Orchestration System?",
+      "question_url": "https://stackoverflow.com/questions/79903962/best-way-to-a-multi-agent-orchestration-system",
+      "question_score": 2.3,
+      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-31_best-way-to-a-multi-agent-orchestration-system.md",
       "answer_length": 823,
       "pain_family": "workflow-orchestration"
     }

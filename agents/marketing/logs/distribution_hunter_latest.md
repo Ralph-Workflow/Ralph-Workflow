@@ -1,15 +1,15 @@
 # Distribution Hunter
 
-- Generated: `2026-05-31T06:47:28.667461`
+- Generated: `2026-05-31T13:44:45.818231`
 - Pending system-design repairs seen: `none`
-- Selected lane: `directory_confirmation`
-- Action type: `directory_confirmation_execution`
-- Status: `executed`
+- Selected lane: `primary_repo_flat_contact_handoff_packet`
+- Action type: `primary_repo_flat_contact_handoff_packet_execution`
+- Status: `prepared`
 - Live external action: `False`
-- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-31_directory_confirmation_execution.md`
-- Expected outcome: Convert prior directory submissions into verified live-listing/backlink proof.
-- Measurement window: Recheck listing approval/backlink evidence in 3-7 days.
+- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-31_primary_repo_flat_contact_handoff_packet.md`
+- Expected outcome: Move primary-repo-flat repair toward manual-executable publisher outreach.
+- Measurement window: Review outcome movement within 7 days.
 - Fake-green guard: This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.
 
 ## Summary
-Refreshed live directory-listing and backlink evidence so the loop can reuse real approvals (3 live listing(s)) instead of stacking more low-intent submissions. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.
+Converted the fresh primary-repo-flat publisher discovery into one canonical Codeberg-first execution packet so the loop can use a genuinely different contact lane during the current measurement window.

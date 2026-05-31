@@ -1,40 +1,69 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-25T18:53:00
+Generated: 2026-05-31T12:52:00
 
 ## Why this board exists
-- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
-- Multiple live lanes already exist, so this board consolidates the best executable assets instead of letting them stay siloed across separate packet files.
-- Use this as the single follow-through surface during measurement holds and overlapping review windows.
+- Codeberg is still flat (9 samples; stars 12, watchers 2, forks 2 — no delta in active window).
+- The previous board was 6 days stale (May 25 content) — actively misleading lane selection.
+- This board reflects actual current lane state as of May 31 12:52.
 
 ## Active review windows
-- Apollo next review: 2026-05-29T09:00:01.629178+02:00
-- Apollo launch review: 2026-06-05T09:00:01.629178+02:00
-- Short review-window congestion clears at: 2026-05-25T23:07:41
-- StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
-- Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
-- Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
+- Short review-window congestion cleared at: 2026-05-31T09:12:33
+- Apollo next review: 2026-05-29T09:00 (PASSED — no evidence of execution)
+- Apollo launch review: 2026-06-05T09:00 (PENDING)
 
-## Best executable assets still waiting
-### 1. Manual publisher outreach asset
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md
-- Targets: ComputingForGeeks
-- Why this matters: A current Codeberg-first manual follow-through asset already exists for the active primary-repo-flat target set; use it instead of regenerating the packet.
+## Lane Status — Truthful (May 31)
+
+### ✅ StackOverflow Answer Lane — ACTIVE
+- Daily cron: 03:15 (log file missing — may need cron env fix, but lane works manually)
+- Last manual run: 2026-05-31T13:10 — 7 questions found, 2 new drafts created, 2 existing skipped
+- Total drafts: 12 (2 from May 31 manual run)
+- Handoff packet: `/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md` — target: "Boss wants us to add more AI" (score 4.35)
+- Cooldown: inactive
+- **Do:** reuse existing handoff packet. Do not regenerate.
+
+### ✅ IndexNow Submission — JUST EXECUTED (May 31 13:09)
+- 100 sitemap URLs submitted to Bing/Yandex/Seznam — 200 OK
+- Sitemap grew from 91 to 100 URLs since last submission (May 30)
+- Key file confirmed accessible: `https://ralphworkflow.com/5a24f43feb830aca8fc9048320bafacf.txt` → 200 OK
+- This improves DDG indexation (DDG uses Bing's index — currently 0 indexed)
+
+### ✅ Owned Content — SATURATED
+- 42 slugs total, 0 uncovered keyword clusters remaining
+- Last publish: 2026-05-29T15:03
+- Cooldown: clear (12h threshold expired)
+- **Do not** regenerate keyword clusters — genuinely saturated
+
+### ❌ All Distribution Lanes — STRUCTURALLY BLOCKED
+- PyPI v0.8.8: blocked on credentials (token missing)
+- gh auth login: blocked (not installed/logged in)
+- Apollo CF: blocked (Cloudflare verification loop)
+- SMTP: blocked (credentials not set)
+- Reddit API: blocked (PRAW not configured)
+- HN/Lobsters: blocked (no available submission surface)
+- Manual publisher outreach (ComputingForGeeks): packet exists but no active contact channel
+
+### 📊 GSC Indexation
+- 13 pages with search presence (impressions/clicks)
+- 318 impressions, 19 clicks (28d)
+- Sitemap reports 0/80 indexed — but search analytics confirms pages are live
+- Indexing API: 403 (not enabled in GCP project)
+- DDG: 0 indexed (Bing/Yandex crawl should improve this now)
+- Primary blocker: ranking/backlinks, not indexing
+
+### 📊 Adoption Metrics (Flat)
+- Codeberg: stars 12, watchers 2, forks 2 — delta 0
+- GitHub: stars 1, watchers 2, forks 0 — delta 0
+- PyPI: 1297 downloads/month, 5/day — real usage signal
+
+## Process rule now in force
+- All autonomous lanes are either saturated or structurally blocked.
+- The IndexNow submission is the single highest-leverage autonomous action possible right now.
+- Next run: either try the ComputingForGeeks manual outreach (if human-gated unblock available) or verify the IndexNow crawl impact via GSC.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
 - adoption_metrics_latest.json → Codeberg movement remains the primary success gate
-- curator_outreach_queue_latest.json / comparison_backlink_queue_latest.json → live prepared execution queues
-- primary_repo_flat_contact_discovery_latest.json → fresh publisher-contact lane
-- apollo_sequence_status_latest.json / apollo_sequence_launch_packet_latest.md → launch-ready managed outbound state
 - stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
-
-## Verified infrastructure state (programmatic, not fabricated)
-- **Telegraph guard**: clear
-- **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
-- **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
-- **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED
-
-## Process rule now in force
-- Do not generate another siloed packet when one of the assets above is already current.
-- During a hold window, refresh stale packets if needed, then point back to this board instead of inventing another reset artifact.
+- seo_indexation_latest.json → 13 pages with search presence, 0 DDG indexed
+- indexation_health_latest.json → 100 sitemap URLs, 0 indexed via API
+- owned_content_amplification_state.json → 42 slugs, 0 uncovered clusters
