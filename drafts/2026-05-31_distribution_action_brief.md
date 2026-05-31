@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-31T13:46:33
+Generated: 2026-05-31T14:06:11
 Chosen lane: **directory_confirmation**
 
 ## Why this lane
