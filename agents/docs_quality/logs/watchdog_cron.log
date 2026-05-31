@@ -32253,3 +32253,191 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is consistent, well-positioned, and coherent across the README \u2192 START_HERE \u2192 docs/README journey. The positioning doc's core framing (operating system, AI orchestrator, simple Ralph-loop core, powerful in composition, strong default workflow) is faithfully rendered across all surfaces. Supporting pages reinforce rather than fight the main story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "ralph-workflow/README.md:148 mentions 'review artifacts and logs' \u2014 minimal and in context, but a potential surface for drift if future edits promote it further."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with tagline and orchestrator framing, uses comparison table well, leads with product value before implementation detail, has explicit fit/non-fit section, closes with engineering-practice caveats."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first-run path. Opens with positioning paragraph, gives good/bad first-task guidance, keeps next-click options minimal. Natural continuation from README."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Switchboard page opens with positioning, routes to four clear user intent paths, explicitly flags proof pages as secondary. Well-architected docs map that traces back to the core story."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces 'simple at the center, powerful in composition' framing. Does not fight the main story."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md",
+      "reason": "Frames specs as operational not ceremonial. Links spec discipline directly to the core value proposition."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The README \u2192 START_HERE \u2192 docs/README route is coherent and clean. Each surface has a clear job, the next-click pages reinforce the same product story instead of fighting it, and there is no internal-plumbing leakage on any top-level surface. Positioning is aligned end-to-end.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with the tagline, immediately establishes orchestrator identity, explains simple-core\u2192composition, clean comparison table, appropriate audience fit/non-fit, Codeberg primary framing, engineering-practice honesty section."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run with task-selection guidance, success criteria focused on runnable software and real checks, no internal plumbing, strong default-workflow framing."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself as README\u2192START_HERE follow-up, routes by user intent, includes 'Keep proof secondary' section (aligns with positioning doc), clean product-framing links that match the main story."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted next-click page that reinforces 'simple at the center, powerful in composition, useful before customization' without introducing internal mechanics."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md",
+      "reason": "Promoted next-click page that explains why specs matter in user-value terms, no artifact/plumbing language."
+    },
+    {
+      "path": "docs/unattended-coding-agent.md",
+      "reason": "Promoted next-click page focused on accountability and honest evaluation, supports the unattended-use case without drifting into internal process residue."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Strong alignment across all surfaces. README leads with operating-system-for-autonomous-coding framing, START_HERE and docs/README chain cleanly, promoted next-click pages reinforce the same simple-core / composable / strong-default story without drift. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "ralph-workflow/README.md:148 \u2014 'review artifacts and logs that explain what happened' is minor internal-language bleed on a secondary surface. Tighten to 'check files and logs that explain what happened' or similar."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md:3-6",
+      "reason": "Tagline + first paragraph nail the operating-system-for-autonomous-coding, orchestrator, and simple-core framing in three lines. No internal plumbing, no artifacts, no logs."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with Codeberg-primary/GitHub-mirror banner, then immediately states the simple-core/composable/strong-default trifecta. Every section reinforces the positioning without introducing waste."
+    },
+    {
+      "path": "docs/README.md:45-46",
+      "reason": "Explicit 'Keep proof secondary' instruction in the docs map \u2014 the positioning document's own rule, enforced inline in the documentation itself."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md:1-4",
+      "reason": "Opens with the exact positioning template (simple core, composes, strong default, ambitious work). Never drifts into stale framing."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The README \u2192 START_HERE \u2192 docs/README journey is coherent, consistent, and well-aligned with the positioning reference. All surfaces use the same core framing (simple Ralph-loop core \u2192 composable framework \u2192 strong default workflow \u2192 extend later) without internal plumbing leakage. No hard failures present.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with the canonical tagline, hits every positioning requirement (composable loop framework, default workflow, not-for-small-tasks, Codeberg primary, engineering-practice dependency) without internal leakage."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Clean first-run page that reinforces 'simple core \u2192 composable \u2192 result-first evaluation' without detouring into plumbing or artifacts."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Docs map that acknowledges its place after README+START_HERE and routes by intent rather than exhaustiveness. 'Keep proof secondary' section shows deliberate information-hierarchy discipline."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted next-click page that reinforces the same story ('simple at the center, stronger in composition, useful before customization') instead of fighting it."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "Secondary PyPI README maintains the same positioning while adding install depth and run expectations without degrading the product story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.

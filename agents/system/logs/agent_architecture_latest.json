@@ -22,13 +22,13 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-31T02:43:18.179378+02:00",
+    "checked_at": "2026-05-31T03:47:02.562285+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
-    "live_jobs_checked": 27,
-    "live_jobs_enabled": 27,
+    "live_jobs_checked": 26,
+    "live_jobs_enabled": 26,
     "live_jobs_disabled": 0,
     "disabled_job_names": [],
-    "persisted_jobs_checked": 40,
+    "persisted_jobs_checked": 39,
     "persisted_disabled_job_names": [
       "docs-stack-aggressive-10min-self-heal",
       "marketing-measurement-hold-release",
@@ -45,7 +45,8 @@
       "stackoverflow-post-cooldown-run-check"
     ],
     "live_running_job_names": [
-      "agent-architecture-watchdog"
+      "agent-architecture-watchdog",
+      "reddit-pipeline-watchdog"
     ],
     "live_last_error_job_names": [
       "blocked-channel-recovery",
@@ -81,7 +82,7 @@
     {
       "severity": "medium",
       "title": "Live Gateway topology matches the current runtime state",
-      "mechanism": "Direct live cron inspection shows 27 enabled/total-visible jobs, 0 disabled jobs, 1 running jobs, and 2 live last-error jobs.",
+      "mechanism": "Direct live cron inspection shows 26 enabled/total-visible jobs, 0 disabled jobs, 2 running jobs, and 2 live last-error jobs.",
       "source_layer": "runtime cron topology",
       "root_cause": "Architecture/runtime topology remains coherent while owner-loop work is in flight.",
       "evidence_refs": [
@@ -138,7 +139,7 @@
     {
       "status": "refreshed_live_topology",
       "target": "live cron topology snapshot",
-      "change": "Refreshed the audit against the current live view: 27 enabled jobs, 0 disabled jobs, 1 running jobs, and 2 live last-error jobs.",
+      "change": "Refreshed the audit against the current live view: 26 enabled jobs, 0 disabled jobs, 2 running jobs, and 2 live last-error jobs.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ]
@@ -168,15 +169,14 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
-    "summary": "Independent verification found architecture blockers that prevent a healthy verifier pass.",
-    "checked_at": "2026-05-31T02:43:29.134790+02:00",
-    "verdict": null,
-    "previous_artifact_checked_at": "2026-05-31T02:41:52.435813+02:00",
+    "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
+    "checked_at": "2026-05-31T03:47:11.066604+02:00",
+    "verdict": "qualified_pass",
+    "previous_artifact_checked_at": "2026-05-31T03:46:33.378500+02:00",
     "previous_artifact_verdict": "qualified_pass",
     "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
   "what_still_needs_independent_verification": [
-    "Fresh architecture independent verification against the refreshed live topology.",
     "Fresh marketing independent pass backed by measurable primary-repo movement."
   ],
   "highest_risk_unresolved_issue": {
@@ -191,8 +191,8 @@
     "shared_market_intelligence_fresh": true,
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
-    "architecture_verifier_status": "fail",
-    "architecture_verifier_checked_at": "2026-05-31T02:43:29.134790+02:00",
+    "architecture_verifier_status": "pass",
+    "architecture_verifier_checked_at": "2026-05-31T03:47:11.066604+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
@@ -211,7 +211,8 @@
     "marketing_workflow_audit_timeout_headroom_seconds": 2765.259,
     "marketing_workflow_audit_timeout_repaired_pending_clean_rerun": false,
     "live_running_job_names": [
-      "agent-architecture-watchdog"
+      "agent-architecture-watchdog",
+      "reddit-pipeline-watchdog"
     ],
     "live_last_error_job_names": [
       "blocked-channel-recovery",
@@ -229,7 +230,7 @@
       "apollo_channel_blocked",
       "primary_repo_adoption_flat"
     ],
-    "independent_architecture_verdict": null,
+    "independent_architecture_verdict": "qualified_pass",
     "docs_blocker_localized": false,
     "external_watch_issue_names": [
       "blocked-channel-recovery",
@@ -255,7 +256,7 @@
   "notes": [
     "Architecture green here means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.",
     "Persisted disabled jobs remain history only; live disabled jobs are 0.",
-    "Independent live inspection in this snapshot saw 27 total jobs, 27 enabled, 0 disabled, 1 running, and 2 live last-error jobs.",
+    "Independent live inspection in this snapshot saw 26 total jobs, 26 enabled, 0 disabled, 2 running, and 2 live last-error jobs.",
     "The remaining blocker is external marketing outcome evidence, not architecture runtime drift.",
     "No live timeout-budget repair was applied in this watchdog run."
   ]

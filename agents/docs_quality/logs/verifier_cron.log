@@ -15717,3 +15717,93 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean, coherent, and aligned with positioning. README \u2192 START_HERE \u2192 docs/README journey flows naturally. No primary-surface internal leakage.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md:1-5",
+      "reason": "Tagline, open-source framing, agent-orchestrator identity, and result-first promise all present immediately."
+    },
+    {
+      "path": "README.md:28-36",
+      "reason": "Clear audience fit/non-fit with concrete examples. No vague positioning."
+    },
+    {
+      "path": "START_HERE.md:9-11",
+      "reason": "Opens with simple-core framing, honest-evaluation instruction, and 'keep your keys' \u2014 no internal plumbing."
+    },
+    {
+      "path": "docs/README.md:43-46",
+      "reason": "Explicit 'keep proof secondary' guidance \u2014 actively prevents the leakage pattern."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md:1-4",
+      "reason": "Promoted framing page opens with simple-core \u2192 composition \u2192 default-workflow, reinforcing the main story."
+    },
+    {
+      "path": "README.md:7-8",
+      "reason": "Codeberg primary / GitHub mirror distinction stated immediately. No flattening."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-aligned with positioning. The README \u2192 START_HERE \u2192 docs map journey is coherent. Promoted next-click pages reinforce the same story. No hard failures. Minor: sub-README mentions 'review artifacts' under 'What to expect' (borderline internal leak, but not in lead position), and the root repo README doesn't prominently point to START_HERE (routes through docs landing page instead, which is a minor detour but not broken). Overall strong.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (root)",
+      "reason": "Perfect lead \u2014 tagline, orchestrator framing, simple-core/composable-loop, default-first, audience fit/non-fit, result-first evaluation, engineering-practice honesty, Codeberg-primary mirror framing all present and well-ordered."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Clean second step \u2014 prereqs, task selection, install/run, success criteria, next-page routing. No internal leakage."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clean third step \u2014 user-need routing, keeps proof secondary, reinforces primary-repo framing, defers deep docs to sphinx manual."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md, docs/spec-driven-ai-agent.md, docs/unattended-coding-agent.md, docs/first-task-guide.md",
+      "reason": "All four promoted next-click pages open with consistent simple-core positioning and reinforce the same product story without drift."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
