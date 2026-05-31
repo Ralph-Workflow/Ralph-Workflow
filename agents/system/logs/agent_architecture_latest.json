@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-31T22:04:15.344383+02:00",
+    "checked_at": "2026-05-31T23:03:30.277958+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 26,
     "live_jobs_enabled": 26,
@@ -169,14 +169,13 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-31T22:03:09.214476+02:00",
+    "checked_at": "2026-05-31T23:03:47.727033+02:00",
     "verdict": "qualified_pass",
-    "previous_artifact_checked_at": "2026-05-31T22:03:09.214476+02:00",
+    "previous_artifact_checked_at": "2026-05-31T23:00:18.252623+02:00",
     "previous_artifact_verdict": "qualified_pass",
     "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
   "what_still_needs_independent_verification": [
-    "Fresh architecture independent verification against the refreshed live topology.",
     "Fresh marketing independent pass backed by measurable primary-repo movement."
   ],
   "highest_risk_unresolved_issue": {
@@ -192,7 +191,7 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-05-31T22:03:09.214476+02:00",
+    "architecture_verifier_checked_at": "2026-05-31T23:03:47.727033+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
@@ -254,12 +253,10 @@
     }
   },
   "notes": [
-    "Architecture green = architecture-owned verifier path is coherent. Does not mean whole stack green.",
-    "Live disabled jobs: 0. No persisted-history confusion.",
-    "Independent verification rerun fresh this watchdog cycle (2026-05-31T22:03:09+02:00).",
-    "Sole remaining blocker: marketing owner loop must produce Codeberg-primary outcome evidence.",
-    "Docs verifier: 115 consecutive passes, 0 recent failures.",
-    "blocked-channel-recovery timeout at 819 repeats is escalated critical but external to architecture scope.",
-    "Marketing independent verification artifact age: 4493 min, verdict: fail, checked 2026-05-28."
+    "Architecture green here means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.",
+    "Persisted disabled jobs remain history only; live disabled jobs are 0.",
+    "The remaining blocker is external marketing outcome evidence, not architecture runtime drift.",
+    "No live timeout-budget repair was applied in this watchdog run.",
+    "Independent live inspection confirmed: 26 total, 26 enabled, 0 disabled jobs."
   ]
 }

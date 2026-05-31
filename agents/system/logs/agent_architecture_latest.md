@@ -1,66 +1,62 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-31T22:04:15+02:00
-- Overall health: **watch**
-- Primary failure mode: Architecture-owned gates are green; whole-stack certification blocked by external marketing owner-loop residue (stale independent verification artifact: 4493 min, still fail).
-- Most urgent fix: Marketing owner loop must produce fresh measurable Codeberg-primary outcome evidence.
+- Checked: 2026-05-31T23:03:30.277958+02:00
+- Overall health: watch
+- Primary failure mode: Architecture-owned gates are green, but whole-stack certification remains blocked by external owner-loop residue.
+- Most urgent fix: External marketing owner loop needs fresh measurable outcome evidence before whole-stack green cert.
+- Verifier status: performed
+- Verifier verdict: qualified_pass
+- Independent verification checked: 2026-05-31T23:03:47.727033+02:00
 
 ## Live topology
 
 - Live Gateway jobs: 26 total / 26 enabled / 0 disabled
-- Live running now: agent-architecture-watchdog
-- `python3 agents/system/agent_architecture_audit.py`: ok (26 live jobs checked)
-- `python3 agents/system/agent_architecture_independent_verify.py`: qualified_pass
+- Live running jobs now: agent-architecture-watchdog, codeberg-github-mirror-sync, system-health-monitor
+- Live last-error residue: blocked-channel-recovery
+- Persisted disabled history only (not live): docs-stack-aggressive-10min-self-heal, marketing-measurement-hold-release (×9), marketing-reflection, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
+- User crontab ownership: ok
 
-## Architecture-owned gates (all green)
+## Severity-ranked findings
 
-| Gate | Status | Detail |
-|------|--------|--------|
-| Live cron topology | ✅ pass | 26/26/0, coherent |
-| Loop integrity | ✅ pass | arch-watchdog: ok, docs-watchdog: ok |
-| Architecture independent verifier | ✅ pass | qualified_pass (fresh this cycle) |
-| Docs verifier | ✅ pass | 115 consecutive passes, 0 recent fails |
-| Market intelligence consumption | ✅ pass | machine-verifiable for code-backed consumers |
-| Ownership boundaries | ✅ pass | no self-certification detected |
-| Hidden repair loops | ✅ pass | none detected |
-| Stale topology leakage | ✅ pass | none detected |
+1. **High — Marketing remains externally red on outcome evidence**
+   - Mechanism: Marketing independent verification still fails closed because primary-repo adoption is measurement-pending.
+   - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification.
 
-## Severity findings
+2. **Medium — Live Gateway topology matches the current runtime state**
+   - Mechanism: Direct live cron inspection shows 26 enabled/total jobs, 0 disabled, 3 running, 1 live last-error.
+   - Recommended fix: Continue tying live topology verification to `openclaw cron list --json` on each watchdog run.
 
-1. **High — Marketing remains externally red**
-   - Marketing independent verification: fail (artifact stale: 4493 min, checked 2026-05-28)
-   - Codeberg-primary adoption: measurement-pending
-   - Sole remaining whole-stack certification blocker
+3. **Medium — Architecture verifier path is green on freshness and ownership gates**
+   - Mechanism: Loop integrity, health-monitor blocker localization, and shared market-intelligence consumption remain coherent.
+   - Recommended fix: Rerun independent verification after each material architecture artifact refresh.
 
-2. **Medium — Health monitor tracks 3 external issues**
-   - blocked-channel-recovery: timeout (819 repeats, escalated critical, external scope)
-   - marketing_independent_verification: stale artifact
-   - blocked-channel-recovery_escalation: critical escalation enqueued
-   - All triaged; none architecture-owned
+4. **Low — Persisted disabled jobs remain history only**
+   - Mechanism: Disabled entries in jobs.json history do not represent live runtime blockers.
+   - Recommended fix: Continue separating persisted disabled history from live runtime topology in every audit.
 
-3. **Medium — Docs system stable**
-   - 115 consecutive checker passes, 0 recent failures
-   - Agentic review: pass on all positioning criteria
+## Repaired this run
 
-## Repairs this run
-
-- **audit_refresh** — `agent_architecture_audit.py`: ok, 26 jobs. Both JSON and MD artifacts regenerated.
-- **independent_verification_rerun** — `agent_architecture_independent_verify.py`: qualified_pass. Architecture-owned gates all green. Two external errors remain: stale marketing verification artifact and marketing verdict fail.
+- **refreshed_live_topology** — Refreshed audit against current live view: 26 enabled, 0 disabled, 3 running, 1 last-error.
+- **relocalized_runtime_drift** — Removed stale topology mismatch as architecture-owned blocker.
+- **revalidated_shared_findings_consumption** — Confirmed code-backed marketing consumers expose machine-verifiable shared market-intelligence consumption.
+- **re-ran independent verification** — Fresh independent signoff at 23:03:47, verdict qualified_pass, architecture verification needs removed from pending list.
 
 ## Still red
 
-- Marketing independent verification: fail (external, artifact stale 4493 min)
-- Codeberg-primary outcome evidence: measurement-pending
-- Do not issue whole-stack healthy certification
+- Marketing independent verification is not pass.
+- Primary repo adoption remains measurement-pending.
+- Do not issue a healthy whole-stack certification artifact.
 
 ## Independent verification
 
-- Performed: yes (fresh this cycle, 2026-05-31T22:03:09+02:00)
+- Performed: yes
 - Verdict: qualified_pass
-- Architecture-owned gates: all green
-- External blockers: marketing independent verification stale/fail
+- Checked at: 2026-05-31T23:03:47.727033+02:00
+- Summary: Architecture verifier fails closed on stale signoff, live loop topology/ownership checks remain green, shared market-intelligence reuse stays machine-verifiable.
 
 ## Small gate passed
 
-- `python3 agents/system/agent_architecture_audit.py` ✅
-- `python3 agents/system/agent_architecture_independent_verify.py` ✅
+- `python3 agents/system/agent_architecture_audit.py` → ok
+- `python3 agents/system/agent_architecture_independent_verify.py` → ok (qualified_pass)
+- `python3 agents/system/agent_architecture_verifier.py` → ok
+- Loop integrity: agent-architecture-watchdog → ok, ralph-docs-watchdog → ok
