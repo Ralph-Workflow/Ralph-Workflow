@@ -100,6 +100,8 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
     assert getattr(captured.get("policy"), "idle_timeout_seconds", None) == _expected_idle_timeout
 
 
+
+
 def test_invoke_agent_probe_and_strategy_share_same_registry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -340,7 +342,7 @@ def test_build_command_includes_print_streaming_and_session_flags() -> None:
     ]
 
 
-def test_build_command_splits_multi_part_claude_permission_mode_flag() -> None:
+def test_build_command_does_not_duplicate_print_flag_when_claude_cmd_already_uses_p() -> None:
     config = AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
@@ -362,7 +364,6 @@ def test_build_command_splits_multi_part_claude_permission_mode_flag() -> None:
         "claude",
         "-p",
         "--output-format=stream-json",
-        "--print",
         "--include-partial-messages",
         "--permission-mode",
         "auto",
@@ -458,7 +459,6 @@ def test_build_command_injects_claude_append_system_prompt_file() -> None:
         "claude",
         "-p",
         "--output-format=stream-json",
-        "--print",
         "--include-partial-messages",
         "--permission-mode",
         "auto",

@@ -240,13 +240,14 @@ def invoke_agent(
     Raises:
         AgentInvocationError: If agent exits with non-zero code.
     """
-    opts = _prepare_interactive_claude_options(options or InvokeOptions(), config)
+    base_opts = options or InvokeOptions()
     runtime = resolve_invocation_runtime(
         config,
-        opts.extra_env,
-        opts.workspace_path,
-        system_prompt_file=opts.system_prompt_file,
+        base_opts.extra_env,
+        base_opts.workspace_path,
+        system_prompt_file=base_opts.system_prompt_file,
     )
+    opts = _prepare_interactive_claude_options(base_opts, config)
     runtime_env = runtime.agent_env
     mcp_endpoint = runtime.mcp_endpoint
     allowed_mcp_tool_names = provider_allowed_mcp_tool_names(config, mcp_endpoint)

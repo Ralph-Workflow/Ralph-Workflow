@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig
 
 _MODELED_FLAG_PARTS = 2
+_HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
@@ -214,6 +215,10 @@ def _split_optional_flag(flag: str | None) -> list[str]:
     return shlex.split(flag)
 
 
+def _command_already_enables_print_mode(cmd: list[str]) -> bool:
+    return any(part in _HEADLESS_CLAUDE_PRINT_FLAGS for part in cmd)
+
+
 def _normalize_opencode_model_flag(model_flag: str) -> list[str]:
     parts = model_flag.split()
     if len(parts) == _MODELED_FLAG_PARTS and parts[0] in {"-m", "--model"}:
@@ -375,7 +380,7 @@ def _build_command(
     if transport == AgentTransport.CLAUDE and config.output_flag is not None:
         cmd.append(config.output_flag)
 
-    if config.print_flag:
+    if config.print_flag and not _command_already_enables_print_mode(cmd):
         cmd.append(config.print_flag)
 
     if config.streaming_flag:

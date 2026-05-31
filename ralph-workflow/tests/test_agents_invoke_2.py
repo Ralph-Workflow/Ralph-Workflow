@@ -365,11 +365,10 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
 
     assert seen_cmds
     cmd = seen_cmds[0]
-    assert cmd[:10] == [
+    assert cmd[:9] == [
         "claude",
         "-p",
         "--output-format=stream-json",
-        "--print",
         "--include-partial-messages",
         "--resume",
         "abc123",
@@ -377,13 +376,13 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         "--verbose",
         "--mcp-config",
     ]
-    mcp_payload = _json_object(cmd[10])
+    mcp_payload = _json_object(cmd[9])
     servers = cast("dict[str, object]", mcp_payload["mcpServers"])
     assert cast("dict[str, object]", servers["ralph"]) == {
         "type": "http",
         "url": "http://127.0.0.1:9999/mcp",
     }
-    assert cmd[11:] == [
+    assert cmd[10:] == [
         "--strict-mcp-config",
         "--tools",
         "",
@@ -786,8 +785,8 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE,
     )
-    seen_cmds: list[list[str]] = []
     seen_env: list[dict[str, str]] = []
+    seen_cmds: list[list[str]] = []
 
     class FakeProcess:
         pid: int = 12345
