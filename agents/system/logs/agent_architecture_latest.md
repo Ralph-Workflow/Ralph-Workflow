@@ -1,56 +1,50 @@
-# Agent Architecture Audit
+# Agent Architecture Audit — 2026-05-31 20:03 CEST
 
-- Checked: 2026-05-31T19:05:20.844615+02:00
-- Overall health: watch
-- Primary failure mode: Architecture-owned gates are green, but whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
-- Most urgent fix: Do not certify whole-stack green until the external owner loop clears its live residue and independent signoff stays current.
-- Verifier status: performed
-- Verifier verdict: qualified_pass
+**Verdict:** Watch
+**Architecture-owned gates:** Green
+**External blocker:** Marketing independent verification (fail)
 
-## Live topology
+## Live Topology
 
-- Live Gateway jobs: 27 total / 27 enabled / 0 disabled
-- Live running jobs now: agent-architecture-watchdog, codeberg-github-mirror-sync, system-health-monitor
-- Live last-error residue: blocked-channel-recovery
-- Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-reflection, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
-- User crontab ownership: ok
+- 26 jobs, 26 enabled, 0 disabled
+- 4 running at check time: system-health-monitor, mirror-sync, competitor-analysis, self
+- 1 error-state job: blocked-channel-recovery (timeout, consecErrors=1) — externally classified
+- Health monitor: 3 issues, all external (blocked-channel-recovery timeout+escalation, marketing staleness)
 
-## Severity-ranked findings
+## Architecture Gates
 
-1. **High — Marketing remains externally red on outcome evidence**
-   - Mechanism: Marketing independent verification still fails closed because primary-repo adoption is measurement-pending.
-   - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green.
+| Gate | Status |
+|---|---|
+| Live cron topology | 🟢 26/26 enabled, 0 disabled |
+| Loop integrity | 🟢 ralph-docs-watchdog=ok, agent-architecture-watchdog=ok |
+| Docs verifier | 🟢 Independently verified pass, 115 consecutive passes |
+| Market intelligence consumption | 🟢 All 3 code-backed consumers present on disk |
+| Verifier source | 🟢 316 lines, parseable, freshness-gate logic present |
+| Ownership boundaries | 🟢 No violations detected |
+| Verifier run | 🟢 ok=true, 0 errors |
+| Independent verify | 🟢 ok=true, qualified_pass=true |
 
-2. **Medium — Live Gateway topology matches the current runtime state**
-   - Mechanism: Direct live cron inspection shows 27 enabled/total-visible jobs, 0 disabled jobs, 3 running jobs, and 1 live last-error jobs.
-   - Recommended fix: Keep direct cron inspection as the source of truth on each watchdog run and avoid conflating persisted disabled history with live runtime topology.
+## External Blockers
 
-3. **Medium — Architecture verifier path is green on freshness and ownership gates**
-   - Mechanism: Loop integrity, health-monitor blocker localization, and shared market-intelligence consumption remain coherent after the refresh; remaining blocker classification is externalized correctly.
-   - Recommended fix: Rerun independent verification after each material architecture artifact refresh.
+| Blocker | Detail |
+|---|---|
+| Marketing independent verification | **fail** — Codeberg primary-repo adoption flat (0 star/watch/fork delta) |
+| Marketing workflow audit | bottleneck=distribution_and_message_to_primary_repo_conversion |
+| blocked-channel-recovery | timeout (consecErrors=1, externally classified, next run Tue 10:30 CEST) |
+| Health monitor | 3x external issues (timeout, stale_artifact, escalation) |
 
-4. **Low — Persisted disabled jobs remain history only, not live runtime blockers**
-   - Mechanism: Disabled entries still exist in jobs.json history, but live Gateway topology currently exposes zero disabled jobs.
-   - Recommended fix: Keep separating persisted disabled history from live runtime topology in every audit.
+## Repairs This Run
 
-## Repaired this run
+1. Refreshed live topology: 26/26 enabled, 0 disabled, 1 external error (blocked-channel-recovery timeout delta from prior run)
+2. Relocalized blocker map: all remaining red is external (marketing fail + blocked-channel-recovery timeout)
+3. Revalidated market intelligence consumption: all 3 code-backed consumers present on disk
+4. Revalidated docs verifier: independently verified pass, 115 consecutive passes
+5. Ran architecture verifier: ok=true, 0 errors (316 lines)
+6. Ran independent verify: ok=true, qualified_pass=true
 
-- **refreshed_live_topology** — Refreshed the audit against the current live view: 27 enabled jobs, 0 disabled jobs, 3 running jobs, and 1 live last-error jobs.
-- **relocalized_runtime_drift** — Removed stale topology mismatch as an architecture-owned blocker so any remaining red stays localized to the external owner loop.
-- **revalidated_shared_findings_consumption** — Reconfirmed that code-backed marketing consumers still expose machine-verifiable shared market-intelligence consumption.
+## Independent Verification
 
-## Still red
-
-- Marketing independent verification is not pass.
-- Primary repo adoption remains measurement-pending after shipped repairs.
-- Do not issue a healthy certification artifact yet.
-
-## Independent verification
-
-- Performed: yes
-- Verdict: qualified_pass
-- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-
-## Small gate passed
-
-- `python3 agents/system/agent_architecture_audit.py`
+- **Status:** Qualified pass
+- **Verifier:** ok=true, 0 architecture errors
+- **Independent verifier:** ok=true, qualified_pass=true
+- **Remaining external:** Marketing independent verification fail (Codeberg adoption flat) + blocked-channel-recovery timeout
