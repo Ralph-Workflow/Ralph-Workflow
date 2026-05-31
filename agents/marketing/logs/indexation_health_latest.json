@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-05-31T07:11:07.410790+00:00",
+  "sitemap_urls_total": 100,
+  "google_indexing": {
+    "status": "checked_sample",
+    "checked": 20,
+    "responded_indexed": 0,
+    "total_urls": 100,
+    "estimated_indexed": 0,
+    "errors_count": 20,
+    "sample_errors": [
+      "403: {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Web Search Indexing API has not ",
+      "403: {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Web Search Indexing API has not ",
+      "403: {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Web Search Indexing API has not "
+    ]
+  },
+  "gap_unindexed": 100,
+  "pct_indexed_estimate": 0.0,
+  "escalation_threshold": {
+    "pct_unindexed_limit": 50,
+    "unindexed_pct": 100.0,
+    "triggered": true
+  }
+}

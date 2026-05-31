@@ -1,17 +1,17 @@
 {
-  "last_submit_ts": "2026-05-31T06:19:32.163931",
-  "total_submitted": 102,
+  "last_submit_ts": "2026-05-31T09:14:00.493116",
+  "total_submitted": 306,
   "last_count": 102,
   "last_errors": [],
   "last_results": {
     "www.bing.com": {
       "ok": true,
-      "status": 202,
+      "status": 200,
       "body": ""
     },
     "api.indexnow.org": {
       "ok": true,
-      "status": 202,
+      "status": 200,
       "body": ""
     }
   }

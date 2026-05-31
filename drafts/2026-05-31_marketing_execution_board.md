@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-31T08:10:00
+Generated: 2026-05-31T09:27:40
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -9,10 +9,9 @@ Generated: 2026-05-31T08:10:00
 ## Active review windows
 - Apollo next review: 2026-05-29T09:00:01.629178+02:00
 - Apollo launch review: 2026-06-05T09:00:01.629178+02:00
-- Short review-window congestion clears at: 2026-05-31T09:12:33
-- Post-hold marketer rerun scheduled: 2026-05-31T09:12:33
+- Short review-window congestion clears at: 2026-05-31T10:00:02
+- Post-hold marketer rerun scheduled: 2026-05-31T10:00:02
 - StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
-- StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
@@ -37,7 +36,7 @@ Generated: 2026-05-31T08:10:00
 - stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
 
 ## Verified infrastructure state (programmatic, not fabricated)
-- **Telegraph guard**: cooldown (cooldown_active) — clears ~08:14 UTC
+- **Telegraph guard**: clear
 - **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
 - **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
 - **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED

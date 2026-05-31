@@ -1,0 +1,33 @@
+{
+  "marker": "reddit_monitor_suspension",
+  "written_at": "2026-05-31T09:05:00+02:00",
+  "suspension_trigger": "72h without usable retrieval",
+  "last_usable_retrieval": {
+    "timestamp": "2026-05-28T11:19:00+02:00",
+    "report": "seo-reports/reddit_monitor_2026-05-28_1119.md",
+    "note": "Last known good Reddit monitor pass. All subsequent passes blocked: DDG 100% bot-detection + Reddit direct 403 IP-block."
+  },
+  "suspension_active_since": "2026-05-31T11:19:00+02:00",
+  "blocked_providers": [
+    "DuckDuckGo web_search — 100% bot-detection blocked since 2026-05-28",
+    "Reddit direct web_fetch — 403 IP-blocked (Hetzner Helsinki) since 2026-05-23"
+  ],
+  "re_enable_conditions": [
+    "DDG web_search successfully returns non-bot-detection results for Reddit queries",
+    "OR Reddit direct web_fetch returns non-403 responses",
+    "OR a human manually re-enables by deleting this suspension marker file",
+    "OR a new provider/web_search backend is configured that is not DDG-blocked"
+  ],
+  "suspended_actions": [
+    "All Reddit-specific search queries via web_search",
+    "All Reddit direct web_fetch calls",
+    "All reddit_monitor.py execution (already import-broken since May 23)",
+    "All Reddit post/comment attempts"
+  ],
+  "still_permitted": [
+    "Research-only Reddit URL checks via cached/archived paths",
+    "OUTREACH-LOG.md maintenance and historical review",
+    "Non-Reddit market intelligence aggregation"
+  ],
+  "escalation_path": "If suspension exceeds 7 days (2026-06-04), escalate via user notification and consider provider migration (Brave Search API, SerpAPI, etc.)"
+}

@@ -1,6 +1,6 @@
 # Apollo Sequence Status
 
-- Generated: `2026-05-30T09:00:29.198863+02:00`
+- Generated: `2026-05-31T09:00:22.174333+02:00`
 - Status: `runtime_auth_blocked`
 - Measurement pending: `False`
 - Summary: Apollo has a non-zero verified list, but live sequence-send evidence cannot be confirmed from the current runtime. Apollo runtime is blocked by a Cloudflare auth interstitial.

@@ -1,9 +1,17 @@
 {
-  "generated_at": "2026-05-28T20:36:42.609707",
-  "status": "permanently_blocked",
+  "generated_at": "2026-05-31T09:05:23+02:00",
+  "status": "suspended_72h",
   "ok": false,
-  "blocking_reason": "Reddit is IP-blocked at Hetzner Helsinki. ARCHITECTURALLY RETIRED 2026-05-28.",
-  "notes": "Reddit pipeline retired per marketing-workflow-audit. See REDDIT_RETIRED.md or the audit run log for details.",
-  "repair_status": "retired_no_further_attempts",
-  "alternative_channel": "GitHub Discussions (available, unblocked, live outbound enabled 2026-05-28)"
+  "blocking_reason": "Reddit monitor trigger: 72h suspension reached. DDG 100% bot-detection + Reddit direct 403 IP-block. Last usable retrieval: 2026-05-28 11:19 CEST (~53h ago at monitor pass, now ~70h).",
+  "suspension_marker": "agents/marketing/logs/reddit_monitor_suspension.json",
+  "suspension_active": true,
+  "suspension_since": "2026-05-31T11:19:00+02:00",
+  "notes": "No Reddit search queries or post attempts until provider recovery or human re-enable. Suspension marker written by marketing-daily cron evaluator (self-improvement loop).",
+  "repair_status": "suspended_awaiting_provider_recovery",
+  "alternative_channels": [
+    "StackOverflow answer lane (first cron: June 3, 03:15 CEST)",
+    "Blog content + Telegraph cross-posts",
+    "IndexNow pings (zero-credential, API-keyless)",
+    "GitHub Discussions (drafts ready, needs gh auth)"
+  ]
 }
