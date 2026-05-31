@@ -62,8 +62,9 @@ def spawn_pty_process(
         except BaseException:
             os._exit(127)
 
+    os.close(slave_fd)
     _set_nonblocking(master_fd)
-    return PtyProcess(pid=pid, master_fd=master_fd, slave_fd=slave_fd)
+    return PtyProcess(pid=pid, master_fd=master_fd, slave_fd=-1)
 
 
 def wait_for_master_readable(master_fd: int, timeout_seconds: float) -> bool:

@@ -82,8 +82,9 @@ class PtyProcess:
             return
         self._closed = True
         for fd in (self.master_fd, self.slave_fd):
-            with _SuppressCloseError():
-                os.close(fd)
+            if fd >= 0:
+                with _SuppressCloseError():
+                    os.close(fd)
 
 
 def _status_to_returncode(status: int) -> int:

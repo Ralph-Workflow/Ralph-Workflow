@@ -185,7 +185,10 @@ class PtyLineReader:
                     break
                 if not wait_for_master_readable(self._handle.master_fd, 0.05):
                     continue
-                chunk = read_master_chunk(self._handle.master_fd)
+                try:
+                    chunk = read_master_chunk(self._handle.master_fd)
+                except BlockingIOError:
+                    continue
                 if not chunk:
                     break
                 pending += decoder.decode(chunk)
