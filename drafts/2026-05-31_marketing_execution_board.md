@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-25T18:53:00
+Generated: 2026-05-31T08:10:00
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -9,19 +9,24 @@ Generated: 2026-05-25T18:53:00
 ## Active review windows
 - Apollo next review: 2026-05-29T09:00:01.629178+02:00
 - Apollo launch review: 2026-06-05T09:00:01.629178+02:00
-- Short review-window congestion clears at: 2026-05-25T23:07:41
+- Short review-window congestion clears at: 2026-05-31T09:12:33
 - Post-hold marketer rerun scheduled: 2026-05-31T09:12:33
 - StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
-- Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
-### 1. Manual publisher outreach asset
+### 1. Comparison backlink packet
+- When: Do after fresh publisher / curator contacts are sent
+- Packet: /home/mistlight/.openclaw/workspace/drafts/comparison_backlink_handoff_packet_latest.md
+- Targets: Aider, Claude Code, Conductor (Teams)
+- Why this matters: Comparison proof is already prepared and should be reused instead of redrafted.
+
+### 2. Apollo runtime-blocker review packet
 - When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md
-- Targets: ComputingForGeeks
-- Why this matters: A current Codeberg-first manual follow-through asset already exists for the active primary-repo-flat target set; use it instead of regenerating the packet.
+- Packet: /home/mistlight/.openclaw/workspace/drafts/2026-05-31_apollo_runtime_blocker_review_packet.md
+- Targets: Ralph Workflow curator follow-up — Codeberg CTA
+- Why this matters: Apollo follow-up is already due, but runtime auth is blocked; the truthful next move is to carry a blocker-specific recovery packet instead of collapsing back into another empty-board guard pause.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing
@@ -32,7 +37,7 @@ Generated: 2026-05-25T18:53:00
 - stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
 
 ## Verified infrastructure state (programmatic, not fabricated)
-- **Telegraph guard**: clear
+- **Telegraph guard**: cooldown (cooldown_active) — clears ~08:14 UTC
 - **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
 - **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
 - **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED

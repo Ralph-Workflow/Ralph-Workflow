@@ -1087,7 +1087,20 @@
       "error": null,
       "draft_hash": "ebb78c1a471c0d4a1344ad3d76602af543965b084ccf0c2bb8991f0635da3b25",
       "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/vendor-neutral-ai-coding-platform-independent-workflow.md"
+    },
+    {
+      "date": "2026-05-31",
+      "draft": "2026-05-31_claude_automation_draft.md",
+      "title": "Claude Code automation: the overnight run setup that actually works",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Claude-Code-automation-the-overnight-run-setup-that-actually-works-05-31",
+      "error": null,
+      "draft_hash": "4e8d87536ab7f2a57c516ff603e2e325fe9812309fac55999b198ef336b50eb3",
+      "experiment_id": "2026-05-31-claude_automation",
+      "source_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_claude_automation_draft.md"
     }
   ],
-  "last_run": "2026-05-31T06:00:01.491846"
+  "last_run": "2026-05-31T08:00:14.359347"
 }

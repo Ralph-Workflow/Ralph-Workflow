@@ -33080,3 +33080,99 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Ralph Workflow public docs are well-aligned with the positioning document. All three top-level surfaces (README, START_HERE, docs/README) form a coherent journey from product story \u2192 first honest run \u2192 deeper exploration. Promoted next-click pages consistently reinforce the simple-core/composable-framework/strong-default message without internal leakage or stale framing.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with 'operating system for autonomous coding', frames as composable loop framework, correctly targets ambitious well-specified work with explicit non-fit cases, Codeberg-primary framing, engineering-practice honesty section."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Focuses on one honest first run with clear task guidance and result-oriented success criteria; no internal plumbing language; minimal focused next-page links."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Clean user-goal routing with 'Choose one route' sections; explicitly says 'Keep proof secondary'; links to aligned product-framing pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) that all open with the same simple-core framing."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Opens with simple-core/composable-framework/strong-default framing; consistently links back to START_HERE; no internal leakage; practical comparison language without vendor sludge."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md",
+      "reason": "Positions specs as operational tool (not ceremony); ties back to why default workflow needs well-specified tasks; reinforces result-first evaluation and honest review discipline."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The three-surface entry journey (README \u2192 START_HERE \u2192 docs/README) is coherent, well-positioned, and free of internal leakage. Promoted secondary pages reinforce the same story instead of fighting it. Minor wording drift on two deep secondary pages (artifacts/diff language and the phrase 'reviewable output' as a differentiator on `when-unattended-coding-fits.md` and `first-task-prompt-templates.md`) but these are not top-level or promoted surfaces \u2014 they are secondary pages behind two clicks, for users already past the evaluation decision point.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (root)",
+      "reason": "Leads with operating-system-for-autonomous-coding framing. Explains simple-core / composable-loop idea before any feature bullets. Comparison table directly addresses what makes it different without internal plumbing. Audience fit/non-fit is explicit and honest. Engineering-practice dependency is called out openly. Codeberg-primary/GitHub-mirror distinction is visible and correct."
+    },
+    {
+      "path": "START_HERE.md (github-mirror)",
+      "reason": "Shortest honest first run. No internal mechanics. Success criteria ('a real repo change that matches the written task', 'meaningful checks that ran') match positioning doc's result-first evaluation. Routes to docs/README cleanly without link anxiety."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Well-structured docs map with audience-routed choices. Tells the reader this is a map, not the manual. Proof-oriented pages are explicitly secondary. Clear hierarchy. Coherent next-step routing."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces the simple-core / composition / default-workflow narrative. Does not fight the README story. Leads with product value, not plumbing."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md",
+      "reason": "Explains why specs matter operationally (planning, verification, review) without sounding like process ceremony. Ties back to the default workflow naturally."
+    },
+    {
+      "path": "ralph-workflow/README.md (sub-package)",
+      "reason": "Contains the only borderline internal language ('review artifacts and logs') but it's on a secondary surface and the overall emphasis remains on runnable code and verification. Honest about what to expect."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
