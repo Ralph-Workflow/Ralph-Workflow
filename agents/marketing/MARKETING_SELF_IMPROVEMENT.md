@@ -1,3 +1,51 @@
+## 2026-05-31 structural addendum (17:00 CEST) — marketing-daily evaluator: 2 critical SEO bugs fixed, GSC data flowing, indexation false-negative eliminated
+
+### Audit results (17:15 run)
+Same flat adoption: 12⭐ Codeberg, 1⭐ GitHub, 2 watchers each, 2 forks, 1,297 PyPI downloads/month. All infra blockers unchanged.
+
+### Actions this run
+
+#### 1. Bug #1 — GSC property format mismatch (seo_daily.py)
+**Root cause:** `seo_daily.py` used `sc-domain:ralphworkflow.com` GSC property format, but the OAuth token (from `~/gsc-credentials.json`) was authorized for `https://ralphworkflow.com/` (URL-prefix). Google silently returned empty data for domain-property format.
+**Fix:** Changed `track_ranks()` line 352 from `sc-domain:{SITE}` to `https://{SITE}/`.
+**Result:** GSC now returns real data — 28 unique queries, all brand-driven. Top: "ralph workflow" (pos 2, 41 impr, 10 clicks, 24.4% CTR).
+
+#### 2. Bug #2 — Indexation health permanently false-negative (indexation_health_check.py)
+**Root cause:** `indexation_health_check.py` used the **disabled** Google Indexing API (`urlNotifications:publish`) endpoint, which always returned `api_not_enabled` → 0.0% indexed for every page ever checked.
+**Fix:** Full rewrite — replaced Indexing API calls with GSC Search Analytics API (same working OAuth pattern as `seo_indexation_diagnostic.py`). New functions: `_gsc_access_token()`, `_gsc_search_analytics()`, and rewritten `check_google_indexing()`.
+**Result:** Now reports **13/100 pages with search presence** (339 impressions, 21 clicks in 28d, 6.19% CTR). Eliminates the catastrophic false-negative that drove 4 consecutive audits to flag "0 indexation" as a crisis.
+
+#### 3. Enhancement — Top Search Queries in SEO report (seo_daily.py)
+Added `_top_queries` field to `track_ranks()` and "Top Search Queries (Last 28 Days, GSC)" section in the daily report writer. Surfaces all 28 real queries with position, impressions, clicks, and CTR.
+
+#### 4. Key insight: Priority keyword mismatch
+**Finding:** The 8 priority keywords ("unattended coding agent", "AI agent orchestration CLI", etc.) have **zero search volume** for this domain in GSC. 100% of real traffic is brand-driven queries ("ralph workflow", "ralph ai", "ralph framework"). The `_top_queries` field is now the ground truth — priority keywords are aspirational, not reflective of current search reality.
+**Rule:** Do not treat priority keyword absence in GSC as a bug. It is a signal that organic discovery is brand-only at this stage.
+
+#### 5. All changes committed
+Commit `fc80154`: seo_daily.py GSC fix + top queries, indexation_health_check.py full rewrite, MARKETING_SELF_IMPROVEMENT.md update, latest reports.
+
+### Remaining human-gated unblocks (unchanged)
+| Blocker | Status | Fix |
+|---------|--------|-----|
+| Google Indexing API | Disabled on GCP project 292739303076 | Visit console.developers.google.com/apis/api/indexing.googleapis.com/overview?project=292739303076 |
+| PyPI v0.8.8 | PYPI_TOKEN unset | Set env var |
+| GitHub Discussions | gh auth login missing | `gh auth login` |
+| Apollo Cloudflare | Auth interstitial | Human browser solve |
+
+### Signal ratio estimate
+- 8 active marketing cron jobs
+- SO lane: daily at 03:15, first run June 3 (8 ready drafts)
+- IndexNow pings: daily at 05:00
+- Indexation health: daily at 05:30 (now with real data)
+- run.py + outcome_capability_runner: continue producing owned_content artifacts
+- Reddit: self-suspended (DDG intermittent, 73h stale)
+
+### Autonomous ceiling confirmed
+All remaining adoption-ROI moves are human-gated credentials. The autonomous system has been repaired to functional integrity — both major false-negative data bugs fixed, all dead cron stripped, all draft-producing paths guarded against inflation. The next adoption delta requires a human to unblock a distribution channel.
+
+---
+
 ## 2026-05-31 structural addendum (12:45 CEST) — This run: SO scoring fix + 2 noise cron jobs killed
 
 ### Audit results (12:07 run)
