@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-31T17:15:17.273546",
+  "generated_at": "2026-05-31T18:11:50.984106",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -210,8 +210,11 @@
     "adoption_review_at": "2026-06-28T09:00:01.629178+02:00"
   },
   "shared_artifact_sync": {
-    "status": "skipped_unchanged",
-    "reason": "material_fingerprint_unchanged_or_cooldown",
+    "status": "synced",
+    "selected_lane": "measurement_hold",
+    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md",
+    "execution_board_targets": [],
+    "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json",
     "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:1|action:distribution_architecture_repair:executed"
   }
 }

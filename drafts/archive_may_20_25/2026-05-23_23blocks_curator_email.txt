@@ -1,0 +1,27 @@
+Hi 23blocks team,
+
+I was looking at AI Maestro and noticed the repo already speaks directly to the same pain a lot of teams are feeling right now: once you stop running one-off demos and start doing longer unattended coding runs, the hard part becomes coordination, trust, and what you can actually review the next morning.
+
+I wanted to suggest Ralph Workflow as a related open-source project worth citing for that workflow layer.
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator built around repo-native autonomous coding work. Its emphasis is the finish state: planning, implementation, and verification composed into a default workflow so the output is finished, tested code that is ready to review instead of another confident summary.
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Homepage: https://ralphworkflow.com
+
+If you keep a related-projects, ecosystem, or comparison/resources section for teams exploring complementary AI-agent workflow tools, a suggested entry could be:
+- Ralph Workflow — free open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.
+
+Why I think it fits your audience:
+- adjacent to the “works with any AI agent” operator workflow
+- useful for teams trying to stop babysitting agent runs
+- strong fit for people who care about finished, tested code that is ready to review
+
+If a different wording or placement would fit AI Maestro better, I’m happy to defer to that.
+
+Thanks for taking a look.
+
+Best,
+Ralph Workflow
+ken@hireaegis.com

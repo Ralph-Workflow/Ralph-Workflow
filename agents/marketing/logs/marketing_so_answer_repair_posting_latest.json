@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-05-31T18:12:50.211655",
+  "question_url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
+  "draft_used": "so_answer_2026-05-23_how-should-i-structure-autonomous-ai-agent-workflo.md",
+  "result": {
+    "error": "HTTP 500: <html>\r\n<head><title>500 Internal Server Error</title></head>\r\n<body>\r\n<center><h1>500 Internal Server Error</h1></center>\r\n<hr><center>openresty</center>\r\n</body>\r\n</html>\r\n"
+  },
+  "ok": false
+}

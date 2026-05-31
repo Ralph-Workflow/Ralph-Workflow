@@ -1,0 +1,19 @@
+Hi Simplicity Labs team,
+
+I noticed your AI coding tools comparison (Claude Code, Cursor, Lovable, Bolt, etc.) and thought Ralph Workflow might be a strong addition or follow-up mention.
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for developers doing real repo work. Instead of being another single coding assistant, it gives teams a stronger default workflow around existing agents so planning, implementation, and verification end in something reviewable instead of just a confident summary.
+
+Why it may fit your comparison:
+- useful for developers who like Claude Code or Codex but need more structure for longer unattended runs
+- Codeberg-first open-source repo with docs and a start-here path
+- clearer fit for teams who care about reviewability, not just raw generation speed
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+If you update the comparison or publish a follow-up on workflow layers around AI coding tools, I’d be happy to send a short blurb.
+
+Best,
+Ralph Workflow
+https://codeberg.org/RalphWorkflow/Ralph-Workflow

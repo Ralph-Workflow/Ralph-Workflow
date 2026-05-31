@@ -1,0 +1,21 @@
+Hi Tools AI Online team,
+
+I’d like to suggest Ralph Workflow for inclusion in your directory.
+
+Ralph Workflow is a free and open-source workflow system for autonomous coding. It helps developers and technical teams run longer repo-native coding loops with a better default: planning, implementation, and verification are composed into one reviewable workflow, so unattended runs are more likely to end in finished, tested code instead of a vague summary.
+
+Suggested listing details:
+- Name: Ralph Workflow
+- Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+- GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+- Homepage: https://ralphworkflow.com
+- Short description: Free open-source workflow system for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.
+- Suggested categories: Productivity, Research & Learning, Aggregators
+- Suggested tags: task automation, workflow management, code generation, collaboration, research automation
+- Pricing: Open Source
+
+Why it may fit your audience: Ralph Workflow is useful for developers, technical operators, and AI-assisted builders who want more reliable repo execution and easier morning-after review, not just one-off prompt responses.
+
+If there’s a better category or format in your system, I’m happy to defer to your editorial judgment.
+
+Thanks for taking a look.

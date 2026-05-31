@@ -1,0 +1,19 @@
+Hi Kingy AI team,
+
+I just read your Cursor / Cursor SDK vs. Claude Code vs. Codex comparison and thought Ralph Workflow would be a strong fit for future roundups or tooling lists aimed at teams evaluating longer unattended coding workflows.
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for autonomous coding. The core difference is that it is built around reviewable workflow handoffs: planning, implementation, verification, and a stronger default path to finished, tested code that is ready to review instead of another confident summary.
+
+Primary repo:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+Mirror:
+https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Suggested entry:
+- Ralph Workflow — free and open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary
+
+If you’re open to it, I’d love to see Ralph Workflow considered for a future comparison, tooling directory, or related feature.
+
+Best,
+Ralph Workflow

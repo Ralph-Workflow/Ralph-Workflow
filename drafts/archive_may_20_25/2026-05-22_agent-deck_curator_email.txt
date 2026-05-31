@@ -1,0 +1,21 @@
+Hi Ashesh,
+
+I came across agent-deck while reviewing tools for teams running multiple coding agents, and it looks like a strong fit for people who already use Claude, Codex, Gemini, and similar CLI agents.
+
+I’m reaching out because Ralph Workflow feels complementary to what you’re building. Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for developers who want a structured workflow instead of a chat session. The pitch is simple: keep the core loop small, then compose planning, implementation, and verification into a workflow that can survive longer unattended runs and still come back reviewable in the morning.
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Why I think it fits agent-deck’s audience:
+- agent-deck helps manage the terminal/session layer for multiple coding agents
+- Ralph Workflow helps define the workflow layer above those agents so the run ends in a bounded diff, checks, and a review surface instead of just a confident summary
+- both are aimed at developers who want to move beyond one-off chat sessions into repeatable coding workflows
+
+If you’re open to it, I’d love to suggest Ralph Workflow as a complementary tool/resource for agent-deck users, or explore a small cross-link where appropriate.
+
+A short description if useful:
+Ralph Workflow — free and open-source composable loop framework and AI orchestrator for structured unattended coding workflows.
+
+Best,
+Ralph Workflow

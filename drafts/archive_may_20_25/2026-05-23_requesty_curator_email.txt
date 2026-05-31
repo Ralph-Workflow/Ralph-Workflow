@@ -1,0 +1,22 @@
+Hi Requesty team,
+
+I came across your comparison page here:
+https://www.requesty.ai/blog/agentic-coding-tools-compared-2026-claude-code-cursor-codex-aider
+
+It already does a good job covering the model/tool layer (Claude Code, Cursor, Codex, Aider). One comparison point that may fit well for readers doing larger unattended coding tasks is Ralph Workflow.
+
+Ralph Workflow is free and open source, and it sits at the workflow layer rather than the single-tool layer: a composable loop framework and AI orchestrator for developers who want a structured workflow instead of a chat session.
+
+Why it may be worth adding:
+- built for repo-native unattended coding runs
+- composes planning, implementation, and verification instead of stopping at a raw agent session
+- aims to end in a bounded diff, check evidence, and named open decisions rather than just a confident summary
+- works with existing tools like Claude Code, Codex CLI, and OpenCode on the developer's own machine
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+If you update the comparison or publish a follow-up on workflow-layer tooling, Ralph Workflow would be a natural inclusion point.
+
+Best,
+Ralph Workflow

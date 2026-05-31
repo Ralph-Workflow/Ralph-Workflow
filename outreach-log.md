@@ -8027,3 +8027,36 @@ Removing `noindex` from the 8 vs pages and breaking the template pattern with un
 ### StackOverflow answer lane
 - **When:** 2026-05-31 15:21:14
 - **Note:** StackOverflow answer lane ran: found 7 questions, scored 7, drafted 0 answers, skipped 4 recent duplicate candidates; refreshed canonical handoff packet from the best existing draft for manual-ready follow-through. Top question: Boss wants us to add more AI to our workflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-31 18:07:58
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog — 2026-05-31 18:10 UTC
+- **When:** 2026-05-31 18:10 UTC
+- **Note:** Momentum stalled — architecture is stale, process is stale.
+- **Architecture failures (all distribution lanes dead):**
+  - Reddit: architecturally dead from this runtime (Hetzner IP block, DDG bot-detection, Reddit 403). Last usable retrieval: 2026-05-28 (~70h ago).
+  - Apollo: Cloudflare auth blocked (confirmed 1.65h ago). No browser-capable runtime available.
+  - SMTP: structurally blocked — no outbound mail relay from this runtime.
+  - GitHub auth: blocked from this runtime.
+  - PyPI token: missing.
+- **Process failure (system producing recommendations, not executing):**
+  - 12 StackOverflow answer drafts exist in /home/mistlight/.openclaw/workspace/drafts/stackoverflow/, generated May 23–31. ZERO posted.
+  - BLOCKER_ROI_SUMMARY (generated today) correctly identified the fix: "post 1 SO answer — 12 ready, 0 posted." That has not happened.
+  - The system keeps generating repair recommendations and execution board artifacts. The recommendations are correct. The execution is not happening.
+  - The audit itself says: "If the current agent/process design is too weak to improve outcomes, create or repair agents, prompts, cron jobs, scripts, tests, and workflow rules in the same run."
+- **Outcome failures:**
+  - Codeberg: 12 stars, 0 delta across 9 measurement samples
+  - Latest Reddit post: 121h ago (~5 days)
+  - Latest usable monitor report: 78.8h ago (~3.3 days)
+- **Action taken:**
+  - Spawned so-answer-posting-repair sub-agent to post ONE SO answer or produce a manual handoff.
+  - This is the ONLY viable autonomous distribution path right now that doesn't require blocked infrastructure.
+- **Required human action (cannot be automated from this runtime):**
+  - Post 1 StackOverflow answer → ATTEMPTED 2026-05-31 (Cloudflare block, handoff artifact produced)
+  - Handoff at `drafts/so_repair_handoff_latest.md` — best question (5.7, 0 answers), ready to copy-paste
+  - Provide SMTP credentials to unblock all email lanes
+  - Provide Apollo API key or browser-capable runtime
+  - Provide PyPI token to unblock release-driven distribution
+  - Fund a non-Hetzner runtime with a clean IP for Reddit access

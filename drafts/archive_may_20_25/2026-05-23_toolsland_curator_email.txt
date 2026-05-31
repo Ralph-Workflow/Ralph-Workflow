@@ -1,0 +1,27 @@
+Hi Toolsland team,
+
+Ralph Workflow looks like a strong fit for Toolsland’s Code AI / automation audience, so I wanted to suggest it for inclusion.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator for developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session. The difference is that it keeps a simple loop at the center, then composes planning, implementation, and verification so longer unattended coding runs end in finished, tested, reviewable output instead of another confident summary.
+
+Primary repo (Codeberg): https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Suggested listing blurb:
+Ralph Workflow — free and open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.
+
+Suggested categories / framing:
+- Code AI
+- Automation AI
+- Open Source
+- Workflow / Agent orchestration
+
+Useful proof links:
+- Start Here guide: https://telegra.ph/Start-Here-Try-Ralph-Workflow-on-One-Real-Backlog-Task-05-22
+- Comparison article: https://telegra.ph/AI-Coding-Tool-Comparison-Claude-Code-Cursor-Aider-and-the-Workflow-Layer-Most-Teams-Actually-Need-05-22
+
+If you’d like, I can also send a shorter directory-ready description.
+
+Best,
+Ralph Workflow
+ken@hireaegis.com
