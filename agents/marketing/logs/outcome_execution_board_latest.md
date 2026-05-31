@@ -1,13 +1,13 @@
 # Outcome Execution Board Runner
 
-- Generated: `2026-05-31T23:07:41.626498`
+- Generated: `2026-06-01T00:35:50.216688`
 - Repair needed at start: `True`
-- Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md`
+- Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-06-01_marketing_execution_board.md`
 - Selected lane: `measurement_hold`
 - Action type: `truth_snapshot_only`
 - Executed lane: `None`
 - Truthful do-now lane available: `False`
-- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md`
+- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-06-01_marketing_execution_board.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
 - Measurement window: Review Codeberg-linked movement within 7 days.
 - Next truthful checkpoint: `2026-06-01T01:24:18` (short_review_window_release)

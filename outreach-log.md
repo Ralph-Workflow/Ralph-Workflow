@@ -1,3 +1,32 @@
+### 2026-06-01 — Marketing workflow audit #15 (00:29 CEST)
+**Audit trigger:** Cron scheduled re-analysis (#15). Prior turn split across compacted summary — continued repairs from established plan.
+
+**Key findings:**
+1. **PyPI v0.8.8 IS LIVE (since May 31 00:37 UTC)** — confirmed via PyPI API with Codeberg-primary README and 3 Codeberg links. 15+ references across MARKETING_SELF_IMPROVEMENT.md, BLOCKER_ROI_SUMMARY.md, and escalation artifacts falsely claimed "built but unpublished" / "blocked on PYPI_TOKEN." The system operated on false intelligence for 24+ hours. Root cause: auto-unblocker likely published when token appeared but monitor never cross-checked live API — classic state-machine hallucination.
+2. **SO stale-search loop:** RECENT_DRAFT_LOOKBACK=7 days meant all 4 draft-worthy questions were re-drafts every daily run — SE API quota burned for zero output. Same 11 queries returned same questions every day.
+3. **Hold count safe:** 1 measurement_hold in 24h — circuit-breaker not triggered (threshold is 3).
+
+**Repairs executed (autonomous runtime changes):**
+- ✏️ MARKETING_SELF_IMPROVEMENT.md: Added 2026-06-01 structural addendum. Corrected all 15+ PyPI-as-blocked references to "v0.8.8 LIVE." Annotated stale addenda with resolution notes.
+- ✏️ BLOCKER_ROI_SUMMARY.md: PyPI removed from blocked lane table → marked RESOLVED with verification data.
+- ✏️ pypi_blocker_escalation_latest.md: Rewritten as RESOLVED — documents the auto-unblocker silent-success root cause and enforcement rule for future monitors.
+- ✏️ PYPI_UNBLOCK_HANDOFF.md: Marked CLOSED — no further handoff needed.
+- 🕒 SO cron: Changed from daily (15 3 * * *) to Wed+Sun only (15 3 * * 3,7) — prevents quota drain against exhausted search space.
+- 🔧 stackoverflow_answer_lane.py: RECENT_DRAFT_LOOKBACK reduced 7→3 days. Added search_space_exhausted detection flag in output JSON — warns when all draft-worthy questions are re-drafts.
+- 📝 Owned content published: verification-patterns-for-ai-generated-code.md (6,330 bytes, 3 patterns, Codeberg CTA) → crossposted to Telegraph (URL: https://telegra.ph/3-Verification-Patterns-That-Make-AI-Generated-Code-Trustworthy-05-31)
+
+**State after audit:**
+- PyPI: ✅ v0.8.8 LIVE — Codeberg primary CTA reaching ~1,297 downloads/month
+- Blocked lanes: 6 → 5 (PyPI removed)
+- SO lane: 7 drafts queued, correctly classified manual_ready_follow_through
+- SO cron: Wed/Sun 03:15 (was daily)
+- Hold count: 1 in last 24h (below threshold of 3)
+- Blog: 43 posts live (was 42, +1 verification patterns)
+- Enforcements added: auto-unblocker monitor MUST cross-check external ground truth; regeneration guard MUST check content staleness
+- PyPI auto-unblocker cron: Already commented out (no active PyPI cron lines)
+- Next SO run: Sun Jun 7 03:15 CEST (with RECENT_DRAFT_LOOKBACK=3, May 28+ drafts eligible)
+
+**Adoption metrics:** Codeberg 12⭐ (flat), PyPI 1,297 downloads/month (organic, now with Codeberg CTA), GitHub 1⭐.
 ### 2026-05-30 — Marketing workflow audit #14 (21:24 CEST)
 
 **Audit trigger:** Cron scheduled re-analysis. Second audit in 6 minutes (prior completed at 21:18). Near-duplicate execution produced identical regeneration — confirms root cause.
@@ -8063,4 +8092,12 @@ Removing `noindex` from the 8 vs pages and breaking the template pattern with un
 
 ### StackOverflow answer lane
 - **When:** 2026-05-31 20:17:12
+- **Note:** StackOverflow answer lane ran: found 7 questions, scored 7, drafted 0 answers, skipped 4 recent duplicate candidates; refreshed canonical handoff packet from the best existing draft for manual-ready follow-through. Top question: Boss wants us to add more AI to our workflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-06-01 00:06:11
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-06-01T01:24:18.
+
+### StackOverflow answer lane
+- **When:** 2026-06-01 00:18:52
 - **Note:** StackOverflow answer lane ran: found 7 questions, scored 7, drafted 0 answers, skipped 4 recent duplicate candidates; refreshed canonical handoff packet from the best existing draft for manual-ready follow-through. Top question: Boss wants us to add more AI to our workflow.

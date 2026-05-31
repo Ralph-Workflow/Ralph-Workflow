@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-31T18:11:50.984106",
+  "generated_at": "2026-06-01T00:09:41.256006",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -80,7 +80,7 @@
     "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
-    "Recent live external action exists (distribution_architecture_repair), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
+    "Recent live external action exists (conversion_surface_optimization), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
   ],
@@ -125,8 +125,8 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was primary_repo_flat_contact_handoff_packet_execution, but the latest meaningful external/replacement execution remains distribution_architecture_repair; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (distribution_architecture_repair), so the system is still shipping output even though outcome movement is not visible yet."
+    "The most recent runtime activity was active_loop_structural_repair, but the latest meaningful external/replacement execution remains conversion_surface_optimization; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (conversion_surface_optimization), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -159,10 +159,10 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_primary_repo_flat_contact_handoff_packet_execution.json",
-    "type": "primary_repo_flat_contact_handoff_packet_execution",
-    "title": "Distribution lane execution: primary_repo_flat_contact_handoff_packet",
-    "status": "prepared",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_2027_active_loop_structural_repair.json",
+    "type": "active_loop_structural_repair",
+    "title": "active loop structural repair",
+    "status": "executed",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
@@ -170,9 +170,9 @@
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_0257_distribution_architecture_repair.json",
-    "type": "distribution_architecture_repair",
-    "title": "distribution architecture repair",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_1924_conversion_surface_optimization.json",
+    "type": "conversion_surface_optimization",
+    "title": "conversion surface optimization",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
@@ -210,11 +210,8 @@
     "adoption_review_at": "2026-06-28T09:00:01.629178+02:00"
   },
   "shared_artifact_sync": {
-    "status": "synced",
-    "selected_lane": "measurement_hold",
-    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md",
-    "execution_board_targets": [],
-    "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json",
-    "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:1|action:distribution_architecture_repair:executed"
+    "status": "skipped_unchanged",
+    "reason": "material_fingerprint_unchanged_or_cooldown",
+    "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:1|action:conversion_surface_optimization:executed"
   }
 }

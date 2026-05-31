@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-31T18:11:50.984106
+- Generated: 2026-06-01T00:09:41.256006
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -11,8 +11,8 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was primary_repo_flat_contact_handoff_packet_execution, but the latest meaningful external/replacement execution remains distribution_architecture_repair; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (distribution_architecture_repair), so the system is still shipping output even though outcome movement is not visible yet.
+- The most recent runtime activity was active_loop_structural_repair, but the latest meaningful external/replacement execution remains conversion_surface_optimization; do not confuse follow-through with fresh outcome-bearing distribution.
+- The active loop did execute a live marketing action recently (conversion_surface_optimization), so the system is still shipping output even though outcome movement is not visible yet.
 
 ## What actually worked
 - No meaningful tactic produced a trustworthy win in this window.
@@ -25,7 +25,7 @@
 - Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.
 
 ## What is low-signal
-- Recent live external action exists (distribution_architecture_repair), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Recent live external action exists (conversion_surface_optimization), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 - Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template.
 
@@ -61,11 +61,11 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
 
 ## Latest executed marketing action
-- Type: distribution_architecture_repair
-- Title: distribution architecture repair
+- Type: conversion_surface_optimization
+- Title: conversion surface optimization
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_0257_distribution_architecture_repair.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_1924_conversion_surface_optimization.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.
@@ -91,7 +91,4 @@
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_SELF_IMPROVEMENT.md`
 
 ## Shared findings artifact sync
-- Status: synced
-- Refreshed distribution lane: measurement_hold
-- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md
-- Outcome status: /home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json
+- Status: skipped_unchanged

@@ -1,5 +1,5 @@
 {
-  "ts": "2026-05-31T23:02:56.811632",
+  "ts": "2026-06-01T00:03:15.170807",
   "jobs_checked": 26,
   "issues_found": 4,
   "issues": [
@@ -19,7 +19,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 4551.41,
+      "artifact_age_minutes": 4611.69,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -28,8 +28,8 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=836",
-      "repeats_in_recent_history": 836,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=860",
+      "repeats_in_recent_history": 860,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
@@ -40,8 +40,8 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=837",
-      "repeats_in_recent_history": 837,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=861",
+      "repeats_in_recent_history": 861,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
