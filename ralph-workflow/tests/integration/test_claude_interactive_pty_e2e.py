@@ -8,8 +8,23 @@ import pytest
 from ralph.agents.invoke import InvokeOptions, extract_session_id, invoke_agent
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
+from ralph.process.pty import spawn_pty_process
 
 pytestmark = pytest.mark.subprocess_e2e
+
+
+@pytest.mark.timeout_seconds(5)
+def test_spawn_pty_process_closes_slave_fd_in_parent() -> None:
+    proc = spawn_pty_process(
+        [sys.executable, "-c", "pass"],
+        cwd=None,
+        env=None,
+    )
+    try:
+        assert proc.slave_fd == -1
+        proc.wait(timeout=2.0)
+    finally:
+        proc.close()
 
 
 @pytest.mark.timeout_seconds(5)

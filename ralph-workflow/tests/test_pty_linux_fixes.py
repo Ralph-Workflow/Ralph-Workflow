@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+import select
 
 import pytest
 
@@ -26,3 +27,15 @@ def test_pty_process_close_with_sentinel_slave_fd() -> None:
     proc = PtyProcess(pid=1, master_fd=-1, slave_fd=-1)
     proc.close()
     proc.close()
+
+
+def test_read_master_chunk_returns_empty_on_pty_slave_close() -> None:
+    master_fd, slave_fd = os.openpty()
+    try:
+        os.close(slave_fd)
+        readable, _, _ = select.select([master_fd], [], [], 0.1)
+        assert readable, "master fd must be readable (POLLHUP) after slave closes"
+        result = read_master_chunk(master_fd)
+        assert result == b""
+    finally:
+        os.close(master_fd)
