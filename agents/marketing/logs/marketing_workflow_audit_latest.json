@@ -160,15 +160,15 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_manual_outreach_asset_follow_through_execution.json",
-    "type": "manual_outreach_asset_follow_through",
-    "title": "Distribution lane execution: manual_outreach_asset_follow_through",
-    "status": "prepared",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_0257_distribution_architecture_repair.json",
+    "type": "distribution_architecture_repair",
+    "title": "Consolidated 7 doorway alternative pages into 1 canonical comparison hub (/compare)",
+    "status": "executed",
     "ok": true,
-    "live_external_action": false,
-    "outcome_ready": false,
+    "live_external_action": true,
+    "outcome_ready": true,
     "warning": null,
-    "url": null
+    "url": "https://ralphworkflow.com/compare"
   },
   "latest_executed_action": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_1238_social_card_deployed.json",

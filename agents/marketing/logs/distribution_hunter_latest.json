@@ -1,18 +1,18 @@
 {
-  "timestamp": "2026-05-31T00:06:04.092419",
+  "timestamp": "2026-05-31T02:15:01.922190",
   "repair_types_seen": [],
-  "selected_lane": "manual_outreach_asset_follow_through",
-  "selected_action_type": "manual_outreach_asset_follow_through",
-  "execution_status": "prepared",
+  "selected_lane": "owned_content",
+  "selected_action_type": "owned_content_lane_noop",
+  "execution_status": "skipped",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_manual_outreach_asset_follow_through.md",
-  "summary": "Reused the existing channel-ready manual publisher outreach asset as the active follow-through surface instead of burying it under another measurement-hold cycle. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
-  "expected_outcome": "Advance distribution via lane manual_outreach_asset_follow_through without defaulting back to monitoring-only work.",
+  "artifact_path": null,
+  "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
+  "expected_outcome": "Advance distribution via lane owned_content without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
   "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
   "decision": {
-    "lane": "manual_outreach_asset_follow_through",
-    "reason": "A channel-ready manual publisher outreach asset already exists for an untouched Codeberg-primary target; use that packet as the truthful follow-through surface instead of hiding behind another measurement hold.",
+    "lane": "owned_content",
+    "reason": "No stronger autonomous lane detected.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 live external marketing action(s) already shipped in the last 6 hours.",
@@ -21,7 +21,6 @@
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
       "Fresh publisher outreach already shipped in the current 7-day review window (AI Coding Stack, AI Dev Setup, AI Saying), so those targets should not be re-queued immediately.",
-      "A channel-ready manual publisher outreach asset already exists (ComputingForGeeks), so the loop should reuse that Codeberg-first follow-through surface instead of pretending there is no truthful packet.",
       "An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
@@ -29,6 +28,7 @@
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
       "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
+      "A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.",
       "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
       "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
@@ -48,14 +48,12 @@
     "skip_curator_outreach": false
   },
   "execution": {
-    "lane": "manual_outreach_asset_follow_through",
-    "action_type": "manual_outreach_asset_follow_through",
-    "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_manual_outreach_asset_follow_through.md",
-    "summary": "Reused the existing channel-ready manual publisher outreach asset as the active follow-through surface instead of burying it under another measurement-hold cycle. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
-    "targets_prepared": [
-      "ComputingForGeeks"
-    ],
+    "lane": "owned_content",
+    "action_type": "owned_content_lane_noop",
+    "status": "skipped",
+    "artifact_path": null,
+    "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
+    "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -63,6 +61,8 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "live_external_action": false,
-    "blocking_factors": []
+    "blocking_factors": [
+      "No unpublished owned-content guide was available for Telegraph publication."
+    ]
   }
 }

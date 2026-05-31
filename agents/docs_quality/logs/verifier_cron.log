@@ -15629,3 +15629,91 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is healthy and well-aligned with positioning. No hard failures. The README \u2192 START_HERE \u2192 docs/README journey exists across surfaces, and all promoted next-click pages reinforce the same framing. Minor gap: the main repo README does not prominently call out the local START_HERE.md (it routes to the website instead).",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Main repo README should add a prominent 'Start here' link to START_HERE.md (it only routes to ralphworkflow.com/docs)"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding', 'AI agent orchestrator', 'simple Ralph-loop core', 'composable loop framework' \u2014 all core positioning intact. Avoids artifact/plumbing language. Compares via what the software does, not internal mechanics."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "Strongest overall. Adds explicit 'Start here' CTA, depth presets, a fast-fit check ('would you merge this?'), and clear fit/non-fit. Still maintains positioning throughout."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with positioning framing, gives shortest honest first run, boundaries good/bad first tasks, defines success by runnable software and real checks. No internal leakage."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clean docs map with explicit 'Use this page after README and START_HERE'. Routes through meaningful categories. Keeps proof secondary. Reinforces Codeberg primary."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted next-click page that perfectly reinforces positioning without fighting the journey."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with the positioning document. All top-level surfaces consistently frame Ralph Workflow as an orchestrator around a simple Ralph-loop core with strong defaults. No internal leakage, no fighting pages, clean copy, and a coherent reader journey.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md (root README)",
+      "reason": "Leads with 'operating system for autonomous coding' tagline, explains simple-core/strong-composition framing, includes clear audience fit/non-fit, ships quick-start inline, and has honest engineering-practice requirements section."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/ralph-workflow/README.md (package README)",
+      "reason": "Reinforces same positioning for the PyPI audience, adds 'Start here' call-to-action, and includes depth presets and a concrete fit/does-not-fit table."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Directly opens with the simple Ralph-loop core framing, provides the shortest honest first run path, and has clear good/bad first-task guidance."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Acts as a clean docs switchboard with routed options, explicitly for use after README and START_HERE, and includes a 'Keep proof secondary' section reinforcing positioning priorities."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

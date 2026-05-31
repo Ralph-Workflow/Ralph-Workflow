@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-05-31T02:57:00.000000",
+  "type": "distribution_architecture_repair",
+  "title": "Consolidated 7 doorway alternative pages into 1 canonical comparison hub",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "summary": "Merged 7 near-identical templated alternative pages (aider, claude-code, conductor, continue, copilot, cursor, hermes) at 878-1264 words each into a single /compare page. The 7 old URLs now 301 redirect to /compare. Removed the 7 doorway ERBs, cleaned up controller and routes. Deployed to production via Capistrano. IndexNow notified for all 100 sitemap URLs.",
+  "why_this_repair": "0/80 GSC URLs indexed — domain-wide indexation suppression. Audit and execution board both identified the 7 templated alternative pages as the probable cause. Post-hold contract mandates distribution_architecture_repair when no truthful lane remains available.",
+  "changes": {
+    "deleted": [
+      "app/views/pages/aider_alternative.html.erb",
+      "app/views/pages/claude_code_alternative.html.erb",
+      "app/views/pages/conductor_alternative.html.erb",
+      "app/views/pages/continue_alternative.html.erb",
+      "app/views/pages/copilot_alternative.html.erb",
+      "app/views/pages/cursor_alternative.html.erb",
+      "app/views/pages/hermes_alternative.html.erb"
+    ],
+    "created": [
+      "app/views/pages/compare.html.erb"
+    ],
+    "modified": [
+      "config/routes.rb (7 old paths → 301 redirects to /compare, add /compare route)",
+      "app/controllers/pages_controller.rb (remove 7 doorway actions, add compare action, update sitemap)"
+    ]
+  },
+  "verification": {
+    "all_7_redirects_301": true,
+    "compare_page_200": true,
+    "sitemap_updated": true,
+    "indexnow_notified": true,
+    "indexnow_batches": 1,
+    "indexnow_submitted": 100,
+    "deploy_status": "ok",
+    "deploy_revision": "1bf5e49176645444a88d68867e78f61b16ea1444"
+  },
+  "expected_outcome": "Doorway-page cluster eliminated. Google should begin indexing non-doorway pages. Monitor GSC indexation count over the next 14 days. Target: >0 (any non-zero indexing is progress from current 0/80 state).",
+  "measurement_window": "14 days from 2026-05-31",
+  "kill_condition": "Still 0/80 GSC indexed after 14 days",
+  "success_metric": ">=1 URL indexed in GSC within 14 days",
+  "url": "https://ralphworkflow.com/compare"
+}
