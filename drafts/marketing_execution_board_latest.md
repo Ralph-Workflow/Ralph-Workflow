@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-31T01:52:35
+Generated: 2026-05-25T18:53:00
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -9,7 +9,7 @@ Generated: 2026-05-31T01:52:35
 ## Active review windows
 - Apollo next review: 2026-05-29T09:00:01.629178+02:00
 - Apollo launch review: 2026-06-05T09:00:01.629178+02:00
-- Short review-window congestion clears at: 2026-05-31T02:57:55
+- Short review-window congestion clears at: 2026-05-25T23:07:41
 - Post-hold marketer rerun scheduled: 2026-05-31T02:57:55
 - StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
 - StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
@@ -17,11 +17,11 @@ Generated: 2026-05-31T01:52:35
 - Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
 ## Best executable assets still waiting
-### 1. Apollo runtime-blocker review packet
+### 1. Manual publisher outreach asset
 - When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/2026-05-31_apollo_runtime_blocker_review_packet.md
-- Targets: Ralph Workflow curator follow-up — Codeberg CTA
-- Why this matters: Apollo follow-up is already due, but runtime auth is blocked; the truthful next move is to carry a blocker-specific recovery packet instead of collapsing back into another empty-board guard pause.
+- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md
+- Targets: ComputingForGeeks
+- Why this matters: A current Codeberg-first manual follow-through asset already exists for the active primary-repo-flat target set; use it instead of regenerating the packet.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing

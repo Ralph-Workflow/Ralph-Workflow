@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-30T23:43:07.257026+00:00",
+  "updated_at": "2026-05-31T00:00:29.822371+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 344,
+      "repeat_count": 345,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1269,7 +1269,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T23:43:07.256962+00:00",
+      "last_seen": "2026-05-31T00:00:29.822290+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
@@ -3253,7 +3253,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 607,
+      "repeat_count": 609,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -6041,8 +6041,8 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T23:43:07.257000+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-31T00:52:31.586150+02:00\"\n}",
+      "last_seen": "2026-05-31T00:00:29.822337+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-31T01:51:23.643642+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
       "closed_at": "2026-05-30T22:52:46.650166+00:00"
@@ -9442,7 +9442,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T05:06:09.078715+00:00",
-      "repeat_count": 134,
+      "repeat_count": 136,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -9874,7 +9874,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T23:43:07.256978+00:00",
+      "last_seen": "2026-05-31T00:00:29.822308+00:00",
       "last_error": "mustFix has unresolved entries",
       "likely_cause": "Docs system is coherent and well-positioned. README\u2192START_HERE\u2192docs/README journey works cleanly, next-click pages reinforce the same story, no internal plumbing leaked into top-level surfaces, and the positioning document's guardrails are faithfully followed.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
@@ -10165,7 +10165,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 601,
+      "repeat_count": 603,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -10369,7 +10369,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-30T23:43:07.256972+00:00",
+      "last_seen": "2026-05-31T00:00:29.822301+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -16670,13 +16670,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 556,
+      "repeat_count": 558,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-05-30T23:43:07.256928+00:00",
+      "last_seen": "2026-05-31T00:00:29.822249+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null
@@ -17942,7 +17942,7 @@
       "name": "docs_agentic_review_mustFix_every-support-page-opens-with-the-identical-para",
       "category": "review_followup_required",
       "first_seen": "2026-05-30T22:41:33.899240+00:00",
-      "repeat_count": 15,
+      "repeat_count": 17,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -17965,7 +17965,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T23:43:07.256984+00:00",
+      "last_seen": "2026-05-31T00:00:29.822315+00:00",
       "last_error": "Every support page opens with the identical paragraph \u2014 minor but wastes first-screen space; vary the lead or tighten to a single sentence per page role.",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Every support page opens with the identical paragraph \u2014 minor but wastes first-screen space; vary the lead or tighten to a single sentence per page role.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
@@ -17976,7 +17976,7 @@
       "name": "docs_agentic_review_mustFix_readme-comparison-table-includes-phase-based-sum",
       "category": "review_followup_required",
       "first_seen": "2026-05-30T22:41:33.899249+00:00",
-      "repeat_count": 15,
+      "repeat_count": 17,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -17999,7 +17999,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T23:43:07.256989+00:00",
+      "last_seen": "2026-05-31T00:00:29.822321+00:00",
       "last_error": "README comparison table includes 'Phase-based summaries + checkpoint files keep context tight' (internal-sounding in an otherwise clean table) \u2014 minor, and acceptable in context, but worth watching.",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: README comparison table includes 'Phase-based summaries + checkpoint files keep context tight' (internal-sounding in an otherwise clean table) \u2014 minor, and acceptable in context, but worth watching.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
@@ -18010,7 +18010,7 @@
       "name": "docs_agentic_review_mustFix_docs-readme-i-want-product-framing-before-i-go-d",
       "category": "review_followup_required",
       "first_seen": "2026-05-30T22:41:33.899261+00:00",
-      "repeat_count": 15,
+      "repeat_count": 17,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -18033,7 +18033,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T23:43:07.256996+00:00",
+      "last_seen": "2026-05-31T00:00:29.822331+00:00",
       "last_error": "docs/README 'I want product framing before I go deeper' section routes to three good pages but the section label is slightly inwards-facing for a docs map aimed at first-time evaluators.",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: docs/README 'I want product framing before I go deeper' section routes to three good pages but the section label is slightly inwards-facing for a docs map aimed at first-time evaluators.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
