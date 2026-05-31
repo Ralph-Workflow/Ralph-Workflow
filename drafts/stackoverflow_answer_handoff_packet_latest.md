@@ -1,32 +1,35 @@
 # Ralph Workflow StackOverflow Answer Handoff Packet
-Generated: 2026-05-31T15:21:04.569126
+Generated: 2026-05-31T20:28 CEST (updated after 20:17 generation — answer substantially improved in 20:17 run)
 
 ## Why this is still the live answer lane
 - The same high-intent question is still the strongest qualified StackOverflow target in the current window.
-- A recent polished answer already exists, so the right move is to reuse the proven asset instead of generating duplicate draft churn.
+- The answer was upgraded from 886 bytes → 4,474 bytes with 5 concrete sections in the 20:17 run.
 - Codeberg remains the primary repo CTA.
 
 ## Target
 - **Question:** Boss wants us to add more AI to our workflow
 - **URL:** https://stackoverflow.com/questions/79928220/boss-wants-us-to-add-more-ai-to-our-workflow
-- **Current score:** 4.35
-- **Current answers:** 1
-- **Reused draft:** `/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-31_boss-wants-us-to-add-more-ai-to-our-workflow.md`
+- **Current score:** 2 | **Views:** 176 | **Answers:** 1 (score 1, 1005 chars, not accepted)
+- **Tags:** django, artificial-intelligence, claude, openclaw
+- **Draft:** `/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-31_boss-wants-us-to-add-more-ai-to-our-workflow.md`
+- **Draft size:** 4,474 bytes (5 concrete sections vs prior 886-byte generic bullet list)
 
-## Final answer text
-```md
-For production use, make verification a separate phase with its own inputs and outputs.
+## Answer quality assessment
+- **Before (20:17):** 886 bytes — "plan→exec→verify→review" as 4 generic bullet points. Would not survive SO voting.
+- **After (20:17):** 4,474 bytes — 5 concrete sections:
+  1. Bounded task scope as safety boundary
+  2. Phase separation with concrete evidence contract
+  3. Django/Celery/Docker-specific practical changes
+  4. Tooling options with honest Ralph Workflow disclosure
+  5. Tomorrow-morning rollout path
+- **Verdict:** Survivable on SO. Concrete, practical, Django-specific, includes tool disclosure.
 
-Practical structure:
-
-1. **Planner step** defines scope and acceptance criteria.
-2. **Execution step** changes code only within that scope.
-3. **Verification step** runs tests/build/lint/integration checks and compares the result to the original acceptance criteria.
-4. **Review step** packages the evidence: diff, commands run, outputs, and any unresolved risks.
-
-That separation matters because self-verification is weak. If the same loop writes code and grades it, you tend to get optimistic results. A better contract is: no passing verification output, no completion.
-```
+## Posting path
+- **Human posting (preferred):** Copy the draft's section 2-5 into the SO answer form. Format as the draft shows: numbered sections with specific commands and rollout steps.
+- **Cron posting:** StackExchange API is read-only for answers. Manual human posting is the only path.
+- **Next cron:** 03:15 CEST daily — will search for new questions. This draft is done.
 
 ## Outcome contract
-- Expected outcome: one live StackOverflow-compatible placement or manual reuse that sends qualified evaluators to Codeberg first.
-- Replacement condition: if this exact packet still has no placement path by the next review window, switch the lane instead of regenerating the same answer again.
+- Expected outcome: one live StackOverflow-compatible placement that sends qualified evaluators to Codeberg first.
+- This packet is **current and done** — no regeneration, no handoff repackaging needed.
+- Replacement condition: if this exact packet still has no placement by the next review cycle AND the question has gained a high-quality competing answer, regenerate. Otherwise, hold and measure.

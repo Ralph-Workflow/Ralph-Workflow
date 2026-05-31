@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-31T20:03:48.264449",
+  "ts": "2026-05-31T21:02:09.601706",
   "jobs_checked": 26,
-  "issues_found": 3,
+  "issues_found": 4,
   "issues": [
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
@@ -19,7 +19,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 4372.27,
+      "artifact_age_minutes": 4430.58,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -28,32 +28,25 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=803",
-      "repeats_in_recent_history": 803,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=812",
+      "repeats_in_recent_history": 812,
+      "owner_domain": null,
+      "incident_key": "blocked-channel-recovery::timeout",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
+      "name": "blocked-channel-recovery_escalation",
+      "category": "escalation_required",
+      "last_error": "cron: job execution timed out",
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=813",
+      "repeats_in_recent_history": 813,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
-  "repairs_attempted": [
-    {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
-    },
-    {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-31T20:03:37.525714+02:00\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780250621061:16\"\n}"
-    }
-  ]
+  "repairs_attempted": []
 }
