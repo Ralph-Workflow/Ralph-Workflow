@@ -1,17 +1,17 @@
 {
-  "generated_at": "2026-05-31T10:00:02.091279+02:00",
+  "generated_at": "2026-05-31T12:06:38.209269+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 15.44,
+  "report_age_hours": 17.55,
   "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest_healthy.md",
-  "latest_healthy_report_age_hours": 70.67,
-  "latest_post_age_hours": 113.21,
+  "latest_healthy_report_age_hours": 72.78,
+  "latest_post_age_hours": 115.32,
   "reddit_monitor_runtime": {
     "status": "fresh_report_reused",
-    "age_hours": 72.75
+    "age_hours": 74.86
   },
   "reddit_execution_status": {
     "status": "suspended_72h",
-    "age_hours": 0.91,
+    "age_hours": 3.02,
     "blocking_reason": "Reddit monitor trigger: 72h suspension reached. DDG 100% bot-detection + Reddit direct 403 IP-block. Last usable retrieval: 2026-05-28 11:19 CEST (~53h ago at monitor pass, now ~70h)."
   },
   "adoption_flat": true,
@@ -19,7 +19,7 @@
   "blocked_distribution_channels": [],
   "apollo": {
     "status": "cloudflare_auth_blocked",
-    "age_hours": 1.21,
+    "age_hours": 3.32,
     "cloudflare_blocked": true
   },
   "measurement_hold": {

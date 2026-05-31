@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-31T11:10:39
+Generated: 2026-05-31T12:51:51
 Chosen lane: **primary_repo_flat_contact_handoff_packet**
 
 ## Why this lane
@@ -17,9 +17,7 @@ Chosen lane: **primary_repo_flat_contact_handoff_packet**
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
-- A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.
 - A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.
-- The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
 - A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
 - The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.

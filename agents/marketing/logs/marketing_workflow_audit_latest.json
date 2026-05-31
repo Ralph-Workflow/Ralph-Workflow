@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-31T06:12:29.497829",
+  "generated_at": "2026-05-31T12:35:51.277447",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -125,8 +125,8 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The active loop did execute a live marketing action recently (distribution_architecture_repair), so the system is still shipping output even though outcome movement is not visible yet.",
-    "A fresh outcome-capability runtime is now logged (directory_confirmation), so the system-design repair should be treated as shipped even though repo adoption has not moved yet."
+    "The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains distribution_architecture_repair; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (distribution_architecture_repair), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -159,15 +159,15 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_0257_distribution_architecture_repair.json",
-    "type": "distribution_architecture_repair",
-    "title": "distribution architecture repair",
-    "status": "executed",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31.json",
+    "type": "measurement_hold_execution",
+    "title": "Distribution lane execution: measurement_hold",
+    "status": "prepared",
     "ok": true,
-    "live_external_action": true,
-    "outcome_ready": true,
+    "live_external_action": false,
+    "outcome_ready": false,
     "warning": null,
-    "url": null
+    "url": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_090002_measurement_hold.md"
   },
   "latest_executed_action": {
     "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_0257_distribution_architecture_repair.json",
@@ -181,7 +181,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-30T09:00:29.198863+02:00",
+    "generated_at": "2026-05-31T09:00:22.174333+02:00",
     "status": "runtime_auth_blocked",
     "measurement_pending": false,
     "summary": "Apollo has a non-zero verified list, but live sequence-send evidence cannot be confirmed from the current runtime. Apollo runtime is blocked by a Cloudflare auth interstitial.",
@@ -200,7 +200,7 @@
     "runtime_blocker_status": "cloudflare_auth_blocked",
     "runtime_blocker_summary": "Apollo runtime is blocked by a Cloudflare auth interstitial.",
     "runtime_blocker_notes": "Cloudflare interstitial detected in response body from https://app.apollo.io/. Browserless probe status: cloudflare_auth_blocked. Browserless saw Cloudflare interstitial content from https://app.apollo.io/.",
-    "runtime_blocker_timestamp": "2026-05-30T05:33:40.106132+02:00",
+    "runtime_blocker_timestamp": "2026-05-31T08:47:15.497360+02:00",
     "runtime_status_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/apollo_status.json",
     "runtime_status_url": "https://app.apollo.io/#/login",
     "launch_timestamp": "2026-05-29T09:00:01.629178+02:00",
@@ -211,14 +211,9 @@
   },
   "shared_artifact_sync": {
     "status": "synced",
-    "selected_lane": "measurement_hold",
+    "selected_lane": "primary_repo_flat_contact_handoff_packet",
     "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md",
-    "execution_board_targets": [
-      "Aider",
-      "Claude Code",
-      "Conductor (Teams)",
-      "Ralph Workflow curator follow-up — Codeberg CTA"
-    ],
+    "execution_board_targets": [],
     "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json"
   }
 }

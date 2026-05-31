@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-31T06:12:29.497829
+- Generated: 2026-05-31T12:35:51.277447
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -11,8 +11,8 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
+- The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains distribution_architecture_repair; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (distribution_architecture_repair), so the system is still shipping output even though outcome movement is not visible yet.
-- A fresh outcome-capability runtime is now logged (directory_confirmation), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 
 ## What actually worked
 - No meaningful tactic produced a trustworthy win in this window.
@@ -92,6 +92,6 @@
 
 ## Shared findings artifact sync
 - Status: synced
-- Refreshed distribution lane: measurement_hold
+- Refreshed distribution lane: primary_repo_flat_contact_handoff_packet
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md
 - Outcome status: /home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json

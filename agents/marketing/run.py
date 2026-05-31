@@ -164,6 +164,36 @@ def _count_system_design_repairs_in_window(now: datetime, hours: float = 24) -> 
     return count
 
 
+def _count_measurement_hold_actions_24h(now: datetime) -> int:
+    """Count measurement_hold actions in the past 24h regardless of intervening events.
+    
+    This is a broader, more aggressive gate than hold_exhausted() which only
+    counts consecutive holds with zero live actions between them. This gate
+    prevents the system from producing measurement holds at any meaningful
+    frequency, even when the holds are interleaved with other actions.
+    """
+    cutoff = now - timedelta(hours=24)
+    count = 0
+    try:
+        for entry in sorted(LOG_DIR.glob("marketing_2026-*_*.json"), reverse=True):
+            try:
+                data = json.loads(entry.read_text(encoding="utf-8"))
+                action_type = str(data.get("chosen_action", {}).get("type") or data.get("action_type") or "")
+                ts_str = data.get("timestamp", "")
+                ts = parse_iso_date(ts_str)
+                if ts is None:
+                    continue
+                if ts < cutoff:
+                    break
+                if action_type in {"measurement_hold_execution", "measurement_hold_follow_through", "measurement_hold_churn_guard_repair"}:
+                    count += 1
+            except (json.JSONDecodeError, OSError):
+                continue
+    except OSError:
+        pass
+    return count
+
+
 def _self_repair_throttle_active(now: datetime) -> bool:
     """Return True when the system-design self-repair throttle is engaged."""
     count = _count_system_design_repairs_in_window(now)
@@ -199,7 +229,8 @@ ACTIVE_REPAIR_WINDOW_STATUSES = {
 }
 
 MEASUREMENT_HOLD_ACTION_TYPE = "measurement_hold_execution"
-MEASUREMENT_HOLD_COOLDOWN_MINUTES = 60
+MEASUREMENT_HOLD_COOLDOWN_MINUTES = 1440  # 24h — was 60 min, 3 holds per morning just noise
+MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H = 2  # if >2 holds in 24h, bypass entirely
 LIVE_EXTERNAL_STATUSES = {
     "executed",
     "sent",
@@ -445,11 +476,18 @@ def _apply_repair_mode_overrides(
                 )
             else:
                 redirect = 'measurement_hold'
-                # Hold-exhaustion circuit-breaker: if the system has produced 3+ holds
-                # in 24h with zero live external actions between them, the hold is a
-                # deadlock. Override to owned_content to force at least one real action
-                # through before the next measurement check.
-                if measurement_hold_exhausted(now or datetime.now(), LOG_DIR):
+                # Hold-frequency gate: if the system has produced >2 measurement_hold
+                # actions in 24h (count all, not just consecutive runs with zero live
+                # actions), the hold is noise, not signal. Override to owned_content.
+                hold_count_24h = _count_measurement_hold_actions_24h(now or datetime.now())
+                if hold_count_24h > MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H:
+                    redirect = 'owned_content'
+                    reason_suffix = (
+                        f'measurement hold frequency gate: {hold_count_24h} holds in 24h '
+                        f'(threshold {MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H}). '
+                        'Circuit-breaking to owned_content instead of stacking another hold.'
+                    )
+                elif measurement_hold_exhausted(now or datetime.now(), LOG_DIR):
                     redirect = 'owned_content'
                     reason_suffix = (
                         'hold deadlock detected: 3+ consecutive measurement holds in the '
@@ -499,6 +537,19 @@ def _collapse_non_truthful_hold_lane_to_measurement_hold(
     if execution_board_targets:
         return distribution_lane
     if not distribution_lane_selector._execution_board_has_no_truthful_do_now_packet(now):
+        return distribution_lane
+
+    # Hold-frequency gate: don't collapse to measurement_hold when they're saturated
+    hold_count = _count_measurement_hold_actions_24h(now)
+    if hold_count > MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H:
+        reasons = list(getattr(distribution_lane, 'reasons', []) or [])
+        reasons.insert(
+            0,
+            f'measurement holds saturated ({hold_count}/{MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H}); bypassing hold collapse, keeping current lane.',
+        )
+        if is_dataclass(distribution_lane):
+            return replace(distribution_lane, reasons=reasons)
+        distribution_lane.reasons = reasons
         return distribution_lane
 
     reasons = list(getattr(distribution_lane, 'reasons', []) or [])
@@ -1888,12 +1939,23 @@ def main() -> int:
             and not getattr(distribution_lane, 'lane', '') == 'distribution_architecture_guard_follow_through'
         ):
             count_24h = _count_system_design_repairs_in_window(now)
-            distribution_lane = replace(
-                distribution_lane,
-                lane='measurement_hold',
-                reason=f'Self-repair throttle engaged ({count_24h} system-design repairs in 24h, max {MAX_SYSTEM_DESIGN_REPAIRS_PER_24H}); hold until measurement clears or new lane surfaces.',
-                reasons=[f'Self-repair throttle: {count_24h}/{MAX_SYSTEM_DESIGN_REPAIRS_PER_24H} system-design repairs used in 24h'],
-            )
+            hold_count = _count_measurement_hold_actions_24h(now)
+            if hold_count > MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H:
+                # Hold-frequency gate: don't collapse to measurement_hold when holds are already
+                # saturated. Default to owned_content instead.
+                distribution_lane = replace(
+                    distribution_lane,
+                    lane='owned_content',
+                    reason=f'Self-repair throttle engaged ({count_24h} repairs) but measurement holds already saturated ({hold_count}/{MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H}); defaulting to owned_content.',
+                    reasons=[f'Self-repair throttle: {count_24h}/{MAX_SYSTEM_DESIGN_REPAIRS_PER_24H} repairs, {hold_count} holds in 24h → owned_content fallback'],
+                )
+            else:
+                distribution_lane = replace(
+                    distribution_lane,
+                    lane='measurement_hold',
+                    reason=f'Self-repair throttle engaged ({count_24h} system-design repairs in 24h, max {MAX_SYSTEM_DESIGN_REPAIRS_PER_24H}); hold until measurement clears or new lane surfaces.',
+                    reasons=[f'Self-repair throttle: {count_24h}/{MAX_SYSTEM_DESIGN_REPAIRS_PER_24H} system-design repairs used in 24h'],
+                )
         if pending_repairs:
             distribution_lane = _apply_repair_mode_overrides(distribution_lane, pending_repairs, now=now)
         distribution_lane = _collapse_non_truthful_hold_lane_to_measurement_hold(
