@@ -1,0 +1,56 @@
+{
+  "timestamp": "2026-06-01T00:37:20+02:00",
+  "run_type": "marketing-active-loop",
+  "chosen_action": {
+    "type": "owned_content",
+    "channel": "blog_post_deploy",
+    "title": "3 Verification Patterns That Make AI-Generated Code Trustworthy",
+    "slug": "verification-patterns-for-ai-generated-code",
+    "url": "https://ralphworkflow.com/blog/verification-patterns-for-ai-generated-code",
+    "post_number": 44,
+    "content_lines": 120,
+    "sections": 5,
+    "ctas": "Codeberg star + pipx install"
+  },
+  "why_this_action": {
+    "shared_findings_used": [
+      "distribution_lane_latest.json: measurement_hold active until 01:24:18 CEST",
+      "marketing_execution_board_latest.md: post-hold rerun already exists, Apollo blocked, SO packet already delivered",
+      "market_intelligence_latest.json: comparative positioning truths",
+      "indexation_health_latest.json: 13% indexed, 101 sitemap URLs"
+    ],
+    "reasoning": "Draft was already complete and untracked in git. Deploying it is an autonomous owned_content lane that doesn't need external channels. All 3 manual-handoff packets on the execution board are stale/current/delivered; regenerating them would be fake progress. The blog post is net-new content that pushes the sitemap from 100→101 URLs (adding fresh indexable surface), uses the Codeberg star + pipx install CTA pattern, and is a natural content asset for future distribution lanes once the hold clears."
+  },
+  "result": {
+    "status": "deployed_and_live",
+    "http_status": 200,
+    "sitemap_urls": 101,
+    "feed_items": 43,
+    "feed_position": 1,
+    "indexnow_submitted": "all 3 engines (Bing, Yandex, Seznam)",
+    "deploy_release": "20260531225338",
+    "deploy_revision": "2cfb17587c86c110c685ff9149d9c8a9c82b95c4",
+    "commits": [
+      "3e012c3 feat(blog): 3 verification patterns for AI-generated code (44th post)",
+      "2cfb175 fix(blog): use published_on instead of date in front matter"
+    ],
+    "deploy_phases": {
+      "verify_release_runtime_fidelity": "OK (4 critical paths)",
+      "verify_live_public_surface": "OK (https://ralphworkflow.com)",
+      "indexnow_notify": "OK (101 URLs, all engines)"
+    }
+  },
+  "process_repairs_in_run": [
+    {
+      "type": "front_matter_fix",
+      "before": "date: 2026-06-01",
+      "after": "published_on: \"2026-06-01\"",
+      "why": "PostRepository.parse_file requires published_on key; date is ignored, causing 404"
+    }
+  ],
+  "distribution_lane_status_after": {
+    "measurement_hold_remaining": "~47 minutes (releases at 01:24:18 CEST)",
+    "execution_board_remaining": "Primary-repo-flat publisher contacts (after hold clears), Comparison backlink (after publisher contacts), Apollo runtime-blocker (still auth-blocked)",
+    "next_autonomous_hint": "The verification-patterns post is a strong candidate for future HN/Lobsters/Reddit distribution when external lanes unlock"
+  }
+}

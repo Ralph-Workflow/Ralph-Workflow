@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-06-01T01:32:44.621034",
+  "dry_run": false,
+  "counts": {
+    "total": 6,
+    "measurement_hold": 3,
+    "non_distribution_execution": 1,
+    "distribution": 0,
+    "other": 2
+  },
+  "rate_exceeded": false,
+  "violations": [],
+  "churn_ratio_danger": true,
+  "action": "strike_2_auto_pause",
+  "details": "paused 2 churn-heavy crons: {'5e8746f2-2311-48f6-a113-4ac6880b2376': 'paused', 'ce3f9db8-bb49-4f97-9ee3-d4786314c204': 'paused'}",
+  "pause_results": {
+    "5e8746f2-2311-48f6-a113-4ac6880b2376": "paused",
+    "ce3f9db8-bb49-4f97-9ee3-d4786314c204": "paused"
+  },
+  "strike_count": 3
+}

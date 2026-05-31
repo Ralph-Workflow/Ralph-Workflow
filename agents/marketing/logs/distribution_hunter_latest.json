@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-31T18:24:18.972640",
+  "timestamp": "2026-06-01T01:32:11.867538",
   "repair_types_seen": [],
   "selected_lane": "measurement_hold",
   "selected_action_type": "measurement_hold_execution",
   "execution_status": "prepared",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_182418_measurement_hold.md",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01_013211_measurement_hold.md",
   "summary": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions. Scheduled an automatic post-hold marketer rerun at the exact short-window release time.",
   "expected_outcome": "Advance distribution via lane measurement_hold without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
@@ -42,7 +42,7 @@
       "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_distribution_action_brief.md",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_distribution_action_brief.md",
     "short_review_window_release_at": null,
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
@@ -51,7 +51,7 @@
     "lane": "measurement_hold",
     "action_type": "measurement_hold_execution",
     "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_182418_measurement_hold.md",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01_013211_measurement_hold.md",
     "summary": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions. Scheduled an automatic post-hold marketer rerun at the exact short-window release time.",
     "targets_prepared": [],
     "shared_findings_used": [

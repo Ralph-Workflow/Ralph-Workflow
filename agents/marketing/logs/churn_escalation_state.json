@@ -2,11 +2,6 @@
   "strikes": [
     {
       "level": 1,
-      "timestamp": "2026-05-30T20:58:57.365272",
-      "reason": "churn ratio danger (distribution=1, churn=1)"
-    },
-    {
-      "level": 1,
       "timestamp": "2026-05-31T13:45:09.402556",
       "reason": "churn ratio danger (distribution=0, churn=4)"
     },
@@ -14,9 +9,17 @@
       "level": 1,
       "timestamp": "2026-05-31T20:32:34.958889",
       "reason": "churn ratio danger (distribution=0, churn=4)"
+    },
+    {
+      "level": 2,
+      "timestamp": "2026-06-01T01:32:44.892596",
+      "reason": "churn ratio danger with 3 prior strikes"
     }
   ],
-  "paused_crons": [],
+  "paused_crons": [
+    "5e8746f2-2311-48f6-a113-4ac6880b2376",
+    "ce3f9db8-bb49-4f97-9ee3-d4786314c204"
+  ],
   "emergency_declared": false,
   "last_check": "2026-05-30T17:13:07.432294",
   "history": [],
