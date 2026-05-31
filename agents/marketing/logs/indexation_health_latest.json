@@ -1,24 +1,78 @@
 {
-  "timestamp": "2026-05-31T07:11:07.410790+00:00",
+  "timestamp": "2026-05-31T15:14:59.900403+00:00",
   "sitemap_urls_total": 100,
   "google_indexing": {
-    "status": "checked_sample",
-    "checked": 20,
-    "responded_indexed": 0,
+    "status": "gsc_search_analytics",
+    "pages_with_search_presence": 13,
     "total_urls": 100,
-    "estimated_indexed": 0,
-    "errors_count": 20,
-    "sample_errors": [
-      "403: {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Web Search Indexing API has not ",
-      "403: {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Web Search Indexing API has not ",
-      "403: {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Web Search Indexing API has not "
-    ]
+    "total_impressions_28d": 339,
+    "total_clicks_28d": 21,
+    "ctr_28d": 6.19,
+    "top_pages": [
+      {
+        "url": "https://ralphworkflow.com/",
+        "impressions": 296,
+        "clicks": 21
+      },
+      {
+        "url": "https://ralphworkflow.com/contact",
+        "impressions": 9,
+        "clicks": 0
+      },
+      {
+        "url": "https://ralphworkflow.com/copilot-alternative",
+        "impressions": 6,
+        "clicks": 0
+      },
+      {
+        "url": "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended",
+        "impressions": 5,
+        "clicks": 0
+      },
+      {
+        "url": "https://ralphworkflow.com/blog",
+        "impressions": 4,
+        "clicks": 0
+      },
+      {
+        "url": "https://ralphworkflow.com/docs/",
+        "impressions": 4,
+        "clicks": 0
+      },
+      {
+        "url": "https://ralphworkflow.com/docs/first-task-guide",
+        "impressions": 4,
+        "clicks": 0
+      },
+      {
+        "url": "https://ralphworkflow.com/docs/example-review-bundle",
+        "impressions": 2,
+        "clicks": 0
+      },
+      {
+        "url": "https://ralphworkflow.com/docs/example-review-bundle.html",
+        "impressions": 2,
+        "clicks": 0
+      },
+      {
+        "url": "https://ralphworkflow.com/docs/ralph-workflow-vs-aider",
+        "impressions": 2,
+        "clicks": 0
+      }
+    ],
+    "estimated_indexed": 13
   },
-  "gap_unindexed": 100,
-  "pct_indexed_estimate": 0.0,
+  "gap_unindexed": 87,
+  "pct_indexed_estimate": 13.0,
   "escalation_threshold": {
     "pct_unindexed_limit": 50,
-    "unindexed_pct": 100.0,
+    "unindexed_pct": 87.0,
     "triggered": true
+  },
+  "escalation": {
+    "first_detected": "2026-05-31T07:11:07.410924+00:00",
+    "days_since": 0,
+    "chronic": false,
+    "action": "monitoring"
   }
 }

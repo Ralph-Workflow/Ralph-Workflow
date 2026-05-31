@@ -1007,3 +1007,15 @@ Bootstrapped on 2026-05-23 from verified execution logs so future distribution r
   - Result: SMTP accepted the email and started a real publisher reply/citation review window.
   - Log: `agents/marketing/logs/marketing_2026-05-25_morph_publisher_outreach.json`
   - Review by: 2026-06-08
+
+### 2026-05-30 12:50 CEST — Social preview card deployed (distribution-architecture repair)
+
+- **Action:** 1200×630 OG social preview card created and deployed to ralphworkflow.com
+- **Before:** Every shared link showed bare 512×512 icon.png — no project name, no context to first-time viewers on Discord/Slack/Twitter/LinkedIn
+- **After:** Proper summary_large_image card with project name, tagline, 'Free & Open Source' badge, and Codeberg URL
+- **Files:** +108KB public/ralph-workflow-social-card.png, +4 OG meta tags (_meta_tags.html.erb), default og_image fallback changed
+- **Commit:** c6f28f8, deployed release 20260530105037
+- **Verification:** Confirmed live on homepage, /blog, blog posts, /install — all 93 sitemap URLs render social card
+- **Hub pings:** PubSubHubbub 200, Blogtrottr 200
+- **Lane:** Distribution-architecture repair — genuinely new surface, not a packet rewrite or stale lane revival
+

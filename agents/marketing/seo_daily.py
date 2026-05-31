@@ -129,18 +129,36 @@ def _homepage_looks_suspicious(homepage: dict) -> bool:
     return homepage.get("word_count", 0) < 150 and critical_missing >= 3
 
 
-def fetch_homepage() -> dict:
-    status, body = http_get(SITE_URL)
-    homepage = _homepage_from_html(status, body)
-    if _homepage_looks_suspicious(homepage):
-        probe_url = f"{SITE_URL}?seo_probe={int(time.time())}"
-        retry_status, retry_body = http_get(probe_url, headers={"Cache-Control": "no-cache"})
-        retry_homepage = _homepage_from_html(retry_status, retry_body)
-        if retry_homepage.get("ok") and retry_homepage.get("word_count", 0) > homepage.get("word_count", 0):
-            retry_homepage["retried_after_suspicious_probe"] = True
-            return retry_homepage
-        homepage["retried_after_suspicious_probe"] = True
-    return homepage
+def fetch_homepage(retries: int = 3, delay_s: float = 2.0) -> dict:
+    """Fetch homepage with retries on network errors (status=0) and suspicious content.
+
+    Bug fixed 2026-05-30: transient network failures (status=0) returned ok=False,
+    which skipped the suspicious-content retry path entirely, producing permanent
+    0/100 SEO scores.
+    """
+    last_homepage: dict = {}
+    for attempt in range(retries):
+        status, body = http_get(SITE_URL)
+        homepage = _homepage_from_html(status, body)
+        if homepage.get("ok"):
+            # Got a successful fetch — check if content looks suspicious
+            if _homepage_looks_suspicious(homepage):
+                probe_url = f"{SITE_URL}?seo_probe={int(time.time())}"
+                retry_status, retry_body = http_get(probe_url, headers={"Cache-Control": "no-cache"})
+                retry_homepage = _homepage_from_html(retry_status, retry_body)
+                if retry_homepage.get("ok") and retry_homepage.get("word_count", 0) > homepage.get("word_count", 0):
+                    retry_homepage["retried_after_suspicious_probe"] = True
+                    return retry_homepage
+                homepage["retried_after_suspicious_probe"] = True
+            return homepage
+        # Network error (status=0, ok=False) — retry
+        last_homepage = homepage
+        if attempt < retries - 1:
+            time.sleep(delay_s)
+    # All retries exhausted — return last failure with retry metadata
+    last_homepage["fetch_retries_exhausted"] = retries
+    last_homepage["fetch_error"] = last_homepage.get("error", "all fetch attempts failed")
+    return last_homepage
 
 
 def _extract_title(html: str) -> str:
@@ -330,8 +348,12 @@ def track_ranks(keywords: list[str]) -> dict:
         "rowLimit": 1000,
     }
 
-    # GSC site URL — sc-domain: format for the API
-    gsc_site = urllib.parse.quote(f"sc-domain:{SITE}", safe="")
+    # GSC site URL — must match the property type registered in GSC.
+    # Bug fixed 2026-05-31: was using "sc-domain:" format which returned
+    # silently-empty data because the GSC token was authorized for the
+    # https:// URL-prefix property, not a domain property.
+    site_url = f"https://{SITE}/"
+    gsc_site = urllib.parse.quote(site_url, safe="")
     api_url = f"https://www.googleapis.com/webmasters/v3/sites/{gsc_site}/searchAnalytics/query"
 
     try:
@@ -370,6 +392,21 @@ def track_ranks(keywords: list[str]) -> dict:
             }
         else:
             results[kw] = {"position": None, "impressions": 0, "clicks": 0, "source": "GSC"}
+
+    # Include actual top queries from GSC (not just priority keywords).
+    # Added 2026-05-31: priority keyword list didn't match actual search traffic,
+    # so we surface real query data for decision-making.
+    all_rows = sorted(data.get("rows", []), key=lambda r: r.get("impressions", 0), reverse=True)
+    results["_top_queries"] = [
+        {
+            "query": r["keys"][0],
+            "position": round(r.get("position", 0), 0),
+            "impressions": r.get("impressions", 0),
+            "clicks": r.get("clicks", 0),
+            "ctr": round(r.get("ctr", 0) * 100, 1),
+        }
+        for r in all_rows[:20] if r.get("impressions", 0) > 0
+    ]
 
     return results
 
@@ -745,6 +782,15 @@ def write_daily_report(now: datetime, data: dict) -> Path:
                 lines.append(f"- **{kw}**: pos {pos} | clicks: {clicks} | impr: {impressions} | CTR: {ctr}%")
         else:
             lines.append("- No ranking data in GSC yet (new domain or not indexed for these keywords).")
+    
+    # Surface actual search queries from GSC (not just priority keywords).
+    # Added 2026-05-31: priority keyword list didn't match what people actually
+    # search for. Real data helps calibrate content strategy.
+    top_queries = ranks.get('_top_queries', [])
+    if top_queries:
+        lines.extend(["### Top Search Queries (Last 28 Days, GSC)"])
+        for q in top_queries[:12]:
+            lines.append(f"- **{q['query']}**: pos {q['position']}, {q['impressions']} impr, {q['clicks']} clicks ({q.get('ctr', q.get('ctr', 0))}% CTR)")
 
     lines.extend(["", "## Backlinks"])
     bl = data.get('backlinks', {})

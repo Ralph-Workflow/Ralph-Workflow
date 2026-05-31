@@ -1,119 +1,28 @@
 {
-  "generated_at": "2026-05-31T08:05:05.451125",
-  "source": "competitor_analysis.py",
+  "generated_at": "2026-05-31T14:32:00.000000",
+  "source": "daily-marketing-research-2026-05-31",
   "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
   "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-31.md",
   "monitoring_snapshot": "/home/mistlight/.openclaw/workspace/seo-reports/competitors/monitoring_2026-05-31.json",
   "comparison_pages": [
-    {
-      "slug": "hermes-agent",
-      "name": "Hermes Agent",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md"
-    },
-    {
-      "slug": "conductor-oss",
-      "name": "Conductor OSS",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-oss.md"
-    },
-    {
-      "slug": "conductor-teams",
-      "name": "Conductor (Teams)",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md"
-    },
-    {
-      "slug": "aider",
-      "name": "Aider",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/aider.md"
-    },
-    {
-      "slug": "continue",
-      "name": "Continue",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md"
-    },
-    {
-      "slug": "cursor",
-      "name": "Cursor",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/cursor.md"
-    },
-    {
-      "slug": "claude-code",
-      "name": "Claude Code",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md"
-    },
-    {
-      "slug": "copilot",
-      "name": "GitHub Copilot",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md"
-    }
+    {"slug": "hermes-agent", "name": "Hermes Agent", "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md"},
+    {"slug": "conductor-oss", "name": "Conductor OSS", "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-oss.md"},
+    {"slug": "conductor-teams", "name": "Conductor (Teams)", "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md"},
+    {"slug": "aider", "name": "Aider", "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/aider.md"},
+    {"slug": "continue", "name": "Continue", "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md"},
+    {"slug": "cursor", "name": "Cursor", "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/cursor.md"},
+    {"slug": "claude-code", "name": "Claude Code", "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md"},
+    {"slug": "copilot", "name": "GitHub Copilot", "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md"}
   ],
   "competitors": {
-    "hermes-agent": {
-      "name": "Hermes Agent",
-      "positioning": "Self-improving agent that learns from experience",
-      "site_status": 200,
-      "github_stars": 173938,
-      "key_features_found": [
-        "Persistent memory"
-      ]
-    },
-    "conductor-oss": {
-      "name": "Conductor OSS",
-      "positioning": "Enterprise-grade workflow orchestration for AI agents",
-      "site_status": 200,
-      "github_stars": 31869,
-      "key_features_found": [
-        "Durable execution"
-      ]
-    },
-    "conductor-teams": {
-      "name": "Conductor (Teams)",
-      "positioning": "Markdown-native local-first orchestration for coding teams",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Local-first"
-      ]
-    },
-    "aider": {
-      "name": "Aider",
-      "positioning": "Terminal-based AI pair programming in your git repo",
-      "site_status": 200,
-      "github_stars": 45572,
-      "key_features_found": []
-    },
-    "continue": {
-      "name": "Continue",
-      "positioning": "The leading AI code assistant inside your IDE",
-      "site_status": 200,
-      "github_stars": 33472,
-      "key_features_found": []
-    },
-    "cursor": {
-      "name": "Cursor",
-      "positioning": "The AI code editor built for pair programming with AI",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Composer",
-        "Context-aware"
-      ]
-    },
-    "claude-code": {
-      "name": "Claude Code",
-      "positioning": "Anthropic's official CLI for agentic coding",
-      "site_status": 0,
-      "github_stars": null,
-      "key_features_found": []
-    },
-    "copilot": {
-      "name": "GitHub Copilot",
-      "positioning": "Your AI pair programmer embedded in GitHub and your IDE",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Inline suggestions"
-      ]
-    }
+    "hermes-agent": {"name": "Hermes Agent", "positioning": "Self-improving agent that learns from experience", "site_status": 200, "github_stars": 173938, "key_features_found": ["Persistent memory"]},
+    "conductor-oss": {"name": "Conductor OSS", "positioning": "Enterprise-grade workflow orchestration for AI agents", "site_status": 200, "github_stars": 31869, "key_features_found": ["Durable execution"]},
+    "conductor-teams": {"name": "Conductor (Teams)", "positioning": "Markdown-native local-first orchestration for coding teams", "site_status": 200, "github_stars": null, "key_features_found": ["Local-first"]},
+    "aider": {"name": "Aider", "positioning": "Terminal-based AI pair programming in your git repo", "site_status": 200, "github_stars": 45572, "key_features_found": []},
+    "continue": {"name": "Continue", "positioning": "The leading AI code assistant inside your IDE", "site_status": 200, "github_stars": 33472, "key_features_found": []},
+    "cursor": {"name": "Cursor", "positioning": "The AI code editor built for pair programming with AI", "site_status": 200, "github_stars": null, "key_features_found": ["Composer", "Context-aware"]},
+    "claude-code": {"name": "Claude Code", "positioning": "Anthropic's official CLI for agentic coding", "site_status": 0, "github_stars": null, "key_features_found": []},
+    "copilot": {"name": "GitHub Copilot", "positioning": "Your AI pair programmer embedded in GitHub and your IDE", "site_status": 200, "github_stars": null, "key_features_found": ["Inline suggestions"]}
   },
   "ralph_core_truths": {
     "what_is_it": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.",
@@ -131,18 +40,104 @@
     "policy-defined agent workflow",
     "TOML agent configuration",
     "parallel AI coding agents",
-    "AI agent checkpoint resume"
+    "AI agent checkpoint resume",
+    "spec-driven AI agent",
+    "local-first agent orchestration",
+    "loop-based agent framework",
+    "plan-build-verify agent loop"
   ],
-  "discovered_candidates": [],
+  "discovered_candidates": [
+    {
+      "type": "blog_post",
+      "title": "Claude Code Routines: Anthropic's Answer to Unattended Dev Automation",
+      "url": "https://devops.com/claude-code-routines-anthropics-answer-to-unattended-dev-automation/",
+      "relevance": "Direct competitor framing — Claude Code Routines are Anthropic's cloud-hosted unattended automation platform. Key differentiator for Ralph: Ralph is local-first, vendor-neutral, composable. Routines lock you into Anthropic infra and cloud pricing.",
+      "action": "Potential backlink target or comparison content"
+    },
+    {
+      "type": "blog_post",
+      "title": "Claude Code in 2026: Practical End-to-End SDLC Workflow",
+      "url": "https://developersvoice.com/blog/ai/claude_code_2026_end_to_end_sdlc/",
+      "relevance": "Comprehensive SDLC integration guide — shows how Claude Code is being positioned as end-to-end tool. Ralph's planning→build→verify loop maps onto the same SDLC stages but is tool-agnostic.",
+      "action": "Blog idea: 'Why a loop framework beats any single agent tool for SDLC automation'"
+    },
+    {
+      "type": "blog_post",
+      "title": "Agentic Coding in 2026: Why Multi-Agent Workflows Are Becoming the New Dev Stack",
+      "url": "https://kvassiliou.com/tech/agentic-coding-2026-multi-agent-workflows",
+      "relevance": "Strong framing of multi-agent orchestration as the new normal. Mentions pipeline pattern (plan→build→verify) directly. Ralph's actual architecture maps perfectly onto this narrative.",
+      "action": "Potential target for Ralph mention / comparison. Blog: 'The four orchestration patterns Ralph Workflow handles natively'"
+    },
+    {
+      "type": "guide",
+      "title": "The Complete Guide to Running AI Coding Agents Overnight",
+      "url": "https://amux.io/guides/ai-coding-agents-overnight/",
+      "relevance": "Comprehensive guide on overnight unattended runs. Discusses task boards, orchestrators, isolated worktrees, watchdogs. Direct competitor mention (amux.io). Ralph solves the same problem with a different architecture.",
+      "action": "Potential backlink opportunity if Ralph can be mentioned as alternative. Blog content: 'What amux' architecture gets right and where a loop framework is more reliable'"
+    },
+    {
+      "type": "review",
+      "title": "Claude Code Routines and Auto Mode: Anthropic's Bet on Unattended AI Development",
+      "url": "https://chatforest.com/reviews/claude-code-routines-auto-mode-autonomous-developer-automation-2026/",
+      "relevance": "Detailed analysis of Auto Mode two-stage classifier and Routines cloud infra. Ralph's advantage: no approval fatigue problem when running headless loop-based workflow; Ralph simply doesn't prompt at all during unattended runs.",
+      "action": "Angle for comparison content: 'Anthropic needs a two-stage classifier — Ralph just needs a spec. Here's why.'"
+    },
+    {
+      "type": "blog_post",
+      "title": "Inside the Agentic Loop: Deep Technical Dive into AI Coding Agents (dev.to)",
+      "url": "https://dev.to/monuminu/inside-the-agentic-loop-a-deep-technical-dive-into-ai-coding-agents-claude-code-and-the-4pnf",
+      "relevance": "Excellent technical deep dive on agentic loop architecture. Mentions Uber's 25% Claude Code commits. Strong framing for loop-based vs. prompt-based approaches. Ralph's core loop concept is exactly what this article calls 'the agentic loop'.",
+      "action": "Potential comment/link mention opportunity. Blog: 'The agentic loop is the architecture — Ralph Workflow is the framework'"
+    },
+    {
+      "type": "blog_post",
+      "title": "Multi-Agent Orchestration: 4 Patterns That Actually Work",
+      "url": "https://www.heyuan110.com/posts/ai/2026-02-26-multi-agent-orchestration/",
+      "relevance": "Covers Pipeline, Router, Orchestrator-Worker, Evaluator-Optimizer patterns. Ralph's plan→build→verify is a hybrid Pipeline + Evaluator-Optimizer. Directly comparable.",
+      "action": "Blog content: 'Ralph Workflow implements three of the four orchestration patterns with one TOML file'"
+    },
+    {
+      "type": "blog_post",
+      "title": "How to Run Claude Code Unattended — Ralph Workflow (own blog)",
+      "url": "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended",
+      "relevance": "Own content — showed up in search results. Confirms the blog post is ranking for 'Claude Code unattended' queries. Good signal."
+    },
+    {
+      "type": "comparison",
+      "title": "10 Best AI Coding Agents in 2026 — Complete Guide (openagents.org)",
+      "url": "https://openagents.org/blog/posts/2026-05-21-best-ai-coding-agents",
+      "relevance": "Comprehensive comparison of Claude Code, Codex CLI, Aider, Cursor, Windsurf, etc. Does NOT mention Ralph Workflow. Gap in the comparison landscape.",
+      "action": "Outreach opportunity: get Ralph added to this comparison. Blog post: 'Why the 10 best AI coding agents list is missing the most important one'"
+    },
+    {
+      "type": "article",
+      "title": "Claude Code Auto Mode Goes GA: 30-to-60-Minute Unattended Coding Is Now Normal",
+      "url": "https://scriptwalker.app/blog/claude-code-auto-mode-ga-30-minute-unattended-coding-2026",
+      "relevance": "Key industry signal — headline says 30-60 minute unattended runs are benchmark norm. Ralph already does overnight multi-hour runs with checkpoint/resume. Ralph's actual capability exceeds the current industry bar.",
+      "action": "Great comparison angle: '30 minutes vs. overnight — why Ralph's loop architecture matters for real unattended work'"
+    },
+    {
+      "type": "tool",
+      "title": "amux.io — Agent orchestration with tmux + watchdog",
+      "url": "https://amux.io/",
+      "relevance": "Direct competitor in the overnight-agent-orchestration space. Amux wraps tmux with an orchestrator, REST API, dashboard. Ralph is structurally different (loop-based vs. tmux-pane-based).",
+      "action": "Monitor for differentiation"
+    }
+  ],
+  "candidates_scanned": 25,
+  "candidates_shortlisted": 11,
+  "candidates_rejected": 14,
+  "top_shortlist": [
+    "Multi-Agent Orchestration: 4 Patterns That Actually Work",
+    "The Complete Guide to Running AI Coding Agents Overnight",
+    "10 Best AI Coding Agents in 2026",
+    "Agentic Coding in 2026: Multi-Agent Workflows as the New Dev Stack",
+    "Claude Code Auto Mode GA — 30-60 min unattended normal",
+    "Claude Code Routines — Anthropic's unattended dev automation"
+  ],
   "reuse_contract": {
-    "runtime_proven_consumers": [
-      "agents/marketing/run.py",
-      "agents/marketing/reddit_monitor.py"
-    ],
-    "prompt_guided_consumers": [
-      "ralph-site-owner-loop",
-      "agent-architecture-watchdog"
-    ],
-    "purpose": "Shared market and competitor findings artifact for site updates, positioning checks, and marketing tactics."
+    "runtime_proven_consumers": ["agents/marketing/run.py"],
+    "prompt_guided_consumers": ["ralph-site-owner-loop", "agent-architecture-watchdog"],
+    "purpose": "Shared market, competitor, and content opportunity findings for site updates, positioning checks, and marketing tactics."
   }
 }

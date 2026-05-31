@@ -1,3 +1,266 @@
+## 2026-05-31 structural addendum (12:45 CEST) — This run: SO scoring fix + 2 noise cron jobs killed
+
+### Audit results (12:07 run)
+Same flat outcome: 12⭐, 2 watchers, 2 forks, 0 Google indexation, all infra blockers unchanged.
+
+### Actions this run
+
+#### 1. Killed 2 remaining noise cron jobs
+- **marketing_momentum_watchdog.py** — 0 live_external_action over entire history. Pure bookkeeping.
+- **owned_content_amplification.py** — gate_skip / fingerprint_unchanged only. All 42 keyword clusters consumed.
+
+Marketing cron: 19→10→8 jobs. Remaining: run.py, outcome_capability_runner, run_posting, github_mirror_sync, log_janitor, stackoverflow_answer_lane, bing_indexnow_ping, indexation_health_check.
+
+#### 2. Fixed StackOverflow scoring — 2 critical bugs
+**Bug 1: Answer penalty was backward.** `score_question` penalized questions with existing answers (-0.8 per answer, -1.4 for accepted). Fixed: only -0.5 for accepted, added view_count bonus (+0.3 for >50 views, +0.5 for >200, +0.8 for >1000). Existing answers signal traffic — the opportunity is a better answer.
+
+**Bug 2: STRONG_FIT_TERMS too narrow.** `is_draft_worthy()` required a hit from a short list missing "agent", "workflow", "orchestrat", "coding", "pipeline", "plan", "test", "session", "background", "recover", "spec", "overnight". Added 12 terms from HIGH_INTENT_TERMS. Before: 6/7 questions skipped at draft gate. After: verified additional draft unlocked.
+
+**Thresholds lowered:** `score >= 3.4` → `score >= 3.0`, `score >= 2.4 + 2 strong_fit_hits` → `score >= 2.0 + 1 strong_fit_hit`.
+
+#### 3. Prior-session fixes verified intact
+- SO_SEARCH_SPECS rewritten (11 specs, no exact-phrase quotes, verified 7 results vs 1 before)
+- Hold frequency gate (MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H=2)
+- outcome_capability_runner DEFAULT_FALLBACK_LANE=owned_content
+- 18 stale drafts archived to archive_pre_may_28/
+- Blog CTAs already present (Codeberg-first banner in show.html.erb, _blog_repo_cta.html.erb partial on every post)
+- Sitemap already includes all 41 blog posts (verified via live fetch)
+- StackOverflow cron daily at 03:15
+
+### Remaining blocked lanes (unchanged)
+| Lane | Blocker |
+|------|---------|
+| Google indexation | GCP Indexing API disabled, no gcloud |
+| PyPI | PYPI_TOKEN unset |
+| GitHub Discussions | gh auth login missing |
+| Apollo | Cloudflare auth interstitial |
+| SMTP | SMTP_USER unset |
+| Reddit/HN/Lobsters/dev.to/Mastodon | Structurally blocked |
+
+### Signal ratio estimate
+Before series: 4% (1 live_external_action out of ~25 daily)
+
+After 3 sessions of repair:
+- 11 noise cron jobs killed
+- outcome_capability → owned_content
+- hold gate at max 2/24h
+- SO search now productive
+
+Estimated: 25-35% (down to 8 cron jobs, only run.py, SO lane, and outcome_capability_runner have potential for live_external_action)
+
+### Next human-gated unblock (ordered by adoption ROI)
+1. **PYPI_TOKEN** — 1,297 monthly downloads → Codeberg stars
+2. **GCP Indexing API** — 41 blog posts invisible to 92% search market
+3. **gh auth login** — 5+ comparison backlink drafts queued
+4. **Apollo Cloudflare** — 5 verified contacts, sequence ready
+
+### Autonomous path forward
+The SO lane is the only executable distribution channel. With search specs, scoring, and STRONG_FIT_TERMS all fixed, it should produce 1-3 drafts/day. Blog is the only publishing surface (41 posts, 2 remaining keyword clusters). IndexNow pings and health checks are passive. The autonomous system has hit its ceiling — further adoption gains require human-gated unblocks.
+
+---
+
+## 2026-05-31 structural addendum (12:07 CEST) — SO search rewrite, cron consolidation, hold gate verified, PyPI handoff
+
+### Audit results (marketing_workflow_audit.py run at 12:27)
+
+**Codeberg adoption:** 12⭐, 2 watchers, 2 forks — zero delta across 9-sample window.
+**PyPI:** 1,297 downloads/month (5/day) — real usage, but blocked on PYPI_TOKEN.
+**Google indexation:** 0/100 pages indexed (GSC read-only, Indexing API disabled on GCP).
+**Latest live action:** distribution_architecture_repair (02:57). Latest cron action: measurement_hold_execution (09:00, live_external_action=false).
+
+### Actions executed this run
+
+#### 1. StackOverflow SEARCH_SPECS rewrite (high-leverage)
+**Root cause:** All 10 old SO_SEARCH_SPECS used exact-phrase quotes (`"production reliability"`, `"autonomous coding"`, etc.) that matched 0 real StackOverflow questions. The SE search engine does literal text matching, not semantic search. Live API test: 9/10 specs returned 0 results.
+
+**Fix:** Replaced all 10 specs with 11 tag-filtered short-keyword queries. Verified via live SE API:
+- `[claude-code] autonomous` → 1 result (280 views, real question)
+- `[artificial-intelligence] workflow structure` → 7 results (targeted questions)
+- 4 specs tested = 8 results vs old 4 specs = 1 result (8x yield improvement)
+
+**Also fixed:** `so_search_site()` was passing `spec[\"title\"]` (a human label) as the API `title` filter parameter, which inhibited full-text matching. Changed to use `q` as primary search with `tagged` as tag filter.
+
+**Cron frequency:** Increased from weekly (Wed 03:15) to daily (03:15). StackExchange API returns 0 results when sorted by relevance with day-old queries; daily refresh ensures new questions are found.
+
+#### 2. Cron consolidation (already completed prior session)
+Removed 10 auth-blocked/noise cron jobs: pypi_conversion_lane, pypi_auto_unblocker, pypi_readiness_watchdog, github_discussions_outreach, apollo_outbound_verifier, publisher_discovery_lane, measurement_window_watchdog, distribution_hunter, outcome_execution_board_runner. Reduced from 19 to 10 marketing cron jobs.
+
+#### 3. Hold-frequency gate (already completed prior session)
+- `MEASUREMENT_HOLD_COOLDOWN_MINUTES`: 60 → 1440 (24h)
+- Added `MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H = 2`
+- Gate active at >2 holds/24h → circuit-breaks to owned_content.
+- Verified at 12:27: 2 holds in 24h, threshold 2, gate not active (correct — will block next hold).
+
+#### 4. Outcome capability runner fallback change
+- `DEFAULT_FALLBACK_LANE`: `distribution_confirmation_follow_through` → `owned_content`
+- `distribution_confirmation_follow_through` produced only internal bookkeeping artifacts (zero external distribution value). `owned_content` ships blog posts to Ralph-Site.
+- Regeneration guard already active (skipped 09:14 run with `skipped_regeneration_guard`).
+
+#### 5. PyPI handoff
+Created `drafts/PYPI_UNBLOCK_HANDOFF.md` — single-action document for setting PYPI_TOKEN. All 3 PyPI-polling cron jobs removed. Once token is set, single `pypi_conversion_lane.py` cron can be re-enabled.
+
+#### 6. StackOverflow self-description verified truthfulness
+Previous session audited and confirmed: StackOverflow lane truthfully labels itself as \"DRAFTING lane, not an autonomous distribution channel\" with \"8 drafts exist, 0 have been posted by a human.\"
+
+### Remaining known blockers (unchanged)
+| Blocker | Status | Fix |
+|---------|--------|-----|
+| Google indexation | 0/100 pages indexed | GCP Indexing API disabled, no gcloud |
+| PyPI | v0.8.8 built but no PYPI_TOKEN | Set env var, see PYPI_UNBLOCK_HANDOFF.md |
+| GitHub Discussions | 5+ drafts queued | `gh auth login` |
+| Apollo | Cloudflare auth interstitial | Same answer every verification |
+| SMTP publisher outreach | SMTP_USER unset | 5+ emails queued |
+| Reddit | IP-blocked, 72h suspended | Pipeline architecturally retired |
+| HN/Lobsters/dev.to/Mastodon | Human-gated or reCAPTCHA | Structurally blocked |
+
+### Signal ratio post-repair (forecast)
+Before: 4% (1 live_external_action out of ~25 daily artifacts)
+After: ~20-25% (outcome_capability → owned_content, SO daily with productive searches, 10 noise spawners gone)
+
+### Next executable autonomous actions
+1. StackOverflow daily cron (03:15) — now with productive search specs
+2. IndexNow daily ping (05:00) — passive, already scheduled
+3. Indexation health check (05:30) — diagnostic only
+4. Owned content amplification (18:00) — limited by keyword saturation at 41 posts
+5. Telegraph cross-post (06:00) — no pending drafts currently
+
+### Next human-gated unblocks (ordered by potential ROI)
+1. **PYPI_TOKEN** — would convert 1,297 monthly downloads to Codeberg stargazers (highest ROI)
+2. **Google Indexing API enablement** — 41 blog posts invisible to 92% search market share
+3. **gh auth login** — 5+ comparison backlink drafts queued, GitHub Discussions outreach unblocked
+4. **Apollo Cloudflare auth** — 5 verified contacts, sequence ready, Codeberg CTA written
+
+---
+
+## 2026-05-31 structural addendum (10:03 CEST) — Post-hold re-entry: all 4 remaining draft paths guarded + run outcome
+
+### Context: Short review window cleared, no executable distribution lane found
+
+**Hold verification:** Short review window hold released at 2026-05-31T10:00:02 CEST. Current time 10:03 CEST — window confirmed cleared. ✅
+
+**Lane inventory (post-hold):** Every distribution lane is structurally blocked or already delivered in the current review window:
+- PyPI: `PYPI_TOKEN` missing (v0.8.8 built, twine-check passed, cannot publish)
+- GitHub Discussions / comparison PRs: `gh auth login` missing
+- Apollo: Cloudflare auth interstitial
+- SMTP publisher outreach: `SMTP_USER` unset
+- Reddit / HN / Lobsters / dev.to / Mastodon: IP/auth blocked, permanently gated
+- Directory submissions: 3-per-7-day cap, remaining targets need manual form-fill
+- StackOverflow: StackExchange API alive (quota ~272-277/300), 8 drafts exist, but script is drafting-only — human account needed for actual answer posting. SO API searches return 0 results across multiple query combinations.
+- Blog content: 41 posts, no unpublished guide remaining
+- Telegraph cross-post: 0 pending
+
+**Post-hold contract compliance:** Per `post_hold_distribution_reentry_latest.md`: "If every truthful lane is still blocked, exhausted, or already delivered, perform a concrete runtime/process repair in the same run." This run chose the highest-value process repair available.
+
+### Action: All 4 remaining draft-producing paths now guarded against regeneration
+
+**Context:** The 09:00 addendum flagged 4 remaining code paths that produce dated draft artifacts without same-date regeneration guards:
+1. `_write_directory_confirmation_execution` → `directory_confirmation_execution`
+2. `_write_apollo_runtime_blocker_review_packet` → `apollo_runtime_blocker_review_packet`
+3. `_write_marketing_execution_board` → `marketing_execution_board`
+4. `_write_manual_handoff_follow_through` → `manual_outreach_asset_follow_through`
+
+These were the root cause of the 7-draft flood observed at 09:02 — `run.py` fans out to N draft-producing functions through independent paths, each creating same-date artifacts with no dedup check.
+
+**Repair executed:** Each of the 4 functions now checks whether the same-date artifact already exists and is < 6 hours old before writing. If the guard triggers, the function returns early with the existing artifact path and an empty targets list (or empty payload dict for `_write_directory_confirmation_execution`).
+
+**Line-level changes in `distribution_lane_executor.py`:**
+| Function | Line guard installed | Return type preserved |
+|----------|---------------------|----------------------|
+| `_write_directory_confirmation_execution` | L1340–1341 | `(artifact, [], {})` — empty prepared + empty payload |
+| `_write_apollo_runtime_blocker_review_packet` | L4308–4309 | `(artifact, [])` — empty targets |
+| `_write_marketing_execution_board` | L5618–5619 | `(artifact, [])` — empty targets |
+| `_write_manual_handoff_follow_through` | L3517–3518 | `(artifact)` — Path only |
+
+### State after this run
+
+| System | Before (09:00) | After (10:03) |
+|--------|----------------|---------------|
+| Regeneration guards | 2 paths protected | **6 paths protected** (all known draft-producing paths) |
+| Open structural debt (regeneration) | 4 unguarded paths | **0** — all guarded |
+| Drafts in `drafts/` | 74 (09:00) | 74 (unchanged — guards prevent future inflation) |
+| Distribution lanes executable | 0 (structurally blocked) | 0 (structurally blocked — unchanged) |
+| Lane selected | N/A (hold-release run) | **distribution_architecture_repair** (regeneration guards) |
+
+### Structural ceiling reconfirmed
+
+The regeneration guard fix is the correct process repair for this slot — it directly prevents the draft-inflation pathology documented in the 09:00 addendum and the 21:35 addendum before it (5 regenerated same-day drafts). But it does not change the fundamental truth: all distribution lanes remain human-gated. The system's one autonomous output lane is owned content (blog), which is saturated at 41 posts.
+
+**Next executable lane:** First non-human-gated lane to become available:
+- StackOverflow cron fires Wednesday June 3 at 03:15 CEST (drafts are ready, but actual posting requires human account)
+- IndexNow daily ping (05:00 CEST) — passive, already scheduled
+- indexation_health_check (05:30 CEST) — diagnostic only, Google Indexing API still disabled on GCP
+
+### Enforcement rules updated
+
+1. **Regeneration guard rule (permanent, elevated):** Any function writing a dated draft artifact MUST check whether the same-date artifact already exists and is < 6 hours old before writing. This is now a coding standard enforceable by review, not just a recommendation. **Status: FULLY ENFORCED (6/6 paths guarded as of 10:03)**
+
+---
+
+## 2026-05-31 structural addendum (09:00 CEST) — marketing-daily self-improvement loop: regeneration guard deployed, IndexNow promoted to daily, GSC indexation diagnostic, Reddit suspension marker written
+
+### Finding: Single regeneration guard was insufficient — 7 drafts flooded by 09:02 from 6 independent code paths
+
+**Context:** The regeneration guard installed in the prior partial run only protected `outcome_capability_runner.py`'s `distribution_action_brief` output. But the 09:00 `run.py` cron fires `distribution_lane_executor.py` through multiple independent paths (`_write_distribution_reset_execution`, `_write_apollo_runtime_blocker_review_packet`, `_write_directory_confirmation_execution`, `_write_manual_outreach_asset_follow_through`, `outcome_execution_board_runner.py`), producing 7 May 31 drafts by 09:02.
+
+**Repair executed:** Added same-date regeneration guard to `_write_distribution_reset_execution` in `distribution_lane_executor.py` (6-hour window, matches outcome_capability_runner pattern). The other 4 paths produce different artifacts (apollo blocker packet, directory confirmation, manual outreach, execution board) and cannot share a single guard — each must be patched individually. This is a structural problem: `run.py` fans out to N draft-producing functions without centralized dedup.
+
+**Rule elevated to enforcement:** Any function that writes a dated draft artifact MUST check whether same-date artifact already exists and is < 6 hours old before writing. This is now a permanent structural rule.
+
+### Action: Reddit 72-hour suspension marker written
+
+**Context:** Last usable retrieval 2026-05-28 11:19 CEST. 72-hour threshold: May 31 11:19 CEST. Suspension marker `agents/marketing/logs/reddit_monitor_suspension.json` written at 09:05 CEST, before the deadline. Reddit execution status updated to `suspended_72h`.
+
+**Re-enable conditions:** DDG web_search returns non-bot-detection results, OR Reddit direct web_fetch returns non-403, OR human manually deletes marker file, OR new search backend configured.
+
+### Action: IndexNow promoted from weekly to daily
+
+**Context:** IndexNow was running weekly (Monday 04:15). Weekly ping for 102 URLs is too infrequent — search engines re-crawl on shorter cadences.
+
+**Repair executed:** Cron updated to `0 5 * * *` (daily at 05:00 CEST). First daily run accepted 102 URLs to both Bing and IndexNow endpoints (200 OK). Cumulative total: 306 pings.
+
+### Action: GSC indexation diagnostic built and scheduled
+
+**Context:** Prior SEO report showed 0/100 pages indexed by Google. No automated mechanism tracked this gap — it was only surfaced in manual audit reports.
+
+**Repair executed:** Created `indexation_health_check.py` which:
+- Fetches live sitemap from ralphworkflow.com
+- Checks Google Indexing API status per-URL (sample of 20 URLs/run)
+- Reports indexed/unindexed gap with escalation thresholds (>50% unindexed)
+- First run confirmed: 0/100 estimated indexed (API responded 403: not enabled)
+- Cron: `30 5 * * *` (daily at 05:30 CEST, after IndexNow ping)
+
+### Action: stackoverflow_answer restored to ALLOWED_LANES
+
+**Context:** `stackoverflow_answer` was removed from ALLOWED_LANES on 2026-05-29 with comment "DDG search collapsed, no discovery path." But the StackOverflow lane uses the StackExchange API (api.stackexchange.com) directly — it never depended on DDG/web_search. This was a false-positive guard.
+
+**Repair executed:** Restored `stackoverflow_answer` to ALLOWED_LANES in `outcome_capability_runner.py` with explanatory comment documenting the API independence.
+
+### State after this run
+
+| System | Before | After |
+|--------|--------|-------|
+| Regeneration guard | 1 path protected | 2 paths protected (dist action brief + dist reset exec) |
+| IndexNow frequency | Weekly | **Daily** (05:00 CEST) |
+| GSC indexation tracking | Manual audit only | **Automated daily check** (05:30 CEST) |
+| Reddit monitoring | 53h stale, countdown | **Suspended** (marker written) |
+| StackOverflow lane | Removed from ALLOWED_LANES | **Restored** (first cron June 3) |
+| PyPI escalation | Day 3 (backend was behind) | **Day 3 now accurate** (escalation artifact written at 09:14) |
+| Marketing cron jobs | 19 | 21 (indexation_health, IndexNow daily) |
+
+### Open structural debt
+- ~~4 remaining draft-producing paths still need same-date guards~~ → **Resolved 10:03 CEST** (all 6 paths now guarded)
+- 74 total drafts in `drafts/` — log janitor only archives JSON logs, not draft bloat
+- Google Indexing API still disabled on GCP project 292739303076 (human-only enablement)
+- PyPI_TOKEN still missing Day 3 — escalation artifact written, next review 2026-06-02 at 12h
+
+### Enforcement rules elevated today
+1. **Regeneration guard rule:** Any function writing a dated draft must check for same-date artifact <6h old before writing. (New permanent rule)
+2. **API dependency documentation rule:** When removing a lane from ALLOWED_LANES, the comment must cite the actual API/protocol being blocked, not a proxy. (stackoverflow_answer false-positive root cause)
+3. **IndexNow daily rule:** IndexNow ping runs daily. Weekly was too infrequent for 102-page sitemap.
+4. **Indexation health rule:** If indexation_health_latest.json shows >50% unindexed for 7+ days, escalate to human. (New threshold)
+
+---
+
 ## 2026-05-31 structural addendum (04:57 CEST) — distribution_architecture_repair follow-through: llms.txt/llms-full.txt updated
 
 ### Action: Doorway consolidation deployed at 02:57 UTC — 7→1 compare pages
@@ -923,3 +1186,55 @@ This is a **distribution-architecture repair** — not a gate repair (like the d
 | 8 | IndexNow auto-ping on deploy | ✅ 2026-05-30 |
 | 9 | **llms.txt + llms-full.txt** | ✅ 2026-05-30 (NEW) |
 | 10 | **Docker install surface (Dockerfile + README)** | ✅ 2026-05-30 |
+
+---
+
+## 2026-05-31 — Marketing Workflow Audit: Structural Ceiling + Runtime Repairs
+
+**Audit trigger:** Weekly cron-triggered re-analysis (2026-05-31 06:12 Europe/Berlin).
+
+### Findings
+
+The system has hit a structural ceiling. Adoption remains flat (Codeberg +0, GitHub +0 across 9 samples) despite:
+- 41 blog posts live with correct SEO signals
+- 78 Telegraph cross-posts live
+- Doorway consolidation shipped (8→1 comparison page)
+- llms.txt/llms-full.txt deployed
+- IndexNow auto-ping on deploy
+- StackOverflow drafting lane active (8 drafts)
+
+**The bottleneck:** Not content, not messaging, not SEO signals. The primary constraint is that none of the autonomous distribution surfaces produce backlinks, and all high-leverage backlink channels (publishing, curator outreach, social media) require human credentials the system doesn't have.
+
+### Runtime repairs applied
+
+| # | Change | Rationale |
+|---|--------|-----------|
+| 1 | **PyPI auto-unblocker state seeded** | Broken state file prevented the Day-3 escalation from firing — now fixed with backdated first_check_ts=2026-05-28 and escalation artifact written |
+| 2 | **Cron: github_discussions daily→weekly** | Cold outreach lane was daily but almost always no-op (no live GitHub topics to reply to) |
+| 3 | **Cron: distribution_hunter daily→weekly** | Channel pool exhausted; always discovers same 3 surfaces |
+| 4 | **Cron: pypi_auto_unblocker 6h→12h** | Token presence is a rare binary event; 6h polling is waste |
+| 5 | **Cron: mirror_sync 6h→12h** | Stable repo, rarely commits during the day |
+| 6 | **Bing IndexNow bulk-ping script** | New autonomous distribution surface: weekly ping to Bing + IndexNow API with 102 URLs from sitemap — no account or credentials needed. First run: 202 accepted both endpoints |
+| 7 | **StackOverflow truthfulness: drafting lane** | Rewrote module docstring to classify SO as a DRAFTING lane (8 drafts exist, 0 posted by human), not an "autonomous distribution channel" as previously labeled |
+
+### Net change for adoption odds
+
+- IndexNow: Genuinely new — reaches Bing/IndexNow crawlers without any human gate. 102 URLs submitted.
+- Reduced cron noise: 4 jobs moved to less-frequent cadences, reducing log churn and false activity signals.
+- Truthfulness: SO lane now accurately described as drafting-only.
+
+### What still can't be fixed autonomously
+
+- **Content distribution via backlinks** — requires human publisher outreach (curator emails, blogger contacts)
+- **Social media posting** — all platforms require human OAuth or session cookies
+- **Google indexing** — 0/80 pages currently indexed; IndexNow helps Bing but not Google
+- **PyPI publish** — blocked on missing PYPI_TOKEN (Day 3+ escalation active)
+
+### Next action
+
+The marketing loop should drop "produce more content" from its active agenda. Content production is solved. The only moves that matter now are:
+1. Human ships the PyPI token
+2. Human posts at least one StackOverflow answer
+3. Human or semi-automated curator outreach (comparison backlink packet + Apollo blocker recovery packet are ready in execution board)
+
+**Last update:** 2026-05-31T06:19 UTC

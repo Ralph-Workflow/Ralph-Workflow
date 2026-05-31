@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-05-30T19:27:05.868276+00:00",
+  "generated_at": "2026-05-31T15:05:23.337357+00:00",
   "domain": "ralphworkflow.com",
   "sitemap": {
     "sitemap_url": "https://ralphworkflow.com/sitemap.xml",
     "ok": true,
-    "url_count": 96,
+    "url_count": 100,
     "error": null,
     "urls": [
       "https://ralphworkflow.com/",
@@ -13,22 +13,22 @@
       "https://ralphworkflow.com/terms",
       "https://ralphworkflow.com/install",
       "https://ralphworkflow.com/docs/",
-      "https://ralphworkflow.com/aider-alternative",
-      "https://ralphworkflow.com/claude-code-alternative",
-      "https://ralphworkflow.com/conductor-alternative",
-      "https://ralphworkflow.com/continue-alternative",
-      "https://ralphworkflow.com/copilot-alternative",
-      "https://ralphworkflow.com/cursor-alternative",
-      "https://ralphworkflow.com/hermes-alternative",
+      "https://ralphworkflow.com/compare",
       "https://ralphworkflow.com/contact",
       "https://ralphworkflow.com/docs/advanced-artifact-configuration",
       "https://ralphworkflow.com/docs/advanced-mcp-configuration",
       "https://ralphworkflow.com/docs/advanced-pipeline-configuration",
       "https://ralphworkflow.com/docs/after-your-first-run",
       "https://ralphworkflow.com/docs/agents",
-      "https://ralphworkflow.com/docs/ai-agent-orchestration-cli"
+      "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
+      "https://ralphworkflow.com/docs/ai-agent-workflow-composer",
+      "https://ralphworkflow.com/docs/ai-coding-workflow-automation",
+      "https://ralphworkflow.com/docs/bounded-autonomy-for-unattended-coding",
+      "https://ralphworkflow.com/docs/claude-code-approval-mode",
+      "https://ralphworkflow.com/docs/claude-code-automation",
+      "https://ralphworkflow.com/docs/claude-code-codex-workflow"
     ],
-    "blog_url_count": 33
+    "blog_url_count": 43
   },
   "robots": {
     "robots_url": "https://ralphworkflow.com/robots.txt",
@@ -36,7 +36,7 @@
     "error": null,
     "disallow_all": false,
     "has_sitemap": true,
-    "body_first_500": "User-agent: *\nAllow: /\n\n# AI Search Engine Bots \u2014 allow all\nUser-agent: GPTBot\nAllow: /\nUser-agent: ChatGPT-User\nAllow: /\nUser-agent: PerplexityBot\nAllow: /\nUser-agent: Google-Extended\nAllow: /\nUser-agent: anthropic-ai\nAllow: /\nUser-agent: Bytespider\nAllow: /\nUser-agent: Amazonbot\nAllow: /\nUser-agent: FacebookBot\nAllow: /\nUser-agent: CCBot\nAllow: /\nUser-agent: DataForSeoBot\nAllow: /\nUser-agent: PetalBot\nAllow: /\nUser-agent: YouBot\nAllow: /\nUser-agent: KrbBot\nAllow: /\n\nDisallow: /admin\nDisallow: "
+    "body_first_500": "User-agent: *\n\n# AI Search Engine Bots \u2014 allow all\nUser-agent: GPTBot\nAllow: /\nUser-agent: ChatGPT-User\nAllow: /\nUser-agent: PerplexityBot\nAllow: /\nUser-agent: Google-Extended\nAllow: /\nUser-agent: anthropic-ai\nAllow: /\nUser-agent: Bytespider\nAllow: /\nUser-agent: Amazonbot\nAllow: /\nUser-agent: FacebookBot\nAllow: /\nUser-agent: CCBot\nAllow: /\nUser-agent: DataForSeoBot\nAllow: /\nUser-agent: PetalBot\nAllow: /\nUser-agent: YouBot\nAllow: /\nUser-agent: KrbBot\nAllow: /\n\nDisallow: /admin\nDisallow: /api\nDisa"
   },
   "search_engines": {
     "google": {
@@ -47,8 +47,8 @@
       "sample_urls": [
         "https://ralphworkflow.com/",
         "https://ralphworkflow.com/contact",
-        "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended",
         "https://ralphworkflow.com/copilot-alternative",
+        "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended",
         "https://ralphworkflow.com/blog",
         "https://ralphworkflow.com/docs/",
         "https://ralphworkflow.com/docs/first-task-guide",
@@ -62,28 +62,28 @@
           {
             "path": "https://ralphworkflow.com/sitemap.xml",
             "last_submitted": "2026-05-15T14:50:45.777Z",
-            "last_downloaded": "2026-05-25T23:01:29.277Z",
+            "last_downloaded": "2026-05-30T21:54:34.082Z",
             "warnings": "0",
             "errors": "0",
-            "submitted": 80,
+            "submitted": 97,
             "indexed": 0
           }
         ],
-        "submitted": 80,
+        "submitted": 97,
         "indexed": 0,
         "error": null
       },
       "gsc_analytics": {
         "ok": true,
-        "total_clicks": 19,
-        "total_impressions": 318,
+        "total_clicks": 21,
+        "total_impressions": 339,
         "pages_with_data": 13,
         "top_pages": [
           {
             "url": "https://ralphworkflow.com/",
-            "impressions": 277,
-            "clicks": 19,
-            "ctr": 6.9
+            "impressions": 296,
+            "clicks": 21,
+            "ctr": 7.1
           },
           {
             "url": "https://ralphworkflow.com/contact",
@@ -92,13 +92,13 @@
             "ctr": 0.0
           },
           {
-            "url": "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended",
-            "impressions": 5,
+            "url": "https://ralphworkflow.com/copilot-alternative",
+            "impressions": 6,
             "clicks": 0,
             "ctr": 0.0
           },
           {
-            "url": "https://ralphworkflow.com/copilot-alternative",
+            "url": "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended",
             "impressions": 5,
             "clicks": 0,
             "ctr": 0.0
@@ -117,7 +117,7 @@
           },
           {
             "url": "https://ralphworkflow.com/docs/first-task-guide",
-            "impressions": 3,
+            "impressions": 4,
             "clicks": 0,
             "ctr": 0.0
           },
@@ -159,7 +159,7 @@
           }
         ],
         "error": null,
-        "ctr": 5.97
+        "ctr": 6.19
       },
       "indexed_source": "search_analytics"
     },
@@ -183,21 +183,21 @@
     "canonical_mismatches": []
   },
   "assessment": {
-    "sitemap_urls": 96,
+    "sitemap_urls": 100,
     "google_indexed_approx": 13,
     "ddg_indexed_approx": 0,
     "gsc_source": true,
-    "gsc_sitemap_submitted": 80,
+    "gsc_sitemap_submitted": 97,
     "gsc_sitemap_indexed": 0,
     "gsc_indexation_rate": 0.0,
-    "gsc_total_clicks_28d": 19,
-    "gsc_total_impressions_28d": 318,
+    "gsc_total_clicks_28d": 21,
+    "gsc_total_impressions_28d": 339,
     "gsc_pages_with_data": 13,
     "gsc_has_search_presence": true,
     "indexed_source": "search_analytics",
     "confidence": "medium",
     "searchable": true,
-    "verdict": "PARTIALLY_INDEXED: 13 pages with search presence (impressions/clicks in 28d), sitemap reports 0/80 indexed. Sitemap-indexed count undercounts true indexation \u2014 search analytics confirms pages are live.",
-    "recommendation": "Indexation is happening (13 pages visible in search) but sitemap processing is behind. This is not an indexation failure \u2014 focus on backlinks and domain authority instead of gate-repair. Current visibility: 318 impressions, 19 clicks over 28 days. Primary blocker is ranking, not indexing."
+    "verdict": "PARTIALLY_INDEXED: 13 pages with search presence (impressions/clicks in 28d), sitemap reports 0/97 indexed. Sitemap-indexed count undercounts true indexation \u2014 search analytics confirms pages are live.",
+    "recommendation": "Indexation is happening (13 pages visible in search) but sitemap processing is behind. This is not an indexation failure \u2014 focus on backlinks and domain authority instead of gate-repair. Current visibility: 339 impressions, 21 clicks over 28 days. Primary blocker is ranking, not indexing."
   }
 }
