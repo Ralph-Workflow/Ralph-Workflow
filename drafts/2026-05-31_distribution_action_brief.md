@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-31T15:06:34
-Chosen lane: **directory_confirmation**
+Generated: 2026-05-31T16:16:35
+Chosen lane: **measurement_hold**
 
 ## Why this lane
-- A current directory secondary-surface repair packet already targets a live page that still misroutes or obscures Codeberg repo intent; reuse that truthful do-now follow-through surface instead of falling back to another owned-content pass.
+- Directory confirmation has never produced a Codeberg backlink; no postable external lane is open and no unpublished guide remains. Hold for the next truthful execution window.
 - Primary Codeberg adoption is flat in the current measurement window.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
@@ -19,6 +19,7 @@ Chosen lane: **directory_confirmation**
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
 - A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.
+- The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
 - A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
 - The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.
 - The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.
@@ -29,8 +30,8 @@ Chosen lane: **directory_confirmation**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 
-## Immediate directory confirmation work
-- Re-run `agents/marketing/backlink_status.py` and reuse `backlink_status_latest.json` as the canonical live-listing snapshot
-- Treat live listings as proof assets to reuse in curator/comparison packets instead of pretending all submissions are still pending black boxes
-- Identify which approved listings already route to Codeberg first and which still need follow-up or evidence capture
-- Do not count another net-new directory submission as progress until this confirmation pass is refreshed
+## Immediate measurement-hold work
+- Do not ship another fresh outreach/reset action in this short review window
+- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
+- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
+- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map

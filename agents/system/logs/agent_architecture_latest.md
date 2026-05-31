@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-31T14:46:06.089494+02:00
+- Checked: 2026-05-31T15:46:36.972170+02:00
 - Overall health: watch
 - Primary failure mode: Architecture-owned gates are green, but whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
 - Most urgent fix: Do not certify whole-stack green until the external owner loop clears its live residue and independent signoff stays current.

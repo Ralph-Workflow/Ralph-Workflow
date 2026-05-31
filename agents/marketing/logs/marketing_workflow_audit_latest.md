@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-31T12:35:51.277447
+- Generated: 2026-05-31T15:29:13.924379
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -11,7 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains distribution_architecture_repair; do not confuse follow-through with fresh outcome-bearing distribution.
+- The most recent runtime activity was primary_repo_flat_contact_handoff_packet_execution, but the latest meaningful external/replacement execution remains distribution_architecture_repair; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (distribution_architecture_repair), so the system is still shipping output even though outcome movement is not visible yet.
 
 ## What actually worked
@@ -30,7 +30,7 @@
 - Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template.
 
 ## What should change now
-- REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
+- REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 41 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
 - Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
 ## Observed risks
@@ -49,7 +49,7 @@
 - PyPI has 1297 downloads/month (5/day) — real usage signal that repo metrics don't capture.
 
 ## Repair actions (execute in this run)
-- **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.
+- **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 41 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
   - Repair state: pending_measurement
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
@@ -91,7 +91,4 @@
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_SELF_IMPROVEMENT.md`
 
 ## Shared findings artifact sync
-- Status: synced
-- Refreshed distribution lane: primary_repo_flat_contact_handoff_packet
-- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md
-- Outcome status: /home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json
+- Status: skipped_unchanged

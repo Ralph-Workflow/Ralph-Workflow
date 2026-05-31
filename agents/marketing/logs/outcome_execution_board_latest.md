@@ -1,15 +1,15 @@
 # Outcome Execution Board Runner
 
-- Generated: `2026-05-31T15:06:34.615244`
+- Generated: `2026-05-31T16:16:35.840065`
 - Repair needed at start: `True`
 - Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md`
-- Selected lane: `directory_confirmation`
+- Selected lane: `measurement_hold`
 - Action type: `truth_snapshot_only`
 - Executed lane: `None`
 - Truthful do-now lane available: `False`
 - Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-31_marketing_execution_board.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
-- Measurement window: Recheck approval/routing evidence in 3-7 days.
+- Measurement window: Review Codeberg-linked movement within 7 days.
 - Next truthful checkpoint: `2026-06-05T00:00:00` (curator_review_due)
 - Checkpoint reason: Curator reply/review window matures for 1. ai-for-developers/awesome-ai-coding-tools.
 
