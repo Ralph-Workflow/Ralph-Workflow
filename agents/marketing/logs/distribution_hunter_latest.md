@@ -1,15 +1,15 @@
 # Distribution Hunter
 
-- Generated: `2026-05-31T02:15:01.922190`
+- Generated: `2026-05-31T06:47:28.667461`
 - Pending system-design repairs seen: `none`
-- Selected lane: `owned_content`
-- Action type: `owned_content_lane_noop`
-- Status: `skipped`
+- Selected lane: `directory_confirmation`
+- Action type: `directory_confirmation_execution`
+- Status: `executed`
 - Live external action: `False`
-- Artifact: `None`
-- Expected outcome: Advance distribution via lane owned_content without defaulting back to monitoring-only work.
-- Measurement window: Review outcome movement within 7 days.
+- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-05-31_directory_confirmation_execution.md`
+- Expected outcome: Convert prior directory submissions into verified live-listing/backlink proof.
+- Measurement window: Recheck listing approval/backlink evidence in 3-7 days.
 - Fake-green guard: This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.
 
 ## Summary
-Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.
+Refreshed live directory-listing and backlink evidence so the loop can reuse real approvals (3 live listing(s)) instead of stacking more low-intent submissions. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.

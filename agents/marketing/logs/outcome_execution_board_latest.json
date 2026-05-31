@@ -12,8 +12,8 @@
   "execution_board_targets": [
     "ComputingForGeeks"
   ],
-  "execution_board_fingerprint": "d5963ac4688248f350e3fb025856f069b222a42c",
-  "short_review_window_release_at": "2026-05-31T02:57:55",
+  "execution_board_fingerprint": "204e9b3e50ddab72b417228f2ee17ebebc4c74be",
+  "short_review_window_release_at": "2026-05-31T09:12:33",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.",
   "summary": "Reused existing distribution-architecture guard artifact.",

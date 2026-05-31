@@ -1,6 +1,6 @@
 # Ralph Workflow directory confirmation execution
-Generated: 2026-05-31T00:45:01
-- Backlink snapshot refreshed: 2026-05-30T22:45:16.638605+00:00
+Generated: 2026-05-31T06:47:28
+- Backlink snapshot refreshed: 2026-05-31T04:47:39.858503+00:00
 - Live directory listings detected: 3
 - Live listings routing to Codeberg first: 3
 - Search queries indexed: 1 / 18
@@ -61,7 +61,8 @@ Generated: 2026-05-31T00:45:01
 - If search indexing is still weak, treat these live listings as trust assets and keep the next active lane focused on higher-intent demand capture or citation follow-through.
 
 
-## Post-hold marketer rerun already scheduled
-- Scheduled run: 2026-05-31T02:57:55
-- Cron job: marketing-measurement-hold-release (e083afcc-ccec-487f-9ddc-45bd0a1b103d)
-- The current one-shot already matches the live short-window release time; do not create another duplicate wake.
+## Post-hold marketer rerun scheduled
+- Scheduled run: 2026-05-31T09:12:33
+- Cron job: marketing-measurement-hold-release (ccf7edd9-538e-40cd-bf34-85fc20d30193)
+- Log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_064728_measurement_hold_release_cron.json
+- This keeps the first truthful post-hold slot alive even though the current lane is still blocked by short-window congestion.

@@ -1,6 +1,6 @@
 # Ralph Workflow directory confirmation execution
-Generated: 2026-05-31T00:45:01
-- Backlink snapshot refreshed: 2026-05-30T22:45:16.638605+00:00
+Generated: 2026-05-31T06:47:28
+- Backlink snapshot refreshed: 2026-05-31T04:47:39.858503+00:00
 - Live directory listings detected: 3
 - Live listings routing to Codeberg first: 3
 - Search queries indexed: 1 / 18

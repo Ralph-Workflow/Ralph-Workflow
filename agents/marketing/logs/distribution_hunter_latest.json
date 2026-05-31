@@ -1,18 +1,18 @@
 {
-  "timestamp": "2026-05-31T02:15:01.922190",
+  "timestamp": "2026-05-31T06:47:28.667461",
   "repair_types_seen": [],
-  "selected_lane": "owned_content",
-  "selected_action_type": "owned_content_lane_noop",
-  "execution_status": "skipped",
+  "selected_lane": "directory_confirmation",
+  "selected_action_type": "directory_confirmation_execution",
+  "execution_status": "executed",
   "live_external_action": false,
-  "artifact_path": null,
-  "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
-  "expected_outcome": "Advance distribution via lane owned_content without defaulting back to monitoring-only work.",
-  "measurement_window": "Review outcome movement within 7 days.",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_directory_confirmation_execution.md",
+  "summary": "Refreshed live directory-listing and backlink evidence so the loop can reuse real approvals (3 live listing(s)) instead of stacking more low-intent submissions. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
+  "expected_outcome": "Convert prior directory submissions into verified live-listing/backlink proof.",
+  "measurement_window": "Recheck listing approval/backlink evidence in 3-7 days.",
   "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
   "decision": {
-    "lane": "owned_content",
-    "reason": "No stronger autonomous lane detected.",
+    "lane": "directory_confirmation",
+    "reason": "A current directory secondary-surface repair packet already targets a live page that still misroutes or obscures Codeberg repo intent; reuse that packet as the truthful follow-through surface instead of falling back to measurement hold.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 live external marketing action(s) already shipped in the last 6 hours.",
@@ -20,7 +20,7 @@
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
-      "Fresh publisher outreach already shipped in the current 7-day review window (AI Coding Stack, AI Dev Setup, AI Saying), so those targets should not be re-queued immediately.",
+      "Fresh publisher outreach already shipped in the current 7-day review window (AI Saying, AXME Code, Beam), so those targets should not be re-queued immediately.",
       "An active manual publisher handoff already covers (AI Saying, AXME Code, Bollwerk / Werkstatt), so those targets should stay out of fresh packet selection until their review window expires.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "All currently discovered publisher-contact targets already have fresh outreach inside their review windows, so another packet refresh right now would be fake progress.",
@@ -28,7 +28,6 @@
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
       "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
-      "A directory-confirmation refresh already shipped in the current short review window, so the next lane should reuse that evidence instead of regenerating the same snapshot.",
       "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
       "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
       "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
@@ -43,17 +42,19 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_distribution_action_brief.md",
-    "short_review_window_release_at": "2026-05-31T02:57:55",
+    "short_review_window_release_at": "2026-05-31T09:12:33",
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
   },
   "execution": {
-    "lane": "owned_content",
-    "action_type": "owned_content_lane_noop",
-    "status": "skipped",
-    "artifact_path": null,
-    "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph. Confirmed the automatic post-hold marketer rerun is already aligned to the current short-window release time.",
-    "targets_prepared": [],
+    "lane": "directory_confirmation",
+    "action_type": "directory_confirmation_execution",
+    "status": "executed",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_directory_confirmation_execution.md",
+    "summary": "Refreshed live directory-listing and backlink evidence so the loop can reuse real approvals (3 live listing(s)) instead of stacking more low-intent submissions. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
+    "targets_prepared": [
+      "SaaSHub"
+    ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -61,8 +62,6 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "live_external_action": false,
-    "blocking_factors": [
-      "No unpublished owned-content guide was available for Telegraph publication."
-    ]
+    "blocking_factors": []
   }
 }

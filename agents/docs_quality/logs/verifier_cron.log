@@ -15989,3 +15989,136 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is healthy and aligned. Top-level surfaces lead with the right positioning (OS for autonomous coding, composable loop framework, simple-core/powerful-composition) without internal plumbing leakage. The README \u2192 START_HERE \u2192 docs/README journey is coherent and well-signposted. Promoted next-click pages reinforce the same story rather than fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "PyPI README 'What to expect from a run' mentions 'review artifacts' \u2014 very minor internal language drift. Consider 'review logs and output' instead."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Perfect lead: tagline, orchestrator framing, simple-core/composition contrast, explicit 'not a chat tool', who it's for/not for, engineering-practice requirements. No internal plumbing at top level."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Clean first-run page that correctly frames the product as 'simple Ralph-loop core composable workflow', gives good/bad first-task guidance, and links forward without link anxiety."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Well-organized doc map with clear 'use this after README and START_HERE' guidance, categorized routes by user intent, and 'keep proof secondary' admonition that aligns with positioning."
+    },
+    {
+      "path": "ralph-workflow/README.md (PyPI)",
+      "reason": "More detailed but still positions correctly. The only minor drift is 'review artifacts' language in the expectations section."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted page keeps the same story: opens with core framing, explains why default workflow matters, links back to START_HERE."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system cleanly positions Ralph Workflow as a composable loop framework / AI agent orchestrator. All surfaces reinforce the same story \u2014 simple Ralph-loop core, powerful in composition, strong default workflow, ambitious work, result-first evaluation. No internal leakage, no artifacts-first framing, no stale routes. The README \u2192 START_HERE \u2192 docs/README journey is coherent and well-ordered.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with tagline, simple-core-to-composition framing, clear audience fit/non-fit, result-first pitch, Codeberg primary, no internal plumbing, 'default workflow strong enough to start with'"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run, task guidance, result-first success criteria, routes forward without link anxiety, no artifact/plumbing language"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Explicit hierarchy (after README + START_HERE), categorized routing, 'keep proof secondary' guardrail, Codeberg primary"
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/ralph-workflow/README.md",
+      "reason": "PyPI landing page maintains same story with helpful additions (depth presets, fit table, first-run test) without drifting into plumbing"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Coherent, well-positioned docs system. The README \u2192 START_HERE \u2192 docs/README journey is clean, every promoted next-click page reinforces the same \"simple core, powerful composition, strong default\" story, and no internal plumbing leaks into top-level surfaces. The user should not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with the operating-system positioning, clearly states it's an orchestrator not a chat tool, explains the simple Ralph-loop core + composability, gives fit/non-fit, and includes engineering-practice requirements \u2014 all without leaking internal plumbing."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Leads with the core positioning, gives the shortest honest first run, provides result-oriented success criteria (real repo change, meaningful checks, reviewable outcome), and gates deeper pages as 'next pages only if you need them'."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly tells users proof is secondary and routes evaluators toward product framing pages before deep docs. Lists contributor directories with a clear gate: 'only when you know you need contributor guidance or deeper background.'"
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces 'simple at the center, powerful in composition, useful before customization' without drifting into artifact/plumbing language. Routes to START_HERE, first-task-guide, and the operator manual."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md",
+      "reason": "Explains why specs matter in operational (not ceremonial) terms, ties directly to planning/verification/review, and stays within the product-story lane without leaking internal workflow mechanics."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
