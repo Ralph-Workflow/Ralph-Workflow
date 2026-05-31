@@ -1,68 +1,40 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-31T16:03:00+02:00
-Last action: compare_page_codeberg_cta — 8 Codeberg star CTAs deployed to /compare
+Generated: 2026-05-25T18:53:00
 
 ## Why this board exists
-- Codeberg is flat: 12⭐/2 watchers/2 forks, zero delta across 9+ samples
-- All distribution lanes structurally blocked: SMTP missing, Apollo Cloudflare-blocked, PYPI_TOKEN missing, Reddit/HN/Lobsters runtime-blocked
-- The only remaining high-leverage autonomous lane is conversion surface improvement
-- This board prevents regenerating fake-progress packets when nothing truly new is executable
+- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
+- Multiple live lanes already exist, so this board consolidates the best executable assets instead of letting them stay siloed across separate packet files.
+- Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
 ## Active review windows
-- Apollo next review: 2026-05-29T09:00:01 → EXPIRED
-- Apollo launch review: 2026-06-05T09:00:01 → still active
-- Short review-window congestion clears at: 2026-05-25T23:07:41 → EXPIRED
-- StackOverflow handoff already delivered in current review window → do not redeliver
-- Comparison backlink packet already delivered → do not surface
-- Directory secondary-surface repair already shipped → do not requeue
-- Primary-repo-flat contact packet already delivered → do not refresh
+- Apollo next review: 2026-05-29T09:00:01.629178+02:00
+- Apollo launch review: 2026-06-05T09:00:01.629178+02:00
+- Short review-window congestion clears at: 2026-05-25T23:07:41
+- StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
+- Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
+- Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
-## Latest action: compare_page_codeberg_cta
+## Best executable assets still waiting
+### 1. Manual publisher outreach asset
+- When: Do now
+- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md
+- Targets: ComputingForGeeks
+- Why this matters: A current Codeberg-first manual follow-through asset already exists for the active primary-repo-flat target set; use it instead of regenerating the packet.
 
-**Deployed 2026-05-31 14:10 UTC** — 8 Codeberg star CTAs added to ralphworkflow.com/compare:
+## Shared findings reused
+- market_intelligence_latest.json → positioning truths and comparison framing
+- adoption_metrics_latest.json → Codeberg movement remains the primary success gate
+- curator_outreach_queue_latest.json / comparison_backlink_queue_latest.json → live prepared execution queues
+- primary_repo_flat_contact_discovery_latest.json → fresh publisher-contact lane
+- apollo_sequence_status_latest.json / apollo_sequence_launch_packet_latest.md → launch-ready managed outbound state
+- stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
 
-| # | Section | CTA |
-|---|---------|-----|
-| 1 | Aider | "Star on Codeberg — free, open-source, runs on your machine" |
-| 2 | Claude Code | "Star on Codeberg — pick your agents, run your pipeline, keep your code" |
-| 3 | Conductor | "Star on Codeberg — unattended runs, real verification, committed results" |
-| 4 | Continue | "Star on Codeberg — define the task, walk away, come back to finished code" |
-| 5 | Copilot | "Star on Codeberg — free & open source. Runs the agents you already use" |
-| 6 | Cursor | "Star on Codeberg — vendor-neutral orchestration, your agents, your code, your repo" |
-| 7 | Hermes | "Star on Codeberg — orchestrate any model, survive interruptions, wake up to verified code" |
-| 8 | Bottom CTA | "⭐ Star on Codeberg" as primary button (was "Run your first workflow") |
-
-Commit: bcbe326 / Release: 20260531141039 / All deploy gates passed / IndexNow 200 OK
-
-## What should NOT be regenerated right now
-- SO handoff packet (already delivered, cooldown not needed — just no re-delivery)
-- Curator email drafts (30+ unsent, blocked on SMTP)
-- Apollo sequence launch (5 contacts, Cloudflare-blocked)
-- v0.8.8 release (wheel ready, PyPI token missing)
-- Reddit/HN/Lobsters posts (runtime-blocked)
-- Directory confirmation (audit confirmed zero backlinks ever)
-- Comparison backlink (already delivered this review window)
-- Publisher outreach (only non-executable targets remain)
-- Another measurement hold (3 today already, no new info)
-
-## Next executable actions (in priority order)
-1. **Conversion surface: README rewrite** — Codeberg README is the second highest-traffic conversion surface. Autonomous.
-2. **Conversion surface: homepage star CTA** — Add explicit "Star on Codeberg" to ralphworkflow.com landing hero. Autonomous.
-3. **SEO: meta descriptions audit** — Compare page has good meta desc but other pages may miss. Autonomous.
-4. **Blocker ROI handoff** — Resurface BLOCKER_ROI_SUMMARY.md to human if no action in 24h. Semi-autonomous.
-5. **Post-hold: StackOverflow manual follow-through** — Human-action required, packet current.
-
-## Infrastructure health (verified)
+## Verified infrastructure state (programmatic, not fabricated)
 - **Telegraph guard**: clear
-- **Telegraph crontab**: 06:00 daily, running
-- **IndexNow**: 100 URLs submitted, 200 OK (latest deploy included)
-- **PyPI**: v0.8.8 artifact exists, twine-check PASSED, blocked on PYPI_TOKEN
-- **SO cron**: 03:15 daily, generating drafts (7 scored, 4 skipped existing)
-- **Site deploy pipeline**: Capistrano → ralph-site-prod, all gates passing
+- **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
+- **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
+- **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED
 
-## Shared findings (do not re-derive)
-- market_intelligence_latest.json → 8 competitors tracked, comparison pages current
-- adoption_metrics_latest.json → Codeberg flat (12/2/2), PyPI 1297/mo
-- BLOCKER_ROI_SUMMARY.md → 5 blockers, SMTP is highest-ROI unblock
-- distribution_lane_latest.json → directory_confirmation lane, all surface lanes exhausted
-- marketing_workflow_audit_latest.json → conversion path improvement is remaining autonomous lane
+## Process rule now in force
+- Do not generate another siloed packet when one of the assets above is already current.
+- During a hold window, refresh stale packets if needed, then point back to this board instead of inventing another reset artifact.

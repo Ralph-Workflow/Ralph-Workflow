@@ -1,6 +1,6 @@
-# Apollo.io Channel Status — 2026-05-31 13:55 CEST
+# Apollo.io Channel Status — 2026-05-31 16:28 CEST
 
-**Status:** ❌ BLOCKED
+**Status:** ❌ BLOCKED (unchanged)
 
 ## Blockers
 
@@ -19,9 +19,9 @@
 ## Next Steps
 
 - Apollo is **not actionable** in this state
+- Repeat check confirms persistent Cloudflare blocking across full-day window
 - Next automatic check will retry via cron (~30m cycle)
-- Manual intervention required if this persists: rotate IP (VPN/proxy), or solve Cloudflare challenge in a real browser session
-- No action needed from mistlight unless this persists for >2h
+- Manual intervention required: rotate IP (VPN/proxy) or solve Cloudflare challenge
 
 ## Raw Data
 

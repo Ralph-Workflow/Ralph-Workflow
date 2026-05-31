@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-31T09:00:02.260788",
+  "timestamp": "2026-05-31T17:14:48.616025",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -113,7 +113,149 @@
       "impressions": 0,
       "clicks": 0,
       "source": "GSC"
-    }
+    },
+    "_top_queries": [
+      {
+        "query": "ralph workflow",
+        "position": 2.0,
+        "impressions": 41,
+        "clicks": 10,
+        "ctr": 24.4
+      },
+      {
+        "query": "ralph ai",
+        "position": 8.0,
+        "impressions": 26,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph framework",
+        "position": 5.0,
+        "impressions": 13,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph ai agent",
+        "position": 12.0,
+        "impressions": 11,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph git",
+        "position": 7.0,
+        "impressions": 9,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph prompt",
+        "position": 8.0,
+        "impressions": 5,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralf ai",
+        "position": 5.0,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph coding",
+        "position": 27,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph github",
+        "position": 11,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph software",
+        "position": 10.0,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ai ralph",
+        "position": 7,
+        "impressions": 2,
+        "clicks": 1,
+        "ctr": 50.0
+      },
+      {
+        "query": "claude code ralph loop",
+        "position": 46.0,
+        "impressions": 2,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "\"ralph loop\" ai workflow",
+        "position": 9,
+        "impressions": 1,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "afk ralph",
+        "position": 46,
+        "impressions": 1,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "claude code ralph",
+        "position": 18,
+        "impressions": 1,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "claude code ralph plugin",
+        "position": 69,
+        "impressions": 1,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "github ralph",
+        "position": 30,
+        "impressions": 1,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralf",
+        "position": 1,
+        "impressions": 1,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph agent",
+        "position": 10,
+        "impressions": 1,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph ai loop",
+        "position": 10,
+        "impressions": 1,
+        "clicks": 0,
+        "ctr": 0
+      }
+    ]
   },
   "backlinks": {
     "count_approx": 0,
