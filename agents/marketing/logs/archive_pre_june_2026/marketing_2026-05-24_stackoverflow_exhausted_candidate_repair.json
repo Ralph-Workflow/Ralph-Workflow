@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-05-24T15:59:40+02:00",
+  "type": "stackoverflow_exhausted_candidate_repair",
+  "status": "executed",
+  "ok": true,
+  "summary": "Patched the StackOverflow answer lane so an exhausted handoff packet URL is retired for the current review window, then tightened search queries toward high-intent AI workflow questions instead of broad generic workflow matches.",
+  "shared_findings_reused": [
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+    "drafts/stackoverflow_answer_handoff_packet_latest.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/adoption_metrics_latest.json",
+    "agents/marketing/logs/reddit_post_analysis.json"
+  ],
+  "files_changed": [
+    "agents/marketing/stackoverflow_answer_lane.py",
+    "agents/marketing/tests/test_stackoverflow_answer_lane.py"
+  ],
+  "verification": {
+    "commands": [
+      "python3 -m unittest agents.marketing.tests.test_stackoverflow_answer_lane -v",
+      "python3 agents/marketing/stackoverflow_answer_lane.py"
+    ],
+    "result": "passed",
+    "runtime_outcome": {
+      "retired_url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
+      "fresh_drafts_created": 0,
+      "top_live_candidate_after_repair": "https://stackoverflow.com/questions/79913508/how-can-i-get-more-useful-results-from-ai-coding-agents",
+      "top_live_candidate_score": -0.6,
+      "lane_result": "no fresh placement-ready StackOverflow draft found; no fake progress logged"
+    }
+  },
+  "expected_outcome": "Future StackOverflow demand-capture runs stop looping on the exhausted reliability packet and either surface a genuinely new high-intent question or truthfully return no fresh candidate.",
+  "measurement_window": {
+    "review_at": "2026-05-31T11:30:00+02:00",
+    "success_metric": "A fresh StackOverflow draft or a truthfully empty high-intent result without duplicate packet churn.",
+    "kill_condition": "If this tighter search still yields no new placement-ready opportunities by review, retire StackOverflow as the active high-intent lane and shift the slot to a different executable demand-capture surface."
+  }
+}

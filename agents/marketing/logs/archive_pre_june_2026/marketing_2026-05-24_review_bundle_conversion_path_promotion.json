@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-24T15:34:00+02:00",
+  "run_type": "marketing-conversion-execution",
+  "chosen_action": {
+    "type": "review_bundle_conversion_path_promotion",
+    "channel": "repo_conversion",
+    "title": "Promote the morning-after review bundle into the first-run evaluator path",
+    "files": [
+      "README.md",
+      "START_HERE.md",
+      "docs/README.md"
+    ]
+  },
+  "why_this_action": {
+    "summary": "External lanes are intentionally held or already in-flight, while the adoption funnel still says conversion from interest to free use is the main bottleneck. The strongest same-run move was to surface the existing review-bundle proof asset on the three highest-intent repo/docs entry points so evaluators see what a trustworthy handoff looks like before deciding whether Ralph Workflow earned a follow on Codeberg.",
+    "shared_findings_used": [
+      "agents/marketing/ADOPTION_FUNNEL_NEXT.md: trust and proof are still part of the adoption bottleneck",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+      "agents/marketing/logs/marketing_workflow_audit_latest.md: same-family external lanes should stay paused during the active review window",
+      "drafts/marketing_execution_board_latest.md: no truthful do-now handoff packet exists in the current review window",
+      "content/examples/review_bundle_example.md: existing proof asset available for reuse"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "outcome_ready": true,
+    "verification": [
+      "read back README.md, START_HERE.md, and docs/README.md after edit",
+      "python existence check for all promoted linked targets"
+    ],
+    "expected_outcome": "More high-intent repo visitors understand the review standard and reach Codeberg-first follow actions only after seeing a concrete proof artifact.",
+    "review_by": "2026-05-31",
+    "docs_review_note": "drafts/2026-05-24_repo_conversion_review_bundle_promotion_review.md"
+  }
+}

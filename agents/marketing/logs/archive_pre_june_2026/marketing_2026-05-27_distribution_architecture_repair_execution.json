@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-05-27T23:22:22.045223",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "publisher_manual_review_channel_ready_outreach_asset",
+    "channel": "distribution_architecture_repair",
+    "title": "Distribution lane execution: distribution_architecture_repair",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_primary_repo_flat_manual_review_asset.md"
+  },
+  "why_this_action": {
+    "summary": "Converted repeated empty-board architecture churn into a Codeberg-first manual publisher outreach asset for untouched human-executable contact routes.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "targets_prepared": [
+      "ComputingForGeeks"
+    ]
+  },
+  "result": {
+    "status": "prepared",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": []
+  },
+  "verification": {
+    "execution_board_fingerprint": "967b5acbb7f448ff1e0bb49ff243497c88d3ad57"
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "timestamp_utc": "2026-05-23T04:13:12Z",
+  "action": "backlink_truthfulness_repair",
+  "type": "EXECUTED / RUNTIME_REPAIR",
+  "channel": {
+    "name": "backlink_status_runtime",
+    "status": "repaired_and_reverified"
+  },
+  "why_this_action": "Shared artifacts had drifted into false negatives: backlink_status.py still treated AIToolsIndex as a dead .com domain and ToolWise as a broken .com listing, which made the loop undercount live third-party trust signals and risk duplicate work instead of pushing untouched distribution lanes.",
+  "shared_findings_used": [
+    "marketing_workflow_audit_latest.json: primary bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "channel_discovery.json: AIToolsIndex .org submission succeeded and ToolWise already has a live listing",
+    "outreach-log.md: avoid duplicate submissions and keep Codeberg-first tracking honest",
+    "toolwise.ai/tools/ralph-workflow: live listing points to the Codeberg primary repo"
+  ],
+  "repairs": {
+    "files_changed": [
+      "agents/marketing/backlink_status.py",
+      "agents/marketing/tests/test_backlink_status.py",
+      "agents/marketing/outreach-log.md"
+    ],
+    "summary": [
+      "switched backlink tracking from stale AIToolsIndex .com assumptions to the live .org submission surface",
+      "switched ToolWise tracking to toolwise.ai and verified the live Ralph Workflow listing",
+      "recorded the missing AIToolsIndex / ToolWise state in outreach-log.md so future runs do not waste a submission slot"
+    ]
+  },
+  "verification": {
+    "tests": [
+      {
+        "command": "python3 -m unittest agents.marketing.tests.test_backlink_status -v",
+        "ok": true
+      }
+    ],
+    "runtime": [
+      {
+        "command": "python3 agents/marketing/backlink_status.py",
+        "ok": true,
+        "observed": {
+          "directories_with_live_listings": 2,
+          "toolwise_live": true,
+          "saashub_live": true,
+          "aitoolsindex_live": false,
+          "queries_indexed": 1
+        }
+      }
+    ]
+  },
+  "outcome": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "marketing_effect": "restored truthful tracking for already-earned third-party trust surfaces and removed a false dead-lane assumption that could have caused duplicate or misprioritized distribution work"
+  },
+  "next_review": {
+    "review_by": "2026-06-06",
+    "success_signal": "ToolWise remains live, AIToolsIndex either turns live or is explicitly replaced, and future marketing loops no longer treat these lanes as dead/.com drift"
+  }
+}

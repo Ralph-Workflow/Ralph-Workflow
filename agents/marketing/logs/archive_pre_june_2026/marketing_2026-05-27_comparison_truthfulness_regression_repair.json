@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-05-27T02:22:00+02:00",
+  "type": "distribution_architecture_repair",
+  "title": "Comparison backlink truthfulness regression repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": false,
+  "target": "comparison_backlink_outreach",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_comparison_truthfulness_regression_repair.md",
+  "shared_findings_used": [
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/logs/comparison_backlink_queue_latest.json",
+    "agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json"
+  ],
+  "files_changed": [
+    "agents/marketing/tests/test_distribution_lane_selector_repair_pause.py"
+  ],
+  "verification": {
+    "commands": [
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause agents.marketing.tests.test_comparison_lane_guards",
+      "python3 -m unittest agents.marketing.tests.test_marketing_system agents.marketing.tests.test_distribution_lane_selector_repair_pause agents.marketing.tests.test_distribution_lane_executor_measurement_hold agents.marketing.tests.test_comparison_lane_guards"
+    ],
+    "result": "passed",
+    "tests_run": 410
+  },
+  "result": {
+    "summary": "The comparison/manual-only truthfulness repair is now validated across the broader marketing regression suite.",
+    "behavior_changes": [
+      "Prepared-only comparison follow-through stays marked as skipped_repair when GitHub live submission is blocked.",
+      "Selector repair-pause coverage now patches the same family-repeat counter used by production logic.",
+      "The suite now fail-closes against fake-progress churn instead of surfacing a stale fixture mismatch."
+    ]
+  }
+}

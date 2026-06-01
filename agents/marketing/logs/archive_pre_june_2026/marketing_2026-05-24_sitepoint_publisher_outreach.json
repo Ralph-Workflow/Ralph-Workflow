@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-05-24T10:46:12+02:00",
+  "action_type": "publisher_email_outreach",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "target": "SitePoint — AI Coding Tools Comparison 2026",
+  "recipient": "support@sitepoint.com",
+  "subject": "Ralph Workflow for SitePoint's AI Coding Tools Comparison 2026",
+  "hook": "AI Coding Tools Comparison 2026",
+  "primary_repo_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "supporting_artifacts": [
+    "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/01_sitepoint-ai-coding-tools-comparison-2026.md",
+    "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_sitepoint_publisher_outreach_email.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/adoption_metrics_latest.json"
+  ],
+  "smtp_delivery": {
+    "server": "smtp.ionos.com",
+    "port": 587,
+    "tls": true,
+    "accepted_by_server": true,
+    "delivery_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_084612_sitepoint_publisher_email.json"
+  },
+  "expected_outcome": "Editorial awareness and possible comparison-page inclusion or follow-up mention that sends qualified evaluators to Codeberg first.",
+  "review_window": {
+    "reply_review_at": "2026-05-31T10:46:12+02:00",
+    "citation_review_at": "2026-06-07T10:46:12+02:00"
+  },
+  "replacement_condition": "If no reply or public mention signal appears by the review window, switch the next publisher-contact slot to a different untouched target instead of resending SitePoint immediately."
+}

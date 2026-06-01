@@ -1,0 +1,38 @@
+{
+  "timestamp_utc": "2026-05-22T02:55:07.486911+00:00",
+  "action": "thenextai_free_listing_submission",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "The Next AI",
+    "submit_page": "https://www.thenextai.com/submit-ai-tool/",
+    "endpoint": "https://script.google.com/macros/s/AKfycbxUeDQGc1leci0-kiZxSKKrzR8I9A-O3NpVrde9rD4sFoWW6VhBTswzsMlJKqvnWmtC/exec",
+    "status": "submitted_in_review",
+    "response": {
+      "http_status": 200,
+      "body": "{\"success\":true}"
+    }
+  },
+  "submitted_payload": {
+    "tool_name": "Ralph Workflow",
+    "website_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "category": "\ud83d\udcbb Coding & Dev",
+    "pricing": "Open Source",
+    "short_desc": "Free and open-source AI orchestrator for structured autonomous coding workflows.",
+    "email": "ken@hireaegis.com",
+    "plan": "free"
+  },
+  "why_this_action": "Recent audit artifacts showed the biggest problem is flat primary-repo adoption and weak distribution handoff. Reddit repetition risk is high, HN/Lobsters remain blocked, and The Next AI exposed a real no-login free submit path that can point the backlink directly at Codeberg.",
+  "runtime_fix": {
+    "file": "agents/marketing/channel_discovery.py",
+    "summary": [
+      "recorded thenextai.com as a validated autonomous submit host after live POST confirmation",
+      "prioritized easy submit lanes ahead of harder untried channels so fresh executable backlink surfaces get tested sooner"
+    ],
+    "verification": "python3 -m unittest agents.marketing.tests.test_channel_discovery -v"
+  },
+  "measurement_window": {
+    "submission_review_window": "24-48 hours per submit page copy",
+    "business_check_through": "2026-06-05",
+    "success_signal": "live The Next AI listing with backlink landing on the Codeberg primary repo"
+  }
+}

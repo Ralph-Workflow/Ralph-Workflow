@@ -1,0 +1,49 @@
+{
+  "timestamp": "2026-05-24T05:19:00+02:00",
+  "action": "watchdog_measurement_hold_alignment_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "channel": "marketing_loop_runtime",
+  "why_this_action": [
+    "The distribution selector had already switched the loop to measurement_hold.",
+    "The runner had already gained a 60-minute measurement-hold cooldown.",
+    "The momentum watchdog was still escalating the same window as needs_attention, which would keep the marketer churning during a hold instead of preserving measurement.",
+    "Fixing that runtime contradiction is higher leverage than inventing another overlapping outreach/reset action."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+    "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+    "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/reddit_post_analysis.md",
+    "agents/marketing/logs/adoption_metrics_latest.md",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/marketing_2026-05-24_measurement_hold_execution.json"
+  ],
+  "files_changed": [
+    "agents/marketing/marketing_momentum_watchdog.py",
+    "agents/marketing/run.py",
+    "agents/marketing/tests/test_marketing_momentum_watchdog.py",
+    "agents/marketing/tests/test_run_repair_mode.py"
+  ],
+  "verification": [
+    "python3 -m unittest agents.marketing.tests.test_marketing_momentum_watchdog agents.marketing.tests.test_run_repair_mode",
+    "python3 -m py_compile agents/marketing/marketing_momentum_watchdog.py agents/marketing/run.py",
+    "python3 agents/marketing/marketing_momentum_watchdog.py"
+  ],
+  "runtime_result": {
+    "watchdog_status": "watch",
+    "measurement_hold_active": true,
+    "measurement_hold_until": "2026-05-24T05:51:00",
+    "watch_actions": [
+      "reddit_channel_blocked",
+      "primary_repo_adoption_flat",
+      "measurement_hold_active"
+    ]
+  },
+  "expected_outcome": "The always-on marketer preserves the active measurement window instead of re-spending cycles on fake stale-channel / pending-repair churn."
+}

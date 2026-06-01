@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-05-27T13:13:06+02:00",
+  "action": "owned_content_telegraph_render_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "current_bottleneck": "conversion_to_free_use",
+  "why_this_action": "The short review-window hold is still active until 2026-05-27T14:26:29, so another live outbound action would mostly blur measurement. The next truthful owned-content slot is likely the first-task guide, but the Telegraph renderer was leaving markdown links as raw text and would have degraded the conversion path on a high-priority free-use asset. Repairing the renderer now improves the odds that the post-hold owned-content lane produces a usable Codeberg-first proof asset instead of a broken page.",
+  "shared_findings_reused": [
+    "ADOPTION_FUNNEL_NEXT.md: the first-task / start-here guide is the highest-priority conversion asset closest to free use",
+    "distribution_lane_latest.json: owned_content is the selected hold-window lane until 2026-05-27T14:26:29",
+    "marketing_execution_board_latest.md: no truthful do-now handoff packet exists in the current review window",
+    "marketing_2026-05-27_125429_owned_content_first_task_reentry_repair.json: docs/first-task-guide.md was restored into the next truthful owned-content slot",
+    "docs/first-task-guide.md: contains relative markdown links and fenced code blocks that need correct Telegraph rendering to preserve the conversion path"
+  ],
+  "changed_files": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_marketing_system.py"
+  ],
+  "changes": [
+    "Added a Telegraph markdown-node builder that preserves headings, blockquotes, unordered lists, fenced code blocks, bold/italic text, and inline links.",
+    "Rewrote relative markdown links to canonical Codeberg source URLs so owned-content posts keep a working Codeberg-first path instead of exposing broken relative links.",
+    "Passed source_path through both scheduled posting and owned-content lane execution so relative link rewriting can resolve against the real markdown file.",
+    "Added regression coverage for relative-link rewriting, list/code-block rendering, and the existing historical-post dedupe behavior."
+  ],
+  "verification": {
+    "command": "python3 -m unittest agents.marketing.tests.test_marketing_system.PostingTests.test_build_telegraph_nodes_rewrites_relative_links_to_codeberg agents.marketing.tests.test_marketing_system.PostingTests.test_execute_owned_content_skips_historic_first_task_guide_repost agents.marketing.tests.test_marketing_system.PostingTests.test_already_posted_successfully_matches_experiment_id_or_source_path -v",
+    "result": "passed"
+  },
+  "expected_effect": "When the hold clears at 2026-05-27T14:26:29, the next owned-content Telegraph publication will preserve working Codeberg-first internal links and readable proof formatting instead of leaking raw markdown on a conversion-critical asset."
+}

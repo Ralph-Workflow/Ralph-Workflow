@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-05-26T19:21:43.159190",
+  "run_type": "marketing-measurement-hold-skip",
+  "chosen_action": {
+    "type": "measurement_hold_cooldown_skip",
+    "channel": "measurement_hold",
+    "title": "Respect active measurement-hold cooldown"
+  },
+  "why_this_action": {
+    "summary": "A recent measurement hold is still active, so this run should not burn more cycles on the same short-window evaluation churn.",
+    "hold_started_at": "2026-05-26T17:33:09.048314",
+    "hold_until": "2026-05-26T20:55:18",
+    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_173309_measurement_hold_execution.json"
+  },
+  "result": {
+    "status": "skipped",
+    "ok": true,
+    "live_external_action": false
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-05-27T11:12:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "stackoverflow_excerpt_fallback_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Broaden StackOverflow demand-capture search with official excerpt-search fallback"
+  },
+  "why_this_action": {
+    "summary": "The current execution board still has no truthful do-now packet, Reddit/manual channels are already in protected review windows, comparison/curator packets were already delivered or are still waiting, and the StackOverflow lane remained too narrow to surface fresh high-intent unanswered questions. The highest-leverage executable move in this slot was to repair the StackOverflow search architecture so the scheduled and future demand-capture runs have a better chance of finding a real Codeberg-first placement instead of reusing stale answered candidates.",
+    "shared_findings_used": [
+      "agents/marketing/logs/market_intelligence_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "drafts/marketing_execution_board_latest.md",
+      "agents/marketing/logs/reddit_post_analysis_latest.json",
+      "agents/marketing/logs/comparison_backlink_queue_latest.json",
+      "agents/marketing/logs/stackoverflow_answer_lane_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched agents/marketing/stackoverflow_answer_lane.py so StackOverflow search now falls back from narrow /search/advanced title queries to the official /search/excerpts API using intent-rich query/body terms, while filtering non-question excerpt rows. Added regression tests for the fallback path. Live verification run completed successfully and truthfully produced no new packet: it found only one already-answered low-fit question, so the lane remained empty instead of fabricating a manual handoff.",
+    "files_changed": [
+      "agents/marketing/stackoverflow_answer_lane.py",
+      "agents/marketing/tests/test_stackoverflow_answer_lane.py"
+    ],
+    "verification": {
+      "tests": {
+        "command": "python3 -m unittest agents.marketing.tests.test_stackoverflow_answer_lane -v",
+        "result": "passed"
+      },
+      "live_probe": {
+        "command": "python3 agents/marketing/stackoverflow_answer_lane.py",
+        "result": "completed",
+        "observed_truth": "No fresh draft or reusable packet was created; latest live candidate remained https://stackoverflow.com/questions/79913508/how-can-i-get-more-useful-results-from-ai-coding-agents with score -0.6 and 4 answers."
+      }
+    }
+  },
+  "expected_outcome": "The next StackOverflow demand-capture rerun can search a broader set of high-intent unanswered questions without reverting to duplicate packet churn, increasing the odds of a real Codeberg-first manual-ready asset when the window opens.",
+  "measurement_window": {
+    "review_at": "2026-05-27T14:26:29+02:00",
+    "success_metric": "Before or at the next post-hold rerun, the StackOverflow lane can surface a net-new qualified unanswered question or truthfully confirm that broader official API search still yields none.",
+    "kill_condition": "If the broadened excerpt fallback still cannot produce a new qualified candidate across the next review window, escalate from search repair into source/lane diversification instead of spending another slot on StackOverflow packet maintenance."
+  }
+}

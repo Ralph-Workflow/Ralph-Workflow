@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-26T04:31:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "distribution_architecture_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Distribution lane execution: distribution_architecture_repair",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_043100_distribution_architecture_repair.md"
+  },
+  "why_this_action": {
+    "summary": "Patched the lane selector so it stops re-choosing directory_confirmation while the live SaaSHub secondary-surface repair is still inside its documented follow-up window.",
+    "supporting_reasons": [
+      "The latest board already said directory secondary-surface repair had shipped in the current review window.",
+      "The latest selector still picked directory_confirmation anyway, which would have created duplicate fake progress.",
+      "The live correction log documents a review_window of 2026-05-31, so the selector needed to honor that hold directly."
+    ],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "backlink_status_latest.json: SaaSHub live listing + secondary surfaces remain active evidence",
+      "marketing_execution_board_latest.md: directory secondary-surface repair already shipped in the current review window",
+      "marketing_2026-05-24_saashub_live_listing_correction.json: follow-up date is 2026-05-31"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "summary": "Repaired duplicate directory follow-up selection, then regenerated the latest lane artifacts so the loop no longer points at an already-active review-window action.",
+    "targets_prepared": [],
+    "live_external_action": false,
+    "blocking_factors": []
+  },
+  "verification": {
+    "post_fix_lane": "owned_content",
+    "post_fix_reason": "No stronger autonomous lane detected.",
+    "guard_reason": "The live secondary-surface repair already has an active review window until 2026-05-31T00:00:00, so selecting directory confirmation again before then would be fake progress.",
+    "updated_latest_lane_json": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_lane_latest.json",
+    "updated_latest_brief": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_distribution_action_brief.md"
+  }
+}

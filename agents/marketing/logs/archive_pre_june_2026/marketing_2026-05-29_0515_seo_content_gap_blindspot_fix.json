@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-05-29T05:15:00+02:00",
+  "type": "distribution_architecture_repair",
+  "hold_window_rule_satisfied": true,
+  "hold_window_rule_context": "Both active_loop_prompt_repair and post_hold_reentry_contract_repair already exist in this window. This is a concrete runtime/code repair that improves the odds of the scheduled post-hold lane succeeding.",
+  "action": "seo_content_gap_blindspot_fix",
+  "ok": true,
+  "live_external_action": false,
+  "summary": "content_gap_analysis() in seo_daily.py only scanned the homepage for keyword coverage, returning a misleading 12.5% when all 25 blog posts on ralphworkflow.com actually cover all 8 priority keywords. Fixed to scan the full sitemap (blog posts first), producing correct 100% coverage.",
+  "before": {
+    "coverage_pct": 12.5,
+    "scan_method": "homepage-only text search",
+    "downstream_effect": "Every SEO report recommended 'create content targeting X' for gaps that were already covered by published blog posts — wasted engineering cycles"
+  },
+  "after": {
+    "coverage_pct": 100.0,
+    "scan_method": "homepage + sitemap (blog URLs prioritized, up to 50 fetches)",
+    "urls_scanned": 28,
+    "covered_keywords": [
+      "unattended coding agent",
+      "AI agent orchestration CLI",
+      "spec-driven AI agent",
+      "AI coding workflow automation",
+      "Claude Code automation",
+      "Claude Code unattended",
+      "AI agent workflow composer",
+      "Ralph Workflow"
+    ],
+    "priority_action_shift": "was 'create content targeting gaps' → now 'build backlinks' (correct: content created, need distribution)"
+  },
+  "changes": {
+    "seo_daily.py": [
+      "Added _fetch_sitemap_urls() with per-run caching",
+      "Added _check_url_for_keywords() — fetches individual URLs for keyword presence",
+      "Rewrote content_gap_analysis() — homepage + sitemap scan with blog-prioritized ordering",
+      "Cap 50 URL fetches to stay under ~10s runtime budget"
+    ]
+  },
+  "test": "python3 -c 'from agents.marketing.seo_daily import content_gap_analysis, PRIORITY_KEYWORDS, COMPETITORS; r = content_gap_analysis(PRIORITY_KEYWORDS, COMPETITORS); assert r[\"coverage_pct\"] == 100.0'"
+}

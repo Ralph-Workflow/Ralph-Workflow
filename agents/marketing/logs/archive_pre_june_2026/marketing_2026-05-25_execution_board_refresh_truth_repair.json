@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-05-25T02:55:06",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "execution_board_refresh_truth_repair",
+    "title": "Refreshed execution board after stale-packet repair",
+    "artifact": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md"
+  },
+  "why_this_action": {
+    "summary": "The measurement-hold flow refreshed stale handoff packets without rewriting the consolidated execution board, leaving the live board stuck in a pre-refresh state.",
+    "repair": "distribution_lane_executor now rewrites the execution board immediately after same-run stale packet refreshes.",
+    "shared_findings_used": [
+      "marketing_execution_board_latest.md",
+      "primary_repo_flat_contact_handoff_packet_latest.md",
+      "distribution_lane_latest.json",
+      "backlink_status_latest.json",
+      "adoption_metrics_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "targets_prepared": [
+      "Beam"
+    ]
+  }
+}

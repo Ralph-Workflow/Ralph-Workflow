@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-05-25T07:17:24.570130+02:00",
+  "run_type": "marketing-live-action",
+  "chosen_action": {
+    "type": "distribution_architecture_repair",
+    "channel": "internal_runtime",
+    "title": "Upgrade NxCode publisher discovery with a real runtime-sendable support email path"
+  },
+  "why_this_action": {
+    "summary": "The short review window is still active until 2026-05-25T07:20:16+02:00, so another live outbound action would mostly blur measurement. The highest-leverage same-run move was to improve the post-hold publisher lane by turning NxCode from a website-only/manual contact target into a runtime-sendable email-backed target using a public support address on official NxCode docs.",
+    "shared_findings_used": [
+      "marketing_workflow_audit_latest.json",
+      "distribution_lane_latest.json",
+      "marketing_execution_board_latest.md",
+      "primary_repo_flat_contact_discovery_latest.json",
+      "market_intelligence_latest.json",
+      "adoption_metrics_latest.json",
+      "reddit_post_analysis_latest.json"
+    ],
+    "verification": [
+      "Execution board showed no truthful do-now packet inside the active short review window and still listed NxCode as a non-runtime-sendable publisher blocker.",
+      "Official NxCode troubleshooting docs expose support@nxcode.io as a public contact path.",
+      "After the repair, the refreshed discovery artifact now includes support@nxcode.io and the execution board only lists ctxt.dev / Signum as still non-runtime-sendable."
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "files_changed": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/primary_repo_flat_contact_discovery.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_primary_repo_flat_contact_discovery.py"
+    ],
+    "artifacts_refreshed": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json",
+      "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md",
+      "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md"
+    ],
+    "verification_commands": [
+      "python3 -m unittest agents.marketing.tests.test_primary_repo_flat_contact_discovery agents.marketing.tests.test_distribution_lane_executor_contact_suggestion -q",
+      "python3 agents/marketing/primary_repo_flat_contact_discovery.py",
+      "python3 - <<'PY' ... distribution_lane_executor._write_primary_repo_flat_contact_handoff_packet(...) ; distribution_lane_executor._write_marketing_execution_board(...) ... PY"
+    ]
+  },
+  "expected_outcome": "When the short hold expires after 2026-05-25T07:20:16+02:00, the post-hold marketer rerun has two direct-email-backed publisher targets (NxCode and TIMEWELL) instead of one.",
+  "measurement_window": {
+    "review_at": "2026-05-25T07:20:16+02:00",
+    "success_metric": "Post-hold execution surfaces NxCode or TIMEWELL as a truthful email-backed publisher lane or converts one of them into a real Codeberg-first outreach attempt.",
+    "kill_condition": "If the post-hold rerun still cannot produce a truthful executable publisher lane after this repair, escalate immediately to another distribution architecture repair instead of logging another idle hold."
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "timestamp": "2026-05-26T12:31:10+02:00",
+  "type": "reddit_lane_truth_repair",
+  "title": "Repair stale Reddit blockers and fail closed on weak-fit threads",
+  "ok": true,
+  "status": "repaired_and_verified",
+  "live_external_action": false,
+  "outcome_ready": true,
+  "goal": "Improve the odds of truthful Codeberg-primary Reddit execution after the hold window by removing fake blockers and fake opportunities.",
+  "shared_findings_reused": [
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "drafts/marketing_execution_board_latest.md",
+    "seo-reports/reddit_monitor_latest.md",
+    "agents/marketing/logs/reddit_autopost_state.json",
+    "agents/marketing/logs/reddit_next_window_bodies.json"
+  ],
+  "changes": [
+    {
+      "path": "agents/marketing/reddit_retrospective.py",
+      "summary": "Recent-window analysis now ignores stale Reddit posts older than 96 hours instead of freezing the lane on week-old repetition history."
+    },
+    {
+      "path": "agents/marketing/reddit_autopost.py",
+      "summary": "Autopost selection now fails closed when only medium-low mention-fit threads exist, returning weak_fit_only_skip instead of forcing a product mention and misclassifying it as a positioning failure."
+    },
+    {
+      "path": "agents/marketing/tests/test_reddit_retrospective.py",
+      "summary": "Added regression coverage for stale-post exclusion from the recent Reddit repetition window."
+    },
+    {
+      "path": "agents/marketing/tests/test_reddit_autopost.py",
+      "summary": "Added regression coverage proving medium-low-only Reddit opportunities are not treated as postable marketing lanes."
+    }
+  ],
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_reddit_retrospective agents.marketing.tests.test_reddit_autopost agents.marketing.tests.test_reddit_watchdog -q",
+    "watchdog": "python3 agents/marketing/reddit_watchdog.py",
+    "results": [
+      "All targeted tests passed.",
+      "reddit_retrospective.py regenerated analysis with recent_window_count=0 and repeated_openings=[] for stale history.",
+      "marketing_workflow_audit.py regenerated audit without reddit_style_repetition failure state.",
+      "reddit_autopost.py returned weak_fit_only_skip for the current 2026-05-26 11:19 monitor report.",
+      "reddit_watchdog.py now reports autopost_attempted with weak_fit_only_skip instead of a false positioning_blocked error."
+    ]
+  },
+  "current_truth": {
+    "reddit_monitor_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-26_1119.md",
+    "reddit_lane_state": "weak_fit_only_skip",
+    "why_not_posted": "The current four shortlisted Reddit threads are discussion-worthy but only medium-low mention fit, so a Codeberg-primary product mention would be unnatural and low-integrity.",
+    "next_best_effect": "The post-hold rerun can now distinguish real Reddit opportunities from weak-fit chatter instead of burning slots on false blockers or forced copy."
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-05-26T20:24:32.351522",
+  "type": "measurement_hold_skip_reuse_repair",
+  "goal": "Stop fake-progress churn during active measurement holds by reusing the current skip artifact when hold truth is unchanged.",
+  "findings": [
+    "The current hold window already had repeated measurement_hold_skip logs inside the same unchanged review window.",
+    "distribution_lane_latest.md says there is no truthful do-now packet before 2026-05-26T20:55:18, so extra skip logs add noise instead of improving odds of adoption movement."
+  ],
+  "changes": [
+    "Added run._latest_measurement_hold_skip_log() to locate a matching skip artifact in the same active hold window.",
+    "Changed run._write_measurement_hold_skip_log() to reuse that artifact when source_log and hold_until still match.",
+    "Added regression tests for reuse-on-same-window and rewrite-on-truth-change behavior."
+  ],
+  "files_changed": [
+    "agents/marketing/run.py",
+    "agents/marketing/tests/test_run_repair_mode.py"
+  ],
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_write_measurement_hold_skip_log_reuses_matching_log_in_same_window agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_write_measurement_hold_skip_log_writes_new_when_hold_truth_changes agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_main_reuses_existing_distribution_architecture_guard_pause_when_truth_is_unchanged -v",
+    "result": "OK"
+  },
+  "expected_outcome": "Active hold windows stop generating duplicate skip artifacts unless the hold truth materially changes.",
+  "measurement_window": "Next active measurement-hold run inside the same hold window."
+}

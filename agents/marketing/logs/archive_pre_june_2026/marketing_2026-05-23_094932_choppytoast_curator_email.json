@@ -1,0 +1,12 @@
+{
+  "timestamp_utc": "2026-05-23T09:49:32.376919+00:00",
+  "action": "curator_email_outreach",
+  "status": "sent",
+  "channel": {
+    "recipient": "choppy.young@gmail.com",
+    "subject": "Suggestion for AI Coding Tools Directory 2026: Ralph Workflow",
+    "smtp_host": "smtp.ionos.com",
+    "smtp_port": 587
+  },
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_choppytoast_curator_email.txt"
+}

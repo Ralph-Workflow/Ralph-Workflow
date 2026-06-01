@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-06-01T06:38:30",
+  "checks": {
+    "pypi_api": {
+      "status": "live",
+      "version": "0.8.8",
+      "upload_time": "2026-05-31T00:37:23",
+      "has_codeberg_link": true,
+      "has_github_link": true,
+      "codeberg_is_primary": true,
+      "blocker": false,
+      "note": "v0.8.8 is live on PyPI. Codeberg CTA present: True"
+    },
+    "stackexchange_api": {
+      "status": "live",
+      "quota_remaining": 281,
+      "quota_max": 300,
+      "quota_pct": 93.7,
+      "blocker": false,
+      "note": "StackExchange API: 281/300 remaining"
+    },
+    "codeberg_repo": {
+      "status": "live",
+      "stars": 12,
+      "watchers": 2,
+      "forks": 2,
+      "open_issues": 4,
+      "blocker": false
+    },
+    "github_mirror": {
+      "status": "live",
+      "stars": 1,
+      "watchers": 1,
+      "forks": 0,
+      "open_issues": 0,
+      "blocker": false
+    },
+    "blog_sitemap": {
+      "status": "live",
+      "total_urls": 102,
+      "blog_urls": 45,
+      "blocker": false,
+      "note": "Sitemap: 102 URLs, 45 blog posts"
+    },
+    "environment": {
+      "gh_auth": {
+        "status": "blocked",
+        "detail": "You are not logged into any GitHub hosts. To log in, run: gh auth login",
+        "blocker": true
+      },
+      "smtp": {
+        "status": "blocked",
+        "blocker": true,
+        "note": "SMTP_USER env var not set"
+      },
+      "pypi_token": {
+        "status": "blocked",
+        "blocker": true,
+        "note": "PYPI_TOKEN env var not set. (PyPI v0.8.8 IS live \u2014 this is checked separately by check_pypi())"
+      }
+    }
+  },
+  "summary": {
+    "actual_blockers": [
+      "env:gh_auth",
+      "env:smtp",
+      "env:pypi_token"
+    ],
+    "verified_live": [
+      "pypi_api",
+      "stackexchange_api",
+      "codeberg_repo",
+      "github_mirror",
+      "blog_sitemap"
+    ],
+    "total_checks": 6,
+    "blocker_count": 3,
+    "live_count": 5
+  },
+  "cross_ref": {
+    "pypi_still_listed_as_blocked": false,
+    "blocker_summary_synced": true
+  }
+}

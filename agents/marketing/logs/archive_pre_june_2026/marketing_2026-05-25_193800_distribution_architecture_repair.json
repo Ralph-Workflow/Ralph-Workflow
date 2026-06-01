@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-05-25T19:38:00",
+  "type": "distribution_architecture_repair",
+  "channel": "distribution_architecture_repair",
+  "target": "marketing execution board short-window release fallback",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_193800_distribution_architecture_repair.md",
+  "verification": {
+    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md",
+    "board_targets": [],
+    "repair_scope": "execution_board_short_window_release_fallback"
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_193800_distribution_architecture_repair.md",
+    "summary": "Recovered short review-window release visibility on the canonical execution board during distribution_architecture_repair runs."
+  },
+  "why_this_action": {
+    "summary": "The board stayed empty without exposing when short-window congestion clears, so the next loop needed a runtime repair instead of another hold/guard churn.",
+    "targets_prepared": []
+  }
+}

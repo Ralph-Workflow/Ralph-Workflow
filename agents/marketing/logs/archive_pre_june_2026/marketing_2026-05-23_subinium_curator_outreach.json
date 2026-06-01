@@ -1,0 +1,47 @@
+{
+  "timestamp_utc": "2026-05-23T16:46:57.879366+00:00",
+  "action": "subinium_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "subinium / awesome-claude-code",
+    "target_surface": "https://github.com/subinium/awesome-claude-code",
+    "recipient": "subinium@gmail.com",
+    "contact_source": "public contact info on https://ansubin.com/about/ tied to repo owner subinium",
+    "subject": "Suggested awesome-claude-code entry: Ralph Workflow",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "suggested_entry": "Ralph Workflow — free and open-source autonomous coding workflow orchestrator for Claude Code/Codex-style runs that aims to hand back finished, tested code ready to review",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/subinium-awesome-claude-code-email.txt",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_164657_subinium_curator_email.json"
+  },
+  "why_this_action": "Codeberg adoption is still flat, same-family directory and curator bursts had already been reset, and awesome-claude-code is a fresh high-fit Claude Code ecosystem list with a live Agent Orchestration section and direct maintainer contact. Sending a Codeberg-primary inclusion request here was the strongest executable reset target available right now.",
+  "shared_findings_reused": [
+    "MARKETING_SELF_IMPROVEMENT.md: own outcomes and replace stale tactics with real action",
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and proof-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, and why now",
+    "ADOPTION_FUNNEL_NEXT.md: current need is qualified traffic plus stronger free-use framing",
+    "adoption_metrics_latest.json: Codeberg remains flat and is still the primary success gate",
+    "market_intelligence_latest.json: reused canonical positioning truths and orchestration framing",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "distribution_reset_targets_latest.json: this target came from the fresh reset queue",
+    "outreach-log.md: verified this target had not already been contacted"
+  ],
+  "verification": {
+    "repo_readme_checked": true,
+    "repo_contains_ralph_workflow_listing": false,
+    "target_section_confirmed": "## Agent Orchestration",
+    "maintainer_contact_found": "subinium@gmail.com",
+    "contact_source_checked": "https://ansubin.com/about/",
+    "email_send_log_status": "sent",
+    "helper_compiles": true,
+    "helper_compile_command": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply, merged listing, or another qualified backlink path that sends evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or inclusion signal arrives by 2026-06-06, retire this target and move to a different untouched reset target instead of re-sending the same pitch."
+  }
+}

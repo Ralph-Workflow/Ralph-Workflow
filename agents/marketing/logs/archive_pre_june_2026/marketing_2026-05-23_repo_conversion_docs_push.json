@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-05-23T19:05:00+02:00",
+  "run_type": "marketing-conversion-surface-push",
+  "chosen_action": {
+    "type": "repo_conversion_docs_push",
+    "channel": "primary_repo_conversion",
+    "title": "Pushed tighter first-run conversion docs to Ralph Workflow repo",
+    "commit": "6ec5dd3d",
+    "primary_repo": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "mirror_repo": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+  },
+  "why_this_action": {
+    "summary": "Primary repo adoption is flat and outreach lanes are saturated. The strongest executable move was to improve the top-level repo surfaces that convert qualified visitors into a real first run and Codeberg follow-through.",
+    "shared_findings_used": [
+      "ADOPTION_FUNNEL_NEXT.md: conversion from interest to free use is the bottleneck",
+      "marketing_workflow_audit_latest.json: primary repo movement is flat and same-family outreach is saturated",
+      "FOUR_MARKETING_QUESTIONS.md: top-level messaging must answer what it is, who it is for, why it is different, and why use it now"
+    ]
+  },
+  "result": {
+    "status": "pushed",
+    "ok": true,
+    "live_external_action": true,
+    "files": ["README.md", "START_HERE.md"],
+    "verification": [
+      "relative-link check passed for README.md, START_HERE.md, docs/README.md",
+      "git push origin main succeeded",
+      "git push github main succeeded"
+    ]
+  },
+  "measurement": {
+    "expected_outcome": "Clearer qualified-repo conversion into first-run attempts and stronger Codeberg-first public follow-through",
+    "review_at": "2026-05-30T19:05:00+02:00",
+    "success_signals": [
+      "Codeberg stars_delta_window > 0",
+      "Codeberg watchers_delta_window > 0",
+      "New issue or feedback citing first-run docs"
+    ],
+    "replacement_condition": "If primary repo adoption is still flat after the review window, treat this docs push as insufficient and switch to a different executable demand-capture lane."
+  }
+}

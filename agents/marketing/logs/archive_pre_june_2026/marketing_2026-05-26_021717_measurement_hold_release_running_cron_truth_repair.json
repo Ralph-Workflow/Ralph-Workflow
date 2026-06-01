@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-05-26T02:17:17.429667",
+  "type": "measurement_hold_release_running_cron_truth_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "shared_findings_reused": [
+    "distribution_lane_latest.json: short-window congestion now clears at 2026-05-26T03:05:18",
+    "marketing_execution_board_latest.md: no truthful do-now packet exists before the blocker clears",
+    "marketing_workflow_audit_latest.json: current runtime activity is guard_pause and should not be mistaken for outcome movement",
+    "openclaw cron list --json: stale marketing-measurement-hold-release job 8edd3351-0a6f-48bc-9dc2-619c3cc5c0fe was still marked running even though it targeted 2026-05-25T23:07:41Z"
+  ],
+  "summary": "Patched hold-release scheduling to treat stale running one-shot release jobs as conflicting live jobs, then removed the stale running rerun and rescheduled the post-hold marketer wake for the current truthful release time.",
+  "result": {
+    "status": "scheduled",
+    "scheduled_run_at": "2026-05-26T03:05:18",
+    "job_id": "d45c668a-62a6-41cf-85ba-74db7acf1148",
+    "job_name": "marketing-measurement-hold-release",
+    "removed_stale_jobs": [
+      {
+        "job_id": "8edd3351-0a6f-48bc-9dc2-619c3cc5c0fe",
+        "job_name": "marketing-measurement-hold-release",
+        "scheduled_run_at": "2026-05-25T23:07:41.000Z",
+        "status": "running"
+      }
+    ],
+    "verification": {
+      "code_changes": [
+        "agents/marketing/distribution_lane_executor.py",
+        "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+      ],
+      "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_measurement_hold_scheduler_removes_stale_running_release_job_before_reschedule agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_measurement_hold_scheduler_removes_stale_live_release_job_before_adding_new_one agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_measurement_hold_scheduler_ignores_stale_release_log_without_live_job -q",
+      "scheduler_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_021717_measurement_hold_release_cron.json"
+    }
+  }
+}

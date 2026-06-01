@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-05-24T05:12:49",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "measurement_hold_cooldown_repair",
+    "channel": "marketing_loop_runtime",
+    "title": "Respect active measurement-hold windows before rerunning heavy marketing work",
+    "targets": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/run.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_run_repair_mode.py"
+    ]
+  },
+  "why_this_action": {
+    "summary": "The loop could choose measurement_hold and then wake up again minutes later, redoing expensive work inside the same short review window. A real cooldown makes the hold enforceable.",
+    "shared_findings_used": [
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/marketing_2026-05-24_measurement_hold_execution.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.md"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "verification": [
+      "python3 -m unittest agents.marketing.tests.test_run_repair_mode",
+      "python3 -m py_compile agents/marketing/run.py",
+      "python3 - <<'PY' ... run._latest_measurement_hold_window(datetime(2026,5,24,4,58,0)) ... PY"
+    ],
+    "simulated_hold_window": {
+      "probe_time": "2026-05-24T04:58:00",
+      "hold_started_at": "2026-05-24T04:51:00",
+      "hold_until": "2026-05-24T05:51:00",
+      "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_measurement_hold_execution.json"
+    }
+  },
+  "expected_outcome": {
+    "primary_goal": "stop repeated cron churn during active measurement-hold windows",
+    "measurement_window": "effective immediately on the next marketing loop run",
+    "replacement_condition": "If a new live external marketing action lands after the hold, the cooldown automatically clears and the loop can run normally again."
+  }
+}

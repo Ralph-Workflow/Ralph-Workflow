@@ -1,0 +1,49 @@
+{
+  "timestamp": "2026-05-25T10:23:54+02:00",
+  "run_type": "marketing-live-action",
+  "chosen_action": {
+    "type": "primary_repo_flat_contact_manual_delivery_refresh",
+    "channel": "current_chat",
+    "title": "Deliver materially refreshed primary-repo-flat publisher contact packet for immediate manual execution",
+    "packet": "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md"
+  },
+  "why_this_action": {
+    "summary": "The current Codeberg-first publisher packet materially changed again on 2026-05-25 with fresh email-backed publisher targets, so re-delivering it to the current chat is truthful follow-through rather than duplicate packet churn.",
+    "verification": [
+      "marketing_2026-05-25_primary_repo_flat_contact_manual_delivery_refresh.json delivered the earlier 2026-05-25 packet state centered on ctxt.dev / Signum, NxCode, and TIMEWELL.",
+      "drafts/primary_repo_flat_contact_handoff_packet_latest.md was regenerated at 2026-05-25T10:15:00 with a new lead set centered on TIMEWELL and Codivox after fresh primary_repo_flat_contact_discovery_latest.json findings surfaced Toolradar, TLDL, and Codivox.",
+      "marketing_execution_board_latest.md is stale relative to that 10:11 discovery refresh, so this delivery also closes the truth gap before the shared board is regenerated.",
+      "marketing_2026-05-25_primary_repo_flat_contact_handoff_packet_execution.json and marketing_2026-05-25_101911_primary_repo_flat_contact_handoff_follow_through.json mark the refreshed packet as prepared/follow-through, not yet delivered in this new state."
+    ],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json",
+      "market_intelligence_latest.json",
+      "marketing_workflow_audit_latest.json",
+      "distribution_lane_latest.json",
+      "marketing_execution_board_latest.md",
+      "primary_repo_flat_contact_discovery_latest.json",
+      "reddit_post_analysis_latest.json"
+    ],
+    "targets_prepared": [
+      "TIMEWELL",
+      "Codivox"
+    ]
+  },
+  "result": {
+    "status": "delivered_to_current_chat",
+    "ok": true,
+    "live_external_action": false,
+    "delivery_surface": "current_chat",
+    "artifact_reused": "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md",
+    "outcome_ready": true,
+    "manual_handoff_required": true,
+    "next_review_at": "2026-06-01T10:23:54+02:00",
+    "citation_review_at": "2026-06-08T10:23:54+02:00"
+  },
+  "expected_outcome": "Immediate manual execution of at least one fresh publisher-contact request using the updated Codeberg-first packet, followed by attributable repo inspection or citation movement.",
+  "measurement_window": {
+    "review_at": "2026-06-01T10:23:54+02:00",
+    "success_metric": "At least one TIMEWELL or Codivox contact attempt is sent from the refreshed packet, followed by any attributable qualified repo inspection or Codeberg adoption movement.",
+    "kill_condition": "If still unsent by the review checkpoint, replace this lane instead of refreshing the same packet again."
+  }
+}

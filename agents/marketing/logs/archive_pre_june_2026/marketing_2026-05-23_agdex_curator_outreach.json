@@ -1,0 +1,45 @@
+{
+  "timestamp_utc": "2026-05-23T02:27:05Z",
+  "action": "agdex_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "AgDex",
+    "target_surface": "https://agdex.ai/",
+    "recipient": "agdex.ai@gmail.com",
+    "subject": "Suggested AgDex listing: Ralph Workflow",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com",
+    "suggested_entry": "Ralph Workflow — free open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.",
+    "suggested_fit": [
+      "AI Agents",
+      "Coding Agents",
+      "Workflow Automation"
+    ],
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_agdex_curator_email.txt",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_022705_agdex_curator_email.json"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, owned-content volume is already saturated, Apollo is in a live measurement window, and AgDex exposed a fresh aligned AI-agent directory lane with a visible public contact email and no prior Ralph Workflow outreach logged. That made a Codeberg-primary curator email a stronger same-run move than more internal prep.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and proof-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, why now",
+    "ADOPTION_FUNNEL_NEXT.md: bias toward proof-led conversion and concrete free-use framing instead of more generic posting",
+    "market_intelligence_latest.json: reused positioning truths and competitor-aware framing",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "channel_discovery.json: existing easy-submit directory lanes are mostly spent or in measurement, so a fresh directory/contact lane is higher leverage"
+  ],
+  "verification": {
+    "agdex_probe": "Homepage fetched successfully and exposed agdex.ai@gmail.com as a public contact address.",
+    "email_send_log_status": "sent",
+    "helper_compiles": true,
+    "helper_compile_command": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply, inclusion in AgDex, or a live AgDex citation/backlink pointing evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or listing signal arrives by 2026-06-06, replace this lane with a different untouched curator/directory surface instead of re-sending the same pitch."
+  }
+}

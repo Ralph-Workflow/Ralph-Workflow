@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-05-26T05:48:12+02:00",
+  "run_type": "marketing-active-loop",
+  "chosen_action": {
+    "type": "apollo_runtime_blocker_review_delivery",
+    "channel": "apollo_outreach_follow_through",
+    "title": "Surface the Apollo runtime-blocker review packet instead of another empty-board pause",
+    "artifacts": [
+      "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_apollo_runtime_blocker_review_packet.md",
+      "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/apollo_status.json",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/apollo_sequence_status_latest.json"
+    ]
+  },
+  "why_this_action": {
+    "summary": "The execution board names the Apollo runtime-blocker review packet as the single best executable asset still waiting. Current short-window congestion blocks another truthful live outbound action, and this packet had not yet been delivered in the current review window.",
+    "shared_findings_used": [
+      "marketing_execution_board_latest.md",
+      "distribution_lane_latest.json",
+      "marketing_workflow_audit_latest.json",
+      "apollo_status.json",
+      "apollo_sequence_status_latest.json",
+      "adoption_metrics_latest.json",
+      "reddit_post_analysis_latest.json",
+      "market_intelligence_latest.json",
+      "outreach-log.md"
+    ],
+    "verification": {
+      "packet_already_delivered_in_current_review_window": false,
+      "evidence": [
+        "execution board lists the Apollo runtime-blocker review packet as do-now asset",
+        "outreach-log.md contains no prior delivery entry for this packet",
+        "recent repair logs show board surfacing and Browserless truth repair, but not packet delivery"
+      ]
+    }
+  },
+  "result": {
+    "status": "delivered",
+    "ok": true,
+    "live_external_action": false,
+    "outcome_ready": true,
+    "delivery_surface": "current_chat_final_reply",
+    "packet_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_apollo_runtime_blocker_review_packet.md",
+    "summary": "Delivered the current Apollo runtime-blocker review packet to the active chat so the due Codeberg-first outbound lane stays visible without pretending the Cloudflare-blocked Apollo runtime is live."
+  }
+}

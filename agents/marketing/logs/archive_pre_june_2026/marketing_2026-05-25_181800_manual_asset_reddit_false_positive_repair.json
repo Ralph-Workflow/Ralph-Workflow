@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-05-25T18:18:00+02:00",
+  "run_type": "marketing-process-repair",
+  "chosen_action": {
+    "type": "manual_asset_reddit_false_positive_repair",
+    "channel": "internal_marketing_runtime",
+    "title": "Repair manual-outreach Reddit false-positive classification",
+    "artifacts": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_distribution_lane_selector_repair_pause.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+    ]
+  },
+  "why_this_action": {
+    "summary": "The execution board was still vulnerable to fake-progress drift because manual outreach assets could be misclassified as Reddit discussion assets from summary-only wording.",
+    "shared_findings_used": [
+      "marketing_execution_board_latest.md",
+      "distribution_lane_latest.json",
+      "distribution_lane_latest.md",
+      "marketing_2026-05-25_reddit_discussion_manual_delivery.json",
+      "adoption_metrics_latest.json",
+      "market_intelligence_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "artifact_reused": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
+    "verification": {
+      "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause agents.marketing.tests.test_distribution_lane_executor_measurement_hold -q",
+      "tests_result": "passed",
+      "execution_board_state": "no_truthful_do_now_packet"
+    }
+  },
+  "expected_outcome": "Prevent the active marketing loop from wasting slots on fake Reddit/community follow-through during the current hold window and improve the odds of the next truthful post-hold lane.",
+  "measurement_window": {
+    "review_at": "2026-05-25T23:07:41+02:00",
+    "success_metric": "Execution board remains truthful and does not resurface summary-only false-positive community discussion assets before short-window congestion clears.",
+    "kill_condition": "If the board still resurfaces a fake manual community discussion asset in this review window, escalate into broader execution-board/selector fingerprint repair."
+  }
+}

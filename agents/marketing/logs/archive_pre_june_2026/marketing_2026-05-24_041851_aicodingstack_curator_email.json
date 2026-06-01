@@ -1,0 +1,12 @@
+{
+  "timestamp_utc": "2026-05-24T04:18:51.759422+00:00",
+  "action": "curator_email_outreach",
+  "status": "sent",
+  "channel": {
+    "recipient": "arielyang@gmail.com",
+    "subject": "Suggested AI Coding Stack CLI listing: Ralph Workflow",
+    "smtp_host": "smtp.ionos.com",
+    "smtp_port": 587
+  },
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-24/ai-coding-stack-email.txt"
+}

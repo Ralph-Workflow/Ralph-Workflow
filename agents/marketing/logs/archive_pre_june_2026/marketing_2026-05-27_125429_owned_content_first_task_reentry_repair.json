@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-05-27T12:54:29+02:00",
+  "action": "owned_content_first_task_reentry_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "current_bottleneck": "conversion_to_free_use",
+  "why_this_action": "The hold window is still active until 2026-05-27T14:26:29, so another live outbound action would mostly blur measurement. The strongest executable move was to repair the owned-content source list so the next truthful slot can publish the first-task guide instead of stalling after the recently published Telegraph guides.",
+  "shared_findings_reused": [
+    "ADOPTION_FUNNEL_NEXT.md: first-task guidance is the highest-priority conversion asset closest to free use",
+    "marketing_workflow_audit_latest.json: current bottleneck is conversion_to_free_use",
+    "distribution_lane_latest.json: owned_content is the truthful lane during the current hold window",
+    "marketing_execution_board_latest.md: no do-now external handoff packet is truthful before the short review window clears"
+  ],
+  "changed_files": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_owned_content_priority.py"
+  ],
+  "new_owned_content_priority_order": [
+    "content/guides/good_unattended_task.md",
+    "docs/first-task-guide.md",
+    "content/guides/review_ai_coding_output_before_merge.md",
+    "content/guides/autonomous_ai_workflows_production_reliability.md"
+  ],
+  "expected_outcome": "When the next truthful owned-content slot opens, Telegraph publication can move directly into the Codeberg-first first-task guide instead of nooping after the existing proof posts, improving the odds of converting interest into a real first run.",
+  "measurement_window": "Apply on the next owned-content execution after the current short review-window hold clears.",
+  "verification": {
+    "tests": [
+      "python3 -m unittest agents.marketing.tests.test_owned_content_priority -q"
+    ],
+    "content_check": "docs/first-task-guide.md parses as a Telegraph candidate with title 'First Task Guide: Pick One Backlog Task You Can Judge Honestly' and body length 3404",
+    "result": "passed"
+  }
+}

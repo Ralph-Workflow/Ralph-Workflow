@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-05-23T23:50:05+02:00",
+  "action": "directory_confirmation_truthfulness_repair",
+  "channel": "directory_confirmation",
+  "summary": "Repaired the backlink confirmation runtime so 200-status placeholder pages no longer count as live listings, then reran the snapshot. The corrected truth is 2 live listings (SaaSHub and ToolWise), while AIToolboard/NavAI remain pending and Google indexing checks are currently rate-limited.",
+  "why_this_action": "The current audit and distribution brief both said directory confirmation was the highest-leverage active lane. Before trusting that snapshot, a live check showed a false positive: AIToolboard returned HTTP 200 while still rendering 'Tool Not Found'. Fixing that measurement bug was higher leverage than piling on another submission or outreach action because the loop was about to reuse bad proof and misread its own trust signals.",
+  "shared_findings_used": [
+    "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+    "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+    "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/adoption_metrics_latest.md",
+    "agents/marketing/logs/reddit_post_analysis.md",
+    "agents/marketing/logs/distribution_lane_latest.md",
+    "agents/marketing/logs/backlink_status_latest.json"
+  ],
+  "files_changed": [
+    "agents/marketing/backlink_status.py",
+    "agents/marketing/tests/test_backlink_status.py",
+    "agents/marketing/logs/backlink_status_latest.json"
+  ],
+  "repairs": [
+    "Added visible-text listing heuristics so raw HTML noise does not trigger false '404/not found' matches from scripts while real placeholder pages still fail closed.",
+    "Prevented 200-status placeholder pages like AIToolboard's 'Tool Not Found' response from counting as live listings.",
+    "Prevented transient 'loading...' shells without product evidence from counting as live listings.",
+    "Changed Google indexing summary so HTTP 429 rate limits are recorded as unavailable instead of silently treated as not indexed."
+  ],
+  "verification": [
+    "python3 -m unittest agents.marketing.tests.test_backlink_status -v",
+    "python3 agents/marketing/backlink_status.py"
+  ],
+  "outcome": {
+    "directories_with_live_listings": 2,
+    "live_listings": [
+      "https://saashub.com/ralph-workflow",
+      "https://toolwise.ai/tools/ralph-workflow"
+    ],
+    "false_positive_removed": [
+      "https://aitoolboard.com/tools/ralph-workflow"
+    ],
+    "still_pending": [
+      "https://nav-ai.net/tools/ralph-workflow",
+      "https://aitoolsindex.org/tools/ralph-workflow",
+      "https://toolshelf.io/tool/ralph-workflow"
+    ],
+    "google_indexing": {
+      "queries_indexed": 0,
+      "queries_unavailable": 14,
+      "reason": "HTTP 429 from Google during this run"
+    }
+  },
+  "expected_outcome": "Future marketing runs will reuse truthful third-party proof instead of overstating live distribution, and the next curator/comparison packets can safely cite the two confirmed live listings while avoiding fake progress on pending ones.",
+  "kill_condition": "If the confirmation snapshot still produces false positives on 200 placeholder pages, add stricter directory-specific content checks before the next distribution reuse pass."
+}

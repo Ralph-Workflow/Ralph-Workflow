@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-05-25T17:46:00+02:00",
+  "type": "REPAIRED / CONVERSION_REPAIR",
+  "target": "Ralph-Site homepage",
+  "inputs": [
+    "seo-reports/2026-05-25.md",
+    "seo-reports/reddit_monitor_2026-05-25_1613.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "outreach-log.md"
+  ],
+  "changes": {
+    "page_source": "Ralph-Site/app/views/pages/home.html.erb",
+    "tests": "Ralph-Site/spec/requests/pages_spec.rb",
+    "title": "Unattended coding agent",
+    "meta_description_length": 152,
+    "keyword_gaps_added": [
+      "Claude Code unattended workflows",
+      "AI agent workflow composer"
+    ]
+  },
+  "verification": {
+    "file_inspection": true,
+    "bundle_specs": "blocked",
+    "bundle_error": "Bundler::GemNotFound"
+  },
+  "expected_outcome": "Shorter title, length-safe description, and stronger homepage keyword coverage for current search intent.",
+  "measurement_window_end": "2026-06-01"
+}

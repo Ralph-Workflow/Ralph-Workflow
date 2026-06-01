@@ -1,0 +1,46 @@
+{
+  "timestamp_utc": "2026-05-23T05:59:42Z",
+  "action": "aipowerstacks_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "AIPowerStacks",
+    "target_surface": "https://www.aipowerstacks.com/submit",
+    "recipient": "hello@aipowerstacks.com",
+    "contact_source": "official about page public contact email",
+    "subject": "Suggested AIPowerStacks listing: Ralph Workflow",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com",
+    "suggested_entry": "Ralph Workflow \u2014 free and open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_aipowerstacks_curator_email.txt",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_055942_aipowerstacks_curator_email.json"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, Codeberg adoption is flat, Apollo is already in a measurement window until 2026-05-30, Reddit remains structurally blocked, and AIPowerStacks is a fresh developer-facing AI tools directory with a strong workflow/comparison audience. Its public submit surface currently requires account login, but the official about page exposes a legitimate editorial contact email, so direct curator outreach was the highest-leverage same-run write path available without creating a new external account.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and proof-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, why now",
+    "ADOPTION_FUNNEL_NEXT.md: current need is qualified traffic plus stronger free-use framing",
+    "adoption_metrics_latest.json: Codeberg remains flat and is still the primary success gate",
+    "market_intelligence_latest.json: reused canonical positioning truths and developer-tool framing",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "outreach-log.md: verified AIPowerStacks had not already been contacted",
+    "channel_discovery.json: AIPowerStacks submit page is live but login-gated from this runtime"
+  ],
+  "verification": {
+    "submit_page_status": 200,
+    "submit_surface": "https://www.aipowerstacks.com/submit",
+    "submit_surface_state": "login_required",
+    "fallback_contact": "hello@aipowerstacks.com from https://www.aipowerstacks.com/about",
+    "email_send_log_status": "sent",
+    "helper_compiles": true,
+    "helper_compile_command": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply, published AIPowerStacks listing, comparison inclusion, or other qualified backlink path that sends evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or listing signal arrives by 2026-06-06, replace this lane with a different untouched directory/curator surface instead of re-sending the same pitch."
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-26T06:14:57.808654",
+  "type": "guard_reuse_fingerprint_repair",
+  "chosen_action": {
+    "type": "guard_reuse_fingerprint_repair",
+    "channel": "distribution_architecture_runtime",
+    "title": "Make guard-pause reuse actually work during unchanged empty-board windows",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_061457_guard_reuse_fingerprint_repair.md"
+  },
+  "why_this_action": {
+    "summary": "The active loop kept emitting fresh distribution_architecture_guard_pause execution logs inside the same unchanged review window because legacy guard logs had no execution-board fingerprint and the staleness check treated auto-refreshed latest artifacts as semantic changes.",
+    "supporting_reasons": [
+      "Current execution board still says no truthful do-now packet exists before 2026-05-26T08:57:00.",
+      "The post-hold rerun is already scheduled, so repeated guard-pause churn before then is fake progress.",
+      "A durable reuse fix improves the odds that the next active-loop pass reuses truth instead of minting another fresh pause artifact."
+    ],
+    "shared_findings_used": [
+      "distribution_lane_latest.json: current lane is distribution_architecture_guard_pause with unchanged guard summary",
+      "marketing_execution_board_latest.md: no truthful do-now packet before 2026-05-26T08:57:00",
+      "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "summary": "Patched guard execution logging to persist execution-board fingerprints, taught reuse lookup to accept matching legacy guard logs by semantic reason, and removed the mtime-based stale check that was invalidated by auto-refreshed latest artifacts.",
+    "files_updated": [
+      "agents/marketing/run.py",
+      "agents/marketing/tests/test_run_repair_mode.py"
+    ],
+    "tests": "python3 -m unittest agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_latest_distribution_architecture_guard_execution_accepts_legacy_reason_match_without_fingerprint agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_distribution_architecture_guard_execution_stale_only_when_artifact_or_log_missing agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_main_reuses_existing_distribution_architecture_guard_pause_when_truth_is_unchanged -v",
+    "verification": {
+      "helper_lookup_now_reuses_current_guard": true,
+      "helper_lookup_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_distribution_architecture_guard_pause_execution.json"
+    },
+    "live_external_action": false,
+    "blocking_factors": []
+  }
+}

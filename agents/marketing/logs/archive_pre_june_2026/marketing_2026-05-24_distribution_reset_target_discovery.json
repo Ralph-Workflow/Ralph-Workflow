@@ -1,0 +1,81 @@
+{
+  "timestamp": "2026-05-24T01:31:00+02:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "distribution_reset_target_discovery",
+    "channel": "distribution_reset",
+    "title": "Distribution reset target discovery",
+    "artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_distribution_reset_target_discovery.md"
+  },
+  "why_this_action": {
+    "summary": "Converted the reset lane from a packet-only outcome into fresh untouched third-party backlink/citation targets so the next distribution run has real new execution options instead of saturated follow-through.",
+    "shared_findings_used": [
+      "market_intelligence_latest.json: comparison-led positioning and competitor adjacency",
+      "comparison_backlink_queue_latest.json: every prepared comparison page is already covered, so discovery had to expand the target universe",
+      "marketing_workflow_audit_latest.json: primary_repo_flat and same-family saturation mean the next move must be a different lane family",
+      "outreach-log.md: verified these domains were not already contacted or submitted"
+    ],
+    "constraints_respected": [
+      "Skipped net-new low-intent directory submissions during same-family overlap window",
+      "Skipped another curator-contact burst during active reply/backlink review windows",
+      "Kept Codeberg as the only primary CTA in discovered paths"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "outcome_ready": true,
+    "new_targets_count": 4,
+    "new_targets": [
+      {
+        "name": "Claude Code Alternatives",
+        "domain": "claude-code-alternatives.com",
+        "target_type": "comparison directory / direct listing",
+        "entry_path": "https://claude-code-alternatives.com/tool/create/",
+        "evidence": [
+          "Site ranks Claude Code alternatives and competitor pages relevant to Ralph Workflow positioning",
+          "Live submit form detected at /tool/create/"
+        ],
+        "next_path": "Manual submission or scripted form execution in a later non-overlap run",
+        "cta": "Codeberg primary, GitHub mirror"
+      },
+      {
+        "name": "AI IDE",
+        "domain": "aiide.dev",
+        "target_type": "AI coding tools directory / curator contact",
+        "entry_path": "https://aiide.dev/",
+        "evidence": [
+          "Homepage positions itself as an AI Coding Tools & AI IDE Directory",
+          "Live curator email surfaced in page HTML: support@aiide.dev"
+        ],
+        "next_path": "Curator email or manual listing suggestion in a later non-overlap run",
+        "cta": "Codeberg primary, GitHub mirror"
+      },
+      {
+        "name": "AI Coding Stack",
+        "domain": "aicodingstack.io",
+        "target_type": "community-maintained AI coding directory / metadata PR",
+        "entry_path": "https://aicodingstack.io/docs/getting-started",
+        "evidence": [
+          "Docs explicitly describe adding new tools via manifest files",
+          "Project repo linked from site: https://github.com/aicodingstack/aicodingstack.io"
+        ],
+        "next_path": "Prepare GitHub PR/manual handoff for manifests/clis.json when GitHub-auth path is available",
+        "cta": "Codeberg primary, GitHub mirror"
+      },
+      {
+        "name": "AI Resources",
+        "domain": "airesources.dev",
+        "target_type": "community-maintained AI resource directory / metadata PR",
+        "entry_path": "https://airesources.dev/category/agents/",
+        "evidence": [
+          "Site has an /Agents category adjacent to Ralph Workflow use cases",
+          "Project repo linked from site: https://github.com/catalinpit/airesources"
+        ],
+        "next_path": "Prepare GitHub PR/manual handoff for new agent entry when GitHub-auth path is available",
+        "cta": "Codeberg primary, GitHub mirror"
+      }
+    ]
+  }
+}

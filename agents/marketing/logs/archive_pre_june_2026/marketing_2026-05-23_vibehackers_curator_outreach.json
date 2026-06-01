@@ -1,0 +1,45 @@
+{
+  "timestamp_utc": "2026-05-23T08:39:26.011414+00:00",
+  "action": "vibehackers_curator_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "Vibehackers / AI coding tools comparison",
+    "contact": "team@vibehackers.io",
+    "source": "public team email on https://vibehackers.io and live comparison page at https://vibehackers.io/blog/ai-tools-comparison",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "subject": "Suggestion for your AI coding tools comparison: Ralph Workflow",
+    "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "mirror_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_vibehackers_curator_email.txt",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_083926_curator_email.json"
+  },
+  "why_this_action": "The live audit still says the bottleneck is distribution_and_message_to_primary_repo_conversion, Codeberg adoption is flat, Apollo is already inside its measurement window, and Reddit remains structurally weak. Vibehackers has a fresh 2026 AI coding tools comparison with the right evaluator audience, no existing Ralph Workflow mention, and a real public team email, so this was the strongest fresh Codeberg-primary distribution move I could actually execute right now.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and pain-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, why now",
+    "ADOPTION_FUNNEL_NEXT.md: push qualified traffic plus clearer free-use framing instead of more generic posting",
+    "market_intelligence_latest.json: reused canonical positioning truths and competitor-aware workflow framing",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "marketing_workflow_audit_latest.md: repair state still needs execution on primary repo movement",
+    "adoption_metrics_latest.json: Codeberg movement is still flat, so the action must target new qualified inbound paths",
+    "reddit_post_analysis.json: Reddit repetition risk remains active, so this run should favor a different distribution lane",
+    "agents/marketing/outreach-log.md: verified Vibehackers had not already been contacted"
+  ],
+  "verification": {
+    "comparison_page_checked": true,
+    "comparison_page_title": "OpenCode vs Cursor vs Claude Code vs Codex: AI Coding Tools Compared (2026)",
+    "repo_contains_ralph_workflow_listing": false,
+    "contact_found": "team@vibehackers.io",
+    "email_send_status": "sent",
+    "helper_compiles": true,
+    "helper_compile_command": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply or live Vibehackers mention/backlink pointing to the Codeberg primary repo",
+    "kill_condition": "If no reply or inclusion signal arrives by 2026-06-06, retire this target and spend the next fresh-action slot on a different untouched curator/comparison surface instead of re-sending the same pitch."
+  }
+}

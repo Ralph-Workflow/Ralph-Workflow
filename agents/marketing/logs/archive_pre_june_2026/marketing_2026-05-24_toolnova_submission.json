@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-05-24T01:32:44.736397+00:00",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "directory_submission",
+    "channel": "toolnova",
+    "title": "Fresh distribution execution: ToolNova submission",
+    "target": "ToolNova",
+    "submit_url": "https://toolnova.ai/submit-tool",
+    "submission_endpoint": "https://readdy.ai/api/form/d6p3mqp30mftb86r3u4g"
+  },
+  "why_this_action": {
+    "summary": "Used a fresh developer-facing AI tools directory with a live submit endpoint and an explicit AI Coding Tools category to place Ralph Workflow in front of coding-tool evaluators while keeping Codeberg as the primary destination.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg remains the primary success metric and is flat",
+      "marketing_workflow_audit_latest.json: current bottleneck is distribution and message to primary repo conversion",
+      "market_intelligence_latest.json: reusable positioning truths and comparison framing already exist",
+      "distribution_lane_latest.json: avoid duplicate curator/contact churn and prefer fresh executable demand-capture lanes",
+      "outreach-log.md: verified ToolNova had no prior submission or outreach entry"
+    ]
+  },
+  "result": {
+    "status": "submitted",
+    "ok": true,
+    "live_external_action": true,
+    "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "mirror_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "category": "AI Coding Tools",
+    "contact_email": "ken@hireaegis.com",
+    "http_status": 200,
+    "response_text_excerpt": "{\"code\":\"OK\",\"data\":null,\"meta\":{\"time\":1779586364655,\"request_id\":\"e0469f79-8dfe-45f6-9173-fcf3194defac\",\"message\":\"\",\"detail\":null}}",
+    "logo_source": "https://ralphworkflow.com/icon.png",
+    "review_by": "2026-06-07"
+  },
+  "expected_outcome": {
+    "goal": "Earn a fresh ToolNova listing that can send qualified AI coding tool traffic to the primary Codeberg repo.",
+    "measurement_window": "2026-05-24 to 2026-06-07",
+    "success_metric": "Live ToolNova listing or editorial follow-up plus eventual Codeberg traffic/adoption movement",
+    "replacement_condition": "If no listing evidence exists by 2026-06-07, treat ToolNova as non-converting and switch the next fresh run to a different demand-capture lane instead of another directory-family repeat."
+  }
+}

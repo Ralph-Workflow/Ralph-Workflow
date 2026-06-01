@@ -230,7 +230,7 @@ ACTIVE_REPAIR_WINDOW_STATUSES = {
 
 MEASUREMENT_HOLD_ACTION_TYPE = "measurement_hold_execution"
 MEASUREMENT_HOLD_COOLDOWN_MINUTES = 1440  # 24h — was 60 min, 3 holds per morning just noise
-MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H = 2  # if >2 holds in 24h, bypass entirely
+MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H = 1  # 2026-06-01: reduced 2→1. At 2, same flat-adoption reality persisted 48h before circuit-break.
 LIVE_EXTERNAL_STATUSES = {
     "executed",
     "sent",

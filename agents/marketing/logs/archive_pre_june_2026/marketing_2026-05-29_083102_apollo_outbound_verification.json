@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-05-29T08:30:01.492075+02:00",
+  "run_type": "marketing-verification",
+  "chosen_action": {
+    "type": "apollo_outbound_verification",
+    "channel": "apollo_outreach",
+    "title": "Apollo outbound verification"
+  },
+  "why_this_action": {
+    "summary": "Verify real live Apollo sequence state from the authenticated UI/API so managed outbound cannot stay stuck on launch-ready packet truth.",
+    "shared_findings_used": [
+      "apollo_sequence_status_latest.json: canonical Apollo state snapshot",
+      "marketing_workflow_audit_latest.json: managed outbound must prove usability before counting as progress",
+      "Apollo authenticated sequence detail UI/API: live Ralph Workflow sequence content and delivery stats"
+    ]
+  },
+  "result": {
+    "status": "verification_timeout",
+    "ok": false,
+    "live_external_action": false,
+    "outcome_ready": false,
+    "record_count": 758,
+    "sequence_name": "Ralph Workflow Seq",
+    "final_url": "https://app.apollo.io/#/sequences/69b1c2bad74f30001d57b003",
+    "needs_live_verification": false,
+    "evidence": [],
+    "notes": [
+      "Playwright timeout while verifying Apollo live sequence: Timeout 60000ms exceeded while waiting for event \"response\"",
+      "Refreshed dependent audit/board artifacts: apollo_sequence_status_latest, marketing_workflow_audit_latest, marketing_execution_board_latest."
+    ]
+  },
+  "post_verification_refresh": {
+    "ok": true,
+    "refreshed": [
+      "apollo_sequence_status_latest",
+      "marketing_workflow_audit_latest",
+      "marketing_execution_board_latest"
+    ],
+    "errors": []
+  }
+}

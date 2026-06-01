@@ -1,0 +1,12 @@
+{
+  "timestamp_utc": "2026-05-22T14:11:56.920412+00:00",
+  "action": "curator_email_outreach",
+  "status": "sent",
+  "channel": {
+    "recipient": "hello@qainsights.com",
+    "subject": "Suggestion for awesome-ai-tools: Ralph Workflow",
+    "smtp_host": "smtp.ionos.com",
+    "smtp_port": 587
+  },
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_qainsights_curator_email.txt"
+}

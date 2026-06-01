@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-05-27T09:03:29+02:00",
+  "type": "primary_repo_flat_contact_discovery_repeat_churn_repair",
+  "channel": "distribution_architecture_repair",
+  "status": "executed",
+  "summary": "Patched the marketing loop so an empty execution board now forces a fresh primary-repo-flat contact discovery refresh after repeated prepared-only packet churn, instead of waiting only on artifact age.",
+  "why_this_action": {
+    "findings": [
+      "marketing_execution_board_latest.md still says there is no truthful do-now packet in the current review window",
+      "distribution_lane_latest.md chose distribution_architecture_repair for the same empty-board state",
+      "marketing_workflow_audit_latest.json marks primary-repo-flat packet refresh churn as repetitive and low-signal",
+      "adoption_metrics_latest.json still shows Codeberg stars/watchers/forks flat across the active window"
+    ],
+    "shared_findings_used": [
+      "drafts/marketing_execution_board_latest.md",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/adoption_metrics_latest.json",
+      "agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json"
+    ]
+  },
+  "changes": {
+    "files": [
+      "agents/marketing/run.py",
+      "agents/marketing/tests/test_run_repair_mode.py"
+    ],
+    "behavior": [
+      "Added repeat-churn detection for prepared-only primary-repo-flat packet logs over a 48-hour window",
+      "Forced discovery refresh when the execution board is empty and that churn threshold is hit, even if the artifact is otherwise fresh",
+      "Extended the refresh log payload so forced churn-driven refreshes are distinguishable from plain staleness refreshes"
+    ]
+  },
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_refresh_primary_repo_flat_contact_discovery_for_empty_board_refreshes_stale_artifact agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_refresh_primary_repo_flat_contact_discovery_for_empty_board_skips_fresh_artifact agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_refresh_primary_repo_flat_contact_discovery_for_empty_board_forces_refresh_after_repeated_prepared_only_packet_churn -q",
+    "result": "passed"
+  },
+  "expected_outcome": "The next truthful post-hold run gets a fresh publisher-target search when the old packet keeps cycling without live delivery, increasing the odds of a genuinely new Codeberg-first outreach lane."
+}

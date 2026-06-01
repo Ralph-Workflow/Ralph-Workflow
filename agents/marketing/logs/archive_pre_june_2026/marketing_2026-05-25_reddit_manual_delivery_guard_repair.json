@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-05-25T15:11:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "reddit_manual_delivery_guard_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Suppress already-delivered Reddit manual handoff packets during active review windows"
+  },
+  "why_this_action": {
+    "summary": "The highest-leverage move was repairing the selector/executor guard that kept resurfacing a Reddit packet already delivered earlier on 2026-05-25, because that stale do-now asset was creating fake-progress pressure in the active loop.",
+    "shared_findings_used": [
+      "marketing_execution_board_latest.md",
+      "distribution_lane_latest.json",
+      "distribution_lane_latest.md",
+      "marketing_2026-05-25_reddit_discussion_manual_delivery.json",
+      "marketing_2026-05-25_distribution_architecture_repair_execution.json",
+      "reddit_post_analysis_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched manual-delivery detection in both selector and executor, taught it the real Reddit current-chat delivery payload fields, added regression tests, and regenerated the lane/board so the stale Reddit handoff no longer appears as a truthful do-now asset.",
+    "verification": {
+      "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause agents.marketing.tests.test_distribution_lane_executor_measurement_hold -q",
+      "tests_result": "passed",
+      "distribution_lane": "measurement_hold",
+      "board_path": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
+      "board_state": "No do-now handoff packet is currently truthful in this review window."
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-05-24T10:13:00+02:00",
+  "run_type": "marketing-manual-execution-handoff",
+  "chosen_action": {
+    "type": "stackoverflow_manual_delivery",
+    "channel": "stackoverflow_answer",
+    "title": "Deliver the live StackOverflow answer packet for manual placement in the current chat",
+    "question_title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+    "question_url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
+    "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-should-i-structure-autonomous-ai-agent-workflo.md",
+    "packet_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md"
+  },
+  "why_this_action": {
+    "summary": "External directory and curator lanes are already saturated or inside live review windows, Reddit is blocked from this runtime, and the StackOverflow lane has one still-live qualified question with a reusable answer draft. Delivering the exact packet to the current chat turns the waiting asset into an executable manual placement instead of refreshing it again.",
+    "shared_findings_used": [
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+      "agents/marketing/logs/market_intelligence_latest.json",
+      "drafts/stackoverflow/so_answer_2026-05-23_how-should-i-structure-autonomous-ai-agent-workflo.md",
+      "drafts/stackoverflow_answer_handoff_packet_latest.md"
+    ],
+    "runtime_constraints": [
+      "StackOverflow API cooldown active until 2026-05-24T11:24:37.256862+02:00 equivalent local retry gate from lane artifact",
+      "No first-class StackOverflow posting tool is available in this runtime"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "artifact_reused": true,
+    "manual_execution_ready": true,
+    "delivery_surface": "current_chat"
+  },
+  "expected_outcome": "A ready-to-post StackOverflow answer is in the current chat with Codeberg-first CTA, so the next manual placement can happen without more draft churn.",
+  "measurement_window": {
+    "review_at": "2026-05-31T11:30:00+02:00",
+    "success_metric": "Manual placement occurs and drives qualified evaluator traffic to Codeberg first.",
+    "kill_condition": "If manual placement still has not happened by the review window, retire this question instead of refreshing the packet again."
+  },
+  "live_verification": {
+    "source": "web search snippets",
+    "checked_at": "2026-05-24T10:18:00+02:00",
+    "finding": "The StackOverflow question is still live and search results still show it as unanswered / low-answer competition in current snippets."
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-24T08:47:43+02:00",
+  "type": "stack_overflow_demand_capture_cron",
+  "status": "scheduled",
+  "ok": true,
+  "why_now": [
+    "Codeberg adoption is still flat in the active measurement window.",
+    "Directory, curator, Apollo, and recent publisher-email lanes already have fresh actions inside live review windows.",
+    "Running the StackOverflow lane immediately would waste the current cooldown window; the script reported cooldown until 2026-05-24T11:24:37.256862+02:00.",
+    "A dedicated post-cooldown run creates a distinct high-intent demand-capture attempt instead of more same-family overlap."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+    "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+    "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/adoption_metrics_latest.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "drafts/stackoverflow_answer_handoff_packet_latest.md"
+  ],
+  "verification": {
+    "lane_probe_command": "python3 /home/mistlight/.openclaw/workspace/agents/marketing/stackoverflow_answer_lane.py",
+    "lane_probe_result": "[SO Answer Lane] Active Stack Exchange cooldown until 2026-05-24T11:24:37.256862; preserving previous lane state instead of burning the quota window.",
+    "cron_show_command": "openclaw cron show 7a71bb58-75ac-4862-b316-ed3bdff44b0c --json",
+    "scheduled_run_at": "2026-05-24T11:30:00+02:00",
+    "delete_after_run": true
+  },
+  "cron_job": {
+    "id": "7a71bb58-75ac-4862-b316-ed3bdff44b0c",
+    "name": "stackoverflow-post-cooldown-demand-capture"
+  },
+  "expected_outcome": "A post-cooldown StackOverflow demand-capture attempt that either executes the live lane or delivers the strongest manual-ready answer packet with Codeberg as primary CTA.",
+  "review_window": {
+    "run_check_at": "2026-05-24T11:45:00+02:00",
+    "placement_review_by": "2026-05-31T11:30:00+02:00"
+  },
+  "replacement_condition": "If the scheduled run still cannot execute a real StackOverflow action or meaningful manual follow-through, stop reusing this same answer packet and switch the next demand-capture slot to a different executable high-intent surface."
+}

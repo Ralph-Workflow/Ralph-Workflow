@@ -1,0 +1,50 @@
+{
+  "generated_at": "2026-05-28T02:45:17+02:00",
+  "type": "stackoverflow_lane_runtime_repair",
+  "title": "StackOverflow demand-capture runtime repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "lane_family": "stackoverflow_demand_capture",
+  "why_now": [
+    "Measurement hold rules blocked duplicate publisher/curator packet churn in the current review window.",
+    "Execution board said no truthful do-now handoff packet existed, so the valid same-run move was a concrete distribution architecture repair.",
+    "A fresh high-intent StackOverflow question about autonomous Claude Code workflows existed, but the lane was missing it and misclassifying its answer state."
+  ],
+  "repairs_applied": [
+    {
+      "file": "/home/mistlight/.openclaw/workspace/agents/marketing/stackoverflow_answer_lane.py",
+      "change": "Added a Claude Code autonomous-wrapper search spec and tailored workflow-orchestration answer path."
+    },
+    {
+      "file": "/home/mistlight/.openclaw/workspace/agents/marketing/stackoverflow_answer_lane.py",
+      "change": "Expanded fit/scoring terms so autonomous-wrapper questions qualify when they match RalphWorkflow pain."
+    },
+    {
+      "file": "/home/mistlight/.openclaw/workspace/agents/marketing/stackoverflow_answer_lane.py",
+      "change": "Fixed accepted-answer detection to use accepted_answer_id instead of is_answered, preventing false rejection of open answer opportunities."
+    },
+    {
+      "file": "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_stackoverflow_answer_lane.py",
+      "change": "Added regression coverage for the Claude Code autonomous-wrapper case and the accepted-answer bug."
+    }
+  ],
+  "validation": {
+    "tests_command": "python3 -m unittest agents.marketing.tests.test_stackoverflow_answer_lane -v",
+    "tests_passed": true,
+    "draft_lane_command": "python3 agents/marketing/stackoverflow_answer_lane.py",
+    "draft_lane_result": "created_fresh_draft"
+  },
+  "result": {
+    "question_title": "Autonomous mode / wrapper for Claude Code?",
+    "question_url": "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code",
+    "question_score": 4.2,
+    "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-28_autonomous-mode-wrapper-for-claude-code.md",
+    "handoff_packet": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md",
+    "lane_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+    "primary_cta": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "secondary_cta": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+  },
+  "replacement_condition": "If this question stops being placeable or the review window closes without delivery, search for the next live autonomous-workflow pain question instead of regenerating the same packet."
+}

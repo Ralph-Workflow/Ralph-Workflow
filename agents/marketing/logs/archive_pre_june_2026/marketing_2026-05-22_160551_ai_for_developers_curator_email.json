@@ -1,0 +1,12 @@
+{
+  "timestamp_utc": "2026-05-22T16:05:51.138098+00:00",
+  "action": "curator_email_outreach",
+  "status": "sent",
+  "channel": {
+    "recipient": "contact@aifordevelopers.org",
+    "subject": "Ralph Workflow for awesome-ai-coding-tools",
+    "smtp_host": "smtp.ionos.com",
+    "smtp_port": 587
+  },
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/04_ai-for-developers-awesome-ai-coding-tools_email.txt"
+}

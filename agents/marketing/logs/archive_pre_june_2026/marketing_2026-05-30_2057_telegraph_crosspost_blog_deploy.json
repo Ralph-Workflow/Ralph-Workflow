@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-05-30T18:57:55.149670+00:00",
+  "run_type": "marketing-active-loop-cron",
+  "action": "telegraph_crosspost_and_blog_deploy",
+  "live_external_action": true,
+  "details": {
+    "telegraph_crosspost": {
+      "post": "Ralph Workflow in 5 Minutes",
+      "url": "https://telegra.ph/Ralph-Workflow-in-5-Minutes-05-30-2",
+      "ok": true
+    },
+    "ralph_site_deploy": {
+      "commit": "628e30633799ace0de3980cdf90dc76c15cdc37c",
+      "release": "20260530185724",
+      "blog_post": "ralph-workflow-in-5-minutes.md",
+      "url": "https://ralphworkflow.com/blog/ralph-workflow-in-5-minutes",
+      "indexnow_submitted": 96,
+      "verified": "LIVE_PUBLIC_SURFACE_OK"
+    }
+  },
+  "outcome_expected": "Drive organic discovery traffic to Codeberg via Telegraph distribution + improved Google indexation surface",
+  "measurement_window_days": 14,
+  "kill_condition": "No Codeberg star/watch/fork movement within 14 days",
+  "success_metric": "Codeberg stars_delta > 0 OR unique Telegraph views > 10 OR GSC impressions increase on blog pages"
+}

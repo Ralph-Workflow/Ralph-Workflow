@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-23T16:44:00+02:00",
+  "run_type": "marketing-manual-escalation",
+  "chosen_action": {
+    "type": "stackoverflow_manual_escalation",
+    "channel": "stackoverflow_answer",
+    "title": "Escalate live-ready StackOverflow answer for manual placement",
+    "question_title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+    "question_url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
+    "handoff_packet": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md",
+    "reuse_packet": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_reuse_packet_latest.md"
+  },
+  "why_this_action": {
+    "summary": "Codeberg adoption is still flat, the strongest fresh demand-capture asset already exists, and direct StackOverflow posting is still unavailable from this runtime, so the highest-leverage move is immediate manual-placement escalation rather than another packet refresh.",
+    "shared_findings_used": [
+      "agents/marketing/logs/adoption_metrics_latest.md",
+      "agents/marketing/logs/marketing_workflow_audit_latest.md",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+      "agents/marketing/outreach-log.md"
+    ]
+  },
+  "result": {
+    "status": "escalated_for_manual_placement",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": [
+      "no_authenticated_stackoverflow_posting_surface_in_runtime"
+    ]
+  },
+  "expected_outcome": "One live placement or reuse of the current StackOverflow answer asset on a high-intent developer surface, with Codeberg as the primary repo destination.",
+  "measurement_window": {
+    "review_at": "2026-05-30T16:44:00+02:00",
+    "success_metric": "Answer posted or reused live, then any attributable qualified repo inspection or Codeberg adoption delta.",
+    "kill_condition": "If this answer is still unplaced by May 30, 2026, stop refreshing the same packet and switch to another executable high-intent lane."
+  }
+}

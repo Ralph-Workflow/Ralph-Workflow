@@ -1,0 +1,44 @@
+{
+  "timestamp_utc": "2026-05-23T10:31:25Z",
+  "action": "launchkittools_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "LaunchKit Tools",
+    "target_surface": "https://launchkittools.com/submit",
+    "recipient": "hello@launchkittools.com",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com",
+    "suggested_entry": "Ralph Workflow — free/open-source workflow layer for autonomous coding with plan-build-verify loops and reviewable repo-native handoffs.",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/launchkittools-contact-email.txt",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_103125_launchkittools_curator_email.json"
+  },
+  "why_this_action": "Codeberg adoption is flat, Apollo is already in a live measurement window, and Reddit is structurally weak. LaunchKit Tools is a fresh developer-facing coding directory with an explicit submission path and contact address, making it a stronger untouched distribution lane than another repeated Reddit or curator tactic.",
+  "shared_findings_reused": [
+    "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+    "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+    "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/adoption_metrics_latest.md",
+    "agents/marketing/logs/reddit_post_analysis.md",
+    "agents/marketing/outreach-log.md"
+  ],
+  "verification": {
+    "submit_page_status": 200,
+    "submit_page_note": "LaunchKit submit page is live but the HTML form action still points to https://formspree.io/f/PLACEHOLDER, so the public form is not safely usable as-is.",
+    "contact_proof": "hello@launchkittools.com published on https://launchkittools.com/contact",
+    "email_send_log_status": "sent",
+    "helper_compile_command": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply, live listing, or visible third-party citation/backlink that points evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or listing signal arrives by the review date, do not resend the same pitch; replace it with a different untouched distribution surface."
+  }
+}

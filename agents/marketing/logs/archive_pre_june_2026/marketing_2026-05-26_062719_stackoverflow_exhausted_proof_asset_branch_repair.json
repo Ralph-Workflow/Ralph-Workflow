@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-05-26T06:27:19+02:00",
+  "type": "stackoverflow_exhausted_proof_asset_branch_repair",
+  "chosen_action": {
+    "type": "stackoverflow_exhausted_proof_asset_branch_repair",
+    "channel": "distribution_architecture_runtime",
+    "title": "Prefer repo proof asset over empty hold after exhausted StackOverflow rerun",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_062719_stackoverflow_exhausted_proof_asset_branch_repair.md"
+  },
+  "why_this_action": {
+    "summary": "The active loop needed a truthful non-empty fallback after the post-cooldown StackOverflow slot was spent, but without letting a new proof-asset branch override real third-strike empty-board repair conditions.",
+    "supporting_reasons": [
+      "The StackOverflow packet was already delivered and the post-cooldown rerun still produced no fresh placement-ready outcome.",
+      "Recent repo-conversion proof assets are suppressed, but when that suppression clears the selector should choose a concrete proof asset instead of another idle measurement hold.",
+      "The execution board still needs empty-board guard/repair precedence when it explicitly says no truthful do-now packet exists."
+    ],
+    "shared_findings_used": [
+      "distribution_lane_latest.json: current lane logic is still dominated by distribution architecture guard handling",
+      "marketing_execution_board_latest.md: empty-board truth must keep repair precedence when no do-now packet exists",
+      "marketing_workflow_audit_latest.json: current bottleneck remains distribution_and_message_to_primary_repo_conversion"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "summary": "Patched the selector to prefer repo proof assets after an exhausted StackOverflow rerun, added regression coverage for that branch, and preserved guarded empty-board escalation by explicitly checking the execution board before taking the proof-asset lane.",
+    "files_updated": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/tests/test_distribution_lane_selector_repair_pause.py"
+    ],
+    "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_choose_distribution_lane_prefers_repo_proof_asset_after_exhausted_stackoverflow_slot agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_choose_distribution_lane_escalates_guarded_empty_board_to_concrete_repair agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_refresh_distribution_lane_after_execution_skips_duplicate_action_log",
+    "verification": {
+      "repo_proof_asset_branch_test": true,
+      "guarded_empty_board_repair_test": true,
+      "runtime_check_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_062640_distribution_architecture_guard_pause.json"
+    },
+    "live_external_action": false,
+    "blocking_factors": []
+  }
+}

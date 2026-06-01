@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-05-28T09:28:00+02:00",
+  "type": "readme_repo_conversion_repair",
+  "title": "PyPI README conversion repair — Codeberg star CTA + absolute doc links in body text",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "commit": "3bec9535",
+  "repos": ["codeberg", "github"],
+  "pypi_published": false,
+  "pypi_blocker": "No PyPI token in environment",
+  "summary": "The PyPI page renders README.md as package description (~1,498 views/month), but the old README had zero clickable Codeberg links in body text and all doc links were broken relative paths. Rewrote README.md with prominent Codeberg star CTA at top, GitHub mirror link, and all doc links pointing to absolute ralphworkflow.com URLs. Codeberg + GitHub synced. PyPI release needs manual token or config.",
+  "files_changed": ["README.md"],
+  "shared_findings_reused": [
+    "adoption_metrics_latest.json: 1,498 PyPI dl/month vs 11 Codeberg stars",
+    "market_intelligence_latest.json: positioning truths preserved",
+    "marketing_workflow_audit_latest.json: primary_repo_flat → concrete repair"
+  ]
+}

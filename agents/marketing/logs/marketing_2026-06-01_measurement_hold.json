@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-01T01:32:11.867538",
+  "timestamp": "2026-06-01T06:09:20.121021",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -21,7 +21,7 @@
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "Manual-contact-only curator targets remain in the live queue (vivy-yi/awesome-agent-orchestration), but the contact handoff packet was already delivered in this review window, so another packet right now would be fake progress.",
-      "Fresh publisher outreach already shipped in the current 7-day review window (AI Saying, Beam, Codersera), so those targets should not be re-queued immediately.",
+      "Fresh publisher outreach already shipped in the current 7-day review window (AI Saying, Codersera, Codivox), so those targets should not be re-queued immediately.",
       "An active manual publisher handoff already covers (AI Saying, Codivox, Reddit reddit.com \u203a r/ai_agents \u203a genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools? r/AI_Agents), so those targets should stay out of fresh packet selection until their review window expires.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "The primary-repo-flat publisher contact packet was already manually delivered in the current review window, so another packet refresh right now would be fake progress.",

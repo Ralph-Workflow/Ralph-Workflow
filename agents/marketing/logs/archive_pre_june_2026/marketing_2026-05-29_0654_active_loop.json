@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-05-29T04:54:29.932255+00:00",
+  "type": "marketing_active_loop",
+  "actions": [
+    {
+      "action": "blog_deploy",
+      "title": "When Your AI Coding Agent Gets Stuck: How to Stop the Infinite Tool Loop",
+      "url": "https://ralphworkflow.com/blog/ai-agent-tool-loop-debugging-guide",
+      "target_keywords": [
+        "AI agent stuck in loop",
+        "debug AI coding agent",
+        "AI agent tool calling failure"
+      ],
+      "keyword_cluster": "ai-agent-tool-calling-debugging",
+      "status": "deployed_verified",
+      "http_status": "200"
+    },
+    {
+      "action": "blog_deploy",
+      "title": "Can You Actually Run AI Coding Agents Offline? A Practical Guide to Local LLM Development",
+      "url": "https://ralphworkflow.com/blog/offline-ai-coding-local-llm-guide",
+      "target_keywords": [
+        "offline AI coding",
+        "local AI coding agent",
+        "run AI coding without internet",
+        "air-gapped AI development",
+        "local LLM coding workflow"
+      ],
+      "keyword_cluster": "offline-ai-coding",
+      "status": "deployed_verified",
+      "http_status": "200"
+    },
+    {
+      "action": "process_repair",
+      "repair_name": "spidering_guard_false_positive_fix",
+      "change": "Removed spidering auto-perma-block logic from channel_spidering_guard.py. Cooldown alone is sufficient \u2014 the auto-block was incorrectly treating crontab+status-check hits as \"rapid attempts\" and permanently blocking the telegraph cross-posting lane.",
+      "before": "telegraph was spidering_auto_blocked: Infinity",
+      "after": "telegraph returns cooldown_active with legitimate remaining time (5.1h)",
+      "root_cause": "SPIDERING_THRESHOLD=3 fired when manual run + crontab + status check all hit within 6h cooldown window. Three hits in 6h is normal for a cron that fires 3x/day."
+    }
+  ],
+  "blog_posts_live": 27,
+  "keyword_clusters_published": 2,
+  "cross_posting_pipeline": "wired (prior run), cooldown clears at ~14:00 CEST",
+  "outcome_ready": true
+}

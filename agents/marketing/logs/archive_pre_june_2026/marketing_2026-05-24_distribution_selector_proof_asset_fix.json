@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-24T01:50:38+02:00",
+  "run_type": "marketing-self-improvement-execution",
+  "chosen_action": {
+    "type": "distribution_selector_proof_asset_fix",
+    "channel": "marketing_loop_runtime",
+    "title": "Teach the lane selector that the quickstart patch already counts as a recent repo conversion proof asset",
+    "targets": [
+      "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_marketing_system.py"
+    ]
+  },
+  "why_this_action": {
+    "summary": "The loop had already shipped a README/START_HERE quickstart conversion patch, but the selector did not recognize that action type as a recent proof-asset move. That left the system vulnerable to repeating docs-only conversion work instead of forcing the next run toward a different demand/distribution lane.",
+    "shared_findings_used": [
+      "ADOPTION_FUNNEL_NEXT.md: conversion from interest to free use is the bottleneck",
+      "marketing_workflow_audit_latest.json: same-family outreach/submission bursts are already in measurement windows",
+      "distribution_lane_latest.md: repo conversion proof assets should not loop again once recently shipped",
+      "marketing_2026-05-24_repo_conversion_quickstart_patch.json: the quickstart patch already executed"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "files_changed": 2,
+    "verification": [
+      "python3 -m unittest agents.marketing.tests.test_marketing_system.DistributionLaneSelectorTests.test_recent_executed_action_type_counts_repo_conversion_quickstart_patch_as_proof_asset agents.marketing.tests.test_marketing_system.DistributionLaneSelectorTests.test_recent_live_action_family_count_counts_sent_curator_email",
+      "python3 inline check: recent_proof_asset_shipped == True"
+    ]
+  },
+  "expected_outcome": {
+    "primary_goal": "stop the marketing loop from re-selecting another docs-only repo-conversion pass immediately after a quickstart patch already shipped",
+    "measurement_window": "next active marketing loop run",
+    "replacement_condition": "If the selector still routes to another docs-only proof-asset lane without a materially new conversion asset, patch lane selection again and hard-ban repeated proof-asset picks inside the cooldown window"
+  }
+}

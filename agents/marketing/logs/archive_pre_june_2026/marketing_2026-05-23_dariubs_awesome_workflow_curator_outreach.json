@@ -1,0 +1,50 @@
+{
+  "timestamp_utc": "2026-05-23T04:46:23.307110+00:00",
+  "action": "dariubs_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "awesome-workflow-automation",
+    "target_repo": "https://github.com/dariubs/awesome-workflow-automation",
+    "recipient": "dariushem@yahoo.com",
+    "contact_source": "latest public Git commit metadata",
+    "subject": "Suggestion for awesome-workflow-automation: Ralph Workflow",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_dariubs_awesome_workflow_automation_email.txt",
+    "suggested_entry": "- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) \u2014 free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, Apollo is already inside its measurement window until 2026-05-30, Reddit remains structurally blocked, and dariubs/awesome-workflow-automation was the strongest unsent prepared curator target by current GitHub stars and recent maintainer activity with a legitimate public commit-email fallback available.",
+  "shared_findings_used": [
+    "adoption_metrics_latest.md: Codeberg remains flat and is still the primary success gate",
+    "market_intelligence_latest.json: reuse canonical positioning and comparison framing instead of inventing a new pitch",
+    "marketing_workflow_audit_latest.json: distribution_and_message_to_primary_repo_conversion is the live bottleneck",
+    "curator_outreach_queue_latest.json: dariubs/awesome-workflow-automation was prepared but unsent",
+    "competitor_analysis_2026-05-23.md: keep the message anchored on workflow, reviewability, and real coding process instead of generic orchestration hype"
+  ],
+  "measurement_window": {
+    "maintainer_response_or_listing_through": "2026-06-06",
+    "success_signal": "reply, PR invitation, or a new qualified backlink path that sends evaluators to the Codeberg primary repo"
+  },
+  "verification": {
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_044623_dariubs_awesome_workflow_automation_curator_email.json",
+    "smtp_status": "sent",
+    "helper_compile_check": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+  },
+  "repairs_applied": [
+    {
+      "file": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_outreach_queue_latest.json",
+      "change": "Updated dariubs/awesome-workflow-automation from prepared to sent_via_email_fallback so the queue reflects real execution and future runs do not duplicate this outreach."
+    },
+    {
+      "file": "/home/mistlight/.openclaw/workspace/agents/marketing/outreach-log.md",
+      "change": "Appended the outreach record so future distribution runs can dedupe against this live contact."
+    },
+    {
+      "file": "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py",
+      "change": "Improved curator contact discovery by adding latest public commit-email fallback for prepared GitHub targets, which unblocked this execution path without waiting for GitHub auth."
+    }
+  ]
+}

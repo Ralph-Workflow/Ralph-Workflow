@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-27T08:26:29+02:00",
+  "action_type": "publisher_email_outreach",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "target": "SOTAAZ",
+  "recipient": "support@oncreative.ai",
+  "subject": "Ralph Workflow for your next AI coding tools comparison update",
+  "hook": "2026 AI Coding Tool War: Cursor vs Claude Code vs Codex \u2014 Hands-On Comparison",
+  "primary_repo_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "mirror_repo_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+  "supporting_artifacts": [
+    "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_sotaaz_publisher_email.txt",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/adoption_metrics_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_062629_sotaaz_publisher_email.json"
+  ],
+  "source_evidence": {
+    "article_url": "https://www.sotaaz.com/post/cursor-vs-claude-code-vs-codex-2026-en",
+    "public_contact_source": "support@oncreative.ai / https://sotaaz.com",
+    "backfill_reason": "Earlier live publisher contact was only logged through the raw SMTP send artifact, which left later board state stale."
+  },
+  "smtp_delivery": {
+    "server": "smtp.ionos.com",
+    "port": 587,
+    "tls": true,
+    "accepted_by_server": true,
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_062629_sotaaz_publisher_email.json"
+  },
+  "expected_outcome": "Publisher awareness and possible comparison-page inclusion, workflow citation, or follow-up mention that sends qualified evaluators to Codeberg first.",
+  "review_window": {
+    "reply_review_at": "2026-06-03T08:26:29+02:00",
+    "citation_review_at": "2026-06-10T08:26:29+02:00"
+  },
+  "replacement_condition": "If there is no reply or public mention signal by the review window, switch the next publisher-contact slot to a different untouched target instead of recontacting SOTAAZ immediately."
+}

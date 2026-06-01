@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-05-26T14:10:21.428272",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "primary_repo_flat_contact_handoff_packet_execution",
+    "channel": "primary_repo_flat_contact_handoff_packet",
+    "title": "Distribution lane execution: primary_repo_flat_contact_handoff_packet",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_primary_repo_flat_contact_handoff_packet.md"
+  },
+  "why_this_action": {
+    "summary": "Converted the fresh primary-repo-flat publisher discovery into one canonical Codeberg-first execution packet so the loop can use a genuinely different contact lane during the current measurement window.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "targets_prepared": [
+      "TLDL"
+    ]
+  },
+  "result": {
+    "status": "prepared",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": []
+  }
+}

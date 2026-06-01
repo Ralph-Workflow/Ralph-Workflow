@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-05-27T11:28:02+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "execution_board_empty_marker_truth_repair",
+    "channel": "marketing_runtime",
+    "title": "Make the execution board explicit-empty marker authoritative unless a real waiting asset still exists"
+  },
+  "why_this_action": {
+    "summary": "The execution board explicitly reported that no truthful do-now packet remained, but selector truth detection could still be diluted by informational review-window bullets. Fixing that truth gate was the highest-leverage same-run repair.",
+    "shared_findings_used": [
+      "marketing_execution_board_latest.md: explicit empty-board marker was present alongside informational review-window bullets",
+      "distribution_lane_latest.json: active short-window release remains 2026-05-27T14:26:29",
+      "marketing_workflow_audit_latest.json: avoid prepared-only packet churn and fake progress",
+      "adoption_metrics_latest.json: Codeberg remains flat, so truthfulness matters more than another superficial packet refresh"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched execution-board truth detection so an explicit no-do-now marker is not masked by informational review-window bullets, while keeping real waiting-asset and confirmation blockers fail-closed. Added regression tests and verified the current board now evaluates as empty.",
+    "verification": {
+      "files_changed": [
+        "agents/marketing/distribution_lane_selector.py",
+        "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+      ],
+      "tests": [
+        "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_empty_marker_wins_over_informational_review_window_bullets agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_empty_marker_still_yields_to_real_waiting_asset -q"
+      ],
+      "current_board_empty": true
+    }
+  }
+}

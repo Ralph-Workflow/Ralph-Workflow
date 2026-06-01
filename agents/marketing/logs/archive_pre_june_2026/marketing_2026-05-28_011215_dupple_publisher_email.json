@@ -1,0 +1,12 @@
+{
+  "timestamp_utc": "2026-05-28T01:12:15.595011+00:00",
+  "action": "curator_email_outreach",
+  "status": "sent",
+  "channel": {
+    "recipient": "louis@dupple.com",
+    "subject": "Ralph Workflow for your next AI coding workflow comparison refresh",
+    "smtp_host": "smtp.ionos.com",
+    "smtp_port": 587
+  },
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_dupple_publisher_outreach_email.txt"
+}

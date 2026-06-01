@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-05-25T03:11:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "measurement_hold_third_strike_guard_repair",
+    "channel": "marketing_runtime",
+    "title": "Escalate active hold churn on the third event using already-effective rerun repairs"
+  },
+  "why_this_action": {
+    "summary": "The active 2026-05-25 hold window still has no truthful do-now packet, a post-hold rerun is already scheduled for 2026-05-25T07:20:16, and the loop was still one step away from logging another pretend follow-through. The highest-leverage executable fix was to make the hold churn guard respect the third-strike rule and reuse already-effective prompt/re-entry repairs from the recent repair history instead of demanding they be re-created inside every new hold window.",
+    "shared_findings_used": [
+      "distribution_lane_latest.json: current lane remained measurement_hold with short-window release at 2026-05-25T07:20:16",
+      "marketing_execution_board_latest.md: no truthful do-now handoff packet exists in the current review window",
+      "marketing_2026-05-24_234934_active_loop_prompt_repair.json: active-loop prompt repair is already in force",
+      "marketing_2026-05-24_235759_post_hold_reentry_contract_repair.json: post-hold re-entry contract repair is already in force",
+      "marketing_2026-05-25_023723_measurement_hold_follow_through.md: scheduled post-hold rerun already exists for the active hold"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched measurement-hold churn detection so the third hold-window event escalates immediately, and so global prompt/re-entry repairs remain effective across subsequent hold windows. Added regression coverage and verified the focused measurement-hold executor suite.",
+    "verification": {
+      "files_changed": [
+        "agents/marketing/distribution_lane_executor.py",
+        "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+      ],
+      "test_command": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold -q"
+    }
+  }
+}

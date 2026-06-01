@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-05-24T11:33:26+02:00",
+  "type": "stack_overflow_overdue_followthrough_guard_repair",
+  "status": "executed",
+  "ok": true,
+  "why_now": [
+    "The scheduled StackOverflow post-cooldown demand-capture job was still idle after its 2026-05-24T11:30:00+02:00 fire time.",
+    "distribution_lane_selector.py was still treating that scheduled one-shot as current for up to an extra hour, which could suppress legitimate follow-through and hide a missed high-intent slot.",
+    "Repairing the stale scheduled-run guard is a higher-leverage move than refreshing another StackOverflow packet that was already delivered in this review window."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+    "drafts/stackoverflow_answer_handoff_packet_latest.md"
+  ],
+  "evidence": {
+    "current_time": "2026-05-24T11:33:26+02:00",
+    "scheduled_job_id": "7a71bb58-75ac-4862-b316-ed3bdff44b0c",
+    "scheduled_run_at": "2026-05-24T11:30:00+02:00",
+    "cron_status_after_due_time": "idle",
+    "cron_next_run_at_ms": 1779615000000,
+    "no_new_stackoverflow_execution_log_after_due_time": true
+  },
+  "repair": {
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/tests/test_marketing_system.py"
+    ],
+    "behavior_change": "A scheduled StackOverflow post-cooldown run stops blocking follow-through once it is more than 3 minutes past due.",
+    "constant_added": "STACKOVERFLOW_POST_COOLDOWN_GRACE=3 minutes"
+  },
+  "verification": {
+    "tests": [
+      "python3 -m unittest agents.marketing.tests.test_marketing_system -k stackoverflow"
+    ],
+    "result": "passed"
+  },
+  "replacement_condition": "If the overdue StackOverflow slot still produces no real action by the run-check window, retire the packet from active reuse and switch the next demand-capture slot to a different executable surface."
+}

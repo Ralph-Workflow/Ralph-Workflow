@@ -1,3 +1,32 @@
+### 2026-06-01 — Marketing workflow audit #16 (06:40 CEST)
+**Audit trigger:** Cron scheduled re-analysis (#16). Run at 06:33 CEST.
+
+**Key findings:**
+1. **Blog count 44 (correct)** — sitemap confirmed 44 live blog posts. All artifacts previously reported 41 or 43. Root cause: hardcoded integer in `marketing_workflow_audit.py` content_distribution_action string, never cross-checked against live sitemap.
+2. **Content saturation ceiling reached** — 44 posts with 13/44 indexed in Google. Each new blog post has near-zero SEO value. System was still generating new posts despite keyword surface exhaustion.
+3. **Log inflation at 1,437 files (6.9 MB)** — measurement_hold, guard_pause, and churn_watchdog artifacts accumulating with zero outcome movement. 498 active JSON files in log directory.
+4. **Low-signal cron dominating** — IndexNow daily (13/44 indexed makes pings noise), indexation_health_check daily (output never changes).
+5. **Metrics flat again** — Codeberg 12⭐ (9-sample delta=0), GitHub 1⭐ (9-sample delta=0), PyPI 1,339/month (127/day).
+
+**Repairs executed (autonomous runtime changes):**
+- 📊 `marketing_workflow_audit.py`: Blog count made dynamic — `_live_blog_post_count()` queries live sitemap, falls back to local content directory. No more hardcoded "41 posts."
+- 🔒 `owned_content_amplification.py`: Content saturation gate installed at `CONTENT_SATURATION_THRESHOLD = 40`. At 44 live posts, `can_publish_now()` returns `(False, 'content saturation')` — new blog generation blocked, effort redirected to SEO retrofit of existing posts.
+- 📦 Log archive: 1,437 pre-June JSON files (6.9 MB) moved to `archive_pre_june_2026/`. Active directory: 78 files.
+- 🕐 Crontab rebuilt: 9 marketing jobs. `blocker_truth_check.py` added at 08:50 (pre-audit ground-truth gate). `indexation_health_check.py` daily→Saturday. `bing_indexnow_ping.py` daily→Mon+Thu. Stray Apollo comment nuked.
+- 📝 BLOCKER_ROI_SUMMARY.md: Blog count 41→44, download numbers corrected (1,297→1,339/month, 5→127/day).
+- 📝 MARKETING_SELF_IMPROVEMENT.md: Full audit #16 addendum with change log, state table, and structural ceiling analysis.
+- 📝 outreach-log.md: This entry.
+
+**State after audit:**
+- Blog: 44 posts live (dynamic from sitemap), new content generation BLOCKED
+- Logs: 78 active JSON files (was 498)
+- Cron: 9 marketing jobs, blocker_truth at 08:50 as pre-09:00 guard
+- Blocker truth: 3 blocked (gh_auth, SMTP, pypi_token/env) / 5 live (PyPI API, SE API, Codeberg, GitHub, blog sitemap)
+- Measurement holds: 11 in last 24h (above threshold of 1) — circuit-breaker should fire at 09:00
+- Content saturation: ENFORCED at 40 posts
+
+**Adoption metrics:** Codeberg 12⭐ (flat), PyPI 1,339 downloads/month (127/day with Codeberg CTA), GitHub 1⭐.
+
 ### 2026-06-01 — Marketing workflow audit #15 (00:29 CEST)
 **Audit trigger:** Cron scheduled re-analysis (#15). Prior turn split across compacted summary — continued repairs from established plan.
 

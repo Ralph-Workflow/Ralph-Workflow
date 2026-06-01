@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-05-25T22:23:11.163148+02:00",
+  "run_type": "marketing-system-repair",
+  "chosen_action": {
+    "type": "apollo_truthfulness_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Apollo outbound truthfulness repair"
+  },
+  "why_this_action": {
+    "summary": "The highest-leverage do-now move was fixing a false-green Apollo state that was letting launch-ready packet prep masquerade as live outbound measurement.",
+    "shared_findings_used": [
+      "marketing_workflow_audit_latest.json: managed outbound still needed truthfulness repair",
+      "apollo_sequence_status_latest.json: Apollo was incorrectly treated as measurement-pending live outbound",
+      "marketing_2026-05-23_apollo_sequence_launch.json: launch log only proved sequence readiness, not live sending",
+      "marketing_2026-05-23_apollo_list_verification.json: non-zero list evidence exists and should remain reusable without being overstated",
+      "marketing_execution_board_latest.md: no truthful do-now distribution packet existed inside the short-window hold"
+    ]
+  },
+  "result": {
+    "status": "repaired_and_reverified",
+    "ok": true,
+    "live_external_action": false,
+    "outcome_ready": true,
+    "files_updated": [
+      "agents/marketing/apollo_sequence_status.py",
+      "agents/marketing/apollo_sequence_launcher.py",
+      "agents/marketing/tests/test_system_design_repairs.py",
+      "agents/marketing/tests/test_marketing_system.py"
+    ],
+    "verification": {
+      "tests": "python3 -m unittest agents.marketing.tests.test_system_design_repairs agents.marketing.tests.test_marketing_system.ApolloSequenceStatusTests -q",
+      "apollo_sequence_status": "launch_ready_unverified_send",
+      "apollo_outbound_verification": "launch_ready_needs_send_confirmation",
+      "audit_refresh": "marketing_workflow_audit_latest.json regenerated with Apollo no longer counted as active measurement-pending live outbound"
+    },
+    "notes": [
+      "Apollo now stays yellow until there is explicit live-send evidence; a non-zero list alone is no longer enough to start the measurement clock.",
+      "The canonical audit now reflects that Apollo is launch-ready but still needs send confirmation."
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "timestamp_utc": "2026-05-23T00:17:50.469206+00:00",
+  "action": "altern_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "Altern",
+    "target_surface": "https://altern.ai",
+    "contact_page": "https://altern.ai/advertise",
+    "recipient": "contact@altern.ai",
+    "subject": "Suggested Altern listing: Ralph Workflow",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "suggested_entry": "Ralph Workflow — free and open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.",
+    "suggested_categories": [
+      "Coding Agents",
+      "Workflow Automation",
+      "Open Source"
+    ],
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_altern_curator_email.txt",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_001750_altern_curator_email.json"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, owned content is saturated, Apollo is already in a measurement window until 2026-05-30, and the current replacement lane is Codeberg-first curator/backlink distribution. Altern is a live AI tool directory with coding-agent and workflow categories, a visible submission/contact surface, no logged prior Ralph Workflow outreach, and a plausible path to a new third-party citation that sends evaluators to the primary Codeberg repo.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and proof-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, why now",
+    "ADOPTION_FUNNEL_NEXT.md: bias toward free-use path and proof assets instead of more generic posting",
+    "market_intelligence_latest.json: reused positioning truths and competitor-aware framing",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "channel_discovery.json: Altern has a visible submission/contact surface and directory-style fit"
+  ],
+  "verification": {
+    "email_send_log_status": "sent",
+    "helper_compiles": true,
+    "helper_compile_command": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply, listing inclusion, or a live Altern citation/backlink pointing evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or listing signal arrives by 2026-06-06, replace this target with a different untouched curator or directory lane instead of re-sending the same pitch."
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-05-30T16:28:57",
+  "action": "distribution_architecture_repair",
+  "type": "docker_root_readme_update",
+  "summary": "Added Docker install section to root README.md \u2014 the Codeberg/GitHub landing page now shows Docker as an install path alongside pipx",
+  "details": {
+    "before": "Root README had pipx-only Quick Start; Docker install only in ralph-workflow/README.md (PyPI bundle)",
+    "after": "Root README now has Docker (no Python required) section first with docker run and docker build instructions, then pipx section",
+    "commit": "8999155b3",
+    "pushed_to": [
+      "codeberg (origin)",
+      "github (mirror)"
+    ],
+    "why": "Every repo visitor sees the root README. Dockerfile was deployed (commit 90ff7f811) but the landing page didn't surface it. No-blocker gap closing."
+  },
+  "lane": "distribution_architecture_repair",
+  "post_hold_reentry": true,
+  "hold_expired_at": "2026-05-30T16:11:00",
+  "repo_target": "codeberg_primary_github_mirror",
+  "success": true
+}

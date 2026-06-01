@@ -1,0 +1,44 @@
+{
+  "timestamp_utc": "2026-05-23T03:46:20.329974+00:00",
+  "action": "agentlocker_curator_contact_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "AgentLocker",
+    "target_surface": "https://agentlocker.ai/contact",
+    "listing_path": "https://agentlocker.ai/agent/submit",
+    "subject": "Potential AgentLocker listing: Ralph Workflow",
+    "status_code": 200,
+    "final_url": "https://agentlocker.ai/contact"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_agentlocker_contact.txt",
+    "contact_email": "ken@hireaegis.com"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, Codeberg adoption is flat, Reddit is structurally suspended in this runtime, Apollo is already inside a measurement window until 2026-05-30, and AgentLocker exposed a fresh high-fit directory contact path that was still untouched. That made a Codeberg-first curator contact attempt the strongest executable move right now.",
+  "shared_findings_reused": [
+    "MARKETING_SELF_IMPROVEMENT.md: ship a real tactic instead of another audit-only pass",
+    "MARKETING_WORKFLOW_PRINCIPLES.md: keep Codeberg primary and prefer proof-led distribution",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, and why now",
+    "ADOPTION_FUNNEL_NEXT.md: bias toward free-use proof and repo-directed conversion",
+    "market_intelligence_latest.json: reused current positioning truths and comparison-aware framing",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "reddit_post_analysis.md: Reddit remains a low-value lane right now because of structural repetition and runtime constraints",
+    "distribution_reset_execution_log.md: curator/directory inclusion remains the live replacement lane"
+  ],
+  "verification": {
+    "get_status_code": 200,
+    "post_status_code": 200,
+    "post_final_url": "https://agentlocker.ai/contact",
+    "success_marker_present": true,
+    "verification_note": "POST returned HTTP 200 from the live contact endpoint after a valid CSRF-backed form submission. The page did not expose a clean machine-readable success object, so the best same-run confirmation is accepted POST + returned contact page with success markers present.",
+    "response_excerpt": "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <meta name=\"csrf-token\" content=\"IjkyMTNkNWZhMTQyYTkzYjA5ZDNkMmFhMDkyNDAyZTJhNTk0MGZhMmMi.ahEjDA.Ugjy2lyHCoEikoIt8AZIfCTORVU\">\n\n    <!-- Google tag (gtag.js) -->\n    <script async src=\"https://www.googletagmanager.com/gtag/js?id=G-92GZ5H8QQT\"></script>\n    <script>\n        window.dataLayer = window.dataLayer || [];\n        function gtag(){dataLayer.push(arguments);}\n        gtag('js', new Date());\n        gtag('config', 'G-92GZ5H8QQT');\n    </script>\n\n    <!-- Dynamic SEO Meta Tags -->\n    <title>Contact Us - Get Support & Submit Feedback | AgentLocker</title>\n    <meta name=\"description\"\n        content=\"Get in touch with the AgentLocker team. Submit feedback, report issues, or request new features for the world's largest AI agent directory.\">\n\n    <!-- Open Graph / Facebook -->\n    <meta property=\"og:type\" content=\"website\">\n    <meta property=\"og:url\" content=\"https://agentlocker.ai/contact\">\n    <meta property=\"og:site_name\" content=\"AgentLocker\">\n    <meta property=\"og:title\" content=\"Contact Us - Get Support & Submit Feedback\">\n   "
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply from AgentLocker, live directory inclusion, or any new third-party citation/backlink that sends evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or listing signal arrives by 2026-06-06, replace this lane with a different untouched curator/directory target instead of reusing the same contact path."
+  }
+}

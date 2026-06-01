@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-05-24T06:06:00+02:00",
+  "run_type": "marketing-live-action",
+  "chosen_action": {
+    "type": "comparison_backlink_manual_delivery",
+    "channel": "current_chat",
+    "title": "Deliver live-ready comparison backlink packet for immediate manual execution",
+    "packet": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_comparison_backlink_manual_delivery.md"
+  },
+  "why_this_action": {
+    "summary": "Fresh external lanes are already inside measurement windows, StackOverflow is in a real cooldown, and the prepared comparison/backlink queue is the strongest remaining Codeberg-first lane that can still move forward through immediate manual execution.",
+    "shared_findings_used": [
+      "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+      "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+      "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+      "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+      "agents/marketing/logs/market_intelligence_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.md",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+      "drafts/2026-05-24_comparison_backlink_handoff_packet.md"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "artifact_created": true,
+    "delivery_surface": "current_chat"
+  },
+  "expected_outcome": "Immediate manual execution of one prepared comparison/backlink request that can create a Codeberg-first citation path without waiting for another automated lane.",
+  "measurement_window": {
+    "review_at": "2026-05-31T06:06:00+02:00",
+    "success_metric": "At least one comparison inclusion request is sent, followed by any attributable qualified repo inspection or Codeberg adoption movement.",
+    "kill_condition": "If still unexecuted by the review checkpoint, stop refreshing the same packet and switch the next action slot to a different executable demand-capture lane."
+  }
+}

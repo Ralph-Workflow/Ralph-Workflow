@@ -1,0 +1,13 @@
+{
+  "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "title": "Show RalphWorkflow: A composable AI coding workflow loop that runs overnight and hands back reviewable output",
+  "generated_at": "2026-05-21T23:47:46.531950+00:00",
+  "source": "hn_submit.py",
+  "packet_path": "/home/mistlight/.openclaw/workspace/drafts/HN_LOBSTERS_ACTIVE_PACKET.md",
+  "notes": "Review HN_LOBSTERS_ACTIVE_PACKET.md before submitting. HN rewards authentic, specific posts from real users. Lead with what it actually does in one sentence. No self-promotion fluff. Focus: overnight unattended project-scale AI coding work.",
+  "packet_content_preview": "# RalphWorkflow active HN/Lobsters packet\n\nGenerated: 2026-05-22 00:35 CEST\nStatus: active human-execution packet\nPriority: highest available distribution move\n\n## Why this is the move now\n- Codeberg adoption is flat in the current window: **10 stars / 2 watchers / 2 forks**, with **0 delta across 9 recent samples**.\n- Reddit is in cooldown / repetition-risk territory.\n- Telegraph keyword-gap content and owned-surface conversion repairs are already shipped.\n- The remaining highest-leverage move ",
+  "packet_exists": true,
+  "status": "manual_required",
+  "detail": "No BROWSERLESS_TOKEN or HN credentials \u2014 manual submission required",
+  "submitted_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+}

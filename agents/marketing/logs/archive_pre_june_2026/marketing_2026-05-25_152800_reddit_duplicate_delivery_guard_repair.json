@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-05-25T15:28:00+02:00",
+  "type": "reddit_duplicate_delivery_guard_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "title": "Suppress duplicate Reddit discussion packet regeneration during active review windows",
+  "why_this_action": {
+    "summary": "The loop had started regenerating reddit_discussion handoff packets after the same packet was already manually delivered earlier on 2026-05-25, which is fake progress during an active review window.",
+    "shared_findings_used": [
+      "marketing_execution_board_latest.md: no truthful do-now packet remained in the current review window",
+      "distribution_lane_latest.json: distribution_architecture_repair had become the chosen lane",
+      "reddit_execution_status_latest.json: Reddit remains non-executable for live automated posting",
+      "reddit_post_analysis_latest.json: keep Reddit moves fresh and avoid repetitive channel churn"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "summary": "Patched distribution_lane_executor.py so distribution_architecture_repair now refuses to regenerate the Reddit discussion handoff packet while the latest packet is still inside its active manual-delivery review window.",
+    "files_changed": [
+      "agents/marketing/distribution_lane_executor.py",
+      "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+    ],
+    "verification": {
+      "command": "python3 -m unittest /home/mistlight/.openclaw/workspace/agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py",
+      "result": "passed",
+      "tests_ran": 42
+    },
+    "expected_outcome": "Future distribution_architecture_repair runs stop producing duplicate Reddit handoff packets during the same review window and fall back to structural repair notes instead."
+  }
+}

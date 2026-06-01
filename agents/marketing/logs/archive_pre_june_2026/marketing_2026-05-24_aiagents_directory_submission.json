@@ -1,0 +1,58 @@
+{
+  "timestamp": "2026-05-24T05:43:30+02:00",
+  "action": "aiagents_directory_submission",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "channel": "directory_submission",
+  "target": "AiAgents.Directory",
+  "submit_url": "https://aiagents.directory/submit/",
+  "success_url": "https://aiagents.directory/submit/success/",
+  "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "secondary_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+  "submitted_payload": {
+    "email": "ken@hireaegis.com",
+    "agent_name": "Ralph Workflow",
+    "agent_website": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "agent_description": "Free and open-source workflow layer for autonomous coding that composes planning, implementation, and verification so teams can review finished, tested code instead of another confident summary."
+  },
+  "verification": {
+    "execution_method": "Direct POST to the public Django form on /submit/ using a fresh CSRF token and session cookie from the live page.",
+    "response_status": 200,
+    "response_url": "https://aiagents.directory/submit/success/",
+    "success_signal": "Submission Successful page rendered after POST."
+  },
+  "why_this_action": [
+    "The latest audit says to pause another broad low-intent directory burst and another same-family curator batch, so the best fresh move is a single higher-intent developer-facing surface that can be executed immediately.",
+    "AiAgents.Directory is adjacent to open-source developer tools and AI agent discovery, which is closer to Ralph Workflow's real evaluation path than another generic AI-tools directory.",
+    "The target was already discovered in shared artifacts, but it was not yet logged in outreach-log.md, so this run expands distribution instead of duplicating an in-flight lane.",
+    "The submission keeps Codeberg as the primary destination and GitHub as the mirror destination."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+    "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+    "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/reddit_post_analysis.json",
+    "agents/marketing/logs/adoption_metrics_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/distribution_reset_targets_latest.json",
+    "agents/marketing/logs/channel_discovery.json",
+    "agents/marketing/outreach-log.md"
+  ],
+  "files_changed": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/outreach-log.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/backlink_status.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_backlink_status.py"
+  ],
+  "expected_outcome": "A fresh developer-facing listing path that points qualified evaluators to the Codeberg repo first and can later become a measurable backlink or referral source.",
+  "measurement_window": {
+    "listing_review_at": "2026-05-31T05:43:30+02:00",
+    "backlink_review_at": "2026-06-07T05:43:30+02:00",
+    "adoption_review_at": "2026-06-21T05:43:30+02:00"
+  },
+  "replacement_condition": "If there is no live AiAgents.Directory listing or referral evidence by 2026-06-07, treat this as pending-only and use the next fresh-action slot on a different executable high-intent lane instead of another same-family directory replay."
+}

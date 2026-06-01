@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-05-26T08:44:59",
+  "type": "post_hold_release_truth_repair",
+  "channel": "distribution_architecture_repair",
+  "title": "Restore short-window release truth in the post-hold re-entry contract",
+  "summary": "Patched the post-hold contract writer to inherit the live short-window release time when the latest repair lane omits it, then regenerated the contract so the next rerun sees 2026-05-26T08:57:00 instead of unknown.",
+  "evidence": [
+    "distribution_lane_latest.json currently omits short_review_window_release_at during distribution_architecture_repair.",
+    "marketing_execution_board_latest.md already records short-window congestion clears at 2026-05-26T08:57:00.",
+    "post_hold_distribution_reentry_latest.md now records 2026-05-26T08:57:00."
+  ],
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_084459_post_hold_release_truth_repair.md",
+    "contract_path": "/home/mistlight/.openclaw/workspace/drafts/post_hold_distribution_reentry_latest.md",
+    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_marketing_execution_board.md",
+    "release_at": "2026-05-26T08:57:00",
+    "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_falls_back_to_live_short_window_release_when_latest_lane_json_omits_it agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_post_hold_reentry_contract_falls_back_to_live_short_window_release_when_latest_lane_json_omits_it -q"
+  }
+}

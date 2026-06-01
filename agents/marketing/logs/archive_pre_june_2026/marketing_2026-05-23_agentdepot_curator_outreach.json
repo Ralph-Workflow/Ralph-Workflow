@@ -1,0 +1,44 @@
+{
+  "timestamp_utc": "2026-05-23T00:22:56.979542+00:00",
+  "action": "agentdepot_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "AgentDepot",
+    "target_surface": "https://agentdepot.dev/submit",
+    "recipient": "hello@agentdepot.dev",
+    "subject": "Suggested AgentDepot listing: Ralph Workflow",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com",
+    "suggested_entry": "Ralph Workflow — free open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.",
+    "suggested_fit": [
+      "Coding",
+      "Productivity",
+      "Claude Code-adjacent workflow/template"
+    ],
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_agentdepot_curator_email.txt",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_002256_agentdepot_curator_email.json"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, Apollo is already in a measurement window until 2026-05-30, Reddit remains structurally blocked/high-risk, and AgentDepot exposes a live email intake on a highly aligned coding-agent directory with no logged prior Ralph Workflow outreach. That makes it a stronger executable fresh lane than more prep-only curator work.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and proof-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, why now",
+    "ADOPTION_FUNNEL_NEXT.md: bias toward free-use path and proof-led conversion instead of more generic posting",
+    "market_intelligence_latest.json: reused positioning truths and comparison-aware framing",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "channel_discovery.json: AgentDepot submit page exposes a live email handoff surface"
+  ],
+  "verification": {
+    "email_send_log_status": "sent",
+    "helper_compiles": true,
+    "helper_compile_command": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply, listing inclusion, or a live AgentDepot citation/backlink pointing evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or listing signal arrives by 2026-06-06, replace this lane with a different untouched curator/directory target instead of re-sending the same pitch."
+  }
+}

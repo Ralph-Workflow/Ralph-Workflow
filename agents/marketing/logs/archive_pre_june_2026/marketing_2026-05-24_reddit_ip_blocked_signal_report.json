@@ -1,0 +1,24 @@
+{
+  "signal": "reddit_ip_blocked",
+  "generated_at": "2026-05-24T06:30:00+02:00",
+  "status": "degraded_not_fresh",
+  "trigger": "forced_refresh_requested_but_reddit_monitor_reused_cooldown_skip_runtime",
+  "observed_runtime": {
+    "ok": true,
+    "status": "cooldown_skip",
+    "report": null,
+    "shortlisted": 0,
+    "scanned": 0,
+    "query_attempts": 0,
+    "shared_market_intelligence_consumed": true
+  },
+  "evidence": {
+    "marketing_momentum_watchdog_status": "cooldown_skip",
+    "marketing_momentum_watchdog_report_age_hours": 8.83,
+    "latest_reddit_monitor_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
+    "latest_same_day_direct_provider_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-23_1947.md",
+    "latest_report_note": "latest carry-forward report states same-day direct-provider coverage recorded reddit_ip_blocked=5 and time_budget_exceeded=1 with 0 scanned / 0 shortlisted"
+  },
+  "assessment": "No fresh Reddit scan was produced by the forced run. The runtime returned cooldown_skip and reused prior state, so the monitor remains effectively degraded for live Reddit discovery. This is consistent with the existing rescue-report language that direct-provider coverage was blocked/degraded.",
+  "recommended_next_step": "Treat Reddit as degraded/blocked until the monitor path is patched to bypass cooldown on forced refresh or a different network/browser route produces a fresh report."
+}

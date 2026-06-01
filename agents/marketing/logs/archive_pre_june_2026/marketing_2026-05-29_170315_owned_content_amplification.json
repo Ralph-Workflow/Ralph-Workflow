@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-05-29T15:03:15.008078+00:00",
+  "action_type": "owned_content_amplification",
+  "dry_run": false,
+  "cluster": "multi-agent-orchestration-patterns",
+  "title": "Multi-Agent Orchestration Patterns: Getting AI Agents to Actually Cooperate",
+  "post_result": {
+    "ok": true,
+    "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/multi-agent-orchestration-patterns.md",
+    "title": "Multi-Agent Orchestration Patterns: Getting AI Agents to Actually Cooperate",
+    "slug": "multi-agent-orchestration-patterns",
+    "keywords": [
+      "multi-agent orchestration",
+      "AI agent pipeline",
+      "how to chain AI coding agents",
+      "multi-agent workflow pattern",
+      "coordinating multiple coding agents"
+    ]
+  },
+  "deploy_result": {
+    "ok": true,
+    "step": "pushed",
+    "message": "Committed and pushed: feat(seo): new blog post from owned-content-amplification lane"
+  },
+  "ok": true,
+  "live_external_action": true
+}

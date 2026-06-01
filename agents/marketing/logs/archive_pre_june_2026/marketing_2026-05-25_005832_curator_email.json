@@ -1,0 +1,12 @@
+{
+  "timestamp_utc": "2026-05-25T00:58:32.932219+00:00",
+  "action": "curator_email_outreach",
+  "status": "sent",
+  "channel": {
+    "recipient": "frank@nextuptechnologies.co",
+    "subject": "Ralph Workflow as a workflow-system reference for your coding agents comparison",
+    "smtp_host": "smtp.ionos.com",
+    "smtp_port": 587
+  },
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_beam_publisher_outreach_email.txt"
+}

@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-05-26T16:51:11.141048",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "owned_content_publication",
+    "channel": "owned_content",
+    "title": "Distribution lane execution: owned_content",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_autonomous_ai_workflows_production_reliability_telegraph.md"
+  },
+  "why_this_action": {
+    "summary": "Published a repo-native proof guide to Telegraph so the hold window still creates fresh Codeberg-first demand capture instead of another owned-content noop.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "targets_prepared": [
+      "https://telegra.ph/Autonomous-AI-Workflows-for-Production-Reliability-05-26",
+      "/home/mistlight/.openclaw/workspace/content/guides/autonomous_ai_workflows_production_reliability.md"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": true,
+    "blocking_factors": []
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-05-24T04:44:21+02:00",
+  "action": "ai_dev_setup_contact_submission",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "channel": "high_intent_contact_form",
+  "target": "AI Dev Setup",
+  "submit_url": "https://aidevsetup.com/contact",
+  "submission_endpoint": "https://tally.so/embed/BzBzle",
+  "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "secondary_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+  "submitted_payload": {
+    "name": "mistlight",
+    "email": "ken@hireaegis.com",
+    "message_summary": "Requested AI Dev Setup consider adding Ralph Workflow with Codeberg as primary repo, GitHub as mirror, and a finished-tested-ready-to-review positioning angle.",
+    "suggested_listing_line": "Ralph Workflow — free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review."
+  },
+  "verification": {
+    "execution_method": "Headless Playwright submission through the live Tally contact form embedded on the AI Dev Setup contact page.",
+    "success_signal": "Tally confirmation text returned: 'Thanks for your message!'",
+    "confirmation_text": "Thanks for your message!",
+    "screenshot": "/home/mistlight/.openclaw/workspace/tmp_ai_dev_setup_contact_submission.png"
+  },
+  "why_this_action": [
+    "The latest audit says to pause another broad directory burst and another same-day curator batch, so the best fresh move is a single higher-intent coding-tool surface with a live executable contact path.",
+    "AI Dev Setup already targets AI coding / dev-tool discovery, which is closer to Ralph Workflow's strongest adoption story than another generic AI-tools directory.",
+    "The site exposes a working embedded contact form right now, so this could be executed immediately from the runtime instead of producing another handoff artifact.",
+    "The message kept Codeberg first and framed Ralph Workflow around finished, tested, ready-to-review outputs rather than generic orchestration language."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+    "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+    "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/distribution_reset_targets_latest.json",
+    "agents/marketing/logs/curator_outreach_queue_latest.json",
+    "agents/marketing/outreach-log.md"
+  ],
+  "expected_outcome": "A new developer-facing citation or listing path that routes qualified evaluators to the Codeberg repo first.",
+  "measurement_window": {
+    "contact_review_at": "2026-05-31T04:44:21+02:00",
+    "listing_review_at": "2026-06-07T04:44:21+02:00",
+    "adoption_review_at": "2026-06-21T04:44:21+02:00"
+  },
+  "replacement_condition": "If AI Dev Setup shows no reply, listing, or visible referral evidence by 2026-06-07, treat this as pending-only and use the next fresh-action slot on another executable high-intent workflow/coding surface instead of another generic contact replay."
+}

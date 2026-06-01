@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-05-24T08:59:52+02:00",
+  "type": "repo_conversion_asset",
+  "title": "Published Codeberg-first Claude Code comparison page in repo docs",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
+  "chosen_action": "Create a high-intent comparison page for evaluators searching Claude Code alternatives and route them into the Codeberg-first first-task path.",
+  "why_this_action": [
+    "Fresh audit says same-family directory and curator bursts should pause while measurement windows are still open.",
+    "Adoption funnel says the current bottleneck is conversion from interest to free use.",
+    "Shared competitor findings already identified Claude Code as a major comparison surface.",
+    "A Codeberg-first comparison page improves evaluator conversion without wasting another same-day outreach cycle."
+  ],
+  "artifacts_reused": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+    "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json"
+  ],
+  "files_changed": [
+    "/home/mistlight/.openclaw/workspace/docs/ralph-workflow-vs-claude-code.md",
+    "/home/mistlight/.openclaw/workspace/docs/README.md"
+  ],
+  "expected_outcome": "Higher conversion quality from comparison-intent traffic into START_HERE, first-task evaluation, and Codeberg-primary repo inspection.",
+  "measurement_window": {
+    "start": "2026-05-24T08:59:52+02:00",
+    "review_at": "2026-05-31T08:59:52+02:00",
+    "success_signal": "Any evidence that comparison-intent surfaces are being reused in distribution or referenced from future outreach plus a positive Codeberg star/watch/fork delta within the broader adoption window.",
+    "failure_signal": "No reuse in follow-on distribution and no Codeberg adoption movement attributable to stronger conversion surfaces."
+  },
+  "replacement_if_fails": "Promote a different bottom-funnel asset next: a public 'Ralph Workflow vs Cursor' or 'How to tell if an AI coding task is actually done' comparison/guide, then pair it with a fresh non-overlapping distribution lane.",
+  "verification": {
+    "method": "Local path validation for all new internal links",
+    "result": "passed"
+  },
+  "docs_review_note": {
+    "surfaces_reviewed_in_order": [
+      "README.md",
+      "START_HERE.md",
+      "docs/README.md"
+    ],
+    "what_changed": "Added a new comparison page and linked it from docs/README.md under a new Comparisons section.",
+    "why_here": "The page is a high-intent evaluator asset; docs/README is the right discovery surface without bloating the top-level README route list.",
+    "what_was_pruned_or_why_not": "Nothing was removed because the top-level surfaces were already short; keeping README unchanged avoids turning it into a link farm.",
+    "duplication_reduced": "The new page reuses existing first-task, review, and workflow guides instead of restating all of that material in multiple top-level surfaces.",
+    "why_top_level_is_better": "Evaluators who arrive with Claude Code context now have a direct comparison path without making the first screen noisier for everyone else."
+  }
+}

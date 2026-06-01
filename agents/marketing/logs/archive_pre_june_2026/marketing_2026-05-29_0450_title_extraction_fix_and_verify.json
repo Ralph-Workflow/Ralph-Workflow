@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-05-29T04:50:00+02:00",
+  "type": "concrete_repair_plus_verification",
+  "title": "title extraction fix, blog cross-post verification, GSC check",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "actions": [
+    {
+      "action": "blog_crosspost_verification",
+      "result": "25/25 blog posts confirmed live on Telegraph with Codeberg CTAs",
+      "ok": true
+    },
+    {
+      "action": "title_extraction_bug_fix",
+      "bug": "cost-model article cross-posted with title '.ralph/config.yml' instead of correct frontmatter title",
+      "root_cause": "extract_title_and_body() matched first H1 heading (code snippet '# .ralph/config.yml') before checking frontmatter title",
+      "fix": "restructured priority: frontmatter title first, then H1 fallback with code-heading guard (_looks_like_code_heading)",
+      "reposted_url": "https://telegra.ph/AI-Cost-Model-Routing-Stop-Paying-Frontier-Prices-for-Grunt-Work-05-29",
+      "ok": true
+    },
+    {
+      "action": "gsc_content_gap_check",
+      "result": "onpage 100/100, 92 sitemap URLs, 12.5% content gap coverage (7 gaps vs 1 covered), 0 ranked keywords, 0 backlinks",
+      "priority_actions": ["content targeting gaps", "backlink building"]
+    }
+  ],
+  "telegraph_articles_live": 61,
+  "telegraph_blog_crossposts": 25,
+  "duplicate_source_paths": [
+    "/home/mistlight/.openclaw/workspace/content/guides/review_ai_coding_output_before_merge.md (2 URLs, predates this run)"
+  ],
+  "congestion_note": "Hold window active until 05:56 UTC. This run executed concrete repairs (title fix + re-post) and verification (GSC check) during the hold — not measurement holds or packet generation.",
+  "next_actions": [
+    "After congestion clears: consider fresh owned content or publisher discovery",
+    "PyPI README deploy still blocked (no TWINE creds) — 1498 downloads/month see stale 0.8.7 README",
+    "GSC keyword ranking needs dedicated content build-out targeting 7 identified content gaps"
+  ]
+}

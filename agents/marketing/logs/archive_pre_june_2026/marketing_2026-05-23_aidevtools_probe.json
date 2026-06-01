@@ -1,0 +1,17 @@
+{
+  "timestamp_utc": "2026-05-23T02:05:56Z",
+  "action": "aidevtools_submit_probe",
+  "type": "INVESTIGATION / RUNTIME_FIX_INPUT",
+  "channel": {
+    "name": "AI Dev Tools Directory",
+    "submit_page": "https://www.aidevtools.dev/submit/",
+    "observed_form_action": "https://formspree.io/f/xform"
+  },
+  "status": "broken_submit_surface",
+  "verification": {
+    "post_target": "https://formspree.io/f/xform",
+    "http_status": 404,
+    "body_signal": "Form not found"
+  },
+  "note": "Page exposes a placeholder/stale Formspree action. Treat this as non-executable until the site owner fixes the form hash; do not count it as an autonomous submit lane."
+}

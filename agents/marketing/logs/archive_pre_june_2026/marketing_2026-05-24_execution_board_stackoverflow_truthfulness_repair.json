@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-05-24T17:49:00+02:00",
+  "run_type": "marketing-process-repair",
+  "chosen_action": {
+    "type": "execution_board_stackoverflow_truthfulness_repair",
+    "channel": "process_repair",
+    "title": "Hide stale StackOverflow handoff packet when the latest lane run has no manual-ready asset",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_execution_board_stackoverflow_truthfulness_repair.md"
+  },
+  "why_this_action": {
+    "summary": "The execution board was still surfacing a do-now StackOverflow packet even after the latest lane run returned no fresh manual-ready draft, which made the current board overstate what was actually executable.",
+    "shared_findings_used": [
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+      "drafts/marketing_execution_board_latest.md",
+      "drafts/stackoverflow_answer_handoff_packet_latest.md"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "files_changed": [
+      "agents/marketing/distribution_lane_executor.py",
+      "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py",
+      "drafts/marketing_execution_board_latest.md"
+    ],
+    "verification": [
+      "python3 -m py_compile agents/marketing/distribution_lane_executor.py",
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold",
+      "regenerated marketing_execution_board_latest.md now shows no do-now StackOverflow packet for the 2026-05-24 17:47 board state"
+    ],
+    "outcome_ready": true
+  }
+}

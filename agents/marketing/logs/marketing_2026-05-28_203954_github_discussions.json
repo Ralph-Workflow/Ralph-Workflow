@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-05-28T18:39:54.830788+00:00",
-  "action_type": "github_discussions_outreach_search",
-  "dry_run": false,
-  "issues_found": 14,
-  "new_drafts": 5,
-  "ok": true,
-  "live_external_action": false
-}

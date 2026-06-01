@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-05-26T01:01:38.843790",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "apollo_launch_handoff_packet",
+    "channel": "apollo_launch_handoff_packet",
+    "title": "Distribution lane execution: apollo_launch_handoff_packet",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_apollo_launch_handoff_packet.md"
+  },
+  "why_this_action": {
+    "summary": "Prepared the Apollo launch/send confirmation handoff so the loop advances the already-verified non-zero list into real live-send evidence instead of regenerating prep artifacts.",
+    "shared_findings_used": [
+      "apollo_sequence_status_latest.json",
+      "apollo_sequence_launch_packet_latest.md",
+      "marketing_workflow_audit_latest.json"
+    ],
+    "targets_prepared": [
+      "Ralph Workflow curator follow-up \u2014 Codeberg CTA"
+    ]
+  },
+  "result": {
+    "status": "prepared",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": []
+  }
+}

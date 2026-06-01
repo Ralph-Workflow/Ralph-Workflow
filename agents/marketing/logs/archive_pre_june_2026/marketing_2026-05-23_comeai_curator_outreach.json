@@ -1,0 +1,36 @@
+{
+  "timestamp_utc": "2026-05-23T02:54:40.689029+00:00",
+  "action": "comeai_curator_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "Come AI",
+    "contact": "devce2300@gmail.com",
+    "source": "channel_discovery.json public contact fallback",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "subject": "Suggested Come AI listing: Ralph Workflow",
+    "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "mirror_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, the autonomous easy-submit directory lanes are mostly already in measurement, and Come AI exposed a fresh curator email fallback that can still create a Codeberg-primary backlink without waiting on GitHub auth or reusing the Apollo lane during its active measurement window.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and proof-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, why now",
+    "ADOPTION_FUNNEL_NEXT.md: bias toward free-use path and reviewable proof instead of more generic posting",
+    "market_intelligence_latest.json: reused positioning truths and competitor-aware workflow framing",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "channel_discovery.json: Come AI submit surface is broken for autonomous POSTs but exposes a live editor email fallback",
+    "outreach-log.md: verified Come AI had not already been contacted"
+  ],
+  "verification": {
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_025440_comeai_curator_email.json",
+    "status": "sent"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply or live Come AI listing/backlink pointing to the Codeberg primary repo",
+    "kill_condition": "If no listing or reply signal arrives by 2026-06-06, replace this lane with a different untouched curator/directory surface instead of re-emailing the same pitch."
+  }
+}

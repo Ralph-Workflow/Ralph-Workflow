@@ -10,8 +10,8 @@
 - Artifact: `/tmp/guard-pause.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
 - Measurement window: Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.
-- Next truthful checkpoint: `2026-05-31T00:00:00` (directory_secondary_surface_followup)
-- Checkpoint reason: Live directory secondary-surface repair reaches its next review checkpoint.
+- Next truthful checkpoint: `2026-06-01T07:09:20` (short_review_window_release)
+- Checkpoint reason: Current short review window clears.
 
 ## Structural capability added
 - Dedicated execution-board runtime that re-checks the consolidated do-now asset list before every system-design follow-through pass.

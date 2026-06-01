@@ -1,0 +1,35 @@
+{
+  "timestamp_utc": "2026-05-22T12:05:51Z",
+  "action": "agent_deck_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "agent-deck",
+    "target_repo": "https://github.com/asheshgoplani/agent-deck",
+    "recipient": "ashesh.goplani96@gmail.com",
+    "subject": "Possible complementary listing for agent-deck users: Ralph Workflow",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_agent-deck_curator_email.txt",
+    "suggested_short_description": "Ralph Workflow — free and open-source composable loop framework and AI orchestrator for structured unattended coding workflows."
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, the active lane is curator/comparison backlink outreach, GitHub PR execution is blocked in this runtime because gh auth is unavailable, and agent-deck was the highest-quality prepared target with a public maintainer email and a genuinely complementary audience.",
+  "reused_artifacts": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_lane_latest.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_outreach_targets.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_outreach_queue_latest.json"
+  ],
+  "runtime_constraint": {
+    "constraint": "github_pr_auth_unavailable",
+    "evidence": "gh auth status returned not logged in",
+    "fallback_used": "direct curator email"
+  },
+  "measurement_window": {
+    "maintainer_response_or_cross_link_through": "2026-06-05",
+    "success_signal": "reply, mention, or link that sends relevant developers to the Codeberg primary repo"
+  }
+}

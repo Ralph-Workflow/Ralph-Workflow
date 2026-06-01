@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-05-27T15:07:48.889453",
+  "type": "execution_board_latest_alias_guard_repair",
+  "summary": "Patched the outcome execution-board runner to force-sync marketing_execution_board_latest.md from the freshly rewritten dated board, then refreshed the live board so the canonical latest alias matches current hold-window truth.",
+  "shared_findings_used": [
+    "drafts/marketing_execution_board_latest.md",
+    "drafts/2026-05-27_marketing_execution_board.md",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/outcome_execution_board_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/adoption_metrics_latest.json"
+  ],
+  "files_changed": [
+    "agents/marketing/outcome_execution_board_runner.py",
+    "agents/marketing/tests/test_outcome_execution_board_runner.py"
+  ],
+  "verification": [
+    "python3 -m unittest agents.marketing.tests.test_outcome_execution_board_runner.OutcomeExecutionBoardRunnerTests.test_sync_from_execution_refreshes_execution_board_after_latest_lane_persist agents.marketing.tests.test_outcome_execution_board_runner.OutcomeExecutionBoardRunnerTests.test_sync_from_execution_resyncs_latest_execution_board_alias agents.marketing.tests.test_outcome_execution_board_runner.OutcomeExecutionBoardRunnerTests.test_run_persists_latest_lane_after_standalone_execution_board_action -q",
+    "python3 agents/marketing/outcome_execution_board_runner.py",
+    "head -n 5 drafts/marketing_execution_board_latest.md",
+    "head -n 5 drafts/2026-05-27_marketing_execution_board.md"
+  ],
+  "result": {
+    "status": "executed",
+    "live_external_action": false,
+    "blocking_factors": [],
+    "artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_150748_execution_board_latest_alias_guard_repair.md"
+  }
+}

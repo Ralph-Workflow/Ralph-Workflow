@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-23T08:45:23.254460+00:00",
+  "run_type": "marketing-action",
+  "chosen_action": {
+    "type": "curator_email_outreach",
+    "channel": "curator_outreach",
+    "title": "ithiria894 / Awesome Claude Code Workflows curator outreach",
+    "target": "ithiria894/awesome-claude-code-workflows",
+    "url": "https://github.com/ithiria894/awesome-claude-code-workflows"
+  },
+  "why_this_action": {
+    "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
+    "reasoning": "Workflow-focused curator list with direct RalphWorkflow fit, fresh untapped contact path, and a stronger chance of qualified Codeberg-bound traffic than another Reddit or owned-content cycle during the active measurement window.",
+    "shared_findings_used": [
+      "marketing_workflow_audit_latest.json: Codeberg primary adoption is flat and current repair calls for Codeberg-primary curator/comparison backlinks.",
+      "reddit_post_analysis.md: Reddit repetition risk is real, so this run should not spend the move on another Reddit-style action.",
+      "posting_2026-05-23.json: today's owned-content draft was already posted, so duplicating that lane would be low leverage.",
+      "adoption_metrics_latest.md: Codeberg remains flat and is the primary repo success gate.",
+      "outreach-log.md: ithiria894 target was not yet contacted.",
+      "market_intelligence_latest.json: reuse canonical positioning and Codeberg-first messaging.",
+      "external repo check: Awesome Claude Code Workflows is a workflow cookbook with plan-build-review, multi-agent orchestration, and autonomous loops sections that match RalphWorkflow directly."
+    ]
+  },
+  "result": {
+    "status": "sent",
+    "ok": true,
+    "live_external_action": true,
+    "outcome_ready": true,
+    "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "mirror_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "recipient": "ithiria894@gmail.com",
+    "subject": "Suggested Awesome Claude Code Workflows listing: Ralph Workflow",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/ithiria894-awesome-claude-code-workflows-email.txt",
+    "provider_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_084523_ithiria894_curator_email.json",
+    "review_due_date": "2026-06-06"
+  }
+}

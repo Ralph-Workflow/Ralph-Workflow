@@ -1,0 +1,36 @@
+{
+  "run_type": "marketing-active-loop",
+  "timestamp": "2026-05-31T12:52:00+02:00",
+  "execution_board_status": "rewritten_truthful",
+  "previous_board_stale_days": 6,
+  "actions_taken": [
+    {
+      "action": "indexnow_submit",
+      "result": "200 OK — 100 sitemap URLs submitted to Bing/Yandex/Seznam",
+      "impact": "Should improve DDG indexing (currently 0) since DDG uses Bing's index"
+    },
+    {
+      "action": "execution_board_rewrite",
+      "result": "Fresh truthful board replacing 6-day stale May 25 content in May 31 file",
+      "impact": "System will no longer see stale review windows from May 25 as current"
+    },
+    {
+      "action": "stackoverflow_lane_verified",
+      "result": "Lane functioning — 7 questions, 2 new drafts (May 31 13:10 manual run), daily cron at 03:15 may need env fix"
+    }
+  ],
+  "blocks_remaining": [
+    "PyPI (token missing)",
+    "gh auth login (not installed)",
+    "Apollo CF (verification loop)",
+    "SMTP (credentials not set)",
+    "Reddit API (PRAW not configured)",
+    "HN/Lobsters (no available surface)"
+  ],
+  "owned_content": {
+    "slugs": 42,
+    "uncovered_clusters": 0,
+    "saturated": true
+  },
+  "next_run_hint": "ComputingForGeeks manual outreach if human-unblocked; otherwise indexation health re-check"
+}

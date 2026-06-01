@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-26T04:01:00",
+  "type": "measurement_hold_release_cron",
+  "status": "scheduled",
+  "ok": true,
+  "shared_findings_reused": [
+    "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+    "channel_discovery.json: validated easy-submit directory lanes",
+    "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+    "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+    "distribution_lane_latest.json / marketing_execution_board_latest.md: execution board holds manual delivery until short-window congestion clears at 2026-05-26T08:57:00",
+    "openclaw cron list --json: post-hold marketer rerun is still scheduled for 2026-05-26T03:05:18.000Z (2026-05-26 05:05:18 Europe/Berlin), earlier than the current hold-clear time"
+  ],
+  "verification": {
+    "added_with": "openclaw cron add --name marketing-measurement-hold-release --at <release_at> ...",
+    "scheduled_run_at": "2026-05-26T08:57:00",
+    "delete_after_run": true,
+    "reentry_contract_path": "/home/mistlight/.openclaw/workspace/drafts/post_hold_distribution_reentry_latest.md",
+    "delivery_channel": "matrix",
+    "delivery_target": "@mistlight_oriroris:matrix.org"
+  },
+  "cron_job": {
+    "id": "217831be-05ae-4737-b8fa-9dc3026ff392",
+    "name": "marketing-measurement-hold-release"
+  },
+  "review_window": {
+    "scheduled_run_at": "2026-05-26T08:57:00"
+  },
+  "cleanup": {
+    "removed_stale_jobs": [
+      {
+        "job_id": "d41cacb2-fd0a-4833-a7a8-57a6e22ec270",
+        "job_name": "marketing-measurement-hold-release",
+        "scheduled_run_at": "2026-05-26T03:05:18.000Z",
+        "status": "idle"
+      }
+    ]
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-05-24T12:35:00+02:00",
+  "type": "stack_overflow_stale_cron_running_truth_repair",
+  "status": "executed",
+  "ok": true,
+  "why_now": [
+    "The marketing selector now consults cron live state for post-cooldown StackOverflow truth, so stale scheduler running flags can directly suppress the next legitimate lane.",
+    "Fresh cron inspection showed multiple unrelated jobs simultaneously marked running with the same runningAtMs value, which is strong evidence of leaked scheduler state rather than real concurrent job execution.",
+    "Local selector hardening is higher leverage than generating another StackOverflow packet because the current packet already ran or was delivered inside the active review window."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/logs/marketing_2026-05-24_stackoverflow_post_cooldown_cron.json"
+  ],
+  "evidence": {
+    "cron_running_job_count": 8,
+    "distinct_runningAtMs_values": [
+      1779616312703,
+      1779618926061
+    ],
+    "shared_runningAtMs_groups": {
+      "1779616312703": [
+        "1c0ad179-185c-4067-ba16-d41702524ee0",
+        "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
+        "e90fa8d1-b086-49f8-893c-1c57d38eb1b3",
+        "7a71bb58-75ac-4862-b316-ed3bdff44b0c",
+        "b7d74fa6-ab9b-4f66-9d03-a77c0ad7a56c",
+        "ce3f9db8-bb49-4f97-9ee3-d4786314c204",
+        "a75a7892-17e7-48b6-a77c-73d0d8b7746b"
+      ]
+    },
+    "stack_overflow_post_cooldown_job_id": "7a71bb58-75ac-4862-b316-ed3bdff44b0c",
+    "stack_overflow_latest_generated_at": "2026-05-24T11:48:59.481380",
+    "scheduled_run_at": "2026-05-24T11:30:00+02:00"
+  },
+  "repair": {
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/tests/test_marketing_system.py"
+    ],
+    "behavior_change": "A cron job marked running no longer keeps the StackOverflow post-cooldown lane artificially current once a newer StackOverflow lane artifact already exists after the scheduled slot.",
+    "scope": "marketing-local truth hardening to resist stale cron running flags"
+  },
+  "verification": {
+    "tests": [
+      "python3 -m unittest agents.marketing.tests.test_marketing_system.DistributionLaneSelectorFallbackTests.test_running_post_cooldown_stackoverflow_cron_does_not_mark_lane_exhausted agents.marketing.tests.test_marketing_system.DistributionLaneSelectorFallbackTests.test_stale_running_post_cooldown_cron_flag_does_not_block_exhaustion agents.marketing.tests.test_marketing_system.DistributionLaneSelectorFallbackTests.test_post_cooldown_stackoverflow_noop_retires_packet_for_now",
+      "python3 -m unittest agents.marketing.tests.test_marketing_system agents.marketing.tests.test_distribution_lane_executor_measurement_hold agents.marketing.tests.test_marketing_momentum_watchdog"
+    ],
+    "selector_check": {
+      "lane_at_2026_05_24_12_35_local": "measurement_hold",
+      "contains_retire_packet_reason": true,
+      "contains_already_scheduled_reason": false
+    },
+    "note": "Broader certification scripts still report pre-existing failures in marketing_loop_independent_verify.py and marketing_loop_verifier.py."
+  },
+  "replacement_condition": "If scheduler running-state leakage is repaired centrally later, this local guard can remain as a truth-preserving backstop."
+}

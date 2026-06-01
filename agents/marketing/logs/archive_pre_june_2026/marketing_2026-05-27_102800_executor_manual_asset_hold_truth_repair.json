@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-27T10:28:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "executor_manual_asset_hold_truth_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Stop executor from resurfacing post-hold-only publisher packets as do-now manual assets"
+  },
+  "why_this_action": {
+    "summary": "The current review window truth says there is no do-now handoff packet. The highest-leverage executable move was to patch the executor-side manual-asset enumerator so it stops surfacing the primary-repo-flat packet during short-window congestion after repeated prepared-only refreshes, which was undermining the execution-board hold contract and increasing the odds of fake follow-through on the post-hold path.",
+    "shared_findings_used": [
+      "agents/marketing/logs/adoption_metrics_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "drafts/marketing_execution_board_latest.md",
+      "agents/marketing/logs/reddit_post_analysis_latest.json",
+      "agents/marketing/logs/market_intelligence_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched agents/marketing/distribution_lane_executor.py so _manual_outreach_assets_waiting_for_execution() now respects the short review-window hold and the prepared-only repeat threshold for the primary-repo-flat packet. Added a unit test that proves the executor now hides that packet until congestion clears instead of presenting it as an immediate manual asset.",
+    "files_changed": [
+      "agents/marketing/distribution_lane_executor.py",
+      "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+    ],
+    "verification": {
+      "tests": {
+        "command": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_manual_outreach_assets_skip_post_hold_only_primary_repo_flat_packet_after_repeat_threshold agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_hides_current_chat_final_reply_manual_asset agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_post_hold_release_reuses_current_primary_repo_flat_packet_even_if_prep_repeat_threshold_was_hit -v",
+        "result": "passed"
+      }
+    }
+  },
+  "expected_outcome": "The scheduled post-hold rerun at 2026-05-27T14:26:29+02:00 will be less likely to surface a fake do-now publisher follow-through asset and more likely to choose either a genuinely executable lane or another concrete repair.",
+  "measurement_window": {
+    "review_at": "2026-05-27T14:26:29+02:00",
+    "success_metric": "Before or at the 2026-05-27T14:26:29+02:00 rerun, executor-side manual asset discovery no longer returns the current primary-repo-flat packet while short-window congestion is still active and the repeat threshold has already been hit.",
+    "kill_condition": "If the next repair or rerun still surfaces that packet as a do-now manual asset before the short-window release, escalate into a wider selector/executor/manual-follow-through truth unification repair."
+  }
+}

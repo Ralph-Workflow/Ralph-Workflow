@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-05-26T23:01:54",
+  "chosen_action": {
+    "type": "distribution_architecture_guard_window_truth_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Stop cross-window reuse of stale distribution-architecture guard artifacts",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_230154_distribution_architecture_guard_window_truth_repair.md"
+  },
+  "summary": "Patched the marketing loop and outcome execution-board runner so guard_follow_through/guard_pause artifacts only reuse inside the current short review window instead of suppressing fresh same-window follow-through with stale older logs.",
+  "why_this_action": {
+    "summary": "The execution board was empty after the short-window release, but outcome_execution_board_runner still reused a 2026-05-25 guard-follow-through artifact for the same fingerprint. That created fake progress and blocked a truthful same-window repair slot.",
+    "shared_findings_used": [
+      "marketing_execution_board_latest.md: no truthful do-now packet exists in the current review window",
+      "distribution_lane_latest.json: current lane escalated to distribution_architecture_repair because same-window guard follow-through was missing",
+      "outcome_execution_board_latest.json: the runner had just reused a prior-day guard-follow-through artifact for the same fingerprint",
+      "marketing_workflow_audit_latest.json: Codeberg remains flat, so process truth matters more than packet churn",
+      "reddit_post_analysis_latest.json: Reddit already shipped; do not burn this slot repeating that lane"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "files_changed": [
+      "agents/marketing/outcome_execution_board_runner.py",
+      "agents/marketing/run.py",
+      "agents/marketing/tests/test_outcome_execution_board_runner.py",
+      "agents/marketing/tests/test_run_repair_mode.py"
+    ],
+    "verification": [
+      "python3 -m unittest agents.marketing.tests.test_outcome_execution_board_runner agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_guard_follow_through_reuse_is_stale_when_it_predates_current_short_window -q",
+      "python3 -m unittest agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_main_reuses_existing_distribution_architecture_repair_when_truth_is_unchanged agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_main_reuses_existing_distribution_architecture_guard_pause_when_truth_is_unchanged agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_repeated_distribution_architecture_repairs_trigger_third_strike_reason -q",
+      "python3 agents/marketing/outcome_execution_board_runner.py"
+    ],
+    "observed_outcome": "After the patch, outcome_execution_board_runner stopped reusing the prior-day guard-follow-through artifact and selected distribution_architecture_repair / distribution_architecture_churn_guard_repair for the current fingerprint instead."
+  }
+}

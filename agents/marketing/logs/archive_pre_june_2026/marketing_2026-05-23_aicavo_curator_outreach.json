@@ -1,0 +1,56 @@
+{
+  "timestamp_utc": "2026-05-23T10:52:25Z",
+  "action": "aicavo_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "channel": {
+    "name": "AICavo",
+    "target_surface": "https://aicavo.com/submit",
+    "recipient": "hello@aicavo.com",
+    "subject": "Suggested AICavo listing: Ralph Workflow",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com",
+    "suggested_entry": "Ralph Workflow — free/open-source autonomous coding workflow with plan-build-verify loops and reviewable repo-native handoffs.",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/aicavo-contact-email.txt",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_105225_aicavo_curator_email.json"
+  },
+  "why_this_action": [
+    "Codeberg adoption is still flat, Apollo is already inside a measurement window, and same-day Reddit is structurally weak, so a fresh developer-facing discovery surface is a better use of this slot than more internal drafting.",
+    "AICavo is a large active AI/SaaS directory aimed at founders, developers, and buyers, and its submit page explicitly offers a free listing path.",
+    "The public submit path is gated behind sign-in from this runtime, but the site publishes a direct general inquiry address for collaborations, making curator email the strongest legitimate same-run path."
+  ],
+  "supporting_sources": [
+    "https://aicavo.com/submit",
+    "https://aicavo.com/contact",
+    "https://aicavo.com/about"
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+    "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+    "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/adoption_metrics_latest.md",
+    "agents/marketing/logs/reddit_post_analysis.md",
+    "agents/marketing/outreach-log.md"
+  ],
+  "verification": {
+    "submit_page_status": 200,
+    "submit_gate_note": "AICavo submit surface is live and advertises a free plan, but posting from this runtime redirects to sign-in instead of completing an autonomous free submission.",
+    "contact_proof": "hello@aicavo.com and support@AICavo.com are published on https://aicavo.com/contact",
+    "email_send_log_status": "sent"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply, live AICavo listing, or visible third-party citation/backlink that points evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or listing signal arrives by 2026-06-06, do not resend the same pitch; replace it with a different untouched discovery surface."
+  }
+}

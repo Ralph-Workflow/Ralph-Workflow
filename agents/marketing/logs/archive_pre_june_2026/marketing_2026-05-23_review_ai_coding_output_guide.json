@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-05-23T13:53:00+02:00",
+  "action": "repo_conversion_proof_asset",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "channel": "repo_docs",
+  "target": "Codeberg-first conversion surface",
+  "title": "Add review AI coding output before merge guide and route top-level docs toward it",
+  "why_this_action": [
+    "Primary Codeberg adoption is flat while external lanes are either in active measurement windows, saturated, or blocked.",
+    "Shared findings keep pointing to the trust gap between an agent saying done and a result a developer would actually merge.",
+    "A durable repo-native guide can improve the first-click evaluation path now without waiting on external account access."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/adoption_metrics_latest.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/NON_REDDIT_CHANNELS_NEXT.md",
+    "agents/marketing/logs/distribution_lane_latest.md"
+  ],
+  "files_changed": [
+    "content/guides/review_ai_coding_output_before_merge.md",
+    "README.md",
+    "START_HERE.md"
+  ],
+  "docs_change_brief": {
+    "user_problem_addressed": "Evaluators need a clearer repo-native answer to the question: how do I decide whether AI coding output actually earned a merge?",
+    "target_audience": "Developers and technical teams evaluating unattended AI coding workflows for real repo work.",
+    "chosen_surface": "Deep guide plus README/START_HERE routing",
+    "why_this_surface": "The guide answers one high-intent trust question, while README and START_HERE are the shortest path to place that answer in front of repo visitors.",
+    "what_was_shortened_removed_merged": "README quick-link count stayed at four by swapping a top-level example route for the stronger review guide instead of adding another branch."
+  },
+  "docs_review_note": {
+    "what_changed": "Added a focused review-before-merge guide and routed README/START_HERE toward it for the trust/verification pain frame.",
+    "why_it_belongs_here": "This is a concrete evaluator question that belongs one layer below README while still being promoted from the first-run path.",
+    "what_was_pruned_shortened_merged": "Kept README quick-link count flat by promoting the new guide instead of expanding the top-level link set.",
+    "duplication_reduced": true,
+    "why_top_level_is_better": "The first-click path now answers the finish-line trust question more directly without adding link sprawl."
+  },
+  "verification": {
+    "link_check": {
+      "checked_files": [
+        "README.md",
+        "START_HERE.md",
+        "content/guides/review_ai_coding_output_before_merge.md"
+      ],
+      "errors": []
+    },
+    "quick_link_count": 4
+  },
+  "measurement_window": {
+    "review_at": "2026-06-06T13:53:00+02:00",
+    "success_metric": "This guide becomes part of the repo-first evaluation path and contributes to clearer qualified inspection or Codeberg star/watch/fork movement.",
+    "kill_condition": "If Codeberg remains flat after the current external measurement windows close and this guide still has no visible reuse in distribution or conversion surfaces, replace it with a stronger proof asset instead of another light docs pass."
+  }
+}

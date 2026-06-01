@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-25T16:38:00+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "distribution_architecture_repair",
+    "repair": "primary_packet_followthrough_truth_repair",
+    "channel": "distribution_architecture_primary_packet_followthrough_truth",
+    "title": "Stop post-hold measurement_hold drift when a refreshed Codeberg-first publisher packet is already the truthful follow-through asset"
+  },
+  "why_this_action": {
+    "summary": "The latest artifacts had drifted into a false state: the execution board could already surface a do-now primary-repo-flat publisher packet after the blocker cleared, but the selector could still collapse to measurement_hold because refreshed same-path packet deliveries were treated as still active and refreshed publisher packets were not counted as current unless a newer packet-generation log existed after the file mtime.",
+    "shared_findings_used": [
+      "agents/marketing/logs/distribution_lane_latest.json: lane still reported measurement_hold at 2026-05-25T17:04:00 despite its own reasons admitting the primary-repo-flat packet should be packaged",
+      "drafts/marketing_execution_board_latest.md: at the same 2026-05-25T17:04:00 checkpoint the board surfaced a do-now primary-repo-flat publisher contact packet for TIMEWELL, Toolradar, and Morph",
+      "agents/marketing/logs/marketing_2026-05-25_primary_repo_flat_contact_manual_delivery_refresh.json: earlier same-path delivery covered an older materially different target set and should not suppress the refreshed packet forever",
+      "agents/marketing/logs/marketing_2026-05-25_primary_repo_flat_contact_handoff_packet_execution.json: a recent matching prep log already existed for the refreshed packet family even though the packet file had been updated later the same day",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json: same-family publisher overlap should block another net-new burst, not hide a current truthful follow-through asset once a different lane is exhausted"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "summary": "Patched the selector/execution truth checks so refreshed same-path primary-repo-flat packet deliveries no longer suppress a materially newer packet, and a refreshed publisher packet can still count as current when its content matches the untouched target set and a recent matching prep log already exists. Added regression coverage for both the delivery-guard and follow-through-selection cases.",
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/distribution_lane_executor.py",
+      "agents/marketing/tests/test_distribution_lane_selector_repair_pause.py",
+      "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py"
+    ],
+    "verification": {
+      "tests": "python3 -m unittest agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_primary_repo_flat_handoff_packet_current_accepts_refreshed_matching_packet_when_recent_prep_log_is_still_valid agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_current_primary_repo_flat_packet_beats_measurement_hold_even_when_publisher_burst_pause_is_active agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_current_primary_repo_flat_packet_beats_measurement_hold_and_guard agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_manual_outreach_asset_delivery_recognizes_current_chat_manual_delivery_logs agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_manual_outreach_asset_delivery_ignores_same_path_packet_refreshed_after_delivery agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_hides_primary_repo_flat_packet_after_manual_delivery_in_active_review_window agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_hides_primary_repo_flat_packet_after_manual_delivery_refresh_in_active_review_window agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_surfaces_refreshed_primary_repo_flat_packet_after_same_path_delivery_log -q",
+      "tests_result": "passed (8 tests)",
+      "live_board_1704": "primary-repo-flat publisher contact packet surfaced again as a truthful do-now asset for TIMEWELL, Toolradar, Morph",
+      "live_selector_1704": "no longer returned measurement_hold; it advanced to a follow-through lane instead of idling"
+    }
+  },
+  "replacement_condition": "If a future post-hold run still ranks a lower-priority manual outreach asset above a higher-priority current primary-repo-flat publisher packet for the same truth window, escalate into selector lane-priority repair instead of logging another follow-through placeholder."
+}

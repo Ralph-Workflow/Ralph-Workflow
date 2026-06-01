@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-05-26T11:58:08.796502+02:00",
+  "type": "distribution_execution_reuse_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "summary": "Patched the marketing loop so active-hold and guard-lane artifact reuse points back to the existing execution log instead of writing a duplicate churn log.",
+  "expected_outcome": "Suppress duplicate guard/follow-through execution logs during truthful empty-board hold windows.",
+  "verification": {
+    "tests": [
+      "python3 -m unittest /home/mistlight/.openclaw/workspace/agents/marketing/tests/test_run_repair_mode.py /home/mistlight/.openclaw/workspace/agents/marketing/tests/test_outcome_execution_board_runner.py"
+    ],
+    "tests_result": "passed",
+    "workspace_run": "python3 agents/marketing/run.py",
+    "workspace_run_result": "passed",
+    "workspace_run_distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_075541_distribution_architecture_guard_follow_through.json",
+    "workspace_run_skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_115808_measurement_hold_skip.json"
+  },
+  "artifacts_changed": [
+    "agents/marketing/run.py",
+    "agents/marketing/tests/test_run_repair_mode.py"
+  ],
+  "shared_findings_used": [
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/adoption_metrics_latest.json"
+  ],
+  "why_now": [
+    "No truthful do-now packet exists in the current review window.",
+    "The active board was already under a third-strike churn guard.",
+    "Recent repeated hold/guard artifacts were consuming runs without improving outcome odds."
+  ]
+}

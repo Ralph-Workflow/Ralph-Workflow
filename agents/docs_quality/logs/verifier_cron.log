@@ -17024,3 +17024,93 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are clean, consistent, and well-positioned. The README -> START_HERE -> docs/README journey works. Promoted next-click pages reinforce the same story without fighting it. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with correct 'operating system for autonomous coding' tagline, frames as composable loop framework, explicitly says 'not a chat window or prompt tool', includes strong default workflow framing, clearly marks Codeberg primary / GitHub mirror, has legit audience fit/non-fit section, includes engineering-practice dependency section."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with simple-core / composable / strong-default trinity, result-first evaluation, clear good/bad task selection, 'what success looks like' focuses on real outcomes, minimal link anxiety."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself as post-README/START_HERE page, has 'Keep proof secondary' section that prevents proof-over-product drift, routes to framing pages that all open with the same core message."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces positioning: simple center, default workflow matters, result-focused, composable not complex. Does not fight the README story."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md",
+      "reason": "Connects the spec requirement back to the default workflow naturally, frames it as operational necessity not ceremony. Reinforces why the tool fits serious work."
+    },
+    {
+      "path": "docs/unattended-coding-agent.md",
+      "reason": "'Unattended should still mean accountable' is honest framing that matches positioning. Default workflow section ties back to the main story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is coherent, well-positioned, and aligned with the positioning document. No hard failures. The user should not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with correct tagline and orchestrator framing. 'Simple at the center, powerful in composition' narrative is present. Result-first ('runnable, tested software'). Codeberg primary declared. No artifacts/handoff/plumbing leakage. Default-workflow-first emphasis throughout."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with positioning-aligned copy. Provides clear fit/non-fit task guidance. Action-based (install -> diagnose -> write spec -> run). Result-first success criteria ('what the software does now, what checks ran'). Routes to docs/README with 'only if you need them' framing."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clean docs map with four clear routing options. 'Keep proof secondary' section. Reinforces positioning before routing. Every promoted link (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent, first-task-guide) opens with same positioning copy and routes back to START_HERE."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "PyPI surface maintains the same story. Explains the Ralph-loop origin and distinguishes Ralph Workflow from generic Ralph. Honest about what unattended use delivers. Clear fit/non-fit. Good depth-preset UX description."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

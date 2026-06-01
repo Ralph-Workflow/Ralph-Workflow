@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-05-23T08:26:33+02:00",
+  "action": "aitoolsmagic_submission",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "channel": "directory_submission",
+  "target": "AI Tools Magic",
+  "submit_url": "https://aitoolsmagic.com/submit-tool",
+  "submission_endpoint": "https://formspree.io/f/mnjbbgdg",
+  "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "secondary_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+  "submitted_payload": {
+    "toolName": "Ralph Workflow",
+    "websiteURL": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "category": "Code & Developer",
+    "pricingType": "Free",
+    "description": "Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for ambitious software work. It composes planning, implementation, and verification into a repo-native workflow so longer coding runs end in reviewable, tested output instead of another confident summary.",
+    "submitterEmail": "ken@hireaegis.com"
+  },
+  "verification": {
+    "post_status_code": 200,
+    "post_response": {
+      "next": "/thanks",
+      "ok": true
+    }
+  },
+  "why_this_action": [
+    "Primary Codeberg adoption is still flat, so a fresh third-party developer-facing directory is higher leverage than more internal packet churn.",
+    "AI Tools Magic exposes a live public submission path via a Formspree endpoint without login or CAPTCHA from this runtime.",
+    "This target was not present in outreach-log.md, so it expands distribution instead of duplicating an in-flight lane.",
+    "The submission uses Codeberg as the primary destination and preserves GitHub as the mirror only."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/adoption_metrics_latest.json",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/outreach-log.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md"
+  ],
+  "expected_outcome": "Qualified developers discover Ralph Workflow through a new directory listing that points directly to the Codeberg primary repo.",
+  "measurement_window": {
+    "listing_review_at": "2026-05-30T08:26:33+02:00",
+    "backlink_review_at": "2026-06-06T08:26:33+02:00",
+    "adoption_review_at": "2026-06-22T08:26:33+02:00"
+  },
+  "replacement_condition": "If there is no live AI Tools Magic listing or referral evidence by 2026-06-06, treat this as pending only and shift the next fresh-action slot to another untouched developer-facing directory with an executable public submit path."
+}

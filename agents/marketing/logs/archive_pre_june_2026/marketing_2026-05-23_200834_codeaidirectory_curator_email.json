@@ -1,0 +1,12 @@
+{
+  "timestamp_utc": "2026-05-23T20:08:34.574163+00:00",
+  "action": "curator_email_outreach",
+  "status": "sent",
+  "channel": {
+    "recipient": "harish@harishgarg.com",
+    "subject": "Suggested CodeAI Directory listing: Ralph Workflow",
+    "smtp_host": "smtp.ionos.com",
+    "smtp_port": 587
+  },
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/codeaidirectory-harish-email.txt"
+}

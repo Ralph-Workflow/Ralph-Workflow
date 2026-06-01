@@ -1,0 +1,14 @@
+{
+  "action": "computingforgeeks_contact_submission",
+  "lane": "computingforgeeks",
+  "timestamp": "2026-05-28T10:01:21.692Z",
+  "ok": true,
+  "step": "submit",
+  "error": null,
+  "codeberg_cta": true,
+  "urls": {
+    "codeberg": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+  },
+  "submit_status": "redirected_confirm"
+}

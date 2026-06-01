@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-28T03:12:22+02:00",
+  "action_type": "publisher_email_outreach",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "target": "Dupple",
+  "recipient": "louis@dupple.com",
+  "subject": "Ralph Workflow for your next AI coding workflow comparison refresh",
+  "hook": "Claude Code vs Cursor in 2026: Which AI Coding Tool Should You Use?",
+  "primary_repo_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "mirror_repo_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+  "supporting_artifacts": [
+    "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_dupple_publisher_outreach_email.txt",
+    "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/adoption_metrics_latest.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_011215_dupple_publisher_email.json"
+  ],
+  "source_evidence": {
+    "article_url": "https://dupple.com/learn/claude-code-vs-cursor",
+    "public_contact_source": "louis@dupple.com / https://dupple.com/work-with-us"
+  },
+  "smtp_delivery": {
+    "server": "smtp.ionos.com",
+    "port": 587,
+    "tls": true,
+    "accepted_by_server": true,
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_011215_dupple_publisher_email.json"
+  },
+  "expected_outcome": "Publisher awareness and possible comparison-page inclusion, workflow citation, or follow-up mention that sends qualified evaluators to Codeberg first.",
+  "review_window": {
+    "reply_review_at": "2026-06-04T03:12:22+02:00",
+    "citation_review_at": "2026-06-11T03:12:22+02:00"
+  },
+  "replacement_condition": "If there is no reply or public mention signal by the review window, switch the next publisher-contact slot to a different untouched target instead of recontacting Dupple immediately."
+}

@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-05-24T09:01:00+02:00",
+  "type": "repo_conversion_comparison_asset",
+  "title": "Aider comparison conversion asset",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "channel_family": "repo_conversion",
+  "primary_goal": "improve Codeberg-first evaluator conversion",
+  "current_bottleneck": "conversion_from_interest_to_free_use",
+  "why_now": [
+    "same-family curator and directory lanes are already inside active measurement windows",
+    "Aider is a major comparison-intent surface in shared competitor findings",
+    "a new comparison asset improves bottom-funnel conversion without overlapping existing outreach windows"
+  ],
+  "shared_artifacts_reused": [
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "seo-reports/comparisons/aider.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json"
+  ],
+  "files_changed": [
+    "docs/ralph-workflow-vs-aider.md",
+    "docs/README.md"
+  ],
+  "verification": {
+    "link_existence_check_passed": true
+  },
+  "measurement_window": {
+    "start": "2026-05-24T09:01:00+02:00",
+    "review_at": "2026-05-31T09:01:00+02:00",
+    "success_signal": "page reuse in follow-on distribution plus positive Codeberg adoption movement in the broader window",
+    "replacement_if_flat": "ship the next bottom-funnel comparison or proof asset and pair it with a non-overlapping distribution lane"
+  }
+}

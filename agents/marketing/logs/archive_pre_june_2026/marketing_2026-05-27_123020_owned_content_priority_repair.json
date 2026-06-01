@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-05-27T12:30:20+02:00",
+  "action": "owned_content_priority_repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "current_bottleneck": "conversion_to_free_use",
+  "why_this_action": "The owned-content lane just published a valid Telegraph article, but it selected a repeat review-surface guide before the still-unpublished first-task qualification guide. During the same hold window, the highest-leverage internal repair was to make future owned-content selection prefer the first-task qualification asset that is closer to free use.",
+  "shared_findings_reused": [
+    "ADOPTION_FUNNEL_NEXT.md: improve the free-use path and create proof assets closest to first use",
+    "marketing_workflow_audit_latest.json: current bottleneck is conversion_to_free_use",
+    "distribution_lane_latest.json: owned_content is the truthful lane during the hold window",
+    "posted_urls.json: review_ai_coding_output_before_merge already had a recent Telegraph publication history"
+  ],
+  "changed_files": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_executor.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_owned_content_priority.py"
+  ],
+  "new_priority_order": [
+    "good_unattended_task.md",
+    "review_ai_coding_output_before_merge.md",
+    "autonomous_ai_workflows_production_reliability.md"
+  ],
+  "expected_outcome": "The next truthful owned-content slot will publish the first-task qualification guide before another review-surface reuse, improving the odds of moving evaluators from interest into a real first run.",
+  "measurement_window": "Apply on the next owned-content execution during the current conversion bottleneck window.",
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_positioning_footer agents.marketing.tests.test_owned_content_priority -q",
+    "result": "passed"
+  }
+}

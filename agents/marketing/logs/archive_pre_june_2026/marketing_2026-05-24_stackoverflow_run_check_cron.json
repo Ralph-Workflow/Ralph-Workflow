@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-05-24T11:14:42+02:00",
+  "type": "stack_overflow_run_check_cron",
+  "status": "scheduled",
+  "ok": true,
+  "why_now": [
+    "Codeberg adoption is still flat in the active measurement window.",
+    "The 2026-05-24 11:30 CEST StackOverflow demand-capture run is already scheduled and should not be duplicated pre-cooldown.",
+    "The execution board promised a 2026-05-24 11:45 CEST run check, but no actual verifier cron existed yet.",
+    "Adding the run-check job is the strongest immediate process repair because it prevents the high-intent StackOverflow slot from failing silently."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+    "agents/marketing/logs/marketing_2026-05-24_stackoverflow_post_cooldown_cron.json",
+    "drafts/marketing_execution_board_latest.md",
+    "agents/marketing/outreach-log.md"
+  ],
+  "verification": {
+    "cron_list_check": "Only one StackOverflow cron job existed before this repair: 7a71bb58-75ac-4862-b316-ed3bdff44b0c (scheduled for 2026-05-24T09:30:00.000Z / 11:30 CEST).",
+    "added_with": "openclaw cron add --name stackoverflow-post-cooldown-run-check --at 2026-05-24T11:45:00+02:00 --agent main --session isolated --announce --channel last --delete-after-run --model openrouter/deepseek/deepseek-v4-pro --thinking medium --timeout-seconds 1800 ...",
+    "scheduled_run_at": "2026-05-24T11:45:00+02:00",
+    "delete_after_run": true
+  },
+  "cron_job": {
+    "id": "a75a7892-17e7-48b6-a77c-73d0d8b7746b",
+    "name": "stackoverflow-post-cooldown-run-check"
+  },
+  "expected_outcome": "By 2026-05-24 11:45 CEST, the system should either confirm a real StackOverflow demand-capture outcome from the 11:30 run or execute and log the strongest legitimate replacement follow-through instead of letting the slot disappear into silence.",
+  "review_window": {
+    "run_check_at": "2026-05-24T11:45:00+02:00",
+    "replacement_condition": "If the verifier still cannot produce a real outcome, retire this StackOverflow packet from active reuse and force the next demand-capture slot onto a different executable lane."
+  }
+}

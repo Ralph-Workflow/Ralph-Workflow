@@ -1,0 +1,82 @@
+{
+  "timestamp": "2026-05-28T09:12:00.334888",
+  "weekly_mode": false,
+  "marketing_status": "measurement_hold",
+  "measurement_hold": {
+    "active": true,
+    "hold_started_at": "2026-05-28T05:19:16.245059",
+    "hold_until": "2026-05-28T09:12:15",
+    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_051916_measurement_hold_execution.json",
+    "reason": "The primary-repo-flat publisher lane is stuck in prepared-only packet churn, and the proof asset already shipped recently; hold for truthful follow-through instead of regenerating another packet."
+  },
+  "distribution_lane": {
+    "lane": "distribution_architecture_guard_pause",
+    "reason": "The same empty-board distribution-architecture failure is still under an active third-strike churn guard, and this review window already logged both a guard pause and a concrete repair for the current fingerprint; a newer concrete repair already ran after the current guard pause started, so pause duplicate guard churn until the board fingerprint, blocker set, or live-action release window materially changes.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_distribution_action_brief.md"
+  },
+  "distribution_execution": {
+    "action_type": "distribution_architecture_guard_pause",
+    "status": "skipped_repair",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_063713_distribution_architecture_guard_pause.md",
+    "summary": "Reused existing distribution-architecture guard artifact.",
+    "targets_prepared": [],
+    "live_external_action": false,
+    "blocking_factors": [],
+    "reused_existing_follow_through": false
+  },
+  "seo": {
+    "timestamp": "2026-05-28T09:12:00.475166",
+    "onpage_score": "100/100 (A)",
+    "homepage_ok": true,
+    "sitemap_urls": 81,
+    "ranked_keywords": 0,
+    "backlinks_approx": 0,
+    "domain_rating": null,
+    "content_gap_pct": 12.5,
+    "content_gap": {
+      "gaps": [
+        "unattended coding agent",
+        "AI agent orchestration CLI",
+        "spec-driven AI agent",
+        "AI coding workflow automation",
+        "Claude Code automation",
+        "Claude Code unattended",
+        "AI agent workflow composer"
+      ],
+      "covered": [
+        "Ralph Workflow"
+      ],
+      "coverage_pct": 12.5
+    },
+    "priority_actions": [
+      "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+      "Build backlinks: submit to directories, guest post, earn citations"
+    ],
+    "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-05-28.md"
+  },
+  "seo_trends": {
+    "rank_delta": 0.0,
+    "backlinks_delta": -0.5,
+    "domain_rating": null,
+    "prev_avg_ranks": 0.0,
+    "prev_avg_bl": 0.5
+  },
+  "seo_insights_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/seo-insights.json",
+  "content_generation": {
+    "returncode": 0,
+    "stdout": "skipped: active measurement-hold cooldown",
+    "stderr": ""
+  },
+  "posting": {
+    "returncode": 0,
+    "stdout": "skipped: active measurement-hold cooldown",
+    "stderr": ""
+  },
+  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_052712_measurement_hold_skip.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_distribution_architecture_guard_pause_execution.json",
+  "post_execution_distribution_lane": {
+    "lane": "distribution_architecture_repair",
+    "reason": "The active publisher-overlap repair window still blocks same-family follow-through, but the board review window moved, both re-entry repairs are already spent, and no truthful do-now lane appeared; perform another concrete distribution-architecture repair now instead of preserving another guard pause.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_distribution_action_brief.md"
+  }
+}

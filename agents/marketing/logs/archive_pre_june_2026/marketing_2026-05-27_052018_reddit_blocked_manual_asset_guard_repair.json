@@ -1,0 +1,49 @@
+{
+  "timestamp": "2026-05-27T05:20:18+02:00",
+  "type": "reddit_blocked_manual_asset_guard_repair",
+  "summary": "Patched the execution board/runtime so fail-closed Reddit state no longer resurfaces or regenerates manual Reddit discussion assets, then refreshed live marketing artifacts into a truthful Codeberg-first manual publisher review asset.",
+  "why_this_action": {
+    "summary": "The latest board was still suggesting a manual Reddit discussion move even though Reddit execution is IP-blocked from this environment and the active lane truth already marked Reddit as non-shippable.",
+    "shared_findings_used": [
+      "reddit_execution_status_latest.md: Reddit execution is execution_blocked / IP-blocked",
+      "adoption_metrics_latest.md: Codeberg and GitHub are flat",
+      "marketing_execution_board_latest.md: stale manual community discussion asset was still surfaced",
+      "distribution_lane_latest.md: measurement-hold / distribution-architecture truth already said Reddit was fail-closed"
+    ]
+  },
+  "changes": {
+    "files": [
+      "agents/marketing/distribution_lane_executor.py",
+      "agents/marketing/tests/test_distribution_lane_executor_measurement_hold.py",
+      "agents/marketing/tests/test_marketing_system.py"
+    ],
+    "behavior": [
+      "Suppressed waiting/manual Reddit discussion assets when Reddit execution is blocked.",
+      "Suppressed new Reddit discussion packet generation during distribution_architecture_repair when Reddit execution is blocked.",
+      "Kept non-Reddit manual follow-through assets eligible."
+    ]
+  },
+  "verification": {
+    "tests": [
+      "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_distribution_architecture_repair_creates_manual_reddit_discussion_asset_when_monitor_has_live_opportunities agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_distribution_architecture_repair_skips_manual_reddit_discussion_asset_when_reddit_execution_is_blocked agents.marketing.tests.test_marketing_system.DistributionLaneExecutorTests.test_marketing_execution_board_hides_reddit_manual_discussion_asset_when_execution_is_blocked -q",
+      "python3 -m unittest agents.marketing.tests.test_marketing_system.DistributionLaneExecutorTests.test_marketing_execution_board_hides_reddit_execution_check_after_aligned_rerun_exists agents.marketing.tests.test_marketing_system.DistributionLaneExecutorTests.test_marketing_execution_board_ignores_overwritten_distribution_brief_from_old_reddit_log agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_report_guard_blocks_reddit_execution_check_override agents.marketing.tests.test_distribution_lane_selector_repair_pause.DistributionLaneSelectorRepairPauseTests.test_reddit_cooldown_blocks_reddit_execution_check_override -q"
+    ],
+    "runner": "python3 agents/marketing/outcome_execution_board_runner.py"
+  },
+  "result": {
+    "status": "executed",
+    "latest_execution_board": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
+    "latest_lane": "distribution_architecture_repair",
+    "selected_action_type_after_refresh": "publisher_manual_review_channel_ready_outreach_asset",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_primary_repo_flat_manual_review_asset.md",
+    "targets_prepared": [
+      "TLDL",
+      "ComputingForGeeks"
+    ]
+  },
+  "expected_outcome": "The active loop stops wasting slots on impossible Reddit handoff churn and instead surfaces truthful Codeberg-first follow-through or explicit blocked state.",
+  "measurement_window": {
+    "success_metric": "marketing_execution_board_latest.md stays free of Reddit manual-discussion do-now assets while Reddit execution_status remains blocked.",
+    "review_at": "2026-05-27T12:00:00+02:00"
+  }
+}

@@ -1,6 +1,6 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-06-01T01:32:11
-- Hold release at: 2026-06-01T02:32:11
+Generated: 2026-06-01T06:09:20
+- Hold release at: 2026-06-01T07:09:20
 - Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-06-01_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot

@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-05-26T19:58:00",
+  "type": "distribution_architecture_reuse_staleness_repair",
+  "channel": "distribution_architecture_repair",
+  "summary": "Patched run.py so same-fingerprint distribution-architecture repairs are no longer invalidated by auto-refreshed latest-artifact mtimes, added regression coverage, and verified the live hold-window run reused the existing guard artifact instead of minting another duplicate repair.",
+  "shared_findings_used": [
+    "distribution_lane_latest.json: active lane truth is still distribution_architecture_guard_pause in the hold window",
+    "outcome_execution_board_latest.json: runner reuse was already repaired, so the remaining churn source was run.py",
+    "marketing_2026-05-26_192143_distribution_architecture_churn_guard_repair.json: duplicate same-fingerprint repair churn was still being emitted by the main marketing loop",
+    "marketing_2026-05-26_194110_outcome_runner_reuse_repair.md: standalone runner had already been fixed, isolating the remaining bug to main-loop reuse/staleness logic"
+  ],
+  "files_changed": [
+    "agents/marketing/run.py",
+    "agents/marketing/tests/test_run_repair_mode.py"
+  ],
+  "verification": {
+    "tests": "python3 -m unittest agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_distribution_architecture_guard_execution_stale_only_when_artifact_or_log_missing agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_distribution_architecture_guard_execution_ignores_latest_alias_mtime_churn agents.marketing.tests.test_run_repair_mode.RunRepairModeTests.test_main_reuses_existing_distribution_architecture_repair_when_truth_is_unchanged agents.marketing.tests.test_outcome_execution_board_runner -q",
+    "live_run": "python3 agents/marketing/run.py",
+    "live_distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_060554_distribution_architecture_guard_pause.json",
+    "live_duplicate_repair_avoided": true
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "artifact_reused_in_live_run": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_060554_distribution_architecture_guard_pause.md",
+    "next_truthful_release_at": "2026-05-26T20:55:18"
+  }
+}

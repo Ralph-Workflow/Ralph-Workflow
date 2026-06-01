@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-05-26T15:06:57+02:00",
+  "run_type": "marketing-runtime-repair",
+  "chosen_action": {
+    "type": "execution_board_short_window_truthfulness_repair",
+    "channel": "distribution_architecture_repair",
+    "title": "Execution board short-window truthfulness repair",
+    "artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_150657_execution_board_short_window_truthfulness_repair.md"
+  },
+  "why_this_action": {
+    "summary": "The execution board was still carrying an expired short-window blocker, so I repaired the board writer and refreshed the shared board instead of churning another packet.",
+    "shared_findings_used": [
+      "drafts/marketing_execution_board_latest.md: shared do-now truth surface",
+      "distribution_lane_latest.json: stale short_review_window_release_at was still present before the repair",
+      "adoption_metrics_latest.json: Codeberg remains the primary success gate",
+      "comparison_backlink_queue_latest.json: prepared queue is still live but not due",
+      "market_intelligence_latest.json: comparison lane remains a real future surface"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": [],
+    "verification": {
+      "targeted_unittest": "python3 -m unittest agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_falls_back_to_live_short_window_release_when_latest_lane_json_omits_it agents.marketing.tests.test_distribution_lane_executor_measurement_hold.DistributionLaneExecutorMeasurementHoldTests.test_execution_board_drops_expired_short_window_release_marker",
+      "execution_board_runner": "python3 agents/marketing/outcome_execution_board_runner.py",
+      "expired_short_window_marker_removed": true
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-05-23T17:20:10+02:00",
+  "run_type": "marketing-repair",
+  "chosen_action": {
+    "type": "distribution_lane_repair",
+    "channel": "reddit_lane_suspension",
+    "title": "Suspend stale Reddit autopost lane and force non-Reddit distribution",
+    "files_changed": [
+      "agents/marketing/reddit_autopost.py",
+      "agents/marketing/tests/test_reddit_autopost.py"
+    ]
+  },
+  "why_this_action": {
+    "shared_findings_used": [
+      "agents/marketing/logs/marketing_workflow_audit_latest.json: reddit_style_repetition is a live failing tactic with repair_state=needs_execution",
+      "agents/marketing/logs/marketing_workflow_audit_latest.md: execute the Reddit template rewrite/repair in this run",
+      "agents/marketing/logs/reddit_post_analysis.json: repeated_openings is non-empty and r/ClaudeCode dominates 5 of the last 6 posts",
+      "agents/marketing/logs/adoption_metrics_latest.json: Codeberg adoption is flat, so repeating stale Reddit output is negative leverage"
+    ],
+    "reasoning": "The highest-leverage action I could actually do right now was to fail-close the known-bad Reddit lane so the loop stops shipping repetitive comments and is forced toward stronger Codeberg-directed channels.",
+    "expected_outcome": "Prevent further low-quality Reddit repetition, preserve brand trust, and redirect future marketing cycles toward non-Reddit channels with cleaner measurement.",
+    "measurement_window": "Immediate behavior change on the next reddit_autopost run; broader adoption review remains tied to the existing Codeberg measurement windows.",
+    "replacement_condition": "If non-Reddit lanes still fail to move Codeberg after their review windows, replace those lanes too instead of re-enabling stale Reddit autoposting."
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "behavior_change_verified": true,
+    "verification": [
+      "python3 -m py_compile agents/marketing/reddit_autopost.py agents/marketing/tests/test_reddit_autopost.py",
+      "python3 -m unittest agents.marketing.tests.test_reddit_autopost -v",
+      "python3 agents/marketing/reddit_autopost.py => status=repair_blocked"
+    ],
+    "runtime_output": {
+      "status": "repair_blocked",
+      "detail": [
+        "audit:failing_tactic:reddit_style_repetition",
+        "audit:repair_pending:reddit_post_style",
+        "retro:repeated_openings:1",
+        "retro:channel_concentration:r/ClaudeCode:5/6"
+      ],
+      "next_action": "shift_distribution_lane_away_from_reddit"
+    }
+  }
+}
