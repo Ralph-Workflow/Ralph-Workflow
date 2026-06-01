@@ -5,6 +5,7 @@
 > **Write the spec. Wake up to working software.**
 
 [![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
@@ -145,7 +146,7 @@ Ralph Workflow is meant to get you to a strong implementation starting point whi
 A good run should leave you with:
 
 - code that compiles, tests, or clearly shows where work remains
-- review artifacts and logs that explain what happened
+- logs and output that explain what happened
 - a result that is worth continuing from, not discarding and restarting
 
 That may be a finished small task, or it may be a substantial first pass toward production on a larger one.

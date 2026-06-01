@@ -34,6 +34,10 @@ Use these folders only when you know you need contributor guidance or deeper bac
 - `docs/tooling/` — tooling setup and support notes, including Python-specific guidance like `python-tooling.md`
 - `docs/performance/` — deeper performance notes and supporting background
 
+### I want to see a real overnight run before I decide
+
+- [Real overnight demo: task spec → output](./overnight-demo-real.md) — 10-document spec, 1,316 assertions, 5 platforms, zero failures
+
 ### I want product framing before I go deeper
 
 - [AI agent orchestration CLI](./ai-agent-orchestration-cli.md)
