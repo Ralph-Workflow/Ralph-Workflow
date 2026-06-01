@@ -17421,3 +17421,89 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is healthy and coherent. Every surface \u2014 README, START_HERE, docs/README, and the promoted supporting pages \u2014 consistently frames Ralph Workflow as the operating system for autonomous coding, an AI agent orchestrator built on a simple Ralph-loop core that composes into powerful workflows. The journey works: README sells the what/why, START_HERE gives the shortest honest first run, docs/README routes deeper. Promoted pages all open with correct positioning language. No internal leakage, no artifact/plumbing framing, no stale copy. Result-first, spec-driven, engineering-practice-honest.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding' and 'AI agent orchestrator' \u2014 exact positioning-doc language. Result-first framing, clear fit/non-fit, engineering-practice dependency preserved, Codeberg primary. No internal plumbing leakage."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run with task guidance. Opens with correct positioning, leads with result evaluation criteria, keeps scope tight. Routes naturally into docs/README."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself after README and START_HERE. 'Keep proof secondary' section directly enforces positioning priorities. Routes to pages that all open with consistent framing."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Exemplar promoted page. 'Simple at the center, stronger in composition, useful before customization' \u2014 perfect distillation of the positioning doc's core argument."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md",
+      "reason": "Reinforces the ambitious/well-specified-work framing without overpromising. Honest about engineering discipline requirements."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean, coherent, and well-aligned with positioning. No hard failures detected. The README \u2192 START_HERE \u2192 docs/README journey forms a logical funnel, and all promoted next-click pages reinforce the same product story without internal leakage or stale framing.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding', defines simple-core/complex-composition contrast, result-first evaluation, clear Codeberg primacy, and strong default workflow \u2014 all per positioning doc."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Clean bridge from README to docs map. Opens with positioning statement, gives honest first-run path with good/bad task selection, and routes to docs/README.md without overwhelming detail."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself as the 'after README and START_HERE' page. Four clean route choices. Includes 'keep proof secondary' and Codeberg-primary callout \u2014 strong IA discipline."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Reframes comparison around workflow quality and extensibility rather than feature-counting. Reinforces simple-core/powerful-composition positioning."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
