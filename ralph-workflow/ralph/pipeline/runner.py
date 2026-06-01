@@ -746,6 +746,17 @@ def _handle_inline_effect(
 
     if isinstance(effect, ExitSuccessEffect):
         emit_display_line(display, None, "[green]Pipeline completed successfully.[/green]")
+        # Periodic star CTA — shown ~20% of successful runs.
+        # Only fires after first-run (first-run already shows full welcome panel with star CTA).
+        # Uses process-id hash to avoid deterministic spam: each user sees it ~1 in 5 runs.
+        import os as _os
+        _show_cta = (hash(str(_os.getpid()) + str(_os.getenv('USER', ''))) % 5) == 0
+        if _show_cta:
+            try:
+                from ralph.onboarding import CODEBERG_STAR_CTA
+                emit_display_line(display, None, f"[bold yellow]{CODEBERG_STAR_CTA}[/bold yellow]")
+            except ImportError:
+                pass
         return 0
 
     if isinstance(effect, ExitFailureEffect):
@@ -898,119 +909,4 @@ def execute_agent_effect(
         invoke_agent=deps.invoke_agent,
         agent_invocation_error=deps.agent_invocation_error,
         agent_registry=deps.agent_registry,
-        show_phase_start_cb=deps.show_phase_start_cb or show_phase_start_with_context,
-        set_session_id_cb=deps.set_session_id_cb,
-        start_mcp_server_fn=cast(
-            "_StartMcpServerFn | None", deps.start_mcp_server_fn or effective_start_fn
-        ),
-        shutdown_mcp_server_fn=cast(
-            "_ShutdownMcpServerFn | None",
-            deps.shutdown_mcp_server_fn or effective_shutdown_fn,
-        ),
-        check_mcp_bridge_health_fn=cast(
-            "_CheckMcpBridgeHealthFn | None",
-            deps.check_mcp_bridge_health_fn or effective_health_fn,
-        ),
-        materialize_system_prompt_fn=deps.materialize_system_prompt_fn or effective_materialize_fn,
-        mcp_supervisor_factory=cast(
-            "_McpSupervisorFactory | None", deps.mcp_supervisor_factory or effective_supervisor
-        ),
-        heartbeat_policy_from_env_fn=deps.heartbeat_policy_from_env_fn or effective_heartbeat_fn,
-    )
-    return _ee_execute_agent_effect(effect, config, effective_deps, workspace_scope, **opts)
-
-
-def execute_commit_effect(
-    effect: CommitEffect,
-    create_commit_fn: Callable[[Path | str, str], str],
-    stage_all_fn: Callable[[Path | str], None],
-    repo_root: Path,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
-    **opts: object,
-) -> PipelineEvent:
-    """Execute a commit effect, injecting any patched render_commit_message hook."""
-    effective_render_fn = (
-        render_commit_message
-        if render_commit_message is not _original_render_commit_message
-        else None
-    )
-    return _ee_execute_commit_effect(
-        effect,
-        repo_root,
-        display,
-        create_commit_fn=create_commit_fn,
-        stage_all_fn=stage_all_fn,
-        has_commit_work_fn=repo_has_commit_work,
-        render_commit_message_fn=opts.pop("render_commit_message_fn", None) or effective_render_fn,
-        **opts,
-    )
-
-
-def emit_phase_transition_if_changed(
-    display: ParallelDisplay | LegacyConsoleDisplay,
-    previous_phase: str,
-    state: PipelineState,
-    *,
-    verbosity: Verbosity,
-    pipeline_policy: PipelinePolicy,
-) -> str:
-    """Emit phase-transition banners if the active phase changed, injecting patched banner hooks."""
-    _close_fn = (
-        show_phase_close_banner
-        if show_phase_close_banner is not _original_show_phase_close_banner
-        else None
-    )
-    _trans_fn = (
-        show_phase_transition
-        if show_phase_transition is not _original_show_phase_transition
-        else None
-    )
-    return _pt_emit_phase_transition_if_changed(
-        display,
-        previous_phase,
-        state,
-        verbosity=verbosity,
-        pipeline_policy=pipeline_policy,
-        show_close_banner_fn=_close_fn,
-        show_transition_fn=_trans_fn,
-    )
-
-
-def write_start_commit_if_absent(workspace_root: Path) -> None:
-    """Record the current HEAD as the cycle baseline if no baseline exists yet.
-
-    This is best effort: if the baseline cannot be written, log a warning and
-    continue without aborting the pipeline.
-    """
-    if read_cycle_baseline(workspace_root) is not None:
-        return
-    repo: Repo | None = None
-    try:
-        repo = Repo(workspace_root)
-    except InvalidGitRepositoryError:
-        return
-    try:
-        if not repo.head.is_valid():
-            return
-        write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
-    except OSError as exc:
-        logger.warning(
-            "Could not write cycle baseline in {}: {} — continuing without baseline",
-            workspace_root,
-            exc,
-        )
-    finally:
-        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
-        if callable(close):
-            close()
-
-
-call_determine_effect_from_policy = _call_determine_effect_from_policy
-invoke_execute_effect_with_optional_display = _invoke_execute_effect_with_optional_display
-handle_inline_effect = _handle_inline_effect
-run_pipeline_step = _run_pipeline_step
-execute_effect = _execute_effect
-notify_pipeline_subscriber = _notify_pipeline_subscriber
-handle_keyboard_interrupt = _handle_keyboard_interrupt
-save_checkpoint_or_log = _save_checkpoint_or_log
-load_policy_bundle_for_run = _load_policy_bundle_for_run
+        show_phase_start_cb=deps.show_p
