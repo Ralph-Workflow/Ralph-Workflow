@@ -1,13 +1,14 @@
 {
-  "timestamp": "2026-06-01T21:44:37.158975+02:00",
+  "ok": true,
+  "timestamp": "2026-06-02T00:25:22.725703+02:00",
+  "source": "cron-apollo-channel-monitor",
   "status": "cloudflare_auth_blocked",
   "final_url": "https://app.apollo.io/#/login",
   "login_attempted": false,
   "cloudflare_blocked": true,
-  "notes": "Cloudflare interstitial detected in response body from https://app.apollo.io/. Browserless probe status: cloudflare_auth_blocked. Browserless saw Cloudflare interstitial content from https://app.apollo.io/.",
-  "auth_endpoint_status_codes": [],
+  "notes": "Cloudflare interstitial detected. Apollo.io is currently behind Cloudflare challenge protection. Browserless probe confirms Cloudflare blocking login page even in headless real-browser path. Apollo is not actionable until Cloudflare auth resolves.",
   "browserless_probe_status": "cloudflare_auth_blocked",
   "browserless_probe_final_url": "https://app.apollo.io/#/login",
   "browserless_probe_notes": "Browserless saw Cloudflare interstitial content from https://app.apollo.io/.",
-  "browserless_probe_auth_endpoint_status_codes": []
+  "downstream_ready": false
 }

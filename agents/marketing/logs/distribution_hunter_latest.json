@@ -1,22 +1,23 @@
 {
-  "timestamp": "2026-06-01T18:49:10.738553",
+  "timestamp": "2026-06-02T00:13:55.930085",
   "repair_types_seen": [
     "outcome_system_underpowered"
   ],
-  "selected_lane": "primary_repo_flat_contact_handoff_packet",
-  "selected_action_type": "primary_repo_flat_contact_handoff_packet_execution",
-  "execution_status": "prepared",
+  "selected_lane": "owned_content",
+  "selected_action_type": "owned_content_lane_noop",
+  "execution_status": "skipped",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_primary_repo_flat_contact_handoff_packet.md",
-  "summary": "Converted the fresh primary-repo-flat publisher discovery into one canonical Codeberg-first execution packet so the loop can use a genuinely different contact lane during the current measurement window.",
-  "expected_outcome": "Move primary-repo-flat repair toward manual-executable publisher outreach.",
+  "artifact_path": null,
+  "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
+  "expected_outcome": "Advance distribution via lane owned_content without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
   "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
   "decision": {
-    "lane": "primary_repo_flat_contact_handoff_packet",
-    "reason": "Fresh primary-repo-flat publisher targets now have verified public contact paths; turn them into one Codeberg-first execution packet instead of stalling inside measurement hold, even when the remaining path is human-executable rather than runtime-sendable.",
+    "lane": "owned_content",
+    "reason": "Directory confirmation has never produced a Codeberg backlink; no postable external lane is open (Apollo blocked, gh auth missing, Reddit blocked, SO drafts unpostable by human). Redirect to owned_content instead of generating another low-signal directory verification cycle.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
+      "1 live external marketing action(s) already shipped in the last 6 hours.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
@@ -41,24 +42,18 @@
       "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_distribution_action_brief.md",
-    "short_review_window_release_at": null,
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-02_distribution_action_brief.md",
+    "short_review_window_release_at": "2026-06-02T03:37:12",
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
   },
   "execution": {
-    "lane": "primary_repo_flat_contact_handoff_packet",
-    "action_type": "primary_repo_flat_contact_handoff_packet_execution",
-    "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_primary_repo_flat_contact_handoff_packet.md",
-    "summary": "Converted the fresh primary-repo-flat publisher discovery into one canonical Codeberg-first execution packet so the loop can use a genuinely different contact lane during the current measurement window.",
-    "targets_prepared": [
-      "ctxt.dev / Signum",
-      "AXME Code",
-      "WyeWorks",
-      "Bollwerk / Werkstatt",
-      "ToolChase"
-    ],
+    "lane": "owned_content",
+    "action_type": "owned_content_lane_noop",
+    "status": "skipped",
+    "artifact_path": null,
+    "summary": "Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
+    "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -66,6 +61,8 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "live_external_action": false,
-    "blocking_factors": []
+    "blocking_factors": [
+      "No unpublished owned-content guide was available for Telegraph publication."
+    ]
   }
 }

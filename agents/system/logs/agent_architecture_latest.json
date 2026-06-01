@@ -146,12 +146,13 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
-    "summary": "Independent verification confirms architecture verifier fails closed on stale signoff, live loop topology/ownership checks green, shared market-intelligence reuse machine-verifiable, and docs verifier stable (31 consecutive passes since last failures).",
-    "checked_at": "2026-06-02T00:11:20.347304+02:00",
-    "verdict": "qualified_pass",
+    "summary": "Independent verification found architecture blockers that prevent a healthy verifier pass.",
+    "checked_at": "2026-06-02T01:05:46.807095+02:00",
+    "verdict": null,
     "previous_artifact_verdict": "qualified_pass"
   },
   "what_still_needs_independent_verification": [
+    "Fresh architecture independent verification against the refreshed live topology.",
     "Fresh marketing independent pass backed by measurable primary-repo movement",
     "Blocked-channel-recovery repair followed by fresh verification that the error is cleared"
   ],
@@ -169,8 +170,8 @@
     "docs_independent_verdict": "pass",
     "docs_mustFix_count": 3,
     "docs_mustFix_escalation_repeats": 303,
-    "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-06-02T00:11:20.347319+02:00",
+    "architecture_verifier_status": "fail",
+    "architecture_verifier_checked_at": "2026-06-02T01:05:46.807095+02:00",
     "architecture_checker_status": "AGENT_ARCHITECTURE_OK",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
@@ -184,7 +185,8 @@
       "escalation_level": "critical",
       "error_type": "timeout",
       "timeout_seconds": 600
-    }
+    },
+    "independent_architecture_verdict": null
   },
   "notes": [
     "Architecture green means architecture-owned verifier path is coherent; it does not mean whole-stack green.",
