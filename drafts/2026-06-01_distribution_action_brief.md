@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-01T07:20:33
+Generated: 2026-06-01T08:07:07
 Chosen lane: **primary_repo_flat_contact_handoff_packet**
 
 ## Why this lane

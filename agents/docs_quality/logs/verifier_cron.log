@@ -17114,3 +17114,93 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean, coherent, and well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README works as a single route with clear job separation. No internal leakage on top-level surfaces. Next-click pages reinforce the same story. The user should not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding', simple-Ralph-loop core framing, comparison table avoids internal plumbing language, hard-fit/non-fit for audience, Codeberg-primary header, engineering-practice dependency section."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with correct positioning, shortest honest first-run path, good/bad task selection guidance, 'what success looks like' aligns with result-first evaluation."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself 'after README and START_HERE', routes by need, includes 'keep proof secondary' directive, promotes clean product-framing pages."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Carries the simple-core/composition framing correctly, 'why the default workflow matters' section, clean where-to-next."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "Same core messaging, Codeberg-primary+MCP-verify disclaimer, practical 'before first run' advice, fit/non-fit table, no internal leakage."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-aligned with positioning. The README\u2192START_HERE\u2192docs/README journey is coherent, all promoted pages reinforce the same simple-core / powerful-composition story, and there is zero internal plumbing leakage on top-level surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with 'operating system for autonomous coding', leads with product value not process, has clean info hierarchy, and properly frames Codeberg as primary."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Continues the same story with honest first-run guidance, good task-selection framing, and clear success criteria."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Clean docs map that explicitly says 'use this after README and START_HERE' and routes to consistent framing pages."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted next-click page that faithfully echoes 'simple at the center, stronger in composition, useful before customization' without drifting into internal plumbing."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md",
+      "reason": "Opens with correct product framing, sets honest expectations about engineering discipline, links back to START_HERE."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

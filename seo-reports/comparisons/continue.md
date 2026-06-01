@@ -1,6 +1,6 @@
 # Ralph Workflow vs Continue
 
-**Last updated:** May 31, 2026 · [Edit this comparison](https://codeberg.org/Ralph-Workflow/Ralph-Workflow) · [← Back to all comparisons](/comparisons)
+**Last updated:** June 01, 2026 · [Edit this comparison](https://codeberg.org/Ralph-Workflow/Ralph-Workflow) · [← Back to all comparisons](/comparisons)
 
 ## At a Glance
 
