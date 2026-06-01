@@ -1,6 +1,6 @@
 {
-  "lane": "measurement_hold",
-  "reason": "Directory confirmation has never produced a Codeberg backlink; no postable external lane is open and no unpublished guide remains. Hold for the next truthful execution window.",
+  "lane": "owned_content",
+  "reason": "Directory confirmation has never produced a Codeberg backlink; no postable external lane is open (Apollo blocked, gh auth missing, Reddit blocked, SO drafts unpostable by human). Redirect to owned_content instead of generating another low-signal directory verification cycle.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",

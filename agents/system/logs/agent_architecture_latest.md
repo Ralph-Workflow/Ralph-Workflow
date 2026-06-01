@@ -1,10 +1,11 @@
 # Agent Architecture Audit Report
-**Checked at:** 2026-06-01T03:48:06.275300+02:00
-**Model:** `openrouter/deepseek/deepseek-v4-pro` (watchdog default)
+**Checked at:** 2026-06-01T04:36:00+02:00
 
 ## Executive Verdict: ⚠️ WATCH
 
-Architecture-owned gates remain **green**. Whole-stack certification is **blocked externally** by marketing outcome evidence.
+Architecture-owned gates **(checker + verifier + independent verify) are green.** Whole-stack blocked by external runtime error + external outcome evidence.
+
+**1 live cron error:** `blocked-channel-recovery` timing out (326s/600s, 925-repeat escalation)
 
 ## Live Runtime Topology
 
@@ -14,58 +15,55 @@ Architecture-owned gates remain **green**. Whole-stack certification is **blocke
 | Enabled | 24 |
 | Disabled | 0 |
 | Running | 0 |
-| Live errors | 0 |
+| **Live errors** | **1** |
 
-**Topology verdict:** ✅ Clean — no disabled jobs, no live errors, no running anomalies.
+**Error:** `blocked-channel-recovery` — `cron: job execution timed out` (600s budget, 326s actual, escalation at 925 repeats)
 
-## Health Monitor Issues (4)
+## Architecture Verification Stack
 
-| # | Issue | Category |
-|---|---|---|
-| 1 | blocked-channel-recovery | timeout |
-| 2 | marketing_independent_verification | stale_artifact |
-| 3 | blocked-channel-recovery_escalation | escalation_required |
-| 4 | blocked-channel-recovery_escalation | escalation_required (duplicate) |
-
-⚠️ Live cron shows 0 errors — the escalation issues are likely stale health-monitor artifacts.
-
-## Loop Integrity
-
-| Loop | Status |
+| Component | Status |
 |---|---|
-| ralph-docs-watchdog | ✅ ok |
-| agent-architecture-watchdog | ✅ ok |
+| Checker | ✅ `AGENT_ARCHITECTURE_OK` |
+| Verifier | ✅ `ok` (post-repair) |
+| Independent Verify | ✅ `qualified_pass` |
+| Loop Integrity | ✅ both loops `ok` |
 
-Verifier contract externalized: ✅
+## Health Monitor (9 issues, 3 escalations)
 
-## Independent Verification
-
-- **Verdict:** qualified_pass
-- **Architecture verifier:** passes (fails closed on stale signoff)
-- **Live topology:** 24/24/0/0/0 — clean
-- **Loop integrity:** both loops green
-
-## What's Still Red
-
-1. **Marketing independent verification** — fails closed on Codeberg-primary outcome evidence (measurement pending)
-2. **Blocked-channel-recovery escalation** — stale health-monitor artifact (live cron is clean)
-3. **pypi-auto-unblocker** — no self-improvement mandate
+| Issue | Category | Repeats |
+|---|---|---|
+| blocked-channel-recovery | timeout | — |
+| blocked-channel-recovery_escalation | escalation_required | 925 |
+| marketing_independent_verification | stale_artifact | — |
+| docs_agentic_review | loop_verification_fail | — |
+| docs_agentic_review (2 mustFix) | review_followup_required | — |
+| docs_agentic_review_escalation | escalation_required | 201 |
+| agent_architecture_verifier_runtime | artifact_contract_fail | — |
+| agent_architecture_verifier_runtime_escalation | escalation_required | 748 |
 
 ## Repairs Applied This Run
 
-1. **Refreshed live topology** — snapshot updated to 24/24/0/0/0 (was 24/24/3 running + 1 error). blocked-channel-recovery timeout cleared.
-2. **Detected escalation drift** — health monitor now shows 4 issues with duplicate escalation entries; flagged for refresh.
-3. **Revalidated loop integrity** — both loops remain green with externalized verifier contract.
+1. **Corrected prior factual error** — prior run claimed blocked-channel-recovery timeout was "cleared" and "0 live errors". Live cron shows 1 error. Corrected.
+2. **Fixed verifier timestamp drift** — re-ran independent verification to restore timestamp coherency after artifact refresh. Verifier now returns `ok`.
+3. **Revalidated checker + independent verify** — checker `AGENT_ARCHITECTURE_OK`, independent verify `qualified_pass`.
+4. **Refreshed live topology** — direct `openclaw cron list --json` snapshot: 24/24/0/0/1.
+
+## What's Still Red
+
+1. **blocked-channel-recovery timeout** — 1 live cron error, 925-repeat escalation. Script hangs at ~326s.
+2. **Marketing independent verification** — fail-closed on Codeberg-primary adoption evidence.
+3. **docs_agentic_review 2 mustFix items** — enqueued to owner loop, not yet applied.
+4. **agent_architecture_verifier_runtime escalation** — 748 repeats from timestamp-drift false negatives (now resolved in runtime but escalation artifact likely stale).
 
 ## Ordered Fix Plan
 
-1. Refresh health monitor to clear stale blocked-channel-recovery escalation duplicates
-2. Get fresh marketing independent pass backed by measurable primary-repo movement
-3. Maintain direct cron inspection as source of truth for topology
+1. Diagnose and fix blocked-channel-recovery timeout (highest risk — only live cron error)
+2. Clear verifier_runtime escalation (timestamp coherency now fixed)
+3. Apply 2 docs mustFix items (START_HERE.md on Codeberg, README install ordering)
+4. Get fresh marketing independent pass with measurable adoption evidence
 
-## Notes
+## Independent Verification
 
-- Architecture green ≠ whole stack green
-- Persisted disabled jobs are history only (0 live disabled)
-- Remaining blocker is external marketing outcome evidence
-- No live timeout-budget repair applied this run
+- **Verdict:** `qualified_pass`
+- Architecture gates pass. External blockers correctly isolated.
+- Small gate passed.

@@ -1,6 +1,6 @@
 # Apollo Status
 
-- Timestamp: `2026-05-31T20:39:40.047871+02:00`
+- Timestamp: `2026-06-01T05:21:03.733642+02:00`
 - Status: `cloudflare_auth_blocked`
 - Final URL: `https://app.apollo.io/#/login`
 - Login attempted: `False`

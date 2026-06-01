@@ -14,6 +14,11 @@
       "level": 2,
       "timestamp": "2026-06-01T01:32:44.892596",
       "reason": "churn ratio danger with 3 prior strikes"
+    },
+    {
+      "level": 2,
+      "timestamp": "2026-06-01T04:29:08.725076",
+      "reason": "churn ratio danger with 3 prior strikes"
     }
   ],
   "paused_crons": [
