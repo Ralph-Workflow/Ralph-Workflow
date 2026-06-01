@@ -1,45 +1,56 @@
 # Ralph Workflow
 
-> **The operating system for autonomous coding.**
+> **The operating system for autonomous coding.** Run overnight. Review in the morning.
 
 [![Codeberg](https://img.shields.io/badge/Codeberg-Primary-blue?logo=codeberg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
 [![GitHub Mirror](https://img.shields.io/badge/GitHub-Mirror-lightgray?logo=github)](https://github.com/Ralph-Workflow/Ralph-Workflow)
+[![PyPI](https://img.shields.io/pypi/v/ralph-workflow?color=green&label=pypi)](https://pypi.org/project/ralph-workflow/)
+[![Downloads](https://img.shields.io/pypi/dm/ralph-workflow?color=green)](https://pepy.tech/projects/ralph-workflow)
 
 > **GitHub is the mirror. Codeberg is the primary repo.**
-> Inspect, star, watch, fork, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> Star, watch, fork, and open issues on Codeberg: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
-Ralph Workflow is a free and open-source **AI agent orchestration CLI** for substantial, well-specified software engineering on your own machine.
-It is not the right tool for tiny tweaks, vague exploration, or narrow chores that a single agent can finish quickly.
+**Ralph Workflow** orchestrates the coding agents you already use into a composable overnight workflow — plan, implement, verify, and review, on your own machine, with your own keys.
 
-It takes the simple Ralph loop idea and turns it into a **composable workflow system** for planning, implementation, verification, review, and agent routing.
-The core stays simple. That simplicity is what makes more complex workflows easier to build, easier to configure, and easier to extend.
+For substantial, well-specified software engineering tasks. Not for tiny tweaks or vague exploration.
 
-Ralph Workflow also ships with a **strong default workflow for writing software**.
-You can use that default as-is, or build on top of it when you need something more advanced.
-
-## The route to use
-
-1. [START_HERE.md](START_HERE.md) — copy-paste first run on one real task
-2. [docs/first-task-guide.md](docs/first-task-guide.md) — pick a task you can judge honestly tomorrow morning
-3. [content/examples/workflow_composition_example.md](content/examples/workflow_composition_example.md) — see how the task, implementation, verification, and review handoff fit together
-4. [content/examples/tomorrow_morning_scorecard.md](content/examples/tomorrow_morning_scorecard.md) — judge the first run in 10 minutes instead of trusting the summary
-5. [content/examples/review_bundle_example.md](content/examples/review_bundle_example.md) — see the morning-after handoff you should expect before you trust the run
-6. [docs/when-to-use-ralph-workflow.md](docs/when-to-use-ralph-workflow.md) — decide if you need a workflow instead of another chat or editor loop
-7. [docs/README.md](docs/README.md) — curated docs switchboard after that
-
-## Install
+## Quick start (60 seconds)
 
 ```bash
-pipx install ralph-workflow
-ralph --help
+pipx install ralph-workflow    # requires Python 3.12+
+cd /path/to/your/project
+ralph --init                    # setup baseline
+ralph --diagnose                # check health
+$EDITOR PROMPT.md               # describe your task
+ralph                           # run overnight
 ```
 
-Requires Python 3.12+.
+Wake up to a review bundle — what changed, what passed, what didn't.
+[START_HERE.md](START_HERE.md) has the full walkthrough.
+
+## Why Ralph Workflow
+
+- **Runs unattended.** Describe the task, go to sleep, judge the result in the morning.
+- **Composable.** Plan → implement → verify → review — pick what you need.
+- **Your machine, your keys.** No vendor lock-in. No cloud agents.
+- **Strong defaults.** Ships with a battle-tested workflow. Customize when you're ready.
+
+## Reading path
+
+| You want to… | Read this |
+|---|---|
+| Copy-paste your first real run | [START_HERE.md](START_HERE.md) |
+| Pick a task you can judge honestly | [docs/first-task-guide.md](docs/first-task-guide.md) |
+| See the full workflow structure | [content/examples/workflow_composition_example.md](content/examples/workflow_composition_example.md) |
+| Judge a run in 10 min tomorrow morning | [content/examples/tomorrow_morning_scorecard.md](content/examples/tomorrow_morning_scorecard.md) |
+| See what a review bundle looks like | [content/examples/review_bundle_example.md](content/examples/review_bundle_example.md) |
+| Decide if you need workflows at all | [docs/when-to-use-ralph-workflow.md](docs/when-to-use-ralph-workflow.md) |
+| Everything else | [docs/README.md](docs/README.md) |
 
 ## Before your first run
 
-Make sure the agent CLIs you want Ralph Workflow to call are already installed and authenticated.
-Ralph Workflow does not replace those coding agents. It orchestrates them.
+Install and authenticate the agent CLIs you want Ralph Workflow to orchestrate.
+Ralph Workflow doesn't replace your coding agents — it composes them into a workflow.
 
 ## License
 

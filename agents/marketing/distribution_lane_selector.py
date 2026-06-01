@@ -1736,6 +1736,11 @@ def _should_enforce_empty_board_architecture_repair(adoption: dict[str, Any], no
     if _is_primary_repo_flat(adoption):
         return True
 
+    recent_window = adoption.get('recent_window', {})
+    codeberg = recent_window.get('Codeberg', {})
+    if any(codeberg.get(k, 0) > 0 for k in ('stars_delta_window', 'watchers_delta_window', 'forks_delta_window')):
+        return False
+
     audit = _load_json(_audit_latest_json_path())
     bottleneck = str(audit.get('current_bottleneck') or '').strip().lower()
     if bottleneck in {'conversion_to_free_use', 'distribution_and_message_to_primary_repo_conversion'}:
@@ -2576,6 +2581,13 @@ def _comparison_queue_capacity(now: datetime) -> tuple[int, int]:
 
 
 def _comparison_backlink_lane_manual_only_blocked(now: datetime, *, github_auth_available: bool | None = None) -> bool:
+    # Hard-block: if channel_spidering_guard has comparison_backlink as permanently blocked, never auto-select
+    try:
+        from agents.marketing.channel_spidering_guard import PERMANENTLY_BLOCKED
+        if 'comparison_backlink' in PERMANENTLY_BLOCKED:
+            return True
+    except ImportError:
+        pass
     if github_auth_available is None:
         github_auth_available = _github_auth_available()
     if github_auth_available:
@@ -4068,48 +4080,55 @@ def choose_distribution_lane(
                         'suppress another identical repair and reuse the guard until the board fingerprint or blocker set materially changes.'
                     )
         else:
-            lane = 'distribution_architecture_repair'
-            if distribution_architecture_repair_state['third_strike']:
-                reason = (
-                    'The same empty-board distribution-architecture failure already repeated twice in this short-review window; '
-                    'escalate the third event into a churn-guard repair instead of another plain architecture note.'
-                )
-            elif short_window_active_with_exhausted_reentry_repairs:
-                reason = (
-                    'The short review window is still active, but the execution board is already empty and both post-hold rerun '
-                    'repairs were already used in this window; treat this as the third event for the same empty-board distribution-architecture failure and '
-                    'repair the lane architecture instead of logging another hold.'
-                )
-            elif execution_board_short_window_cleared_with_empty_board:
-                fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
-                reason = (
-                    'The execution board\'s own short review-window blocker already cleared, but the board is still empty and the selector still '
-                    f'fell back to {fallback_lane}; repair the lane architecture instead of logging another stale guard pause.'
-                )
-            elif no_short_window_idle_empty_board:
-                fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
-                reason = (
-                    'There is no active short review window anymore, but the execution board is still empty and the selector still '
-                    f'fell back to {fallback_lane}; repair the lane architecture instead of logging another fake-idle hold.'
-                )
-            elif active_release_window_with_empty_board_fallback:
-                fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
-                reason = (
-                    'The execution board is already empty for this active review window, but the selector still fell back to owned content after saturating recent Telegraph output; '
-                    'repair the lane architecture instead of letting it loop on another Telegraph-first pass.'
-                    if lane == 'owned_content' and len(recent_posts) >= 2 else
-                    'The execution board is already empty for this active review window, but the selector still fell back to a non-executable hold surface; '
-                    f'repair the lane architecture instead of drifting into {fallback_lane}.'
-                )
+            recent_window = adoption.get('recent_window', {})
+            codeberg = recent_window.get('Codeberg', {})
+            has_primary_movement = any(codeberg.get(k, 0) > 0 for k in ('stars_delta_window', 'watchers_delta_window', 'forks_delta_window'))
+            if has_primary_movement and _execution_board_has_no_truthful_do_now_packet(now):
+                lane = 'owned_content'
+                reason = 'Primary repo adoption is moving; suppress distribution-architecture churn and use owned-content instead of logging another repair note.'
             else:
-                fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
-                reason = (
-                    'There is no active short review window anymore, and every truthful external/manual lane is still blocked, exhausted, '
-                    f'or already delivered; repair the lane architecture instead of letting the selector drift into {fallback_lane}.'
-                    if recent_live_external_release_at is not None and now >= recent_live_external_release_at else
-                    'No active short review window remains, but every truthful external/manual lane is still blocked, exhausted, '
-                    f'or already delivered; repair the lane architecture instead of letting the selector drift into {fallback_lane}.'
-                )
+                lane = 'distribution_architecture_repair'
+                if distribution_architecture_repair_state['third_strike']:
+                    reason = (
+                        'The same empty-board distribution-architecture failure already repeated twice in this short-review window; '
+                        'escalate the third event into a churn-guard repair instead of another plain architecture note.'
+                    )
+                elif short_window_active_with_exhausted_reentry_repairs:
+                    reason = (
+                        'The short review window is still active, but the execution board is already empty and both post-hold rerun '
+                        'repairs were already used in this window; treat this as the third event for the same empty-board distribution-architecture failure and '
+                        'repair the lane architecture instead of logging another hold.'
+                    )
+                elif execution_board_short_window_cleared_with_empty_board:
+                    fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
+                    reason = (
+                        'The execution board\'s own short review-window blocker already cleared, but the board is still empty and the selector still '
+                        f'fell back to {fallback_lane}; repair the lane architecture instead of logging another stale guard pause.'
+                    )
+                elif no_short_window_idle_empty_board:
+                    fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
+                    reason = (
+                        'There is no active short review window anymore, but the execution board is still empty and the selector still '
+                        f'fell back to {fallback_lane}; repair the lane architecture instead of logging another fake-idle hold.'
+                    )
+                elif active_release_window_with_empty_board_fallback:
+                    fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
+                    reason = (
+                        'The execution board is already empty for this active review window, but the selector still fell back to owned content after saturating recent Telegraph output; '
+                        'repair the lane architecture instead of letting it loop on another Telegraph-first pass.'
+                        if lane == 'owned_content' and len(recent_posts) >= 2 else
+                        'The execution board is already empty for this active review window, but the selector still fell back to a non-executable hold surface; '
+                        f'repair the lane architecture instead of drifting into {fallback_lane}.'
+                    )
+                else:
+                    fallback_lane = 'owned_content' if lane == 'owned_content' else 'measurement_hold'
+                    reason = (
+                        'There is no active short review window anymore, and every truthful external/manual lane is still blocked, exhausted, '
+                        f'or already delivered; repair the lane architecture instead of letting the selector drift into {fallback_lane}.'
+                        if recent_live_external_release_at is not None and now >= recent_live_external_release_at else
+                        'No active short review window remains, but every truthful external/manual lane is still blocked, exhausted, '
+                        f'or already delivered; repair the lane architecture instead of letting the selector drift into {fallback_lane}.'
+                    )
 
     if (
         lane == 'distribution_architecture_guard_pause'
@@ -4149,6 +4168,40 @@ def choose_distribution_lane(
             'preserve the hold instead of surfacing fake follow-through or escalating into another architecture churn cycle.'
         )
 
+    _primary_movement_override = any(
+        adoption.get('recent_window', {}).get('Codeberg', {}).get(k, 0) > 0
+        for k in ('stars_delta_window', 'watchers_delta_window', 'forks_delta_window')
+    )
+
+    # 2026-05-31: directory_confirmation redirect.
+    # This lane has NEVER produced a measurable adoption delta (no backlink, no star movement).
+    # It only makes sense when there's a postable external channel that could convert.
+    # Redirect when primary repo is flat and no postable external lane is open.
+    if lane == 'directory_confirmation':
+        # Apollo is either unready (Cloudflare block) or in a measurement-pending hold.
+        apollo_cannot_post = not _apollo_ready(now) or apollo_measurement_pending
+        no_postable_external_lane = (
+            apollo_cannot_post
+            and not github_auth_available  # gh auth missing → no discussion/comparison posts
+        )
+        # SO drafts exist but can't be posted (human account needed). Reddit blocked.
+        if no_postable_external_lane and primary_flat:
+            if _owned_content_publication_available():
+                lane = 'owned_content'
+                reason = (
+                    'Directory confirmation has never produced a Codeberg backlink; '
+                    'no postable external lane is open (Apollo blocked, gh auth missing, '
+                    'Reddit blocked, SO drafts unpostable by human). '
+                    'Redirect to owned_content instead of generating another low-signal directory verification cycle.'
+                )
+            else:
+                lane = 'measurement_hold'
+                reason = (
+                    'Directory confirmation has never produced a Codeberg backlink; '
+                    'no postable external lane is open and no unpublished guide remains. '
+                    'Hold for the next truthful execution window.'
+                )
+
     if lane == 'owned_content' and not _owned_content_publication_available():
         if reset_targets_ready:
             lane = 'distribution_reset'
@@ -4156,13 +4209,13 @@ def choose_distribution_lane(
                 'No unpublished repo-native guide remains for owned-content publication, so do not let the selector drift into an owned-content noop; '
                 'create fresh reset targets instead.'
             )
-        elif _execution_board_has_no_truthful_do_now_packet(now):
+        elif _execution_board_has_no_truthful_do_now_packet(now) and not _primary_movement_override:
             lane = 'distribution_architecture_repair'
             reason = (
                 'No unpublished repo-native guide remains for owned-content publication and no truthful do-now packet is left on the board, '
                 'so repair the lane architecture instead of letting the selector drift into an owned-content noop.'
             )
-        else:
+        elif not _primary_movement_override:
             lane = 'measurement_hold'
             reason = (
                 'No unpublished repo-native guide remains for owned-content publication, so do not let the selector drift into an owned-content noop; '
@@ -4210,6 +4263,56 @@ def persist_latest_lane_decision(
     *,
     write_action_log: bool = False,
 ) -> LaneDecision:
+    # Permanent guard against stale overwrite (4th recurrence fix).
+    # If the incoming lane is guard_pause and the current disk state shows a
+    # fresher repair lane (< 2 days old), refuse to overwrite.
+    STALE_OVERRIDE_GUARD_REPAIR_LANES = {
+        'distribution_architecture_repair',
+        'primary_repo_flat_contact_handoff_packet',
+        'primary_repo_flat_contact_discovery',
+        'conversion_surface_optimization',
+        'curator_contact_discovery',
+        'curator_handoff_packet_execution',
+        'dead_loop_escalation',
+    }
+    OVERRIDE_GUARD_STALE_LANES = {
+        'distribution_architecture_guard_pause',
+    }
+    if decision.lane in OVERRIDE_GUARD_STALE_LANES and LATEST_JSON.exists():
+        try:
+            disk_state = json.loads(LATEST_JSON.read_text(encoding='utf-8'))
+            disk_lane = str(disk_state.get('lane', '') or '').strip()
+            if disk_lane in STALE_OVERRIDE_GUARD_REPAIR_LANES:
+                gen_at = str(disk_state.get('generated_at', '') or '').strip()
+                if gen_at:
+                    try:
+                        gen_dt = datetime.fromisoformat(gen_at.replace('Z', '+00:00'))
+                        age_h = (now - gen_dt.replace(tzinfo=None)).total_seconds() / 3600
+                        if age_h < 48:
+                            # Disk state is a fresh repair lane; don't overwrite with guard_pause
+                            print(
+                                f"[persist_latest_lane_decision] REFUSING overwrite: "
+                                f"disk has {disk_lane} ({age_h:.1f}h old) — "
+                                f"will not replace with {decision.lane}",
+                                flush=True,
+                            )
+                            return LaneDecision(
+                                lane=disk_lane,
+                                reason=disk_state.get('reason', ''),
+                                reasons=list(disk_state.get('reasons', []) or []),
+                                owned_content_posts_last_36h=int(disk_state.get('owned_content_posts_last_36h', 0) or 0),
+                                unsubmitted_directory_channels=list(disk_state.get('unsubmitted_directory_channels', []) or []),
+                                shared_findings_used=list(disk_state.get('shared_findings_used', []) or []),
+                                artifact_path=disk_state.get('artifact_path', ''),
+                                short_review_window_release_at=disk_state.get('short_review_window_release_at'),
+                                skip_directory_submissions=disk_state.get('skip_directory_submissions', False),
+                                skip_curator_outreach=disk_state.get('skip_curator_outreach', False),
+                            )
+                    except (ValueError, IndexError):
+                        pass
+        except (json.JSONDecodeError, OSError):
+            pass
+
     artifact_path = str(write_action_brief(
         lane=decision.lane,
         now=now,
