@@ -1,7 +1,7 @@
 {
-  "ts": "2026-06-01T16:00:31.922160",
+  "ts": "2026-06-01T18:08:03.190950",
   "jobs_checked": 24,
-  "issues_found": 3,
+  "issues_found": 11,
   "issues": [
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
@@ -19,41 +19,157 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 5568.98,
+      "artifact_age_minutes": 5696.44,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review",
+      "category": "loop_verification_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Docs system is well-aligned. README \u2192 START_HERE \u2192 docs/README journey is coherent, all promoted next-click pages reinforce the same story, positioning is clean, no internal leakage on top-level surfaces. Minor dual-README structural note but no hard failures."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs"
     },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1086",
-      "repeats_in_recent_history": 1086,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1108",
+      "repeats_in_recent_history": 1108,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_escalation",
+      "category": "escalation_required",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=258",
+      "repeats_in_recent_history": 258,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review::loop_verification_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation",
+      "category": "escalation_required",
+      "last_error": "Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=22",
+      "repeats_in_recent_history": 22,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph::review_followup_required",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation",
+      "category": "escalation_required",
+      "last_error": "Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=22",
+      "repeats_in_recent_history": 22,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original::review_followup_required",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation",
+      "category": "escalation_required",
+      "last_error": "Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=22",
+      "repeats_in_recent_history": 22,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an::review_followup_required",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
   "repairs_attempted": [
     {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
+      "type": "rerun_docs_verifier",
+      "job": "docs_agentic_review",
       "ok": true,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\"status\": \"pass\", \"summary\": \"Docs system is well-aligned. README \\u2192 START_HERE \\u2192 docs/README journey is coherent, all promoted next-click pages reinforce the same story, positioning is clean, no inte"
     },
     {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-01T16:00:20.399476+02:00\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-01T15:37:35.757522+00:00"
+    },
+    {
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-01T15:37:39.695139+00:00"
+    },
+    {
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-01T15:37:42.035037+00:00"
     },
     {
       "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
+      "job": "agent_architecture_verifier_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780322423206:27\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780330053977:37\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780330057233:38\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780330060469:39\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780330064162:40\"\n}"
     }
   ]
 }
