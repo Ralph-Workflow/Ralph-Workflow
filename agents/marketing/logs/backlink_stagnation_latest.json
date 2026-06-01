@@ -1,0 +1,448 @@
+{
+  "generated_at": "2026-06-01T15:19:02.946469+00:00",
+  "source": "backlink_stagnation_watchdog.py",
+  "backlink_status_at": "2026-06-01T14:56:08.845604+00:00",
+  "summary": {
+    "total_directories": 18,
+    "live": 3,
+    "stale_gt_7_days": 14,
+    "dead_gt_14_days": 0,
+    "pending_normal": 1,
+    "should_escalate": true
+  },
+  "stale_submissions": [
+    {
+      "directory": "AIToolsIndex",
+      "listing_url": "https://aitoolsindex.org/tools/ralph-workflow",
+      "submit_url": "https://aitoolsindex.org/submit",
+      "check_results": [
+        {
+          "url": "https://aitoolsindex.org/ai-tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        },
+        {
+          "url": "https://aitoolsindex.org/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submission was confirmed via the public .org API on 2026-05-20; treat as submitted/in-review unless a live listing appears.",
+      "name": "AIToolsIndex",
+      "days_pending": 12
+    },
+    {
+      "directory": "MadeWithStack",
+      "listing_url": "https://www.madewithstack.com/project/ralph-workflow-1",
+      "submit_url": "https://www.madewithstack.com/submit",
+      "check_results": [
+        {
+          "url": "https://www.madewithstack.com/project/ralph-workflow-1",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submission returned slug ralph-workflow-1 with UNDER_EDITORIAL_REVIEW on 2026-05-23; treat as submitted/in-review until the public listing resolves.",
+      "name": "MadeWithStack",
+      "days_pending": 9
+    },
+    {
+      "directory": "DevToolCenter",
+      "listing_url": "https://www.devtool.center/tools/ralph-workflow",
+      "submit_url": "https://www.devtool.center/submit",
+      "check_results": [
+        {
+          "url": "https://www.devtool.center/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submission returned 201 pending on 2026-05-23 via the public devshelf-backend.onrender.com API; treat as submitted/in-review until the public listing resolves.",
+      "name": "DevToolCenter",
+      "days_pending": 9
+    },
+    {
+      "directory": "AIToolboard",
+      "listing_url": "https://aitoolboard.com/tools/ralph-workflow",
+      "submit_url": "https://aitoolboard.com/submit",
+      "check_results": [
+        {
+          "url": "https://aitoolboard.com/tools/ralph-workflow",
+          "status": 200,
+          "ok": true,
+          "has_product_marker": true,
+          "negative_markers": [
+            "tool not found",
+            "not found"
+          ],
+          "transient_markers": [],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": true,
+          "preferred_repo_target": "unknown"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-23 via API; slug=ralph-workflow; pending editorial review.",
+      "name": "AIToolboard",
+      "days_pending": 9
+    },
+    {
+      "directory": "IndieStack",
+      "listing_url": "https://indiestack.ai/tools/ralph-workflow",
+      "submit_url": "https://indiestack.ai/submit",
+      "check_results": [
+        {
+          "url": "https://indiestack.ai/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-23; confirmation page confirmed; pending editorial review.",
+      "name": "IndieStack",
+      "days_pending": 9
+    },
+    {
+      "directory": "ListYourTool",
+      "listing_url": "https://www.listyourtool.com/tools/ralph-workflow",
+      "submit_url": "https://www.listyourtool.com/submit-tool",
+      "check_results": [
+        {
+          "url": "https://www.listyourtool.com/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-23 via API; tool_id=e27adedd-3faa-432b-ab35-000a8bf66121; pending review.",
+      "name": "ListYourTool",
+      "days_pending": 9
+    },
+    {
+      "directory": "NavAI",
+      "listing_url": "https://nav-ai.net/tools/ralph-workflow",
+      "submit_url": "https://nav-ai.net/submit",
+      "check_results": [
+        {
+          "url": "https://nav-ai.net/tools/ralph-workflow",
+          "status": 200,
+          "ok": true,
+          "has_product_marker": false,
+          "negative_markers": [],
+          "transient_markers": [
+            "loading..."
+          ],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "unknown"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-23 via Supabase REST API; HTTP 201; pending review.",
+      "name": "NavAI",
+      "days_pending": 9
+    },
+    {
+      "directory": "OpenAgents",
+      "listing_url": "https://www.openagents.pro/tools/ralph-workflow",
+      "submit_url": "https://www.openagents.pro/submit",
+      "check_results": [
+        {
+          "url": "https://www.openagents.pro/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-23 via Formspree; HTTP 200 ok=true; pending review.",
+      "name": "OpenAgents",
+      "days_pending": 9
+    },
+    {
+      "directory": "ToolScout",
+      "listing_url": "https://toolscout.ai/tools/ralph-workflow",
+      "submit_url": "https://toolscout.ai/submit",
+      "check_results": [
+        {
+          "url": "https://toolscout.ai/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-23 via Bubble form; success screen rendered; pending review.",
+      "name": "ToolScout",
+      "days_pending": 9
+    },
+    {
+      "directory": "VBWebTools",
+      "listing_url": "https://www.vbwebtools.com/tools/ralph-workflow",
+      "submit_url": "https://www.vbwebtools.com/submit-tool/",
+      "check_results": [
+        {
+          "url": "https://www.vbwebtools.com/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-23 via WordPress AJAX endpoint; HTTP 200; pending 2-3 day review.",
+      "name": "VBWebTools",
+      "days_pending": 9
+    },
+    {
+      "directory": "TheToolify",
+      "listing_url": "https://submit.thetoolify.dev/tools/ralph-workflow",
+      "submit_url": "https://submit.thetoolify.dev/",
+      "check_results": [
+        {
+          "url": "https://submit.thetoolify.dev/tools/ralph-workflow",
+          "status": 401,
+          "ok": false,
+          "error": "HTTP Error 401: Unauthorized"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-23 via headless browser; HTTP 200 success; pending review.",
+      "name": "TheToolify",
+      "days_pending": 9
+    },
+    {
+      "directory": "Claudetory",
+      "listing_url": "https://claudetory.com/tools/ralph-workflow",
+      "submit_url": "https://claudetory.com/submit",
+      "check_results": [
+        {
+          "url": "https://claudetory.com/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-24 via the public /api/submit-resource endpoint; treat as pending review until the public tool page resolves.",
+      "name": "Claudetory",
+      "days_pending": 8
+    },
+    {
+      "directory": "ClaudeStack",
+      "listing_url": "https://claudestack.dev/entries/ralph-workflow",
+      "submit_url": "https://www.claudestack.dev/submit",
+      "check_results": [
+        {
+          "url": "https://claudestack.dev/entries/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        },
+        {
+          "url": "https://claudestack.dev/category/workflows",
+          "status": 200,
+          "ok": true,
+          "has_product_marker": false,
+          "negative_markers": [],
+          "transient_markers": [],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "unknown"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-24 via the public /api/submit endpoint; track the workflows category and the likely slug until the public entry resolves.",
+      "name": "ClaudeStack",
+      "days_pending": 8
+    },
+    {
+      "directory": "AiAgentsDirectory",
+      "listing_url": "https://aiagents.directory/ralph-workflow/",
+      "submit_url": "https://aiagents.directory/submit/",
+      "check_results": [
+        {
+          "url": "https://aiagents.directory/ralph-workflow/",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        },
+        {
+          "url": "https://aiagents.directory/categories/open-source/",
+          "status": 200,
+          "ok": true,
+          "has_product_marker": false,
+          "negative_markers": [],
+          "transient_markers": [],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "unknown"
+        },
+        {
+          "url": "https://aiagents.directory/categories/developer-tools/",
+          "status": 200,
+          "ok": true,
+          "has_product_marker": false,
+          "negative_markers": [],
+          "transient_markers": [],
+          "has_codeberg_repo_link": false,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "unknown"
+        }
+      ],
+      "secondary_check_results": [],
+      "listing_live": false,
+      "secondary_live_surfaces": 0,
+      "has_codeberg_repo_link": false,
+      "has_github_repo_link": false,
+      "has_site_link": false,
+      "preferred_repo_target": "unknown",
+      "status_note": "Submitted 2026-05-24 via the public Django form on /submit/ with Codeberg as the primary URL; treat as pending review until a public listing resolves.",
+      "name": "AiAgentsDirectory",
+      "days_pending": 8
+    }
+  ],
+  "dead_submissions": [],
+  "live_listings": [
+    {
+      "name": "SaaSHub",
+      "url": "https://saashub.com/ralph-workflow"
+    },
+    {
+      "name": "ToolWise",
+      "url": "https://toolwise.ai/tools/ralph-workflow"
+    },
+    {
+      "name": "ClaudeCodeAlternatives",
+      "url": "https://claude-code-alternatives.com/cli-agents/ralph-workflow/"
+    }
+  ],
+  "fresh_directory_candidates": [
+    {
+      "name": "AITopTools",
+      "submit_url": "https://aitoptools.com/submit/",
+      "listing_url": "https://aitoptools.com/tool/ralph-workflow/",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "FutureTools",
+      "submit_url": "https://www.futuretools.io/submit",
+      "listing_url": "https://www.futuretools.io/tools/ralph-workflow",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "Futurepedia",
+      "submit_url": "https://www.futurepedia.io/submit-tool",
+      "listing_url": "https://www.futurepedia.io/tool/ralph-workflow",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "There's an AI for That",
+      "submit_url": "https://theresanaiforthat.com/submit/",
+      "listing_url": "https://theresanaiforthat.com/ai/ralph-workflow/",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "TopAI.tools",
+      "submit_url": "https://topai.tools/submit",
+      "listing_url": "https://topai.tools/tool/ralph-workflow",
+      "status": "unsubmitted",
+      "listing_live": false
+    }
+  ]
+}

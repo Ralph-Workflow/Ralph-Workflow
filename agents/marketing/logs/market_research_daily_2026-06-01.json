@@ -1,0 +1,179 @@
+{
+  "generated_at": "2026-06-01T14:41:00.000Z",
+  "run": "daily-marketing-research",
+  "scan_coverage": {
+    "reddit_posts_attempted": 40,
+    "reddit_posts_fetched": 0,
+    "reddit_status": "BLOCKED - All 403 responses. Reddit's anti-bot measures from this IP/environment blocked both direct fetch and browserless.io proxy. Cannot access JSON API, old.reddit.com, or new.reddit.com.",
+    "duckduckgo_queries_attempted": 10,
+    "duckduckgo_results": 0,
+    "duckduckgo_status": "BLOCKED - Bot detection challenge on all queries.",
+    "hackernews_queries_attempted": 7,
+    "hackernews_results_found": 20,
+    "hackernews_status": "OK - HN Algolia API works well",
+    "web_fetch_attempts": 5,
+    "web_fetch_landing_page": "OK",
+    "coverage_assessment": "CRITICALLY DEGRADED - Reddit and DuckDuckGo are fully blocked. Only HN Algolia API yielded usable results. Failing closed: cannot claim 25+ candidates were scanned."
+  },
+  "hackernews_findings": {
+    "directly_relevant_discussions": [
+      {
+        "title": "RalphMAD – Autonomous SDLC Workflows for Claude Code (BMAD and Ralph Loop)",
+        "hn_url": "https://news.ycombinator.com/item?id=47229829",
+        "date": "2026-03-03",
+        "relevance": "VERY HIGH - Builds on Ralph Loop concept! A Claude Code plugin combining BMAD's structured SDLC workflows with Geoffrey Huntley's Ralph Loop technique.",
+        "key_details": [
+          "12 pre-built workflows: Product Brief → PRD → Architecture → Sprint Planning → Implementation",
+          "Self-running: Claude executes workflows autonomously until completion promise",
+          "Templates use {{placeholder}} syntax from config.yaml",
+          "Ships with state file for concurrent plugin usage",
+          "GitHub: github.com/hieutrtr/ralphmad"
+        ],
+        "action": "Potential cross-promotion or collaboration opportunity. This plugin introduces Ralph Loop to a Claude Code audience that hasn't heard of Ralph Workflow. Reach out to author? Consider referencing in Ralph Workflow README."
+      },
+      {
+        "title": "Oh-My-OpenClaw – agent orchestration for coding, from Discord/Telegram",
+        "hn_url": "https://news.ycombinator.com/item?id=47161721",
+        "date": "2026-02-26",
+        "relevance": "HIGH - Multi-agent orchestration competitor/adjacent. 11 specialized agents, auto-orchestrated.",
+        "key_details": [
+          "Fully async from any chat platform (Discord, Telegram)",
+          "11 agents: Prometheus (plan), Atlas (orchestrate), Sisyphus-Junior (implement), Oracle (architect), Momus (review)",
+          "Automatic model routing per task category",
+          "Auto-delegates to OpenCode via tmux",
+          "Checkpoint system for crash recovery",
+          "Addresses pain points: async work, parallel tasks, phone access"
+        ],
+        "action": "Competitive intelligence. Watch how this evolves. Their orchestration model is a 'team of agents' approach vs Ralph's 'structured loop' approach. Different philosophy."
+      },
+      {
+        "title": "Lukan – An open-source agentic workstation in a single Rust binary",
+        "hn_url": "https://news.ycombinator.com/item?id=47426825",
+        "date": "2026-03-18",
+        "relevance": "HIGH - Direct competitor feature set. DAG-based multi-agent workflows with human-in-the-loop gates.",
+        "key_details": [
+          "Multi-agent sessions, checkpoint/resume, rewind to previous checkpoints",
+          "Embedded terminal (tmux-backed) with Claude Code, Codex CLI support",
+          "DAG-based multi-agent workflows with visual editor",
+          "Human-in-the-loop approval gates",
+          "Cron-style autonomous tasks",
+          "E2E encrypted remote access",
+          "Sandboxed execution (bubblewrap/Seatbelt)",
+          "Plugin ecosystem (WhatsApp, Telegram, Slack, Discord)"
+        ],
+        "action": "Direct competitive threat. Their 'agentic workstation' vision overlaps with Ralph Workflow's 'orchestrator' vision. Differentiate on: simpler architecture (loop vs DAG), Codeberg-first open source, no enterprise overhead."
+      },
+      {
+        "title": "Lume 0.2 – Build and Run macOS VMs with unattended setup",
+        "hn_url": "https://news.ycombinator.com/item?id=46670181",
+        "date": "2026-01-18",
+        "relevance": "MEDIUM-HIGH - VM infrastructure for unattended AI agent execution. 154 points, 44 comments.",
+        "key_details": [
+          "Unattended macOS VM setup via VNC+OCR",
+          "MCP Server for Claude Desktop integration",
+          "Running Claude Code in isolated VM",
+          "Used for CI/CD pipelines with autonomous coding agents"
+        ],
+        "action": "Complementary tooling. Consider documenting a Ralph Workflow + Lume integration for macOS sandboxed unattended coding."
+      },
+      {
+        "title": "Show HN: Neuron – Independent Rust crates for building AI agents",
+        "hn_url": "https://news.ycombinator.com/item?id=47138618",
+        "date": "2026-02-24",
+        "relevance": "MEDIUM - Composable agent framework architecture. Similar philosophy to Ralph's composable loops.",
+        "key_details": [
+          "Composable trait boundaries: Provider, Tool, ContextStrategy",
+          "Independent crates vs monolith approach",
+          "Optimized for Claude Code workflow (CLAUDE.md, llms.txt in repo)"
+        ],
+        "action": "Potential content angle: 'Why Ralph Workflow chose a different architecture than Neuron' - contrast composable loops vs trait-based crate composition."
+      },
+      {
+        "title": "GitAgent – git-native, framework-agnostic open standard for AI agents",
+        "hn_url": "https://www.gitagent.sh/",
+        "date": "2026",
+        "relevance": "MEDIUM - Agent standardization effort. Repo-as-agent concept.",
+        "key_details": [
+          "agent.yaml + SOUL.md + skills/ defines an agent",
+          "Multiple framework adapters (Claude Code, OpenAI, CrewAI, OpenClaw)",
+          "Git-based versioning for agents"
+        ],
+        "action": "Interesting standard. Ralph Workflow could potentially provide a 'loop-based orchestrator' adapter for GitAgent."
+      }
+    ],
+    "pain_point_discussions": [
+      {
+        "title": "Running 9 AI agents and realizing we needed a control plane",
+        "context": "Comment on HN story",
+        "pain_points": [
+          "'The problem is you can't realistically review everything they do'",
+          "'Agents looping API calls overnight or rewriting working code because they misunderstood context'",
+          "'Costs can be pretty wild'",
+          "'Most existing tools assume workflows are deterministic... Agents don't behave that way'"
+        ],
+        "ralph_fit": "STRONG FIT - Ralph Workflow's structured loop with planning → build → verify phases directly addresses the 'deterministic vs exploratory' tension. The verify loop catches looped API calls and rewritten code. The checkpoint/resume model handles cost control."
+      },
+      {
+        "title": "Backpressure is all you need - comment on patch generation workflow",
+        "context": "Comment on HN discussion dated 2026-06-01 (today!)",
+        "pain_points": [
+          "User built custom agent that generates patches, then manually reviews/merges them",
+          "'I added looping to this not too long ago'",
+          "Forces workflow by disabling modifications outside the coding step"
+        ],
+        "ralph_fit": "PERFECT FIT - This is exactly the Ralph Workflow model! Plan → build → verify pattern. The user is basically building a one-off version of Ralph's verification loop. Reach out with 'you built the start of what Ralph Workflow already ships.'"
+      }
+    ],
+    "trends_observed": [
+      "Multi-agent orchestration is heating up - OmO, Oh-My-OpenClaw, Lukan all shipping multi-agent patterns",
+      "Async/unattended execution is a constant pain point - multiple projects solving 'kick off work from phone'",
+      "Checkpoint/resume is becoming table stakes for serious agents",
+      "Control plane / human-in-the-loop gates are emerging as a needed pattern",
+      "The Ralph Loop term is spreading (RalphMAD project references it explicitly) - early adoption signal",
+      "Rust is trending for agent infrastructure (Lukan, Neuron)",
+      "Git-based agent packaging (GitAgent) suggests standardization efforts beginning"
+    ]
+  },
+  "site_messaging_ground_truth": {
+    "landing_page_url": "https://ralphworkflow.com",
+    "value_proposition_confirmed": "Composable loop framework for real software engineering. Three phases: plan → build → verify. Unattended overnight execution. Usually <$1 in API credits.",
+    "keywords_on_page": [
+      "unattended coding agent",
+      "spec-driven AI agent",
+      "AI agent orchestration CLI",
+      "Claude Code unattended",
+      "Claude Code automation",
+      "AI coding workflow automation",
+      "AI agent workflow composer"
+    ],
+    "positioning": "Codeberg-first open-source path"
+  },
+  "concrete_actions": {
+    "urgent": [
+      "RalphMAD HN thread (id 47229829) - The author explicitly built on top of Ralph Loop for Claude Code. This is a free validation signal. Reply offering a Ralph Workflow comparison or integration path.",
+      "Backpressure thread comment (id 48351964 from today) - User built a manual patch-generation-with-review loop. Perfect Ralph Workflow candidate. Reply with a link and mention this is exactly the pattern Ralph ships."
+    ],
+    "content_ideas": [
+      "Blog post: 'Why loops beat DAGs for autonomous coding agents' - differentiate from Lukan and other DAG-based systems",
+      "Blog post: 'Ralph Workflow vs. multi-agent orchestration: structured loops vs. agent teams'",
+      "Benchmark: 'Running the same refactor task in Ralph Workflow vs. Lukan vs. raw Claude Code - cost and completeness comparison'",
+      "Tutorial: 'Ralph Workflow + Lume on macOS: fully unattended coding pipeline in an isolated VM'"
+    ],
+    "seo_opportunities": [
+      "Create content targeting 'autonomous coding agent control plane' - this is an emerging term",
+      "Create content targeting 'patch generation review loop' - the Backpressure discussion shows demand",
+      "Create content targeting 'multi-agent orchestration vs single-agent loop' - hot topic"
+    ],
+    "competitive_actions": [
+      "Monitor Lukan and Oh-My-OpenClaw closely - both are building overlapping functionality",
+      "Consider a Ralph Workflow adapter for the GitAgent standard",
+      "The 'Ralph Loop' term is now used outside the project - claim and reinforce the terminology"
+    ],
+    "integration_ideas": [
+      "Ralph Workflow + Lume for macOS sandboxed unattended coding",
+      "Ralph Workflow as a loop provider for GitAgent agents",
+      "Ralph Workflow + Oh-My-OpenClaw's async chat interface as a front-end"
+    ]
+  },
+  "next_check_notes": "Reddit access needs resolution for future runs. Consider setting up a Reddit API app with PRAW credentials (TOOLS.md has placeholders) so cron jobs can query Reddit programmatically without being blocked. HackerNews Algolia API is a reliable backup source."
+}

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-01T03:30:01.850922+00:00",
+  "timestamp": "2026-06-01T14:36:07.901614+00:00",
   "sitemap_urls_total": 102,
   "google_indexing": {
     "status": "gsc_search_analytics",
@@ -71,7 +71,7 @@
   },
   "escalation": {
     "first_detected": "2026-05-31T07:11:07.410924+00:00",
-    "days_since": 0,
+    "days_since": 1,
     "chronic": false,
     "action": "monitoring"
   }

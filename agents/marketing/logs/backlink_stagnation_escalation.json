@@ -1,0 +1,123 @@
+{
+  "escalated_at": "2026-06-01T15:19:02.946469+00:00",
+  "reason": "14 stale + 0 dead submissions out of 18 total directories",
+  "stale_submissions": [
+    {
+      "name": "AIToolsIndex",
+      "days_pending": 12
+    },
+    {
+      "name": "MadeWithStack",
+      "days_pending": 9
+    },
+    {
+      "name": "DevToolCenter",
+      "days_pending": 9
+    },
+    {
+      "name": "AIToolboard",
+      "days_pending": 9
+    },
+    {
+      "name": "IndieStack",
+      "days_pending": 9
+    },
+    {
+      "name": "ListYourTool",
+      "days_pending": 9
+    },
+    {
+      "name": "NavAI",
+      "days_pending": 9
+    },
+    {
+      "name": "OpenAgents",
+      "days_pending": 9
+    },
+    {
+      "name": "ToolScout",
+      "days_pending": 9
+    },
+    {
+      "name": "VBWebTools",
+      "days_pending": 9
+    },
+    {
+      "name": "TheToolify",
+      "days_pending": 9
+    },
+    {
+      "name": "Claudetory",
+      "days_pending": 8
+    },
+    {
+      "name": "ClaudeStack",
+      "days_pending": 8
+    },
+    {
+      "name": "AiAgentsDirectory",
+      "days_pending": 8
+    }
+  ],
+  "dead_submissions": [],
+  "recommended_action": "Post fresh batch of directory submissions from fresh_directory_candidates",
+  "fresh_candidates_count": 10,
+  "fresh_unsubmitted": [
+    {
+      "name": "AITopTools",
+      "submit_url": "https://aitoptools.com/submit/",
+      "listing_url": "https://aitoptools.com/tool/ralph-workflow/",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "FutureTools",
+      "submit_url": "https://www.futuretools.io/submit",
+      "listing_url": "https://www.futuretools.io/tools/ralph-workflow",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "Futurepedia",
+      "submit_url": "https://www.futurepedia.io/submit-tool",
+      "listing_url": "https://www.futurepedia.io/tool/ralph-workflow",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "There's an AI for That",
+      "submit_url": "https://theresanaiforthat.com/submit/",
+      "listing_url": "https://theresanaiforthat.com/ai/ralph-workflow/",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "TopAI.tools",
+      "submit_url": "https://topai.tools/submit",
+      "listing_url": "https://topai.tools/tool/ralph-workflow",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "AI Parabellum",
+      "submit_url": "https://aiparabellum.com/submit/",
+      "listing_url": "https://aiparabellum.com/tool/ralph-workflow/",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "Aixploria",
+      "submit_url": "https://www.aixploria.com/en/submit-your-ai/",
+      "listing_url": "https://www.aixploria.com/en/ralph-workflow/",
+      "status": "unsubmitted",
+      "listing_live": false
+    },
+    {
+      "name": "Insidr.ai",
+      "submit_url": "https://www.insidr.ai/submit-tool/",
+      "listing_url": "https://www.insidr.ai/tools/ralph-workflow/",
+      "status": "unsubmitted",
+      "listing_live": false
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "ran_at": "2026-06-01T14:26:45.601927+00:00",
+  "dry_run": true,
+  "total_posts": 44,
+  "posts_with_related_links_before": 36,
+  "noindex_skipped": 0,
+  "results": [
+    {
+      "slug": "ralph-workflow-vs-aider",
+      "changes": [
+        "+4 related links",
+        "CTA OK"
+      ],
+      "title": "Ralph Workflow vs Aider: Terminal Pair Programming vs Composable Workflow"
+    }
+  ],
+  "summary": {
+    "posts_retrofitted_links": 1,
+    "posts_retrofitted_cta": 0,
+    "posts_skipped_noindex": 0,
+    "posts_already_linked": 36
+  }
+}

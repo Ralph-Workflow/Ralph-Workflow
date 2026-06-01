@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-06-01T11:58:21.095736+00:00",
-  "live_total_lines": 14,
-  "marketing_job_count": 11,
-  "golden_job_count": 14,
+  "generated_at": "2026-06-01T15:21:48.217562+00:00",
+  "live_total_lines": 17,
+  "marketing_job_count": 12,
+  "golden_job_count": 15,
   "min_marketing_jobs": 8,
   "issues": [],
   "ok": true,
@@ -13,6 +13,7 @@
     "30 14 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/stale_artifact_watchdog.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/stale_artifact_watchdog_cron.log 2>&1",
     "45 0 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/outcome_capability_runner.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_capability_cron.log 2>&1",
     "0 9 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_cron.log 2>&1",
+    "30 7 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/backlink_stagnation_watchdog.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_stagnation_cron.log 2>&1",
     "0 8 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/repo_conversion_optimizer.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/repo_conversion_cron.log 2>&1",
     "0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1",
     "15 3 * * 3,7 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/stackoverflow_answer_lane.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/stackoverflow_answer_cron.log 2>&1",
@@ -20,6 +21,8 @@
     "30 5 * * 6 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/indexation_health_check.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/indexation_health_cron.log 2>&1",
     "0 10 * * 6 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/seo_retrofit_lane.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/seo_retrofit_cron.log 2>&1",
     "0 4 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/log_janitor.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/log_janitor_cron.log 2>&1",
-    "37 */12 * * * /home/mistlight/git-sync.sh"
+    "37 */12 * * * /home/mistlight/git-sync.sh",
+    "1,31 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_runner.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/watchdog_cron.log 2>&1",
+    "6,36 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/verifier_cron.log 2>&1"
   ]
 }

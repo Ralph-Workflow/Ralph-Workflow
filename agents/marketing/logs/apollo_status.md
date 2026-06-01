@@ -1,6 +1,6 @@
 # Apollo.io Channel Status
 
-**Checked:** 2026-05-31 20:39 CEST (18:39 UTC)
+**Checked:** 2026-06-01 16:54 CEST (14:54 UTC)
 **Status:** 🔴 Cloudflare Auth Blocked
 
 ## Blocker State: **cloudflare_auth_blocked**

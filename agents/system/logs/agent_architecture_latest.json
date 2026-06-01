@@ -27,7 +27,11 @@
     "live_jobs_checked": 24,
     "live_jobs_enabled": 24,
     "live_jobs_disabled": 0,
-    "live_jobs_running": ["system-health-monitor", "codeberg-github-mirror-sync", "agent-architecture-watchdog"],
+    "live_jobs_running": [
+      "system-health-monitor",
+      "codeberg-github-mirror-sync",
+      "agent-architecture-watchdog"
+    ],
     "disabled_job_names": [],
     "persisted_disabled_job_names": [
       "docs-stack-aggressive-10min-self-heal",
@@ -185,11 +189,12 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
-    "summary": "Independent verification confirms the repaired architecture verifier fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-06-01T16:03:48+02:00",
-    "verdict": "qualified_pass"
+    "summary": "Independent verification found architecture blockers that prevent a healthy verifier pass.",
+    "checked_at": "2026-06-01T16:03:12.232564+02:00",
+    "verdict": null
   },
   "what_still_needs_independent_verification": [
+    "Fresh architecture independent verification against the refreshed live topology.",
     "Fresh marketing independent pass backed by measurable primary-repo movement.",
     "blocked-channel-recovery repair/disposition (1086-repeat critical escalation)."
   ],
@@ -205,8 +210,8 @@
     "shared_market_intelligence_fresh": true,
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
-    "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-06-01T16:03:48+02:00",
+    "architecture_verifier_status": "fail",
+    "architecture_verifier_checked_at": "2026-06-01T16:03:12.232564+02:00",
     "architecture_independent_verdict": "qualified_pass",
     "architecture_independent_checked_at": "2026-06-01T16:03:12+02:00",
     "loop_integrity_statuses": {
@@ -255,7 +260,7 @@
       "last_status": "error",
       "consecutive_errors": 1
     },
-    "independent_architecture_verdict": "qualified_pass"
+    "independent_architecture_verdict": null
   },
   "notes": [
     "Architecture green means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.",

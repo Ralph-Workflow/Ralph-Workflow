@@ -6,7 +6,7 @@
 - **Google indexing status:** gsc_search_analytics
 - **Google search presence:** 14/102 pages (13.7%) — 372 impressions, 21 clicks (28d)
 - **CTR:** 5.65%
-- **⚠️ ESCALATION:** 0 days above threshold — monitoring
+- **⚠️ ESCALATION:** 1 days above threshold — monitoring
 
 ## Actions
 - IndexNow ping runs daily at 05:00 CEST (Bing + Yandex + Seznam)
