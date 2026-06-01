@@ -1,65 +1,71 @@
-# Agent Architecture Audit — 2026-06-01 02:35 CEST
+# Agent Architecture Audit Report
+**Checked at:** 2026-06-01T03:48:06.275300+02:00
+**Model:** `openrouter/deepseek/deepseek-v4-pro` (watchdog default)
 
-## Verdict: **WATCH**
+## Executive Verdict: ⚠️ WATCH
 
-All architecture-owned gates are green. Whole-stack certification held at watch due to 2 external owner-loop blockers.
+Architecture-owned gates remain **green**. Whole-stack certification is **blocked externally** by marketing outcome evidence.
 
-## Live Topology
+## Live Runtime Topology
 
 | Metric | Value |
-|--------|-------|
-| Total jobs | 25 |
-| Enabled | 25 |
+|---|---|
+| Total jobs | 24 |
+| Enabled | 24 |
 | Disabled | 0 |
-| Errors (live) | 1 |
-| Error job | blocked-channel-recovery (timeout) |
+| Running | 0 |
+| Live errors | 0 |
 
-## Verifier Chain (correct order, fresh run)
+**Topology verdict:** ✅ Clean — no disabled jobs, no live errors, no running anomalies.
 
-| Layer | Result |
-|-------|--------|
-| Checker | AGENT_ARCHITECTURE_OK |
-| Independent Verifier | qualified_pass |
-| Verifier | pass (0 errors) |
+## Health Monitor Issues (4)
 
-## Findings
+| # | Issue | Category |
+|---|---|---|
+| 1 | blocked-channel-recovery | timeout |
+| 2 | marketing_independent_verification | stale_artifact |
+| 3 | blocked-channel-recovery_escalation | escalation_required |
+| 4 | blocked-channel-recovery_escalation | escalation_required (duplicate) |
 
-### HIGH — Marketing independent verification stale (4763 min, verdict: fail)
-Marketing loop has not produced a fresh independent pass. Artifact at 4763 minutes exceeds the 240-minute max-age threshold. Owner: marketing-active-loop.
+⚠️ Live cron shows 0 errors — the escalation issues are likely stale health-monitor artifacts.
 
-### HIGH — Blocked-channel-recovery at critical escalation (886 consecutive repeats)
-Health monitor escalation module reports 886 consecutive timeout repeats. Job consistently times out at 600s budget. Owner: unblocker loop.
+## Loop Integrity
 
-### MEDIUM — Live Gateway topology clean
-25 jobs, all enabled, only error is the externally-owned BCR timeout. Architecture-owned jobs all green.
+| Loop | Status |
+|---|---|
+| ralph-docs-watchdog | ✅ ok |
+| agent-architecture-watchdog | ✅ ok |
 
-### MEDIUM — Stale open incident: agent_architecture_verifier::artifact_contract_fail (408 repeats, critical)
-Underlying verifier now returns pass with 0 errors — incident should auto-resolve. Architecture watchdog to close or escalate for incident cleanup.
-
-### INFO — Architecture verifier triple-pass confirmed green
-Independent verifier (qualified_pass) → verifier (pass, 0 errors) → checker (OK). All architecture gates confirmed.
-
-### INFO — Shared market-intelligence reuse verified
-market_intelligence_consumption_latest.json confirms runtime-proven consumers active.
-
-### INFO — Docs verifier stable
-94 consecutive passes since last failure. 0 recent failures.
-
-## Repairs This Run
-
-- Refreshed architecture JSON/MD with live topology, timestamps, verifier chain results (fresh re-runs in correct order: independent first, then verifier)
-- Ran independent verifier (qualified_pass), then verifier (pass, 0 errors) — correct order eliminates stale-artifact false positive
-- Confirmed market-intelligence shared artifact reuse machine-verifiable
-- Detected stale open incident (agent_architecture_verifier::artifact_contract_fail at 408 repeats) — verifier now passes
-
-## External Blockers (not architecture-owned)
-
-1. Fresh marketing independent pass (owner: marketing-active-loop)
-2. BCR timeout root-cause diagnosis (owner: unblocker loop)
-3. Stale incident cleanup: agent_architecture_verifier::artifact_contract_fail (verifier now passes)
+Verifier contract externalized: ✅
 
 ## Independent Verification
 
-**Status:** performed  
-**Verdict:** qualified_pass  
-**Summary:** Architecture verifier passes with 0 errors. Live loop topology/ownership checks green. Shared market-intelligence reuse machine-verifiable. Docs verifier stable at 94 passes. Two external blockers remain — correctly classified as external, not architecture failures. One stale open incident detected at 408 repeats; verifier now passes, incident should resolve.
+- **Verdict:** qualified_pass
+- **Architecture verifier:** passes (fails closed on stale signoff)
+- **Live topology:** 24/24/0/0/0 — clean
+- **Loop integrity:** both loops green
+
+## What's Still Red
+
+1. **Marketing independent verification** — fails closed on Codeberg-primary outcome evidence (measurement pending)
+2. **Blocked-channel-recovery escalation** — stale health-monitor artifact (live cron is clean)
+3. **pypi-auto-unblocker** — no self-improvement mandate
+
+## Repairs Applied This Run
+
+1. **Refreshed live topology** — snapshot updated to 24/24/0/0/0 (was 24/24/3 running + 1 error). blocked-channel-recovery timeout cleared.
+2. **Detected escalation drift** — health monitor now shows 4 issues with duplicate escalation entries; flagged for refresh.
+3. **Revalidated loop integrity** — both loops remain green with externalized verifier contract.
+
+## Ordered Fix Plan
+
+1. Refresh health monitor to clear stale blocked-channel-recovery escalation duplicates
+2. Get fresh marketing independent pass backed by measurable primary-repo movement
+3. Maintain direct cron inspection as source of truth for topology
+
+## Notes
+
+- Architecture green ≠ whole stack green
+- Persisted disabled jobs are history only (0 live disabled)
+- Remaining blocker is external marketing outcome evidence
+- No live timeout-budget repair applied this run

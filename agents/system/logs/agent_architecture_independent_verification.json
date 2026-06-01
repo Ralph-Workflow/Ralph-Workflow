@@ -1,21 +1,21 @@
 {
-  "verified_at": "2026-06-01T02:35:00+02:00",
+  "schema_version": "ecc.agent-architecture-independent-verification.v1",
+  "checked_at": "2026-06-01T03:48:25.984164+02:00",
+  "reference_report_checked_at": "2026-06-01T03:48:06.275300+02:00",
   "verdict": "qualified_pass",
-  "checker": "AGENT_ARCHITECTURE_OK",
-  "verifier": "pass (0 errors, correct order: independent first, then verifier)",
-  "independent_verifier": "qualified_pass",
-  "loop_integrity": "ok",
-  "architecture_owned_gates_status": "all_green",
-  "external_blockers": [
-    "marketing independent verification stale (4763 min, verdict fail)",
-    "blocked-channel-recovery timeout (886 repeats, critical escalation)"
-  ],
-  "stale_open_incidents": [
-    "agent_architecture_verifier::artifact_contract_fail (408 repeats critical) \u2014 verifier now passes, incident should auto-resolve"
-  ],
-  "docs_verifier": "stable (94 consecutive passes, 0 recent failures)",
-  "market_intelligence_shared_reuse": "verified machine-readable",
-  "ownership_boundaries_intact": true,
-  "architecture_verifier_fails_closed_on_stale_signoff": true,
-  "hidden_self_certification_detected": false
+  "gates": {
+    "live_topology_coherent": true,
+    "loop_integrity_green": true,
+    "ownership_boundaries_intact": true,
+    "no_hidden_self_certification": true,
+    "no_stale_topology_leakage": true,
+    "architecture_verifier_passes": true,
+    "blocker_correctly_externalized": true,
+    "small_gate_passed": true
+  },
+  "summary": "All architecture-owned gates pass independent verification. Live topology is 24/24/0/0/0 \u2014 clean. Loop integrity green. Blockers correctly externalized to marketing outcome evidence. Architecture verifier path is coherent. Small gate: passed.",
+  "what_still_blocks_whole_stack": [
+    "Marketing independent verification fails closed on Codeberg-primary outcome evidence",
+    "Health monitor has stale blocked-channel-recovery escalation duplicates (live cron is clean)"
+  ]
 }

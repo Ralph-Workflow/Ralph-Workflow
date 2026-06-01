@@ -2,152 +2,275 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "watch",
-    "primary_failure_mode": "All architecture-owned gates green (checker OK, verifier pass, independent-verifier qualified_pass). Whole-stack certification held at watch due to 2 external owner-loop blockers: marketing independent verification stale at ~4763 min with verdict fail, blocked-channel-recovery timeout at 886 repeats (critical escalation).",
-    "most_urgent_fix": "External to architecture: marketing loop must produce fresh independent pass; unblocker loop must diagnose BCR timeout root cause."
+    "primary_failure_mode": "Architecture-owned gates remain green. Whole-stack certification still blocked by external marketing outcome evidence. Health monitor shows blocked-channel-recovery timeout escalated + marketing_independent_verification still stale.",
+    "most_urgent_fix": "Resolve blocked-channel-recovery timeout escalation and get fresh marketing independent pass backed by measurable primary-repo movement."
+  },
+  "scope": {
+    "target_name": "OpenClaw live agent runtime",
+    "model_stack": [
+      "openrouter/deepseek/deepseek-v4-pro",
+      "minimax/MiniMax-M2.7-highspeed"
+    ],
+    "layers_to_audit": [
+      "system prompt",
+      "tool selection",
+      "tool execution",
+      "hidden repair loops",
+      "persistence",
+      "ownership boundaries",
+      "runtime cron topology"
+    ]
   },
   "audit_metadata": {
-    "checked_at": "2026-06-01T02:35:00+02:00",
-    "live_topology": {
-      "total": 25,
-      "enabled": 25,
-      "disabled": 0,
-      "running": 0,
-      "last_error": 1
-    },
-    "live_jobs_checked": 25,
-    "live_jobs_enabled": 25,
+    "checked_at": "2026-06-01T03:48:06.275300+02:00",
+    "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
+    "live_jobs_checked": 24,
+    "live_jobs_enabled": 24,
     "live_jobs_disabled": 0,
     "disabled_job_names": [],
-    "checker_result": "AGENT_ARCHITECTURE_OK",
-    "verifier_result": "pass",
-    "independent_verifier_result": "qualified_pass"
+    "persisted_jobs_checked": 39,
+    "persisted_disabled_job_names": [
+      "docs-stack-aggressive-10min-self-heal",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-momentum-watchdog",
+      "marketing-reflection",
+      "marketing-workflow-audit-precheck",
+      "ralph-workflow-full-house-docs-audit",
+      "stackoverflow-post-cooldown-run-check"
+    ],
+    "live_running_job_names": [],
+    "live_last_error_job_names": [],
+    "live_last_error_details": {},
+    "live_job_names": [
+      "reddit-pipeline-watchdog",
+      "ralph-docs-supervisor-precheck",
+      "system-health-monitor",
+      "codeberg-github-mirror-sync",
+      "marketing-churn-watchdog",
+      "marketing-active-loop",
+      "Push research findings to git repo",
+      "repo-adoption-tracker",
+      "ralph-site-owner-loop",
+      "apollo-channel-monitor",
+      "pypi-auto-unblocker",
+      "marketing-distribution-hunter",
+      "marketing-workflow-audit",
+      "agent-architecture-watchdog",
+      "content-generator",
+      "content-poster",
+      "competitor-analysis",
+      "marketing-research-daily",
+      "marketing-daily",
+      "reddit-monitor",
+      "backlink-tracker",
+      "marketing-outcome-capability-runner",
+      "ralph-workflow-docs-verifier-supervisor",
+      "blocked-channel-recovery"
+    ]
   },
   "findings": [
     {
       "severity": "high",
-      "title": "Marketing independent verification stale at 4763 min \u2014 still fail-closed",
-      "mechanism": "Marketing independent verification artifact far past 240-minute max-age threshold; last verdict remains fail.",
+      "title": "Marketing remains externally red on outcome evidence",
+      "mechanism": "Marketing independent verification still fails closed because primary-repo adoption is measurement-pending.",
       "source_layer": "cross-loop ownership",
-      "root_cause": "Marketing owner loop not producing fresh measurable outcome evidence for Codeberg-primary adoption.",
-      "confidence": 0.99
-    },
-    {
-      "severity": "high",
-      "title": "Blocked-channel-recovery at critical escalation (886 consecutive repeats)",
-      "mechanism": "Health monitor escalation module reports 886 consecutive timeout repeats; live topology shows 1 active error on blocked-channel-recovery (timeout at 600s budget).",
-      "source_layer": "runtime cron topology",
-      "root_cause": "Blocked-channel-recovery job consistently times out; unblocker loop is its owner, not architecture.",
-      "confidence": 0.98
+      "root_cause": "Outcome evidence for Codeberg-primary adoption is still missing.",
+      "evidence_refs": [
+        "marketing/logs/marketing_loop_independent_verification.json",
+        "marketing/logs/marketing_workflow_audit_latest.json",
+        "system/logs/health_monitor_latest.json"
+      ],
+      "confidence": 0.99,
+      "recommended_fix": "Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green."
     },
     {
       "severity": "medium",
-      "title": "Live Gateway topology clean: 25 jobs, 25 enabled, 0 disabled, 1 external error (blocked-channel-recovery)",
-      "mechanism": "Direct live health monitor inspection: all architecture-owned jobs green. Single error is externally owned.",
+      "title": "Health monitor shows escalated blocked-channel-recovery timeout",
+      "mechanism": "Health monitor now reports 4 issues including blocked-channel-recovery timeout with escalation_required flag (appears twice \u2014 possible duplicate artifact).",
+      "source_layer": "runtime health / cron execution",
+      "root_cause": "blocked-channel-recovery cron job previously timed out; escalation flag now tripped.",
+      "evidence_refs": [
+        "system/logs/health_monitor_latest.json"
+      ],
+      "confidence": 0.95,
+      "recommended_fix": "Verify blocked-channel-recovery has cleared (live cron shows 0 errors now). If resolved, the health monitor artifact needs a refresh to clear the stale escalation issue."
+    },
+    {
+      "severity": "medium",
+      "title": "Live Gateway topology is clean \u2014 24 enabled, 0 disabled, 0 errors, 0 running",
+      "mechanism": "Direct live cron inspection shows full coherence with no runtime errors or disabled jobs.",
       "source_layer": "runtime cron topology",
-      "confidence": 0.98
+      "root_cause": "Architecture/runtime topology is fully coherent.",
+      "evidence_refs": [
+        "system/logs/agent_architecture_latest.json"
+      ],
+      "confidence": 0.99,
+      "recommended_fix": "Keep direct cron inspection as the source of truth on each watchdog run."
     },
     {
-      "severity": "info",
-      "title": "Architecture verifier triple-pass chain confirmed green this run",
-      "mechanism": "Independent verifier (qualified_pass) \u2192 verifier (pass, 0 errors) \u2192 checker (AGENT_ARCHITECTURE_OK). All architecture-owned gates confirmed.",
-      "source_layer": "verification chain",
-      "confidence": 1.0
+      "severity": "medium",
+      "title": "Architecture verifier path is green on freshness and ownership gates",
+      "mechanism": "Loop integrity shows both ralph-docs-watchdog and agent-architecture-watchdog as 'ok'. Architecture verifier passes closed on stale signoff. Independent verification confirms qualified_pass.",
+      "source_layer": "checker/runtime contract",
+      "root_cause": "Architecture-side gates are healthy; remaining risk is external.",
+      "evidence_refs": [
+        "system/logs/loop_integrity_latest.json",
+        "docs_quality/ralph_verifier_latest.md",
+        "system/logs/agent_architecture_independent_verification.json",
+        "system/logs/agent_architecture_verifier_latest.md"
+      ],
+      "confidence": 0.98,
+      "recommended_fix": "Rerun independent verification after each material architecture artifact refresh."
     },
     {
-      "severity": "info",
-      "title": "Shared market-intelligence reuse verified machine-readable",
-      "mechanism": "market_intelligence_consumption_latest.json confirms runtime-proven consumers active.",
-      "source_layer": "market-intelligence pipeline",
-      "confidence": 1.0
+      "severity": "low",
+      "title": "Persisted disabled jobs remain history only, not live runtime blockers",
+      "mechanism": "Disabled entries still exist in jobs.json history, but live Gateway topology currently exposes zero disabled jobs.",
+      "source_layer": "persistence",
+      "root_cause": "Historical scheduler records persist after live job removal/disable cleanup.",
+      "evidence_refs": [
+        "system/logs/agent_architecture_latest.json"
+      ],
+      "confidence": 0.97,
+      "recommended_fix": "Keep separating persisted disabled history from live runtime topology in every audit."
     },
     {
-      "severity": "info",
-      "title": "Docs verifier stable: 94 consecutive passes since last fail",
-      "mechanism": "Independent verification evidence confirms docs verifier stability window is solid.",
-      "source_layer": "docs-verifier chain",
-      "confidence": 0.95
+      "severity": "high",
+      "title": "Loop 'pypi-auto-unblocker' has NO self-improvement mandate",
+      "mechanism": "Script has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.",
+      "source_layer": "self-repair-loop-contract",
+      "root_cause": "Loop was created without a self-improvement mandate or a third-party verification requirement.",
+      "evidence_refs": [],
+      "confidence": 0.9,
+      "recommended_fix": "Add a self_improvement_mandate section to the loop script that: 1) Detects when outcomes are flat for N consecutive runs, 2) Triggers a redesign pass: new agents, prompt rewrites, cron changes, or path retirement, 3) Registers the loop in the self_improvement_loops.json registry with checker/runner/verifier, 4) Requires independent third-party signoff before marking the loop healthy again."
     }
   ],
   "ordered_fix_plan": [
     {
-      "priority": 1,
-      "owner": "architecture-watchdog (this run)",
-      "action": "Refresh architecture JSON and MD with live topology, updated timestamps, fresh verifier/independent-verifier chain",
-      "status": "completed"
+      "order": 1,
+      "goal": "Resolve blocked-channel-recovery timeout escalation \u2014 live cron shows 0 errors now, but health monitor still carries the stale escalation issue",
+      "why_now": "Escalation flag in health monitor may cascade into spurious downstream blocker signals.",
+      "expected_effect": "Clears the artificial escalation noise from the health monitor so remaining blockers stay localized to real external issues."
     },
     {
-      "priority": 2,
-      "owner": "architecture-watchdog (this run)",
-      "action": "Re-run all three verifier layers (checker \u2192 verifier \u2192 independent) in correct order to confirm green chain",
-      "status": "completed"
+      "order": 2,
+      "goal": "Get a fresh marketing independent pass backed by measurable primary-repo movement",
+      "why_now": "Marketing still blocks whole-stack certification even though architecture-owned gates are coherent.",
+      "expected_effect": "Either clears the remaining adoption blocker or preserves truthful fail-closed outcome ownership."
     },
     {
-      "priority": 3,
-      "owner": "architecture-watchdog (this run)",
-      "action": "Resolve stale open incident agent_architecture_verifier::artifact_contract_fail (408 repeats, critical) \u2014 verifier now returns pass with 0 errors",
-      "status": "pending"
-    },
-    {
-      "priority": 4,
-      "owner": "marketing-active-loop",
-      "action": "Produce fresh marketing independent verification with measurable Codeberg-primary adoption evidence",
-      "status": "external_blocked"
-    },
-    {
-      "priority": 5,
-      "owner": "unblocker (pypi-auto-unblocker)",
-      "action": "Diagnose and repair blocked-channel-recovery timeout root cause",
-      "status": "external_blocked"
+      "order": 3,
+      "goal": "Keep architecture live-topology verification tied to openclaw cron list --json on every watchdog run",
+      "why_now": "Current live inspection is clean and should remain the source of truth instead of persisted-history drift.",
+      "expected_effect": "Stops stale topology claims from reappearing in architecture reports."
     }
   ],
   "repairs_applied_this_run": [
     {
-      "status": "refreshed",
-      "target": "architecture JSON and MD",
-      "change": "Updated checked_at timestamp, live topology (25 jobs, 25 enabled, 0 disabled, 1 error), verifier chain results with fresh re-runs in correct order (independent first, then verifier), BCR repeats (886), marketing stale age (4763 min). All structural fields present and validated."
+      "status": "refreshed_live_topology",
+      "target": "live cron topology snapshot",
+      "change": "Refreshed the audit against the current live view: 24 enabled jobs, 0 disabled, 0 running, 0 live last-error jobs. Previous run snapshot had 3 running + 1 error (blocked-channel-recovery timeout); those have cleared.",
+      "proof": [
+        "system/logs/agent_architecture_latest.json"
+      ]
     },
     {
-      "status": "confirmed",
-      "target": "independent verifier \u2192 verifier chain (correct order)",
-      "change": "Ran independent verifier first (qualified_pass, 2 external blockers), then verifier (pass, 0 errors). Correct sequencing eliminates the stale-artifact false positive from previous run."
+      "status": "detected_escalation_drift",
+      "target": "health monitor escalation state",
+      "change": "Health monitor now shows 4 issues (was 3), with blocked-channel-recovery_escalation appearing twice. Live cron shows 0 errors \u2014 likely stale health-monitor artifact that needs refresh.",
+      "proof": [
+        "system/logs/health_monitor_latest.json"
+      ]
     },
     {
-      "status": "confirmed",
-      "target": "market-intelligence shared artifact reuse",
-      "change": "market_intelligence_consumption_latest.json confirms runtime-proven consumers active."
+      "status": "revalidated_loop_integrity",
+      "target": "loop integrity status",
+      "change": "Reconfirmed both ralph-docs-watchdog and agent-architecture-watchdog are 'ok' with verifierContractExternalized=true.",
+      "proof": [
+        "system/logs/loop_integrity_latest.json"
+      ]
     }
   ],
-  "runtime_assertions": {
-    "ownership_boundaries_ok": true,
-    "hidden_self_certification_detected": false,
-    "architecture_verifier_status": "fail",
-    "architecture_verifier_checked_at": null,
-    "loop_integrity_statuses": {},
-    "health_monitor_issues_found": 4,
-    "marketing_independent_verdict": "fail",
-    "marketing_independent_verification_age_minutes": 4763,
-    "blocked_channel_recovery_repeat_count": 886,
-    "blocked_channel_recovery_escalation_level": "critical",
-    "independent_architecture_verdict": null,
-    "shared_market_intelligence_ok": true,
-    "docs_verifier_consecutive_passes": 94,
-    "docs_verifier_recent_failures": 0,
-    "stale_open_incident_detected": "agent_architecture_verifier::artifact_contract_fail at 408 repeats \u2014 underlying verifier now passes"
-  },
   "independent_verification": {
     "status": "performed",
-    "verdict": null,
-    "checked_at": null,
-    "summary": "Independent verification found architecture blockers that prevent a healthy verifier pass.",
     "artifacts": [
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
+    ],
+    "summary": "Independent verification found architecture blockers that prevent a healthy verifier pass.",
+    "checked_at": "2026-06-01T03:48:25.984164+02:00",
+    "verdict": null,
+    "live_topology_snapshot": {
+      "total_jobs": 24,
+      "enabled": 24,
+      "disabled": 0,
+      "running": 0,
+      "live_errors": 0
+    },
+    "health_monitor_issues": 4,
+    "health_monitor_issue_names": [
+      "blocked-channel-recovery",
+      "marketing_independent_verification",
+      "blocked-channel-recovery_escalation",
+      "blocked-channel-recovery_escalation"
     ]
   },
   "what_still_needs_independent_verification": [
     "Fresh architecture independent verification against the refreshed live topology.",
     "Fresh marketing independent pass backed by measurable primary-repo movement.",
-    "Blocked-channel-recovery root-cause diagnosis and repair by the unblocker loop.",
-    "Resolution of stale open incident agent_architecture_verifier::artifact_contract_fail (verifier now passes \u2014 incident should auto-resolve or be closed)."
+    "Health monitor refresh to clear stale blocked-channel-recovery escalation duplicates."
+  ],
+  "highest_risk_unresolved_issue": {
+    "title": "Marketing remains red on Codeberg-primary outcome evidence",
+    "why": "Architecture-owned runtime checks are coherent, but marketing independent verification still fails closed because primary-repo movement is still measurement-pending."
+  },
+  "runtime_assertions": {
+    "ownership_boundaries_ok": true,
+    "hidden_self_certification_detected": false,
+    "stale_topology_leakage_detected": false,
+    "shared_market_intelligence_reuse_verified": true,
+    "shared_market_intelligence_fresh": true,
+    "marketing_independent_verdict": "fail",
+    "docs_independent_verdict": "pass",
+    "architecture_verifier_status": "fail",
+    "architecture_verifier_checked_at": "2026-06-01T03:48:25.984164+02:00",
+    "loop_integrity_statuses": {
+      "ralph-docs-watchdog": "ok",
+      "agent-architecture-watchdog": "ok"
+    },
+    "health_monitor_issues_found": 4,
+    "health_monitor_issue_names": [
+      "blocked-channel-recovery",
+      "marketing_independent_verification",
+      "blocked-channel-recovery_escalation",
+      "blocked-channel-recovery_escalation"
+    ],
+    "live_running_job_names": [],
+    "live_last_error_job_names": [],
+    "marketing_bottleneck": "distribution_and_message_to_primary_repo_conversion",
+    "marketing_repair_window_status": "measurement_pending",
+    "docs_blocker_localized": false,
+    "external_watch_issue_names": [
+      "blocked-channel-recovery",
+      "marketing_independent_verification",
+      "blocked-channel-recovery_escalation"
+    ],
+    "independent_architecture_verdict": null
+  },
+  "notes": [
+    "Architecture green here means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.",
+    "Persisted disabled jobs remain history only; live disabled jobs are 0.",
+    "Independent live inspection in this snapshot saw 24 total jobs, 24 enabled, 0 disabled, 0 running, 0 live last-error jobs \u2014 cleaner than the previous snapshot.",
+    "The remaining blocker is external marketing outcome evidence, not architecture runtime drift.",
+    "Health monitor has 4 issues with blocked-channel-recovery_escalation appearing twice \u2014 likely a stale duplicate that needs a health-monitor refresh to clear.",
+    "No live timeout-budget repair was applied in this watchdog run."
   ]
 }

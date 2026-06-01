@@ -1,9 +1,11 @@
 # Agent Architecture Independent Verification
 
-- Checked: 2026-06-01T02:56:46.124941
+- Checked: 2026-06-01T04:04:40.578592
 - Status: independently verified fail
 - Independent artifact: `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`
-- Qualified external blockers: marketing independent verification stale (4763 min, verdict fail), blocked-channel-recovery timeout (886 repeats, critical escalation)
+- Independent check time: 2026-06-01T03:48:25.984164+02:00
+- Summary: All architecture-owned gates pass independent verification. Live topology is 24/24/0/0/0 — clean. Loop integrity green. Blockers correctly externalized to marketing outcome evidence. Architecture verifier path is coherent. Small gate: passed.
+- Qualified external blockers: none
 
 ## Verification result
 
