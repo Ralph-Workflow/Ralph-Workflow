@@ -1,0 +1,10 @@
+{
+  "written_at": "2026-06-01T11:53:47.038056+00:00",
+  "active": true,
+  "reason": "Reddit suspension active, 2 health-check passes today with zero recovery. Reducing to 1x/day while suspended.",
+  "passes_today": 2,
+  "recommended_cadence": "once_per_24h_while_suspended",
+  "normal_cadence": "twice_daily_0800_2000",
+  "re_enable_on": "Suspension marker deleted OR actual Reddit recovery detected",
+  "rule": "When this marker exists, reddit_monitor.py should skip any pass within 24h of the last pass."
+}

@@ -1,5 +1,5 @@
 # Ralph Workflow Primary-Repo-Flat Publisher Contact Packet
-Generated: 2026-06-01T09:00:02
+Generated: 2026-06-01T14:05:40
 
 ## Why this exists now
 - Codeberg adoption is still flat in the active window.

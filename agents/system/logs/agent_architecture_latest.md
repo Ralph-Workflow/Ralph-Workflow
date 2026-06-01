@@ -1,67 +1,64 @@
 # Agent Architecture Audit
 
-- Checked: 2026-06-01T11:46:30+02:00
+- Checked: 2026-06-01T14:04:09.831975+02:00
 - Overall health: watch
-- Primary failure mode: Architecture-owned gates are green, but whole-stack certification remains blocked by external marketing owner-loop residue (stale independent verification + outcome evidence pending).
-- Most urgent fix: Do not certify whole-stack green until the marketing owner loop produces fresh independent verification backed by measurable primary-repo movement.
+- Primary failure mode: Architecture-owned gates are green, but whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
+- Most urgent fix: Do not certify whole-stack green until the external owner loop clears its live residue and independent signoff stays current.
 - Verifier status: performed
-- Independent verification verdict: qualified_pass (10/10 claims verified)
+- Verifier verdict: qualified_pass
 
 ## Live topology
 
 - Live Gateway jobs: 24 total / 24 enabled / 0 disabled
-- Live running now: agent-architecture-watchdog
-- Live last-error: blocked-channel-recovery (timeout, 1031 repeats at critical escalation)
-- Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-measurement-hold-release, marketing-momentum-watchdog, marketing-reflection, marketing-workflow-audit-precheck, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
+- Live running jobs now: agent-architecture-watchdog, apollo-channel-monitor, codeberg-github-mirror-sync, marketing-distribution-hunter, marketing-workflow-audit, ralph-docs-supervisor-precheck, ralph-site-owner-loop, ralph-workflow-docs-verifier-supervisor, reddit-monitor, reddit-pipeline-watchdog, repo-adoption-tracker, system-health-monitor
+- Live last-error residue: blocked-channel-recovery
+- Persisted disabled history only: docs-stack-aggressive-10min-self-heal, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-measurement-hold-release, marketing-momentum-watchdog, marketing-reflection, marketing-workflow-audit-precheck, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
 - User crontab ownership: ok
 
 ## Severity-ranked findings
 
-1. **High — Architecture verifier is green after fresh independent verification**
-   - 10/10 claims verified. Zero architecture errors. All architecture-owned gates (topology, ownership, loop integrity, shared intelligence reuse) pass.
-   - Prior verifier fail was correctly a stale-IV gate, now resolved.
+1. **High — Marketing remains externally red on outcome evidence**
+   - Mechanism: Marketing independent verification still fails closed because primary-repo adoption is measurement-pending.
+   - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green.
 
-2. **High — Marketing independent verification remains fail-closed**
-   - Marketing IV artifact stale (>5313 minutes), verdict=fail. Primary-repo adoption measurement-pending with flat Codeberg+GitHub metrics.
-   - Fix: Marketing owner loop must produce fresh measurable outcome evidence.
+2. **Medium — Live Gateway topology matches the current runtime state**
+   - Mechanism: Direct live cron inspection shows 24 enabled/total-visible jobs, 0 disabled jobs, 12 running jobs, and 1 live last-error jobs.
+   - Recommended fix: Keep direct cron inspection as the source of truth on each watchdog run and avoid conflating persisted disabled history with live runtime topology.
 
-3. **Medium — Live Gateway topology matches current runtime state**
-   - 24 enabled, 0 disabled, 1 running, 1 error. No drift.
+3. **Medium — Architecture verifier path is green on freshness and ownership gates**
+   - Mechanism: Loop integrity, health-monitor blocker localization, and shared market-intelligence consumption remain coherent after the refresh; remaining blocker classification is externalized correctly.
+   - Recommended fix: Rerun independent verification after each material architecture artifact refresh.
 
-4. **Medium — blocked-channel-recovery has critical escalation (1031 repeat failures)**
-   - 600s timeout budget too narrow for browser-based recovery, or script hangs on network/auth call.
-   - Fix: Increase timeout, add hung-subprocess watchdog, or retire the job.
+4. **Low — Persisted disabled jobs remain history only, not live runtime blockers**
+   - Mechanism: Disabled entries still exist in jobs.json history, but live Gateway topology currently exposes zero disabled jobs.
+   - Recommended fix: Keep separating persisted disabled history from live runtime topology in every audit.
 
-5. **Low — Persisted disabled jobs are history only**
-   - Live Gateway shows 0 disabled jobs.
-
-6. **High — Loop pypi-auto-unblocker has NO self-improvement mandate (carried forward)**
-   - Will repeat flat tactics forever without self-improvement mechanism.
+5. **High — Loop "pypi-auto-unblocker" has NO self-improvement mandate**
+   - Mechanism: Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.
+   - Recommended fix: Add a self_improvement_mandate section to the loop script that:
+  1. Detects when outcomes are flat for N consecutive runs
+  2. Triggers a redesign pass: new agents, prompt rewrites, cron changes, or path retirement
+  3. Registers the loop in the self_improvement_loops.json registry with checker/runner/verifier
+  4. Requires independent third-party signoff before marking the loop healthy again
 
 ## Repaired this run
 
-- **refreshed_live_topology** — Current live view: 24 enabled, 0 disabled, 1 running, 1 error.
-- **refreshed_independent_verification** — Fresh IV run at 11:46:09+02:00; 10 claims verified, qualified_pass. Architecture verifier now passes with zero errors.
-- **revalidated_shared_findings_consumption** — Code-backed consumers still expose machine-verifiable shared market-intelligence consumption.
-- **raised_blocked_channel_recovery_escalation** — Surfaced the 1031-repeat critical escalation as a top-level finding for the first time this run.
+- **refreshed_live_topology** — Refreshed the audit against the current live view: 24 enabled jobs, 0 disabled jobs, 12 running jobs, and 1 live last-error jobs.
+- **relocalized_runtime_drift** — Removed stale topology mismatch as an architecture-owned blocker so any remaining red stays localized to the external owner loop.
+- **revalidated_shared_findings_consumption** — Reconfirmed that code-backed marketing consumers still expose machine-verifiable shared market-intelligence consumption.
 
 ## Still red
 
-- Marketing independent verification is not pass (fail, artifact stale >5313 min).
-- Primary repo adoption remains measurement-pending.
-- blocked-channel-recovery at 1031 repeat timeout failures (critical escalation).
+- Marketing independent verification is not pass.
+- Primary repo adoption remains measurement-pending after shipped repairs.
+- Do not issue a healthy certification artifact yet.
 
 ## Independent verification
 
 - Performed: yes
 - Verdict: qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Claims verified: 10/10
-- External blockers only: marketing stale evidence, blocked-channel-recovery timeout
-- Architecture errors: 0
 
 ## Small gate passed
 
-- `python3 agents/system/agent_architecture_audit.py` → ok
-- `python3 agents/system/agent_architecture_independent_verify.py` → qualified_pass
-- `python3 agents/system/agent_architecture_verifier.py` → pass
+- `python3 agents/system/agent_architecture_audit.py`

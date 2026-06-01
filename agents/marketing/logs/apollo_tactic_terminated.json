@@ -1,0 +1,16 @@
+{
+  "status": "terminated",
+  "kill_date": "2026-06-01T11:53:04.181785+00:00",
+  "kill_reason": "Measurement window expired (June 1). Zero launches since May 25. Cloudflare permablock.",
+  "prior_status": "not_launched",
+  "re_enable_condition": "Human manually deletes this file + provides apollo_cookie authentication.",
+  "affected_scripts": [
+    "apollo_sequence_launcher.py",
+    "apollo_sequence_status.py",
+    "apollo_outbound_verifier.py",
+    "apollo_monitor.py",
+    "apollo_browserless_fix.py",
+    "apollo_verify_live_list.py"
+  ],
+  "note": "Cron jobs for Apollo have already been removed from crontab. All 6 scripts are now dead code until re-enabled."
+}

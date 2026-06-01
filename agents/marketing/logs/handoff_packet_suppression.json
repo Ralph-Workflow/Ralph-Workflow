@@ -1,0 +1,29 @@
+{
+  "written_at": "2026-06-01T11:53:24.870873+00:00",
+  "active": true,
+  "expires_at": "2026-06-08T11:53:24.870873+00:00",
+  "reason": "Prepared-only packet regeneration without live delivery. Suppressing to stop churn.",
+  "suppressed_stems": [
+    "primary_repo_flat_contact_handoff_packet",
+    "curator_contact_handoff_packet",
+    "comparison_backlink_handoff_packet",
+    "reddit_discussion_handoff_packet"
+  ],
+  "regeneration_evidence": {
+    "primary_repo_flat_contact_handoff_packet": {
+      "count_48h": 3,
+      "latest_files": [
+        "2026-06-01_primary_repo_flat_contact_handoff_packet.md",
+        "2026-05-31_primary_repo_flat_contact_handoff_packet.md",
+        "2026-05-12_primary_repo_flat_contact_handoff_packet.md"
+      ],
+      "churning": true
+    }
+  },
+  "release_conditions": [
+    "A fresh live delivery window opens (e.g. human unblocks a distribution channel)",
+    "Materially changed targets or channels are added to a packet",
+    "Suppression expires naturally (7 days from now)"
+  ],
+  "rule": "When suppression is active, distribution_lane_executor.py MUST skip all handoff packet generation."
+}

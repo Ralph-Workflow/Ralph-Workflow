@@ -1,8 +1,19 @@
 {
-  "ts": "2026-06-01T12:03:48.737729",
+  "ts": "2026-06-01T13:05:27.545248",
   "jobs_checked": 24,
-  "issues_found": 4,
+  "issues_found": 5,
   "issues": [
+    {
+      "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
+      "name": "marketing-active-loop",
+      "category": "live_error",
+      "consecutive_errors": 1,
+      "last_status": "error",
+      "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+      "timeout_seconds": 3600,
+      "last_duration_ms": 3315951,
+      "likely_cause": "CONTEXT_OVERFLOW: prompt/runtime context exceeded safe model limit; reduce prompt size or split work"
+    },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery",
@@ -19,19 +30,19 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 5332.27,
+      "artifact_age_minutes": 5393.88,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
     {
-      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
-      "name": "blocked-channel-recovery_escalation",
+      "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
+      "name": "marketing-active-loop_escalation",
       "category": "escalation_required",
-      "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1032",
-      "repeats_in_recent_history": 1032,
-      "owner_domain": null,
-      "incident_key": "blocked-channel-recovery::timeout",
+      "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+      "likely_cause": "Incident escalation level=critical: marketing-active-loop:live_error repeat_count=14",
+      "repeats_in_recent_history": 14,
+      "owner_domain": "marketing",
+      "incident_key": "marketing-active-loop::live_error",
       "escalation_level": "critical",
       "blocked_by": []
     },
@@ -40,13 +51,20 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1033",
-      "repeats_in_recent_history": 1033,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1043",
+      "repeats_in_recent_history": 1043,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
-  "repairs_attempted": []
+  "repairs_attempted": [
+    {
+      "type": "owner_loop_escalation",
+      "job": "marketing-active-loop_escalation",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    }
+  ]
 }

@@ -1,6 +1,6 @@
 {
   "generated_at": "2026-06-01T09:00:30.415992+02:00",
-  "status": "not_launched",
+  "status": "terminated",
   "measurement_pending": false,
   "summary": "No Apollo sequence launch log exists yet.",
   "launch_log": null,
@@ -8,5 +8,7 @@
   "outbound_verification_log": null,
   "record_count": 0,
   "verification_timestamp": null,
-  "needs_live_verification": false
+  "needs_live_verification": false,
+  "killed_at": "2026-06-01T11:53:04.181785+00:00",
+  "kill_reason": "7-day window expired, zero launches, Cloudflare permablock"
 }

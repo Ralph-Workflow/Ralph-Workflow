@@ -1,6 +1,6 @@
-# Apollo.io Channel Status — 2026-06-01 08:26 CEST
+# Apollo.io Channel Status — 2026-06-01 13:59 CEST
 
-**Status:** ❌ BLOCKED (unchanged — same as 2026-05-31)
+**Status:** ❌ BLOCKED (unchanged — Cloudflare anti-bot interstitial persists)
 
 ## Blockers
 
@@ -19,7 +19,7 @@
 ## Next Steps
 
 - Apollo remains **not actionable** in this state
-- Cloudflare blocking is persistent — no change since last check
+- Cloudflare blocking is persistent — no change since last check on 2026-05-31
 - Next automatic check will retry via cron
 - Manual intervention required: rotate IP (VPN/residential proxy) or solve Cloudflare challenge from a clean browser session
 

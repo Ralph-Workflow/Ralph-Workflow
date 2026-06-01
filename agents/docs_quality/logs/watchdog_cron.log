@@ -38595,3 +38595,99 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with the positioning reference across all surfaces. The README \u2192 START_HERE \u2192 docs/README journey is coherent, consistent, and routes evaluators cleanly through the right framing. All promoted next-click pages reinforce the same story instead of fighting it. No hard failures detected.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md:1-5",
+      "reason": "Opens with the exact 'operating system for autonomous coding' tagline and immediately establishes the orchestrator framing with concrete user value."
+    },
+    {
+      "path": "README.md:13-15",
+      "reason": "Cleanly states the simple Ralph-loop core \u2192 composable loop framework \u2192 strong default workflow arc in two sentences."
+    },
+    {
+      "path": "START_HERE.md (mirror copy)",
+      "reason": "Leads with same core framing, gives a short honest first-run path, explicitly gates on real well-specified work, and routes to docs/README without introducing new framing."
+    },
+    {
+      "path": "docs/README.md:1-8",
+      "reason": "Docs map opens with the same core framing and explicitly positions itself as a post-README/START_HERE routing page. Routes by intent, keeps proof secondary."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md:3-8",
+      "reason": "Promoted page opens with identical framing, immediately pivots to the real question ('useful question is not whether a tool can call an agent') and reinforces default-workflow-first positioning."
+    },
+    {
+      "path": "ralph-workflow/README.md:22",
+      "reason": "Explains the Ralph-loop origin without collapsing into generic Ralph, preserving the 'improvement on Ralph' positioning."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs journey is coherent, positioning-aligned, and free of internal-plumbing leakage. README \u2192 START_HERE \u2192 docs/README routes cleanly through the same story. Promoted next-click pages reinforce the 'simple center, composable framework, strong default' framing without architectural whiplash.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Tagline, orchestrator framing, comparison table, fit/non-fit, and 'start with the default, extend later' all match the positioning doc exactly."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Leads with Ralph-loop core identity, shortest honest first run, task selection guidance, and success definition without internal plumbing."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by user intent, cleanly separates operator manual from deeper docs, and links to promoted pages that all reuse the same identity paragraph and framing."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Takes a comparison-frame topic and argues it back to the core story (simple center, strong default, useful before customization) rather than getting lost in competitive feature-matrix noise."
+    },
+    {
+      "path": "docs/unattended-coding-agent.md",
+      "reason": "Reframes 'unattended' away from magic-independence hype and toward accountability and engineering discipline; avoids the easy trap of overpromising."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.

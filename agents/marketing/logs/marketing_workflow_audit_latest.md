@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-06-01T06:33:51.042238
+- Generated: 2026-06-01T13:55:34.955382
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -11,11 +11,10 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains conversion_surface_optimization; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (conversion_surface_optimization), so the system is still shipping output even though outcome movement is not visible yet.
+- The most recent marketing artifact (primary_repo_flat_contact_handoff_packet_execution) was preparation/follow-through work, not a live external execution, so it should not be mistaken for outcome movement.
 
 ## What actually worked
-- No meaningful tactic produced a trustworthy win in this window.
+- Internal repair/follow-through is still running reliably: primary_repo_flat_contact_handoff_packet_execution.
 
 ## What did not work
 - Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.
@@ -23,14 +22,17 @@
 
 ## What is repetitive
 - Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.
+- The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 2 times inside the last 48 hours.
 
 ## What is low-signal
-- Recent live external action exists (conversion_surface_optimization), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 - Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template.
 
 ## What should change now
-- REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 44 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
+- Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.
+- REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.
+- REPLACE stale content distribution repair. All external lanes are structurally blocked — do not recommend directory submissions or repeat curator packet rewrites. Focus: (a) SEO-tuning existing comparison pages for search visibility, (b) improving repo conversion surface (README, quickstart), (c) surfacing BLOCKER_ROI_SUMMARY.md as human handoff instead of generating more drafts for blocked lanes.
 - Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
 ## Observed risks
@@ -49,10 +51,14 @@
 - PyPI has 1339 downloads/month (127/day) — real usage signal that repo metrics don't capture.
 
 ## Repair actions (execute in this run)
-- **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 44 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
+- **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. All external lanes are structurally blocked — do not recommend directory submissions or repeat curator packet rewrites. Focus: (a) SEO-tuning existing comparison pages for search visibility, (b) improving repo conversion surface (README, quickstart), (c) surfacing BLOCKER_ROI_SUMMARY.md as human handoff instead of generating more drafts for blocked lanes.
   - Repair state: pending_measurement
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
+- **outcome_system_underpowered** (system_design) → REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.
+  - Repair state: needs_execution
+  - Kill condition: Another audit still shows flat primary-repo adoption without any new structural marketing capability or replacement execution path
+  - Success metric: A new outcome-oriented agent/process/runtime capability is created and logged before the next audit, with a direct link to Codeberg adoption movement
 - **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
   - Repair state: pending_measurement
   - Kill condition: N/A (mirror, not primary)
@@ -61,11 +67,12 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
 
 ## Latest executed marketing action
-- Type: conversion_surface_optimization
-- Title: conversion surface optimization
-- Status: executed (ok=True)
-- Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-31_1924_conversion_surface_optimization.json
+- Type: primary_repo_flat_contact_handoff_packet_execution
+- Title: Distribution lane execution: primary_repo_flat_contact_handoff_packet
+- Status: prepared (ok=True)
+- Outcome-ready: False
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01.json
+- URL: /home/mistlight/.openclaw/workspace/drafts/2026-06-01_primary_repo_flat_contact_handoff_packet.md
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

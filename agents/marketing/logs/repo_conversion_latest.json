@@ -1,0 +1,65 @@
+{
+  "generated_at": "2026-06-01T11:52:42.823438+00:00",
+  "codeberg_metrics": {
+    "stars": 12,
+    "watchers": 2,
+    "forks": 2,
+    "description": "The operating system for autonomous coding"
+  },
+  "codeberg_readme": {
+    "label": "Codeberg README (live)",
+    "exists": true,
+    "size_bytes": 5255,
+    "elements": {
+      "star_cta": {
+        "present": true,
+        "description": "Explicit star/watch CTA"
+      },
+      "codeberg_primary": {
+        "present": true,
+        "description": "Codeberg-as-primary messaging"
+      },
+      "github_mirror": {
+        "present": true,
+        "description": "GitHub-as-mirror messaging"
+      },
+      "quickstart": {
+        "present": true,
+        "description": "Install/quickstart path"
+      },
+      "what_is_it": {
+        "present": true,
+        "description": "Core positioning statement"
+      },
+      "first_task": {
+        "present": true,
+        "description": "First-task guidance"
+      },
+      "pain_frames": {
+        "present": true,
+        "description": "Pain-led positioning"
+      },
+      "proof_asset": {
+        "present": true,
+        "description": "Proof/demo assets"
+      },
+      "foss_clarity": {
+        "present": true,
+        "description": "License/free clarity"
+      }
+    },
+    "issues": [],
+    "ok": true
+  },
+  "pypi": {
+    "ok": true,
+    "version": "0.8.8",
+    "codeberg_references": 7,
+    "codeberg_in_project_urls": true,
+    "pypi_ready": true,
+    "issues": []
+  },
+  "total_issues": 0,
+  "conversion_optimizations_available": false,
+  "actions_taken": []
+}

@@ -8130,3 +8130,7 @@ Removing `noindex` from the 8 vs pages and breaking the template pattern with un
 ### StackOverflow answer lane
 - **When:** 2026-06-01 00:18:52
 - **Note:** StackOverflow answer lane ran: found 7 questions, scored 7, drafted 0 answers, skipped 4 recent duplicate candidates; refreshed canonical handoff packet from the best existing draft for manual-ready follow-through. Top question: Boss wants us to add more AI to our workflow.
+
+### Apollo monitor
+- **When:** 2026-06-01 13:59:29
+- **Note:** Apollo status changed from `down` to `cloudflare_auth_blocked`.
