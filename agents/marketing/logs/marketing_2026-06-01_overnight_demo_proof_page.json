@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-06-01T21:??:??.000000+02:00",
+  "lane": "conversion_surface_optimization",
+  "action": "created_overnight_demo_proof_page",
+  "title": "Conversion surface: overnight demo proof page deployed to Codeberg primary",
+  "status": "shipped",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/overnight-demo-real.md",
+  "summary": "Created docs/overnight-demo-real.md showing a real overnight Ralph run: 10-document product spec → 1,316 assertions, 207 files, 5 cross-platform binaries, zero test/typecheck/lint failures. Linked from root README documentation table and docs/README.md navigation. Commits b40758982 + 413d74b25 pushed to Codeberg.",
+  "expected_outcome": "Bridges conversion gap between PyPI downloads (127/day) and Codeberg stars (0 conversion). Real output proof → trust → star.",
+  "measurement_window_days": 14,
+  "kill_condition": "No Codeberg star delta within 14 days despite live page on primary repo surface",
+  "principles_used": [
+    "PRINCIPLE 4: Use proof assets — trust grows from proof, not claims",
+    "ADOPTION_FUNNEL_NEXT priority A: Conversion asset showing real results",
+    "Execution board #1: testimonial/page showing real task spec → real output"
+  ]
+}

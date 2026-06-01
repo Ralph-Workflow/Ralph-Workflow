@@ -1,10 +1,11 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-01T20:17:43
-Chosen lane: **measurement_hold**
+Generated: 2026-06-01T21:39:53
+Chosen lane: **owned_content**
 
 ## Why this lane
-- Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.
+- Directory confirmation has never produced a Codeberg backlink; no postable external lane is open (Apollo blocked, gh auth missing, Reddit blocked, SO drafts unpostable by human). Redirect to owned_content instead of generating another low-signal directory verification cycle.
 - Primary Codeberg adoption is flat in the current measurement window.
+- 1 live external marketing action(s) already shipped in the last 6 hours.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
@@ -27,8 +28,6 @@ Chosen lane: **measurement_hold**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 
-## Immediate measurement-hold work
-- Do not ship another fresh outreach/reset action in this short review window
-- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
-- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
-- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map
+## Owned-content lane remains allowed
+- No distribution-lane override triggered yet
+- If the next measurement window is still flat, escalate away from Telegraph-first output
