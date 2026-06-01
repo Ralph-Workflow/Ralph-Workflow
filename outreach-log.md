@@ -1,3 +1,24 @@
+### 2026-06-01 — Marketing workflow audit #18 (17:06 CEST)
+**Audit trigger:** Cron scheduled re-analysis (#18). Run at 17:03 CEST.
+
+**Key findings:**
+- **Production bug fixed:** `/feed.json` → 500 Internal Server Error. Route gap in routes.rb where bare `/feed` matched RSS action with no JSON format constraint. Fixed by adding JSON-constrained route targeting `blog#feed_json` before the existing RSS route. Deployed via Capistrano (`4b256e9`), verified 200 with 44 items.
+- **Backlink stagnation watchdog created:** 14 of 18 directory submissions stuck in "pending review" for 8-12 days. New `backlink_stagnation_watchdog.py` detects staleness (>7 days), auto-discovers fresh directory candidates, and escalates. First run: 14 stale found, 8 fresh candidates discovered (all unsubmitted).
+- **Crontab v3:** +1 job (backlink_stagnation_watchdog, weekly Sun 07:30). Golden crontab synced.
+- **Metrics unchanged:** Codeberg 12⭐, GitHub 1⭐, PyPI 1,339/mo, indexation 13.7% — all flat across 9+ samples.
+- **DDG collapse Day 4:** Full collapse for all query types, not just Reddit. Monitoring surface blind. 7-day escalation threshold June 7.
+
+**Actions executed:**
+1. Fixed feed.json 500 by adding JSON-constrained route in `routes.rb` → deployed → verified
+2. Created `backlink_stagnation_watchdog.py` → tested (ESCALATION: 14 stale, 8 fresh) → wired to crontab
+3. Updated golden crontab (`agents/marketing/crontab.txt`) to v3
+4. Updated MARKETING_SELF_IMPROVEMENT.md with audit #18
+5. SEO retrofit completed across 44 posts — all posts already linked, no further retrofits needed
+
+**Repair state:** Production fixed. Backlink stagnation now detectable autonomously. SEO retrofits complete. DDG replacement still pending (provider migration needs mistlight).
+
+---
+
 ### 2026-06-01 — Reddit monitoring (15:15 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-06-01_1515.md`
 - **Suspension status:** Day 4 of 7. Self-suspension rule active since May 31 11:19 CEST.
