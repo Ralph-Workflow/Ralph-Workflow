@@ -1,6 +1,6 @@
 {
   "schema_version": "ecc.self-repair-self-improve-audit.v1",
-  "checked_at": "2026-06-01T15:03:06.070268+02:00",
+  "checked_at": "2026-06-01T15:16:29.719225+02:00",
   "total_loops_audited": 24,
   "loops_with_self_repair": 23,
   "loops_with_self_improve": 23,
@@ -22,32 +22,18 @@
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
-      "job": "codeberg-github-mirror-sync",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
+      "job": "reddit-monitor",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/reddit_monitor.py",
       "has_self_repair": true,
-      "sr_detail": "idempotent_reporter_exempt",
-      "needs_self_repair": false,
+      "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
+      "needs_self_repair": true,
       "has_self_improve": true,
       "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
       "needs_self_improve": true,
       "self_repair_missing": false,
       "self_improve_missing": false,
-      "job_id": "b7d74fa6-ab9b-4f66-9d03-a77c0ad7a56c",
-      "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "Push research findings to git repo",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
-      "has_self_repair": true,
-      "sr_detail": "idempotent_reporter_exempt",
-      "needs_self_repair": false,
-      "has_self_improve": true,
-      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
-      "model": "minimax/MiniMax-M2.7-highspeed"
+      "job_id": "6a9e1bbe-a907-4e13-bc94-e44bc31170ea",
+      "model": "openrouter/deepseek/deepseek-v4-flash"
     },
     {
       "job": "reddit-pipeline-watchdog",
@@ -64,17 +50,17 @@
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
-      "job": "repo-adoption-tracker",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/adoption_tracker.py",
+      "job": "codeberg-github-mirror-sync",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
       "has_self_repair": true,
       "sr_detail": "idempotent_reporter_exempt",
       "needs_self_repair": false,
       "has_self_improve": true,
-      "si_detail": "patterns:adoption is also flat,adoption deltas and replace any tactic that stays ",
+      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
       "needs_self_improve": true,
       "self_repair_missing": false,
       "self_improve_missing": false,
-      "job_id": "126471f7-1226-4aee-a2fe-e7ff17a28d6d",
+      "job_id": "b7d74fa6-ab9b-4f66-9d03-a77c0ad7a56c",
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
@@ -90,20 +76,6 @@
       "self_improve_missing": false,
       "job_id": "ff783799-2d21-45f7-bb06-eed9c46b95a6",
       "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "reddit-monitor",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/reddit_monitor.py",
-      "has_self_repair": true,
-      "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "6a9e1bbe-a907-4e13-bc94-e44bc31170ea",
-      "model": "openrouter/deepseek/deepseek-v4-flash"
     },
     {
       "job": "marketing-churn-watchdog",
@@ -132,6 +104,34 @@
       "self_improve_missing": false,
       "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
       "model": "openrouter/deepseek/deepseek-v4-pro"
+    },
+    {
+      "job": "Push research findings to git repo",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
+      "has_self_repair": true,
+      "sr_detail": "idempotent_reporter_exempt",
+      "needs_self_repair": false,
+      "has_self_improve": true,
+      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
+      "model": "minimax/MiniMax-M2.7-highspeed"
+    },
+    {
+      "job": "repo-adoption-tracker",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/adoption_tracker.py",
+      "has_self_repair": true,
+      "sr_detail": "idempotent_reporter_exempt",
+      "needs_self_repair": false,
+      "has_self_improve": true,
+      "si_detail": "patterns:adoption is also flat,adoption deltas and replace any tactic that stays ",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "126471f7-1226-4aee-a2fe-e7ff17a28d6d",
+      "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
       "job": "ralph-site-owner-loop",

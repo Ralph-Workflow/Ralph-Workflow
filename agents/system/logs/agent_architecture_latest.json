@@ -2,8 +2,8 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "watch",
-    "primary_failure_mode": "Architecture-owned gates remain green. Whole-stack certification blocked by stale marketing independent verification (fail since May 28, now ~5530 minutes stale) and pypi-auto-unblocker still missing from self-improvement loop registry.",
-    "most_urgent_fix": "Rerun marketing independent verification; register pypi-auto-unblocker in self_improvement_loops.json."
+    "primary_failure_mode": "Architecture-owned gates are green, but whole-stack certification remains blocked by marketing owner-loop failing independent verification on stale evidence (2026-05-28) and blocked-channel-recovery escalation (1086 repeats, critical).",
+    "most_urgent_fix": "Get a fresh marketing independent pass backed by measurable Codeberg-primary adoption movement."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,23 +22,27 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-06-01T15:04:21.000000+02:00",
+    "checked_at": "2026-06-01T16:03:48+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 24,
     "live_jobs_enabled": 24,
     "live_jobs_disabled": 0,
+    "live_jobs_running": ["system-health-monitor", "codeberg-github-mirror-sync", "agent-architecture-watchdog"],
     "disabled_job_names": [],
-    "persisted_jobs_checked": 24,
-    "persisted_disabled_job_names": [],
-    "live_running_job_names": [
-      "system-health-monitor",
-      "agent-architecture-watchdog"
+    "persisted_disabled_job_names": [
+      "docs-stack-aggressive-10min-self-heal",
+      "marketing-measurement-hold-release",
+      "marketing-momentum-watchdog",
+      "marketing-reflection",
+      "marketing-workflow-audit-precheck",
+      "ralph-workflow-full-house-docs-audit",
+      "stackoverflow-post-cooldown-run-check"
     ],
     "live_last_error_job_names": [
       "blocked-channel-recovery"
     ],
     "live_last_error_details": {
-      "blocked-channel-recovery": "cron: job execution timed out"
+      "blocked-channel-recovery": "cron: job execution timed out; escalation level=critical, repeat_count=1086"
     },
     "inspected_roots": [
       "/home/mistlight/.openclaw/workspace/agents/system",
@@ -51,161 +55,127 @@
   "findings": [
     {
       "severity": "high",
-      "title": "Marketing independent verification is stale and failing closed",
-      "mechanism": "Marketing independent verification artifact is ~5530 minutes old (since May 28) and verdict is 'fail'. Primary-repo adoption remains measurement-pending. Blocked channels (Reddit, Apollo) prevent new distribution.",
+      "title": "Marketing independent verification still fails on stale outcome evidence",
+      "mechanism": "Marketing independent verification fails closed because Codeberg-primary adoption movement is still measurement-pending and the artifact is stale (last checked 2026-05-28, age ~5569 min vs 240 min max).",
       "source_layer": "cross-loop ownership",
-      "root_cause": "Outcome evidence for Codeberg-primary adoption is still missing; distribution channels remain externally blocked; measurement hold is active.",
+      "root_cause": "Outcome evidence for Codeberg-primary adoption is still missing; marketing_loop_independent_verification.json is stale with verdict=fail.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
       ],
       "confidence": 0.99,
-      "recommended_fix": "Rerun marketing independent verification after any material change in adoption or distribution. Until then, fail-closed is correct behavior."
+      "recommended_fix": "Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green."
     },
     {
       "severity": "high",
-      "title": "Loop \"pypi-auto-unblocker\" still has NO self-improvement mandate",
-      "mechanism": "Self-repair audit stdout reports 1 HIGH finding. Registry (/agents/system/self_improvement_loops.json) contains only 2 loops (ralph-docs-watchdog, agent-architecture-watchdog). pypi-auto-unblocker is not registered.",
-      "source_layer": "self-repair-loop-contract",
-      "root_cause": "pypi-auto-unblocker was created without a self-improvement mandate and has not been registered in the self-improvement loop registry.",
-      "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/self_repair_self_improve_audit_latest.json"
-      ],
-      "confidence": 0.95,
-      "recommended_fix": "Register pypi-auto-unblocker in self_improvement_loops.json with checker/runner/verifier entries and a self_improvement_mandate section."
-    },
-    {
-      "severity": "high",
-      "title": "blocked-channel-recovery has 1063 consecutive escalation repeats",
-      "mechanism": "Health monitor escalation counter shows 1063 repeats at critical level for blocked-channel-recovery timeout. Recovery loop times out every cycle against persistently blocked external channels (Reddit, Apollo).",
-      "source_layer": "runtime cron topology",
-      "root_cause": "Reddit and Apollo channels remain blocked externally; the recovery loop times out trying blocked paths.",
+      "title": "blocked-channel-recovery escalated to critical (1086 repeats)",
+      "mechanism": "Health monitor detects 1086 consecutive repeats for blocked-channel-recovery:timeout, flagged as escalation_level=critical.",
+      "source_layer": "unblocker domain",
+      "root_cause": "blocked-channel-recovery cron job timed out (600s limit, last actual duration 326766ms = ~327s) repeatedly across runs. Escalation overdue.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
       ],
+      "confidence": 0.99,
+      "recommended_fix": "Investigate blocked-channel-recovery hang (likely network call or infinite loop); repair the timeout/script bug or disable the job."
+    },
+    {
+      "severity": "medium",
+      "title": "Live Gateway topology is coherent and fully enabled",
+      "mechanism": "Direct live cron inspection shows 24 total, 24 enabled, 0 disabled, 1 error (blocked-channel-recovery: timeout), 3 running (this watchdog + system-health-monitor + codeberg-github-mirror-sync).",
+      "source_layer": "runtime cron topology",
+      "root_cause": "Architecture/runtime topology remains coherent while owner-loop work is in flight.",
+      "evidence_refs": [
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
+      ],
       "confidence": 0.98,
-      "recommended_fix": "Either retire the blocked-channel-recovery loop until channels unlock, or refactor it to fail-fast on known-blocked channels instead of timing out."
+      "recommended_fix": "Keep direct cron inspection as the source of truth on each watchdog run."
     },
     {
       "severity": "medium",
       "title": "Architecture verifier path is green on freshness and ownership gates",
-      "mechanism": "Agent architecture checker returns AGENT_ARCHITECTURE_OK. Verifier confirms ok (no errors). Independent verification returns qualified_pass. Live topology is coherent: 24 enabled, 0 disabled, 2 running, 1 last-error. Loop integrity clean.",
+      "mechanism": "Loop integrity, health-monitor blocker localization, architecture verifier, and shared market-intelligence consumption remain coherent; remaining blockers are correctly externalized.",
       "source_layer": "checker/runtime contract",
-      "root_cause": "Architecture-side gates are healthy; remaining blockers are external (marketing outcome evidence, pypi-unblocker registry gap).",
+      "root_cause": "Architecture-side gates are healthy; remaining risk is external (marketing stale fail, blocked-channel-recovery escalation).",
       "evidence_refs": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
       ],
       "confidence": 0.97,
-      "recommended_fix": "Maintain current verifier path; rerun independent verification after each material artifact refresh."
+      "recommended_fix": "Rerun independent verification after each material architecture artifact refresh."
     },
     {
-      "severity": "medium",
-      "title": "Shared market-intelligence consumption: 2 of 3 consumers fresh, 1 stale",
-      "mechanism": "run.py and distribution_lane_executor.py consume the latest artifact (2026-06-01T09:00:30). reddit_monitor.py is stale (May 28 artifact). Competitor count: 8.",
-      "source_layer": "cross-loop data sharing",
-      "root_cause": "reddit_monitor.py last consumed May 28; it needs rerun against the fresher market intelligence.",
+      "severity": "low",
+      "title": "Persisted disabled jobs remain history only, not live runtime blockers",
+      "mechanism": "7 distinct disabled entries exist in persistence history, but live Gateway topology exposes zero disabled jobs.",
+      "source_layer": "persistence",
+      "root_cause": "Historical scheduler records persist after live job removal/disable cleanup.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ],
       "confidence": 0.97,
-      "recommended_fix": "Let the next reddit-monitor cron run (at 15:15) refresh the consumer record."
-    },
-    {
-      "severity": "low",
-      "title": "Health monitor issues stable at 4 persistent structural blockers",
-      "mechanism": "Health monitor reports 4 issues: blocked-channel-recovery timeout, stale marketing verification, and 2 blocked-channel-recovery escalation entries (1063 repeats at critical level).",
-      "source_layer": "health monitoring",
-      "root_cause": "Four persistent structural issues remain; the duplicate escalation entry may indicate a health monitor reporting bug.",
-      "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
-      ],
-      "confidence": 0.95,
-      "recommended_fix": "Focus repair effort on the 3 distinct underlying issues."
-    },
-    {
-      "severity": "low",
-      "title": "Self-repair audit JSON/stdout discrepancy detected",
-      "mechanism": "self_repair_self_improve_audit.py stdout reports 'HIGH findings: 1' but the JSON artifact self_repair_self_improve_audit_latest.json records 0 high_findings. pypi-auto-unblocker is confirmed missing from registry (only 2 loops).",
-      "source_layer": "self-repair-loop-contract",
-      "root_cause": "Possible race between stdout and JSON write, or conditional logic mismatch in the audit script.",
-      "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/self_repair_self_improve_audit_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json"
-      ],
-      "confidence": 0.85,
-      "recommended_fix": "Investigate the audit script write path; surface the discrepancy in the next watchdog run."
+      "recommended_fix": "Keep separating persisted disabled history from live runtime topology in every audit."
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Rerun marketing independent verification to clear the stale fail artifact",
-      "why_now": "Marketing verification is ~5530 minutes stale; whole-stack certification is blocked until this artifact is refreshed.",
-      "expected_effect": "Either clears the adoption blocker or preserves truthful fail-closed state."
+      "goal": "Get a fresh marketing independent pass backed by measurable primary-repo movement",
+      "why_now": "Marketing still blocks whole-stack certification even though architecture-owned gates are coherent.",
+      "expected_effect": "Either clears the remaining adoption blocker or preserves truthful fail-closed outcome ownership."
     },
     {
       "order": 2,
-      "goal": "Register pypi-auto-unblocker in the self-improvement loop registry",
-      "why_now": "Confirmed: 1 HIGH finding from self-repair audit stdout. Registry has only 2 of 24 live loops registered.",
-      "expected_effect": "Closes the remaining self-improvement gap; pypi-auto-unblocker gains self-improvement coverage."
+      "goal": "Repair or disable blocked-channel-recovery (1086-repeat critical escalation)",
+      "why_now": "Escalation level critical means the unblocker domain has been broken for an extended period without resolution.",
+      "expected_effect": "Eliminates the repeating timeout noise and frees health-monitor bandwidth for real issues."
     },
     {
       "order": 3,
-      "goal": "Address blocked-channel-recovery escalation (1063 repeats)",
-      "why_now": "Escalation counter is critical; loop times out every cycle hitting blocked external channels.",
-      "expected_effect": "Reduces noise and wasted compute from a recovery loop that cannot succeed against persistently blocked channels."
-    },
-    {
-      "order": 4,
-      "goal": "Investigate self-repair audit JSON/stdout discrepancy",
-      "why_now": "stdout says 1 HIGH finding, JSON says 0. This could mask real issues in future runs.",
-      "expected_effect": "Correct audit reporting prevents masking of real loop registry gaps."
+      "goal": "Keep architecture live-topology verification tied to openclaw cron list --json on every watchdog run",
+      "why_now": "Current live inspection is clean and should remain the source of truth instead of persisted-history drift.",
+      "expected_effect": "Stops stale topology claims from reappearing in architecture reports."
     }
   ],
   "repairs_applied_this_run": [
     {
       "status": "refreshed_live_topology",
       "target": "live cron topology snapshot",
-      "change": "Refreshed direct live inspection via openclaw cron list --json: 24 enabled, 0 disabled, 2 running (system-health-monitor + this watchdog), 1 last-error (blocked-channel-recovery timeout).",
+      "change": "Reinspected live Gateway cron: 24 total, 24 enabled, 0 disabled, 1 last-error (blocked-channel-recovery: timeout, 1086-repeat critical escalation, conc_errors=1), 3 running (this watchdog + system-health-monitor + codeberg-github-mirror-sync). Persisted disabled entries are history-only.",
+      "proof": []
+    },
+    {
+      "status": "reran_checker",
+      "target": "architecture checker",
+      "change": "Direct execution: AGENT_ARCHITECTURE_OK. Fresh pass confirmed (2026-06-01T16:03+02:00).",
+      "proof": []
+    },
+    {
+      "status": "reran_verifier",
+      "target": "architecture verifier",
+      "change": "Direct execution: ok=true, zero errors. Verifier passed after fresh independent artifact cross-check.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
       ]
     },
     {
-      "status": "reran_full_audit_stack",
-      "target": "checker/verifier/independent-verify pipeline",
-      "change": "Ran agent_architecture_checker.py (AGENT_ARCHITECTURE_OK), agent_architecture_verifier.py (ok, no errors), agent_architecture_independent_verify.py (qualified_pass with 2 external errors), loop_integrity_audit.py (clean), self_repair_self_improve_audit.py (stdout: HIGH findings: 1; JSON: 0 — discrepancy flagged).",
+      "status": "reran_independent_verification",
+      "target": "architecture independent verification",
+      "change": "Direct execution: qualified_pass. ZERO architecture errors. Two external blockers: stale marketing independent verification artifact (fail, 2026-05-28) + marketing verdict=fail.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/self_repair_self_improve_audit_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json"
       ]
     },
     {
       "status": "revalidated_shared_findings_consumption",
       "target": "shared market-intelligence consumers",
-      "change": "2 of 3 consumers fresh (run.py, distribution_lane_executor.py use 2026-06-01T09:00:30 artifact). reddit_monitor.py is stale (May 28). Competitor count: 8.",
+      "change": "Confirmed code-backed marketing consumers (run.py, reddit_monitor.py, distribution_lane_executor.py) expose machine-verifiable shared market-intelligence consumption.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json"
-      ]
-    },
-    {
-      "status": "surfaced_health_monitor_changes",
-      "target": "health monitor issue tracking",
-      "change": "Health monitor now records 4 issues (was 3): new duplicate escalation entry for blocked-channel-recovery. Core pattern unchanged.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
-      ]
-    },
-    {
-      "status": "confirmed_pypi_unblocker_registry_gap",
-      "target": "self_improvement_loops.json registry",
-      "change": "Confirmed registry contains only 2 loops (ralph-docs-watchdog, agent-architecture-watchdog). pypi-auto-unblocker is NOT registered. Flagged stdout/JSON discrepancy.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/self_repair_self_improve_audit_latest.json"
       ]
     }
   ],
@@ -215,17 +185,17 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
-    "summary": "Independent verification confirms architecture verifier fails closed on stale signoff, live topology/ownership checks are green, shared market-intelligence reuse is machine-verifiable (2/3 consumers fresh). Fresh artifact produced at 2026-06-01T15:02:54+02:00.",
-    "checked_at": "2026-06-01T15:02:54.687883+02:00",
+    "summary": "Independent verification confirms the repaired architecture verifier fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
+    "checked_at": "2026-06-01T16:03:48+02:00",
     "verdict": "qualified_pass"
   },
   "what_still_needs_independent_verification": [
     "Fresh marketing independent pass backed by measurable primary-repo movement.",
-    "pypi-auto-unblocker self-improvement mandate registration."
+    "blocked-channel-recovery repair/disposition (1086-repeat critical escalation)."
   ],
   "highest_risk_unresolved_issue": {
-    "title": "blocked-channel-recovery has 1063 consecutive escalation repeats",
-    "why": "The recovery loop times out every cycle against persistently blocked external channels (Reddit, Apollo). This generates continuous noise and wasted compute without a path to resolution."
+    "title": "Marketing remains red on Codeberg-primary outcome evidence; blocked-channel-recovery at critical escalation",
+    "why": "Architecture-owned runtime checks are coherent, but marketing independent verification still fails closed because primary-repo movement is measurement-pending, and blocked-channel-recovery has 1086 consecutive repeats at critical escalation level."
   },
   "runtime_assertions": {
     "ownership_boundaries_ok": true,
@@ -236,77 +206,63 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-06-01T15:02:54.687883+02:00",
+    "architecture_verifier_checked_at": "2026-06-01T16:03:48+02:00",
+    "architecture_independent_verdict": "qualified_pass",
+    "architecture_independent_checked_at": "2026-06-01T16:03:12+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
     },
-    "health_monitor_issues_found": 4,
-    "health_monitor_issue_names": [
-      "blocked-channel-recovery",
-      "marketing_independent_verification",
-      "blocked-channel-recovery_escalation",
-      "blocked-channel-recovery_escalation"
-    ],
+    "health_monitor_issues_found": 3,
     "health_monitor_issue_categories": [
       "blocked-channel-recovery:timeout",
       "marketing_independent_verification:stale_artifact",
-      "blocked-channel-recovery_escalation:escalation_required",
-      "blocked-channel-recovery_escalation:escalation_required"
+      "blocked-channel-recovery:escalation_critical_1086_repeats"
     ],
-    "blocked_channel_recovery_escalation_repeats": 1063,
-    "blocked_channel_recovery_escalation_level": "critical",
-    "live_running_job_names": [
-      "system-health-monitor",
-      "agent-architecture-watchdog"
+    "required_runtime_consumers_present": [
+      "agents/marketing/run.py",
+      "agents/marketing/reddit_monitor.py",
+      "agents/marketing/distribution_lane_executor.py"
     ],
-    "live_last_error_job_names": [
-      "blocked-channel-recovery"
-    ],
+    "runtime_consumer_statuses": {
+      "agents/marketing/run.py": "loaded (2026-06-01T07:00:30Z)",
+      "agents/marketing/reddit_monitor.py": "loaded (2026-05-28T09:18:19Z)",
+      "agents/marketing/distribution_lane_executor.py": "loaded (2026-06-01T13:07:53Z)"
+    },
+    "marketing_independent_checked_at": "2026-05-28T19:11:28+02:00",
+    "marketing_independent_artifact_age_minutes": 5569,
+    "marketing_independent_max_age_minutes": 240,
+    "docs_blocker_localized": false,
     "marketing_bottleneck": "distribution_and_message_to_primary_repo_conversion",
     "marketing_repair_window_status": "needs_repair",
     "marketing_measurement_pending_reasons": [
       "primary_repo_flat",
       "mirror_repo_flat"
     ],
-    "marketing_momentum_status": "watch",
-    "marketing_momentum_watch_actions": [
-      "reddit_channel_blocked",
-      "apollo_channel_blocked",
-      "primary_repo_adoption_flat",
-      "measurement_hold_active"
-    ],
-    "independent_architecture_verdict": "qualified_pass",
-    "self_repair_audit_high_findings_stdout": 1,
-    "self_repair_audit_high_findings_json": 0,
-    "self_repair_audit_json_stdout_discrepancy": true,
-    "self_repair_audit_missing_loops_stdout": [
-      "pypi-auto-unblocker"
-    ],
-    "self_improvement_registry_total_loops": 2,
-    "self_improvement_registry_loops": [
-      "ralph-docs-watchdog",
+    "live_running_job_names": [
+      "system-health-monitor",
+      "codeberg-github-mirror-sync",
       "agent-architecture-watchdog"
     ],
-    "pypi_auto_unblocker_registered": false,
-    "shared_market_intelligence_consumers": {
-      "agents/marketing/run.py": "loaded (fresh: 2026-06-01T09:00:30)",
-      "agents/marketing/reddit_monitor.py": "loaded (stale: May 28 artifact)",
-      "agents/marketing/distribution_lane_executor.py": "loaded (fresh: 2026-06-01T09:00:30)"
+    "live_last_error_job_names": [
+      "blocked-channel-recovery"
+    ],
+    "blocked_channel_recovery_escalation": {
+      "level": "critical",
+      "repeat_count": 1086,
+      "incident_key": "blocked-channel-recovery::timeout",
+      "last_error": "cron: job execution timed out",
+      "last_status": "error",
+      "consecutive_errors": 1
     },
-    "shared_market_intelligence_latest_artifact": "2026-06-01T09:00:30.346370",
-    "shared_market_intelligence_competitor_count": 8,
-    "shared_market_intelligence_fresh_consumers": 2,
-    "shared_market_intelligence_stale_consumers": 1
+    "independent_architecture_verdict": "qualified_pass"
   },
   "notes": [
     "Architecture green means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.",
-    "Marketing verification is stale (fail since May 28) — rerun needed for whole-stack certification.",
-    "Health monitor issues stable at 4 (was 3): blocked-channel-recovery timeout, stale marketing verification, 2× escalation entries (critical, 1063 repeats).",
-    "pypi-auto-unblocker still has no self-improvement mandate — confirmed missing from registry (only 2 of 24 live loops registered).",
-    "Self-repair audit stdout/JSON discrepancy detected: stdout says 1 HIGH, JSON says 0. Needs investigation.",
-    "Live Gateway: 24 enabled, 0 disabled, 2 running, 1 last-error (blocked-channel-recovery timeout).",
-    "2 of 3 shared market-intelligence consumers are fresh; reddit_monitor.py stale since May 28.",
-    "Architecture independent verification freshly produced at 2026-06-01T15:02:54+02:00 → qualified_pass."
+    "Persisted disabled jobs remain history only; live disabled jobs are 0.",
+    "Live inspection: 24 total, 24 enabled, 0 disabled, 1 error (blocked-channel-recovery: timeout), 3 running (system-health-monitor, codeberg-github-mirror-sync, agent-architecture-watchdog).",
+    "The remaining blockers are external: marketing outcome evidence (stale fail artifact) and blocked-channel-recovery (critical escalation, 1086 repeats).",
+    "All architecture-owned check passes fresh this run: checker=AGENT_ARCHITECTURE_OK, verifier=pass, independent=qualified_pass.",
+    "blocked-channel-recovery repeats increased from 1082 to 1086 since last watchdog run. Escalation remains critical."
   ]
 }

@@ -1,3 +1,14 @@
+### 2026-06-01 — Reddit monitoring (15:15 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-06-01_1515.md`
+- **Suspension status:** Day 4 of 7. Self-suspension rule active since May 31 11:19 CEST.
+- **Provider status:** DDG web_search fully collapsed — **all query types blocked** (not just Reddit). Reddit direct still 403 IP-blocked (29 days).
+- **Fresh telemetry:** 3 query families attempted → 3/3 bot-detection challenges. Zero usable results. This is the first pass where even non-Reddit web_search has zero output.
+- **What changed from prior pass:** DDG degraded further from "stale cached pages for broad queries" (13:05) to "fully blocked for all query types" (15:15). The monitoring surface is now completely blind.
+- **Market research:** No fresh external signal recovered this pass. Previously known markers preserved: MUO $6K Claude Code story, dev.to Claude Code vs Codex 2026 consensus, Anthropic enterprise 2026 report.
+- **Autonomous lane check:** Blog (44 posts, content saturation), Competitor analysis (8 monitored, no drift), PyPI v0.8.8 live (1,339/mo), Stack Overflow first window June 3, Apollo measurement review due today. All non-Reddit lanes either healthy or correctly blocked.
+- **Next milestone:** 7-day escalation at June 4 ~11:19 CEST. If unrecovered, notify mistlight about provider migration (Brave Search API, SerpAPI, etc.).
+- **Posting verdict:** No posting attempted. Suspension holds.
+
 ### 2026-06-01 — Marketing workflow audit #16 (06:40 CEST)
 **Audit trigger:** Cron scheduled re-analysis (#16). Run at 06:33 CEST.
 
