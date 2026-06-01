@@ -1,7 +1,7 @@
 {
-  "ts": "2026-06-01T04:35:05.207227",
+  "ts": "2026-06-01T06:02:01.608630",
   "jobs_checked": 24,
-  "issues_found": 9,
+  "issues_found": 4,
   "issues": [
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
@@ -19,103 +19,34 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 4883.56,
+      "artifact_age_minutes": 4970.5,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review",
-      "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "The docs system is in strong shape. Positioning is cleanly aligned with the canonical reference ('operating system for autonomous coding', 'composable loop framework', 'simple at the center, powerful in composition', 'strong default workflow', 'adopt as-is first and extend later'). No internal plumbing leakage on top-level surfaces. The GitHub mirror has a coherent README \u2192 START_HERE \u2192 docs/README journey; Codeberg routes to the website docs which continue the story. Promoted next-click pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent, first-task-guide) all reinforce the same narrative instead of fighting it. Copy is clear, confident, and free of hype sludge or confusing framing."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_add-start-here-md-to-the-primary-codeberg-repo-r",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "Add START_HERE.md to the primary Codeberg repo root so the README \u2192 START_HERE \u2192 docs/README journey exists outside the GitHub mirror",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Add START_HERE.md to the primary Codeberg repo root so the README \u2192 START_HERE \u2192 docs/README journey exists outside the GitHub mirror"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_swap-install-ordering-in-codeberg-root-readme-to",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "Swap install ordering in Codeberg-root README to pipx first, Docker second (Python CLI users are the primary audience)",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Swap install ordering in Codeberg-root README to pipx first, Docker second (Python CLI users are the primary audience)"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-01T04:29:46.496755+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
     },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=925",
-      "repeats_in_recent_history": 925,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=945",
+      "repeats_in_recent_history": 945,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     },
     {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_escalation",
+      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
+      "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=201",
-      "repeats_in_recent_history": 201,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review::loop_verification_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
-      "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-01T04:29:46.496755+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=748",
-      "repeats_in_recent_history": 748,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
+      "last_error": "cron: job execution timed out",
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=946",
+      "repeats_in_recent_history": 946,
+      "owner_domain": null,
+      "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
-  "repairs_attempted": [
-    {
-      "type": "rerun_docs_verifier",
-      "job": "docs_agentic_review",
-      "ok": true,
-      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"The docs system is in strong shape. Positioning is cleanly aligned with the canonical reference ('operating system for autonomous coding', 'composable loop framework', 'simpl"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_ralph-workflow-readme-md-sub-package-readme-list",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780281293537:42\"\n}"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_root-readme-docker-instructions-are-harder-to-sc",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780281296884:43\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780281299478:44\"\n}"
-    }
-  ]
+  "repairs_attempted": []
 }

@@ -1,17 +1,17 @@
 {
-  "timestamp": "2026-05-31T15:14:59.900403+00:00",
-  "sitemap_urls_total": 100,
+  "timestamp": "2026-06-01T03:30:01.850922+00:00",
+  "sitemap_urls_total": 102,
   "google_indexing": {
     "status": "gsc_search_analytics",
-    "pages_with_search_presence": 13,
-    "total_urls": 100,
-    "total_impressions_28d": 339,
+    "pages_with_search_presence": 14,
+    "total_urls": 102,
+    "total_impressions_28d": 372,
     "total_clicks_28d": 21,
-    "ctr_28d": 6.19,
+    "ctr_28d": 5.65,
     "top_pages": [
       {
         "url": "https://ralphworkflow.com/",
-        "impressions": 296,
+        "impressions": 324,
         "clicks": 21
       },
       {
@@ -21,11 +21,16 @@
       },
       {
         "url": "https://ralphworkflow.com/copilot-alternative",
-        "impressions": 6,
+        "impressions": 8,
         "clicks": 0
       },
       {
         "url": "https://ralphworkflow.com/blog/how-to-run-claude-code-unattended",
+        "impressions": 5,
+        "clicks": 0
+      },
+      {
+        "url": "https://ralphworkflow.com/docs/first-task-guide",
         "impressions": 5,
         "clicks": 0
       },
@@ -36,11 +41,6 @@
       },
       {
         "url": "https://ralphworkflow.com/docs/",
-        "impressions": 4,
-        "clicks": 0
-      },
-      {
-        "url": "https://ralphworkflow.com/docs/first-task-guide",
         "impressions": 4,
         "clicks": 0
       },
@@ -60,13 +60,13 @@
         "clicks": 0
       }
     ],
-    "estimated_indexed": 13
+    "estimated_indexed": 14
   },
-  "gap_unindexed": 87,
-  "pct_indexed_estimate": 13.0,
+  "gap_unindexed": 88,
+  "pct_indexed_estimate": 13.7,
   "escalation_threshold": {
     "pct_unindexed_limit": 50,
-    "unindexed_pct": 87.0,
+    "unindexed_pct": 86.3,
     "triggered": true
   },
   "escalation": {

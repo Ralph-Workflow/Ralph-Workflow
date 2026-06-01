@@ -16938,3 +16938,89 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system consistently carries the correct positioning across all surfaces. No hard failures. Minor journey gap (README\u2192START_HERE not explicit) but navigable and not confusing.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding' tagline, 'AI agent orchestrator' framing, simple Ralph-loop core, composable loop framework, and 'default workflow strong enough to start with' \u2014 all from positioning doc. No internal plumbing leaked into top-level story."
+    },
+    {
+      "path": "START_HERE.md (github-mirror)",
+      "reason": "Carries same positioning paragraph, leads with task-selection guidance (ambitious, well-specified), emphasizes result-first evaluation ('what the software does now and what checks ran'), and defers to docs map as conditional rather than mandatory."
+    },
+    {
+      "path": "docs/README.md (github-mirror)",
+      "reason": "Reinforces the three-surface journey (README\u2192START_HERE\u2192docs map). Organized by user intent with clear routing. Maintains the same opening positioning paragraph. Does not fight the story from README or START_HERE."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted secondary page that reinforces 'simple at the center, stronger in composition, useful before customization' without drifting into internal plumbing or stale framing."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is coherent, well-positioned, and consistent across the README \u2192 START_HERE \u2192 docs/README journey. All promoted next-click pages use the same core framing (simple Ralph-loop center, composable orchestration, strong default workflow, result-first evaluation). No internal leakage, no stale framing drift, and the information hierarchy places user value before plumbing.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with the canonical 'operating system for autonomous coding' tagline, frames simple Ralph-loop core \u2192 composable loop framework, clearly states audience fit/non-fit, and does not lead with internal plumbing or artifact language."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Reinforces the same two-sentence product framing, provides a clean first-run path with honest task guidance, and links to deeper pages without routing evaluators into stale or internal content."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Documentation map opens with the same core framing, routes by user intent (fastest run / operator manual / product framing), and explicitly tells readers to keep proof secondary \u2014 directly reflecting the positioning document's discipline."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Uses the exact same two-sentence framing as the other promoted pages ('free and open-source AI agent orchestration system built around a simple Ralph-loop core...'), then builds a specific argument (default workflow matters, simple core enables composition) without drifting into internal mechanics."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "PyPI package README goes deeper into operator specifics (install flows, depth presets, fit/non-fit) while maintaining the core product framing \u2014 appropriate for a downstream surface, not the top-level story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

@@ -2,8 +2,8 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "watch",
-    "primary_failure_mode": "blocked-channel-recovery still timing out (live cron error); architecture verifier/checker green; 3 escalations active (blocked-channel-recovery 925r, agent_architecture_verifier_runtime 748r, docs_agentic_review 201r); marketing independent verification still fail-closed on measurable outcome evidence",
-    "most_urgent_fix": "Diagnose and fix blocked-channel-recovery timeout (600s budget, actual 326s \u2014 likely hanging on network call); second priority: clear marketing independent verification with measurable Codeberg-primary adoption evidence"
+    "primary_failure_mode": "Architecture-owned gates are green, but whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.",
+    "most_urgent_fix": "Do not certify whole-stack green until the external owner loop clears its live residue and independent signoff stays current."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,27 +22,23 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-06-01T04:36:00+02:00",
+    "checked_at": "2026-06-01T05:53:21.678865+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 24,
     "live_jobs_enabled": 24,
     "live_jobs_disabled": 0,
-    "live_jobs_running": 0,
-    "live_jobs_error": 1,
-    "live_error_job_names": [
-      "blocked-channel-recovery"
-    ],
-    "live_errors": [
-      {
-        "job": "blocked-channel-recovery",
-        "error": "cron: job execution timed out",
-        "timeout_seconds": 600,
-        "last_duration_ms": 326766
-      }
-    ],
+    "disabled_job_names": [],
     "persisted_jobs_checked": 39,
     "persisted_disabled_job_names": [
       "docs-stack-aggressive-10min-self-heal",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
+      "marketing-measurement-hold-release",
       "marketing-measurement-hold-release",
       "marketing-momentum-watchdog",
       "marketing-reflection",
@@ -50,232 +46,151 @@
       "ralph-workflow-full-house-docs-audit",
       "stackoverflow-post-cooldown-run-check"
     ],
-    "live_job_names": [
-      "reddit-pipeline-watchdog",
-      "ralph-docs-supervisor-precheck",
-      "system-health-monitor",
-      "codeberg-github-mirror-sync",
-      "marketing-churn-watchdog",
-      "marketing-active-loop",
-      "Push research findings to git repo",
-      "repo-adoption-tracker",
-      "ralph-site-owner-loop",
-      "apollo-channel-monitor",
-      "pypi-auto-unblocker",
-      "marketing-distribution-hunter",
-      "marketing-workflow-audit",
-      "agent-architecture-watchdog",
-      "content-generator",
-      "content-poster",
-      "competitor-analysis",
-      "marketing-research-daily",
-      "marketing-daily",
-      "reddit-monitor",
-      "backlink-tracker",
-      "marketing-outcome-capability-runner",
-      "ralph-workflow-docs-verifier-supervisor",
+    "live_running_job_names": [
+      "agent-architecture-watchdog"
+    ],
+    "live_last_error_job_names": [
       "blocked-channel-recovery"
+    ],
+    "live_last_error_details": {
+      "blocked-channel-recovery": "cron: job execution timed out"
+    },
+    "inspected_roots": [
+      "/home/mistlight/.openclaw/workspace/agents/system",
+      "/home/mistlight/.openclaw/workspace/agents/docs_quality",
+      "/home/mistlight/.openclaw/workspace/agents/marketing",
+      "/home/mistlight/.openclaw/workspace/agents/unblocker",
+      "/home/mistlight/.openclaw/workspace/Ralph-Site"
     ]
   },
   "findings": [
     {
-      "severity": "critical",
-      "title": "blocked-channel-recovery cron job is still timing out \u2014 NOT cleared",
-      "mechanism": "Live cron shows 1 error: blocked-channel-recovery timed out (600s budget, 326s actual). Prior watchdog run incorrectly claimed this was cleared. Escalation active at 925 repeats.",
-      "source_layer": "runtime cron execution",
-      "root_cause": "Script is hanging \u2014 likely a blocking network call or infinite wait in the blocked-channel-recovery logic.",
+      "severity": "high",
+      "title": "Marketing remains externally red on outcome evidence",
+      "mechanism": "Marketing independent verification still fails closed because primary-repo adoption is measurement-pending.",
+      "source_layer": "cross-loop ownership",
+      "root_cause": "Outcome evidence for Codeberg-primary adoption is still missing.",
       "evidence_refs": [
-        "openclaw cron list --json (live)",
-        "system/logs/health_monitor_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
       ],
       "confidence": 0.99,
-      "recommended_fix": "Inspect blocked-channel-recovery script for blocking calls; add timeout guards on individual network operations; consider splitting into faster single-channel checks."
+      "recommended_fix": "Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green."
     },
     {
-      "severity": "high",
-      "title": "Marketing independent verification still fail-closed on outcome evidence",
-      "mechanism": "Marketing independent verification verdict = 'fail'. Blocking reason: no measurable Codeberg-primary adoption movement captured in shared artifact.",
-      "source_layer": "cross-loop ownership / external domain",
-      "root_cause": "Outcome evidence for Codeberg-primary adoption is still measurement-pending.",
+      "severity": "medium",
+      "title": "Live Gateway topology matches the current runtime state",
+      "mechanism": "Direct live cron inspection shows 24 enabled/total-visible jobs, 0 disabled jobs, 1 running jobs, and 1 live last-error jobs.",
+      "source_layer": "runtime cron topology",
+      "root_cause": "Architecture/runtime topology remains coherent while owner-loop work is in flight.",
       "evidence_refs": [
-        "marketing/logs/marketing_loop_independent_verification.json",
-        "marketing/logs/marketing_workflow_audit_latest.json",
-        "system/logs/health_monitor_latest.json"
-      ],
-      "confidence": 0.99,
-      "recommended_fix": "Marketing owner loop must produce fresh measurable outcome evidence before the whole stack can certify green."
-    },
-    {
-      "severity": "high",
-      "title": "3 escalations active \u2014 blocked-channel-recovery (925r), agent_architecture_verifier_runtime (748r), docs_agentic_review (201r)",
-      "mechanism": "Health monitor has tripped escalation thresholds on three independent issues. All enqueued to owner loops but none resolved yet.",
-      "source_layer": "runtime health / escalation system",
-      "root_cause": "Repeated failure buildup across multiple domains; each escalation is independently correct but the combined signal represents systemic fragility.",
-      "evidence_refs": [
-        "system/logs/health_monitor_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
       ],
       "confidence": 0.98,
-      "recommended_fix": "Triage each escalation independently: blocked-channel-recovery needs script diagnosis; verifier_runtime needs timestamp coherency fix; docs_agentic_review needs mustFix resolution."
+      "recommended_fix": "Keep direct cron inspection as the source of truth on each watchdog run and avoid conflating persisted disabled history with live runtime topology."
     },
     {
       "severity": "medium",
-      "title": "Architecture verifier/checker/independent-verify gate is green",
-      "mechanism": "Checker returns AGENT_ARCHITECTURE_OK. Verifier returns ok (after re-running independent verification to clear timestamp drift). Independent verifier returns qualified_pass with external blockers correctly isolated.",
-      "source_layer": "architecture verification stack",
-      "root_cause": "Architecture-side gates are coherent and fail-closed correctly on stale or missing evidence.",
+      "title": "Architecture verifier path is green on freshness and ownership gates",
+      "mechanism": "Loop integrity, health-monitor blocker localization, and shared market-intelligence consumption remain coherent after the refresh; remaining blocker classification is externalized correctly.",
+      "source_layer": "checker/runtime contract",
+      "root_cause": "Architecture-side gates are healthy; remaining risk is external.",
       "evidence_refs": [
-        "system/logs/agent_architecture_independent_verification.json",
-        "system/logs/agent_architecture_verifier_latest.md",
-        "system/logs/loop_integrity_latest.json"
-      ],
-      "confidence": 0.98,
-      "recommended_fix": "Maintain current verifier freshness-gate behavior; ensure timestamp coherency between architecture refresh and independent verification runs."
-    },
-    {
-      "severity": "medium",
-      "title": "2 docs_agentic_review mustFix items enqueued to ralph-workflow-docs-verifier-supervisor",
-      "mechanism": "Health monitor shows two unresolved mustFix items: (1) Add START_HERE.md to primary Codeberg repo root, (2) Swap install ordering in Codeberg README to pipx first. Both enqueued to owner loop.",
-      "source_layer": "docs quality / followup tracking",
-      "root_cause": "Docs review identified actionable improvements that haven't been applied to the primary repo yet.",
-      "evidence_refs": [
-        "system/logs/health_monitor_latest.json",
-        "docs_quality/ralph_agentic_latest.json"
-      ],
-      "confidence": 0.95,
-      "recommended_fix": "ralph-workflow-docs-verifier-supervisor should apply the two mustFix items in its next run."
-    },
-    {
-      "severity": "medium",
-      "title": "Agent architecture verifier had timestamp-drift false negative; fixed by re-running independent verification",
-      "mechanism": "After refreshing agent_architecture_latest.json, the verifier detected the independent verification artifact as predating newer evidence. Re-running independent verification cleared this. Root cause: write-then-verify ordering.",
-      "source_layer": "verification coherency",
-      "root_cause": "agent_architecture_latest.json mtime updated before independent verification re-ran, creating a spurious staleness check failure.",
-      "evidence_refs": [
-        "system/logs/agent_architecture_verifier_latest.md"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
       ],
       "confidence": 0.97,
-      "recommended_fix": "The watchdog should run independent verification AFTER refreshing artifacts, or the verifier should tolerate a small timestamp window."
+      "recommended_fix": "Rerun independent verification after each material architecture artifact refresh."
     },
     {
       "severity": "low",
-      "title": "Loop integrity remains green for both tracked loops",
-      "mechanism": "ralph-docs-watchdog status=ok, agent-architecture-watchdog status=ok with verifierContractExternalized=true.",
-      "source_layer": "loop integrity / ownership",
-      "root_cause": "Loop integrity audit is working correctly and detecting no overlap or ownership drift.",
+      "title": "Persisted disabled jobs remain history only, not live runtime blockers",
+      "mechanism": "Disabled entries still exist in jobs.json history, but live Gateway topology currently exposes zero disabled jobs.",
+      "source_layer": "persistence",
+      "root_cause": "Historical scheduler records persist after live job removal/disable cleanup.",
       "evidence_refs": [
-        "system/logs/loop_integrity_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ],
-      "confidence": 0.99,
-      "recommended_fix": "No action needed \u2014 maintain current loop integrity contract."
+      "confidence": 0.97,
+      "recommended_fix": "Keep separating persisted disabled history from live runtime topology in every audit."
     },
     {
-      "severity": "low",
-      "title": "pypi-auto-unblocker has no self-improvement mandate",
-      "mechanism": "Script has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever.",
+      "severity": "high",
+      "title": "Loop \"pypi-auto-unblocker\" has NO self-improvement mandate",
+      "mechanism": "Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.",
       "source_layer": "self-repair-loop-contract",
-      "root_cause": "Loop was created without a self-improvement mandate or third-party verification.",
+      "root_cause": "Loop was created without a self-improvement mandate or a third-party verification requirement.",
       "evidence_refs": [],
       "confidence": 0.9,
-      "recommended_fix": "Add self-improvement mandate with flat-outcome detection, redesign triggers, and independent signoff requirement."
+      "recommended_fix": "Add a self_improvement_mandate section to the loop script that:\n  1. Detects when outcomes are flat for N consecutive runs\n  2. Triggers a redesign pass: new agents, prompt rewrites, cron changes, or path retirement\n  3. Registers the loop in the self_improvement_loops.json registry with checker/runner/verifier\n  4. Requires independent third-party signoff before marking the loop healthy again"
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Diagnose and fix blocked-channel-recovery timeout \u2014 the only live cron error",
-      "why_now": "925-repeat escalation is active; live cron shows the job still timing out at 326s. This is the highest-risk unresolved runtime issue.",
-      "expected_effect": "Clear the single live cron error and de-escalate the highest-repeat incident."
+      "goal": "Get a fresh marketing independent pass backed by measurable primary-repo movement",
+      "why_now": "Marketing still blocks whole-stack certification even though architecture-owned gates are coherent.",
+      "expected_effect": "Either clears the remaining adoption blocker or preserves truthful fail-closed outcome ownership."
     },
     {
       "order": 2,
-      "goal": "Clear agent_architecture_verifier_runtime escalation by ensuring timestamp coherency",
-      "why_now": "748 repeats; verifier now passes after re-running independent verification, but the escalation artifact may still be stale in health monitor.",
-      "expected_effect": "Remove architectural noise from the escalation dashboard."
-    },
-    {
-      "order": 3,
-      "goal": "Apply 2 docs_agentic_review mustFix items (START_HERE.md on Codeberg, README install ordering)",
-      "why_now": "201 repeats on escalation; items are enqueued to owner loop but not yet applied.",
-      "expected_effect": "Clear the docs escalation and improve primary-repo onboarding experience."
-    },
-    {
-      "order": 4,
-      "goal": "Get fresh marketing independent pass with measurable Codeberg-primary adoption evidence",
-      "why_now": "Marketing still blocks whole-stack certification; architecture-owned gates are coherent.",
-      "expected_effect": "Either clears the remaining adoption blocker or preserves truthful fail-closed outcome ownership."
+      "goal": "Keep architecture live-topology verification tied to openclaw cron list --json on every watchdog run",
+      "why_now": "Current live inspection is clean and should remain the source of truth instead of persisted-history drift.",
+      "expected_effect": "Stops stale topology claims from reappearing in architecture reports."
     }
   ],
   "repairs_applied_this_run": [
     {
       "status": "refreshed_live_topology",
       "target": "live cron topology snapshot",
-      "change": "Refreshed audit against live cron state: 24 enabled, 0 disabled, 0 running, 1 error (blocked-channel-recovery timeout). Previous run incorrectly claimed 0 errors \u2014 this was a factual error corrected in this refresh.",
+      "change": "Refreshed the audit against the current live view: 24 enabled jobs, 0 disabled jobs, 1 running jobs, and 1 live last-error jobs.",
       "proof": [
-        "openclaw cron list --json (live)"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ]
     },
     {
-      "status": "repaired_verifier_timestamp_drift",
-      "target": "agent architecture verifier freshness gate",
-      "change": "Verifier was reporting false-negative because independent verification artifact mtime predated architecture artifact refresh. Re-ran independent verification to restore coherency. Verifier now returns ok.",
+      "status": "relocalized_runtime_drift",
+      "target": "architecture blocker map",
+      "change": "Removed stale topology mismatch as an architecture-owned blocker so any remaining red stays localized to the external owner loop.",
       "proof": [
-        "system/logs/agent_architecture_independent_verification.json",
-        "system/logs/agent_architecture_verifier_latest.md"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
       ]
     },
     {
-      "status": "revalidated_checker_independent_verify",
-      "target": "architecture verification stack",
-      "change": "Checker: AGENT_ARCHITECTURE_OK. Independent verifier: qualified_pass (external blockers isolated correctly). Verifier: ok (post-repair).",
+      "status": "revalidated_shared_findings_consumption",
+      "target": "shared market-intelligence consumers",
+      "change": "Reconfirmed that code-backed marketing consumers still expose machine-verifiable shared market-intelligence consumption.",
       "proof": [
-        "system/logs/agent_architecture_independent_verification.json"
-      ]
-    },
-    {
-      "status": "corrected_prior_factual_error",
-      "target": "live error state claim in prior watchdog run",
-      "change": "Prior run claimed 'blocked-channel-recovery timeout cleared' and '0 live errors'. Live cron shows 1 error: blocked-channel-recovery still timing out. Corrected in this artifact.",
-      "proof": [
-        "openclaw cron list --json (live)"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json"
       ]
     }
   ],
   "independent_verification": {
     "status": "performed",
-    "verdict": "qualified_pass",
     "artifacts": [
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-06-01T04:39:03.448024+02:00",
-    "live_topology_snapshot": {
-      "total_jobs": 24,
-      "enabled": 24,
-      "disabled": 0,
-      "running": 0,
-      "live_errors": 1
-    },
-    "health_monitor_issues": 9,
-    "health_monitor_unique_issue_names": [
-      "agent_architecture_verifier_runtime",
-      "agent_architecture_verifier_runtime_escalation",
-      "blocked-channel-recovery",
-      "blocked-channel-recovery_escalation",
-      "docs_agentic_review",
-      "docs_agentic_review_escalation",
-      "docs_agentic_review_mustFix_add-start-here-md-to-the-primary-codeberg-repo-r",
-      "docs_agentic_review_mustFix_swap-install-ordering-in-codeberg-root-readme-to",
-      "marketing_independent_verification"
-    ]
+    "checked_at": "2026-06-01T05:53:31.187708+02:00",
+    "verdict": "qualified_pass",
+    "previous_artifact_checked_at": "2026-06-01T05:52:19.275470+02:00",
+    "previous_artifact_verdict": "qualified_pass",
+    "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
   "what_still_needs_independent_verification": [
-    "Fresh marketing independent pass backed by measurable primary-repo movement.",
-    "Health monitor refresh to clear stale escalations after repairs are applied."
+    "Fresh marketing independent pass backed by measurable primary-repo movement."
   ],
   "highest_risk_unresolved_issue": {
-    "title": "blocked-channel-recovery timeout \u2014 925-repeat escalation, 1 live cron error",
-    "why": "The only live cron error in the system. Script is hanging at ~326s against a 600s budget. 925-repeat escalation means this has been failing for a very long time. Architecture-owned gates are green but this runtime error could cascade into channel delivery failures."
+    "title": "Marketing remains red on Codeberg-primary outcome evidence",
+    "why": "Architecture-owned runtime checks are coherent, but marketing independent verification still fails closed because primary-repo movement is still measurement-pending."
   },
   "runtime_assertions": {
     "ownership_boundaries_ok": true,
@@ -286,50 +201,79 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-06-01T04:39:03.448024+02:00",
-    "architecture_independent_verdict": "qualified_pass",
+    "architecture_verifier_checked_at": "2026-06-01T05:53:31.187708+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
     },
-    "health_monitor_issues_found": 9,
-    "health_monitor_unique_issue_names": [
-      "agent_architecture_verifier_runtime",
-      "agent_architecture_verifier_runtime_escalation",
+    "health_monitor_issues_found": 6,
+    "health_monitor_issue_names": [
       "blocked-channel-recovery",
-      "blocked-channel-recovery_escalation",
+      "marketing_independent_verification",
       "docs_agentic_review",
-      "docs_agentic_review_escalation",
-      "docs_agentic_review_mustFix_add-start-here-md-to-the-primary-codeberg-repo-r",
-      "docs_agentic_review_mustFix_swap-install-ordering-in-codeberg-root-readme-to",
-      "marketing_independent_verification"
+      "docs_agentic_review_mustFix_none-no-hard-failures-found-minor-note-the-three"
     ],
-    "live_running_job_names": [],
+    "health_monitor_issue_categories": [
+      "blocked-channel-recovery:timeout",
+      "marketing_independent_verification:stale_artifact",
+      "docs_agentic_review:loop_verification_fail",
+      "docs_agentic_review_mustFix_none-no-hard-failures-found-minor-note-the-three:review_followup_required"
+    ],
+    "marketing_workflow_audit_timeout_seconds": 3600,
+    "marketing_workflow_audit_last_duration_ms": 1440006,
+    "marketing_workflow_audit_timeout_headroom_seconds": 2159.9939999999997,
+    "marketing_workflow_audit_timeout_repaired_pending_clean_rerun": false,
+    "live_running_job_names": [
+      "agent-architecture-watchdog"
+    ],
     "live_last_error_job_names": [
       "blocked-channel-recovery"
     ],
     "marketing_bottleneck": "distribution_and_message_to_primary_repo_conversion",
     "marketing_repair_window_status": "measurement_pending",
+    "marketing_measurement_pending_reasons": [
+      "primary_repo_flat",
+      "mirror_repo_flat"
+    ],
+    "marketing_momentum_status": "watch",
+    "marketing_momentum_watch_actions": [
+      "reddit_channel_blocked",
+      "apollo_channel_blocked",
+      "primary_repo_adoption_flat",
+      "measurement_hold_active"
+    ],
+    "independent_architecture_verdict": "qualified_pass",
     "docs_blocker_localized": false,
     "external_watch_issue_names": [
       "blocked-channel-recovery",
-      "marketing_independent_verification"
+      "marketing_independent_verification",
+      "docs_agentic_review",
+      "docs_agentic_review_mustFix_none-no-hard-failures-found-minor-note-the-three"
     ],
-    "escalation_active_count": 3,
-    "escalation_names": [
-      "blocked-channel-recovery_escalation",
-      "agent_architecture_verifier_runtime_escalation",
-      "docs_agentic_review_escalation"
+    "external_watch_issue_categories": [
+      "blocked-channel-recovery:timeout",
+      "marketing_independent_verification:stale_artifact",
+      "docs_agentic_review:loop_verification_fail",
+      "docs_agentic_review_mustFix_none-no-hard-failures-found-minor-note-the-three:review_followup_required"
     ],
-    "independent_architecture_verdict": "qualified_pass"
+    "required_runtime_consumers_present": [
+      "agents/marketing/distribution_lane_executor.py",
+      "agents/marketing/reddit_monitor.py",
+      "agents/marketing/run.py",
+      "debug"
+    ],
+    "runtime_consumer_statuses": {
+      "agents/marketing/run.py": "loaded",
+      "agents/marketing/reddit_monitor.py": "loaded",
+      "agents/marketing/distribution_lane_executor.py": "loaded",
+      "debug": "loaded"
+    }
   },
   "notes": [
-    "Architecture green = architecture-owned verifier/checker/independent-verify path is coherent. Does not mean whole stack is green.",
-    "Prior watchdog run had a factual error: claimed blocked-channel-recovery timeout was cleared and 0 live errors. Live cron shows 1 error. Corrected here.",
-    "Independent live inspection: 24 jobs, 24 enabled, 0 disabled, 0 running, 1 error (blocked-channel-recovery).",
-    "Health monitor has 9 issues (up from 4 in prior run snapshot) including 3 active escalations (925r, 748r, 201r).",
-    "Verifier timestamp-drift false-negative repaired by re-running independent verification after artifact refresh.",
-    "blocked-channel-recovery 925-repeat escalation is the most critical unresolved issue \u2014 it's the only live cron error and has been failing for a very long time.",
+    "Architecture green here means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.",
+    "Persisted disabled jobs remain history only; live disabled jobs are 0.",
+    "Independent live inspection in this snapshot saw 24 total jobs, 24 enabled, 0 disabled, 1 running, and 1 live last-error jobs.",
+    "The remaining blocker is external marketing outcome evidence, not architecture runtime drift.",
     "No live timeout-budget repair was applied in this watchdog run."
   ]
 }
