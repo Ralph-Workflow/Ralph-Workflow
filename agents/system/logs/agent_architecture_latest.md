@@ -5,7 +5,7 @@
 - Primary failure mode: Architecture-owned gates are green, but whole-stack certification remains blocked by external owner-loop residue.
 - Most urgent fix: Do not certify whole-stack green until the external owner loop clears its live residue and independent signoff stays current.
 - Verifier status: performed
-- Verifier verdict: qualified_pass
+- Verifier verdict: fail
 
 ## Live topology
 
@@ -49,8 +49,8 @@
 ## Independent verification
 
 - Performed: yes
-- Verdict: qualified_pass
-- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
+- Verdict: fail
+- Summary: Independent verification found architecture blockers that prevent a healthy verifier pass.
 - Remaining external blockers: stale marketing evidence, marketing independent verification fail
 
 ## Small gate passed

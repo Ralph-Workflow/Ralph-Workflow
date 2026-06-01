@@ -185,14 +185,15 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
-    "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
+    "summary": "Independent verification found architecture blockers that prevent a healthy verifier pass.",
     "checked_at": "2026-06-01T20:45:06.817900+02:00",
-    "verdict": "qualified_pass",
+    "verdict": null,
     "previous_artifact_checked_at": "2026-06-01T19:04:15.986217+02:00",
     "previous_artifact_verdict": "qualified_pass",
     "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
   "what_still_needs_independent_verification": [
+    "Fresh architecture independent verification against the refreshed live topology.",
     "Fresh marketing independent pass backed by measurable primary-repo movement."
   ],
   "highest_risk_unresolved_issue": {
@@ -207,7 +208,7 @@
     "shared_market_intelligence_fresh": true,
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
-    "architecture_verifier_status": "pass",
+    "architecture_verifier_status": "fail",
     "architecture_verifier_checked_at": "2026-06-01T20:45:06.817900+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
@@ -259,7 +260,7 @@
       "primary_repo_adoption_flat",
       "measurement_hold_active"
     ],
-    "independent_architecture_verdict": "qualified_pass",
+    "independent_architecture_verdict": null,
     "docs_blocker_localized": false,
     "external_watch_issue_names": [
       "blocked-channel-recovery",
