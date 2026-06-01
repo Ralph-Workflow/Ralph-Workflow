@@ -4,8 +4,7 @@
 >
 > Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 
-**⭐ Star on Codeberg** → [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — Codeberg primary
-**GitHub mirror** → [github.com/Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow)
+**⭐ Star on Codeberg** → [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) (Codeberg primary) | **GitHub mirror** → [github.com/Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow)
 
 ---
 
@@ -81,6 +80,8 @@ Full docs at [ralphworkflow.com](https://ralphworkflow.com/docs).
 
 That's it. The default workflow is already strong enough to start with. Customize later when you need more control.
 
+For first-run guidance — task selection, diagnosis, and a walked-through first wake-up — see **[START_HERE.md](START_HERE.md)**.
+
 ## Built-in capabilities
 
 - **Phase routing** — planning agent → development agent → review agent → fix loop
@@ -100,6 +101,7 @@ Maintained docs source in this repo: [`ralph-workflow/docs/sphinx/`](ralph-workf
 | [Quickstart](https://ralphworkflow.com/docs/quickstart.html) | Write a spec and run it in 10 minutes |
 | [Configuration](https://ralphworkflow.com/docs/configuration.html) | Agent routing, phase policies, model selection |
 | [User Stories](https://ralphworkflow.com/docs/user-stories.html) | Real workflows from real runs |
+| [Real Overnight Demo](docs/overnight-demo-real.md) | Real task spec → real Ralph output (800+ assertions, 5 platforms) |
 | [Walkthrough](https://ralphworkflow.com/blog/real-task-walkthrough-overnight-refactoring/) | Step-by-step overnight refactoring example |
 
 ## Engineering-practice requirements
@@ -113,7 +115,5 @@ Ralph Workflow depends on good software engineering practices — it does not re
 A repo without guardrails will produce results that reflect that. Plan accordingly.
 
 ---
-
-**⭐ Star on Codeberg** if this looks useful → [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
 
 *Free and open source. Runs on your machine. Ships with a default workflow strong enough for real software engineering.*
