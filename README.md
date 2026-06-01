@@ -85,7 +85,7 @@ That's it. The default workflow is already strong enough to start with. Customiz
 
 - **Phase routing** — planning agent → development agent → review agent → fix loop
 - **Cost arbitrage** — use cheaper agents for planning, stronger ones for coding
-- **Artifact handoff** — agents read each other's output through the repo, not context stuffing
+- **Repo-based handoff** — agents read each other's output through the repo, not context stuffing
 - **Recovery + retry** — each phase can loop independently on failure
 - **Vendor-neutral** — your config is YAML, your agents are your choice, your code is yours
 - **`ralph --diagnose`** — pre-flight health check for agents, tools, and capability bundles

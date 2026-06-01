@@ -8,7 +8,7 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow returns a **strong software result** in your repo — diff, checks, artifacts — instead of a transcript and a claim that the task is done.
+What makes it different is the composable loop structure: planning → development → verification, each phase driving the next, producing a **strong software result** you can evaluate directly — instead of a transcript and a claim that the task is done.
 
 Why use it now? Copy one of these templates into `PROMPT.md`, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
