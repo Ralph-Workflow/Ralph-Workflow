@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-01T18:17:06
-Chosen lane: **primary_repo_flat_contact_handoff_packet**
+Generated: 2026-06-01T20:17:43
+Chosen lane: **measurement_hold**
 
 ## Why this lane
-- Fresh primary-repo-flat publisher targets now have verified public contact paths; turn them into one Codeberg-first execution packet instead of stalling inside measurement hold, even when the remaining path is human-executable rather than runtime-sendable.
+- Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.
 - Primary Codeberg adoption is flat in the current measurement window.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
@@ -27,9 +27,8 @@ Chosen lane: **primary_repo_flat_contact_handoff_packet**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 
-## Immediate primary-repo-flat contact handoff work
-- Reuse `primary_repo_flat_contact_discovery_latest.json` and `primary_repo_flat_contact_handoff_packet_latest.md` as the canonical publisher-contact asset pair
-- Focus on the fresh developer-native publishers discovered in the primary-repo-flat repair, not the saturated same-family curator queue
-- Keep each message Codeberg-first, concrete about workflow pain, and comparison/citation oriented rather than generic outbound copy
-- Refresh this packet only when the discovered target set or public contact routes materially change
-- Treat this as a different executable lane from the blocked GitHub-PR curator packet, not another measurement-hold note
+## Immediate measurement-hold work
+- Do not ship another fresh outreach/reset action in this short review window
+- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
+- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
+- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map

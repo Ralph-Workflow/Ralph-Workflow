@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-01T13:55:34.955382",
+  "generated_at": "2026-06-01T19:46:43.257458",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -173,7 +173,7 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01_primary_repo_flat_contact_handoff_packet_execution.json",
     "type": "primary_repo_flat_contact_handoff_packet_execution",
     "title": "Distribution lane execution: primary_repo_flat_contact_handoff_packet",
     "status": "prepared",
@@ -181,10 +181,10 @@
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_primary_repo_flat_contact_handoff_packet.md"
+    "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01_primary_repo_flat_contact_handoff_packet_execution.json",
     "type": "primary_repo_flat_contact_handoff_packet_execution",
     "title": "Distribution lane execution: primary_repo_flat_contact_handoff_packet",
     "status": "prepared",
@@ -192,7 +192,7 @@
     "live_external_action": false,
     "outcome_ready": false,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_primary_repo_flat_contact_handoff_packet.md"
+    "url": null
   },
   "apollo_sequence_status": {
     "generated_at": "2026-06-01T09:00:30.415992+02:00",

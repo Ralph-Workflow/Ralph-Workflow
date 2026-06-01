@@ -1,3 +1,23 @@
+### 2026-06-01 — Marketing workflow audit #19 (19:24 CEST)
+**Audit trigger:** Cron scheduled re-analysis (#19). Run at 19:46 CEST.
+
+**Key findings:**
+- **Social proof gap confirmed:** 127 PyPI downloads/day → 0 Codeberg stars = 0.000% conversion. README conversion elements already optimized (9/9). Content saturated (44 posts). The bottleneck is trust signaling, not content or visibility.
+- **All 3 external distribution lanes still blocked** — the autonomous system has maximized internal optimization. No further autonomous distribution is available without a human-unblocked lane.
+- **DDG fully collapsed Day 4** — monitoring surface completely blind. 7-day escalation threshold June 7.
+- **IndexNow cooldown active** — last submission 16:22 UTC, within 23h window. No new ping needed.
+
+**Actions executed:**
+1. Added PyPI downloads badge to Codeberg README — 1,339/month signal now visible on repo surface. Pushed to main.
+2. Added periodic Codeberg star CTA to runner.py pipeline completion — ~20% of successful runs. Pushed to main.
+3. Added IndexNow same-day cooldown guard (23h) with UTC-normalized datetime comparison.
+4. Verified handoff suppressor integration in choose_distribution_lane — all 4 suppressed stems redirect to measurement_hold.
+5. Updated MARKETING_SELF_IMPROVEMENT.md with audit #19 change log.
+
+**Repair state:** README social proof improved. Star CTA deployed to pipeline. Automonous system at structural ceiling — no more internal optimization available. System needs at least one human-unblocked distribution lane (SMTP, Apollo, or Reddit) to produce measurable repo adoption movement.
+
+---
+
 ### 2026-06-01 — Marketing workflow audit #18 (17:06 CEST)
 **Audit trigger:** Cron scheduled re-analysis (#18). Run at 17:03 CEST.
 

@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-06-01T13:55:34.955382
+- Generated: 2026-06-01T19:46:43.257458
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -71,8 +71,7 @@
 - Title: Distribution lane execution: primary_repo_flat_contact_handoff_packet
 - Status: prepared (ok=True)
 - Outcome-ready: False
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01.json
-- URL: /home/mistlight/.openclaw/workspace/drafts/2026-06-01_primary_repo_flat_contact_handoff_packet.md
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01_primary_repo_flat_contact_handoff_packet_execution.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.
