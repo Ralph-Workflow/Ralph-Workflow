@@ -2641,3 +2641,6 @@
 [2026-06-01 02:09:34] Starting Codeberg -> GitHub sync
 [2026-06-01 02:09:34] Creating dedicated sync clone in /tmp/ralph-github-sync
 [2026-06-01 02:09:58] Already up to date (HEAD=d421ab47cb8ed09de9ccec8e061641476c047154)
+[2026-06-01 02:35:43] Starting Codeberg -> GitHub sync
+[2026-06-01 02:35:43] Updating existing sync clone
+[2026-06-01 02:35:47] Already up to date (HEAD=d421ab47cb8ed09de9ccec8e061641476c047154)

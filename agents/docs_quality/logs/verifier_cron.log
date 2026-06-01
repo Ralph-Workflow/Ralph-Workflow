@@ -16663,3 +16663,103 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with the positioning document. README leads with product story (orchestrator, simple-core, composable, strong default), START_HERE provides the shortest honest first run, docs/README routes cleanly, and all promoted next-click pages reinforce the same framing with a consistent opening paragraph. No internal process leakage on top-level surfaces, no stale framing, and the engineering-practice honesty is preserved throughout.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "ralph-workflow/README.md:111 'review artifacts' \u2014 mild artifact-language residue. Rephrase to 'review files' or 'run output' to fully remove internal terminology from even secondary surfaces."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with tagline 'operating system for autonomous coding', immediately frames as orchestrator (not chat tool), simple-core-to-composition arc intact, 'Who it's for' matches ambitious-work positioning, engineering-practice dependency section present, Codeberg-primary/GitHub-mirror framing correct."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run path. Opens with simple-core framing, good-task/bad-task list matches positioning, result-first evaluation language, defers to docs/task-selection pages without link anxiety."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Clean docs switchboard with four clear routes, no internal plumbing, explicitly marks proof-oriented pages as secondary, reinforces Codeberg-primary, defers to Sphinx manual for operator path."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Opens with the canonical simple-core framing paragraph. Compares on workflow understandability not feature lists. Routes to START_HERE and first-task-guide naturally. Does not fight the main story."
+    },
+    {
+      "path": "github-mirror/docs/spec-driven-ai-agent.md",
+      "reason": "Correctly frames specs as operational (done-conditions, review standards) not ceremonial. Does not claim AW replaces engineering discipline. Routes onward coherently."
+    },
+    {
+      "path": "github-mirror/docs/unattended-coding-agent.md",
+      "reason": "Honest unattended framing \u2014 accountable not magical. Repeated 'already strong enough to start with, extend later' pattern. Routes to START_HERE, first-task-guide, and user-stories."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, well-positioned, and follows the positioning document faithfully. No hard failures. The README \u2192 START_HERE \u2192 docs/README journey presents a consistent story: simple Ralph-loop core, composable orchestration, strong default workflow, ambitious well-specified work, result-first evaluation. All promoted next-click pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md, first-task-guide.md) reinforce the same framing rather than fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "ralph-workflow/README.md line 148: 'review artifacts and logs that explain what happened' \u2014 the phrase 'review artifacts' is artifact-language the positioning doc explicitly flags as a failure signal when prominent. Move to 'logs and output that explain what happened' or similar.",
+    "Three READMEs (repo-root, ralph-workflow/, github-mirror) say slightly different things at different detail levels. Consider whether the PyPI README should stay leaner or reference the main README for the conceptual story and keep only install/run docs.",
+    "CLI flags ralph -Q, -T need independent verification against ralph --help before shipping any doc that mentions them."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with exact tagline 'operating system for autonomous coding'; explains simple-core/composable-loop/strong-default-story; clear audience fit/non-fit; comparison table frames against market alternatives; leads with product value not plumbing."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Task-first walkthrough that flows naturally from README; reinforces same core framing; routes to docs/README for deeper navigation; does not lead with internals."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clean docs map that explicitly defers to product story and operator manual; routes users by intent (fastest run / operator manual / product framing); explicitly says 'keep proof secondary' \u2014 matches positioning document's result-first framing."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted from docs map; opens with the standard 'simple Ralph-loop core, composes into complex workflows, default strong enough' framing; answers a real comparison question without fighting the main story."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md",
+      "reason": "Promoted from docs map; frames spec discipline as operational value for the workflow, not ceremony; reinforces that Ralph doesn't replace engineering practice."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

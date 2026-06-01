@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-06-01T02:49:11.000000",
+  "run_type": "marketing-distribution-lane",
+  "chosen_action": {
+    "type": "distribution_architecture_repair",
+    "channel": "process_repair",
+    "title": "Post-hold re-entry: distribution architecture repair",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_distribution_action_brief.md"
+  },
+  "why_this_action": {
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg flat at 12⭐/2 watchers/2 forks across 9-sample window",
+      "distribution_lane_latest.json: was frozen at May 25 guard_pause state",
+      "marketing_execution_board_latest.md: symlink was stale (May 31 → fixed to June 1)",
+      "ADOPTION_FUNNEL_NEXT.md: start-here/first-task guide already live since May 28",
+      "MARKETING_SELF_IMPROVEMENT.md: 20:27 addendum documented this exact stale-symlink regression"
+    ],
+    "reasoning": "Post-hold re-entry: all external lanes structurally blocked. Per contract, performed concrete process repair fixing stale execution board symlink, frozen distribution lane state, and incorrect blog inventory counting.",
+    "supporting_reasons": [
+      "Short review window cleared at 02:32 CEST — confirmed open",
+      "No untouched truthful lane exists — all external distribution blocked, blog near saturation at 43 posts",
+      "Start-here first-task guide already published May 28 — ADOPTION_FUNNEL_NEXT.md priority #1 already executed by prior run",
+      "Verification patterns blog post deployed by 00:37 run — 43rd post live",
+      "Execution board symlink was stale (May 31 → June 1) — same regression as MARKETING_SELF_IMPROVEMENT.md 20:27 addendum",
+      "Distribution lane state was frozen at May 25 guard_pause — 7 days stale",
+      "Per post-hold contract: perform concrete runtime/process repair when no truthful lane remains",
+      "Process repair improves next executable slot by ensuring agents read current lane state instead of stale pointer"
+    ]
+  },
+  "result": {
+    "ok": true,
+    "repairs_executed": 4,
+    "repairs": [
+      "execution_board_symlink_fixed",
+      "distribution_lane_state_unfrozen",
+      "blog_inventory_corrected_41_to_43",
+      "execution_board_content_replaced"
+    ]
+  }
+}
