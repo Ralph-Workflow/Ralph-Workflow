@@ -1,5 +1,5 @@
 # Measurement Window Watchdog Report
-Generated: 2026-05-31T07:10:01.122881
+Generated: 2026-06-01T07:00:31.207180
 
 ## Summary
 - Active measurement windows: 1

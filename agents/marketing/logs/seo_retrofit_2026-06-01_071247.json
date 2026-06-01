@@ -1,0 +1,23 @@
+{
+  "ran_at": "2026-06-01T07:12:47.308516+00:00",
+  "dry_run": false,
+  "total_posts": 44,
+  "posts_with_related_links_before": 1,
+  "noindex_skipped": 8,
+  "results": [
+    {
+      "slug": "multi-agent-orchestration-patterns",
+      "changes": [
+        "+4 related links",
+        "CTA OK"
+      ],
+      "title": "Multi-Agent Orchestration Patterns: Getting AI Agents to Actually Cooperate"
+    }
+  ],
+  "summary": {
+    "posts_retrofitted_links": 1,
+    "posts_retrofitted_cta": 0,
+    "posts_skipped_noindex": 0,
+    "posts_already_linked": 1
+  }
+}

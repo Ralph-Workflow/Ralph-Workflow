@@ -1,8 +1,8 @@
 # Codeberg CTA Audit Report
-Generated: 2026-05-31T07:00:22.239862+00:00
+Generated: 2026-06-01T07:00:30.456844+00:00
 
 ## Summary: FAIL
-- Files with repo links: 498
+- Files with repo links: 505
 - High severity issues: 1
 - Medium severity issues: 11
 
@@ -20,9 +20,9 @@ Generated: 2026-05-31T07:00:22.239862+00:00
 - **/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-to-combine-conversationalretrievalqachain-agen.md**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
 - **/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive/2026-05-29/marketing_2026-05-19.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
 - **/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive/2026-05-29/marketing_2026-05-20.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
-- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-21.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
-- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
-- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
-- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
-- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
-- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
+- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-21.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
+- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-22.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
+- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
+- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
+- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-26.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.
+- **/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-27.json**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.

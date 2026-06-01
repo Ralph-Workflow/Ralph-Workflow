@@ -1,0 +1,25 @@
+{
+  "checked_at": "2026-06-01T08:45:01.951022+02:00",
+  "execution_board": {
+    "artifact": "marketing_execution_board",
+    "status": "ok",
+    "issues": [],
+    "target": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_marketing_execution_board.md",
+    "content_date": "2026-06-01",
+    "content_age_days": 0
+  },
+  "distribution_lane_state": {
+    "artifact": "distribution_lane_state",
+    "status": "ok",
+    "issues": [],
+    "file_mtime": "2026-06-01T08:14:19.095598",
+    "file_age_hours": 0.5,
+    "lane": "distribution_architecture_repair",
+    "content_date": "2026-06-01",
+    "content_age_days": 0
+  },
+  "repairs_made": [],
+  "board_repaired": false,
+  "lane_repaired": false,
+  "all_ok": true
+}

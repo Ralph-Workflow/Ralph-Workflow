@@ -1,27 +1,27 @@
-# Apollo.io Channel Status — 2026-05-31 16:28 CEST
+# Apollo.io Channel Status — 2026-06-01 08:26 CEST
 
-**Status:** ❌ BLOCKED (unchanged)
+**Status:** ❌ BLOCKED (unchanged — same as 2026-05-31)
 
 ## Blockers
 
 | Blocker | Detail |
 |---|---|
-| Cloudflare anti-bot interstitial | ✅ Confirmed — browser automation hit Cloudflare JS challenge before reaching login page |
+| Cloudflare anti-bot interstitial | ✅ Confirmed — both direct HTTP and Browserless real-browser probe hit Cloudflare JS challenge before reaching the login form |
 | IP reputation | Likely — session IP flagged by Cloudflare |
-| Login attempted | No — blocked before login form loaded |
+| Login attempted | No — both probes blocked before login form |
 
 ## Session Details
 
-- **Final URL reached:** `https://app.apollo.io/#/login` (via fragment redirect after Cloudflare block)
-- **Browserless probe:** Same outcome — Cloudflare interstitial confirmed
-- **Auth endpoints reached:** 0 of 0
+- **Final URL reached:** `https://app.apollo.io/#/login` (fragment redirect, login form never rendered)
+- **Browserless probe:** Same outcome — Cloudflare interstitial detected in page body
+- **Auth endpoints reached:** 0
 
 ## Next Steps
 
-- Apollo is **not actionable** in this state
-- Repeat check confirms persistent Cloudflare blocking across full-day window
-- Next automatic check will retry via cron (~30m cycle)
-- Manual intervention required: rotate IP (VPN/proxy) or solve Cloudflare challenge
+- Apollo remains **not actionable** in this state
+- Cloudflare blocking is persistent — no change since last check
+- Next automatic check will retry via cron
+- Manual intervention required: rotate IP (VPN/residential proxy) or solve Cloudflare challenge from a clean browser session
 
 ## Raw Data
 

@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-31T07:00:22.239862+00:00",
+  "generated_at": "2026-06-01T07:00:30.456844+00:00",
   "status": "fail",
-  "total_files_with_repo_links": 498,
+  "total_files_with_repo_links": 505,
   "high_severity_count": 1,
   "medium_severity_count": 11,
   "high_severity_findings": [
@@ -56,7 +56,7 @@
       "severity": "medium"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-21.json",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-21.json",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "github_before_codeberg",
@@ -64,7 +64,7 @@
       "severity": "medium"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22.json",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-22.json",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "github_before_codeberg",
@@ -72,7 +72,7 @@
       "severity": "medium"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23.json",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23.json",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "github_before_codeberg",
@@ -80,7 +80,7 @@
       "severity": "medium"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25.json",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25.json",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "github_before_codeberg",
@@ -88,7 +88,7 @@
       "severity": "medium"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26.json",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-26.json",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "github_before_codeberg",
@@ -96,7 +96,7 @@
       "severity": "medium"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27.json",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-27.json",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "github_before_codeberg",
@@ -202,335 +202,7 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_agent-deck_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_qainsights_curator_email.txt",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_taskade_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_0xwelt_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_23blocks_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_agdex_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_agent_analytics_curator_email.txt",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_agentdepot_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_agentlocker_contact.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_aidevtools_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_aipowerstacks_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_aitoolsync_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_altern_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_andyrewlee_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_choppytoast_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_comeai_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_dariubs_awesome_workflow_automation_email.txt",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_filipecalegario_curator_email.txt",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_hesreallyhim_curator_email.txt",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_navtools_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_no_fluff_curator_email.txt",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_requesty_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_simplicitylabs_curator_email.txt",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_submitaitools_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_toolhunter_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_tools_ai_online_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_toolsland_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_vibecodinghub_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_vibehackers_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_vivy_yi_curator_email.txt",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_zhu1090093659_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_ai-for-developers_followup_email.txt",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_hidstech_publisher_outreach_email.txt",
-      "codeberg_links": 4,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_kingy_ai_curator_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_saashub_listing_correction_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_directory_confirmation_execution.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_toolchase_contact_form_message.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_aisaying_feedback_message.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_autonomous_ai_workflows_production_reliability_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_directory_confirmation_execution.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_orchestration_draft.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-26_review_ai_coding_output_before_merge_telegraph.md",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "ok",
@@ -546,47 +218,7 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_directory_confirmation_execution.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_good_unattended_task_telegraph.md",
-      "codeberg_links": 4,
-      "github_links": 4,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_primary_repo_flat_manual_review_asset.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_review_ai_coding_output_before_merge_telegraph.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_sotaaz_publisher_email.txt",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-27_unattended_agent_draft.md",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "ok",
@@ -636,14 +268,6 @@
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_publisher_outreach_packet.md",
       "codeberg_links": 6,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_show_hn_packet.md",
-      "codeberg_links": 2,
       "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -709,6 +333,22 @@
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_directory_confirmation_execution.md",
       "codeberg_links": 2,
       "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_primary_repo_flat_contact_handoff_packet.md",
+      "codeberg_links": 8,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_spec_driven_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -1474,6 +1114,382 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-22_agent-deck_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-22_qainsights_curator_email.txt",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-22_taskade_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_0xwelt_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_23blocks_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_agdex_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_agent_analytics_curator_email.txt",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_agentdepot_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_agentlocker_contact.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_aidevtools_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_aipowerstacks_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_aitoolsync_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_altern_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_andyrewlee_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_choppytoast_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_comeai_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_dariubs_awesome_workflow_automation_email.txt",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_filipecalegario_curator_email.txt",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_hesreallyhim_curator_email.txt",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_navtools_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_no_fluff_curator_email.txt",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_requesty_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_simplicitylabs_curator_email.txt",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_submitaitools_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_toolhunter_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_tools_ai_online_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_toolsland_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_vibecodinghub_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_vibehackers_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_vivy_yi_curator_email.txt",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-23_zhu1090093659_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-24_ai-for-developers_followup_email.txt",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-24_hidstech_publisher_outreach_email.txt",
+      "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-24_kingy_ai_curator_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-24_saashub_listing_correction_email.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_20_25/2026-05-25_toolchase_contact_form_message.txt",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_may_26_30/2026-05-28_show_hn_packet.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_pre_may_28/2026-05-25_directory_confirmation_execution.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_pre_may_28/2026-05-26_autonomous_ai_workflows_production_reliability_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_pre_may_28/2026-05-26_directory_confirmation_execution.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_pre_may_28/2026-05-26_orchestration_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_pre_may_28/2026-05-26_review_ai_coding_output_before_merge_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_pre_may_28/2026-05-27_directory_confirmation_execution.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_pre_may_28/2026-05-27_good_unattended_task_telegraph.md",
+      "codeberg_links": 4,
+      "github_links": 4,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_pre_may_28/2026-05-27_primary_repo_flat_manual_review_asset.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_pre_may_28/2026-05-27_review_ai_coding_output_before_merge_telegraph.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/archive_pre_may_28/2026-05-27_unattended_agent_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlink_execution_latest.md",
       "codeberg_links": 2,
       "github_links": 0,
@@ -2026,6 +2042,14 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md",
+      "codeberg_links": 8,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md",
       "codeberg_links": 2,
       "github_links": 0,
@@ -2060,6 +2084,14 @@
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/reddit_next_window_packets_latest.md",
       "codeberg_links": 8,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/so_repair_handoff_latest.md",
+      "codeberg_links": 2,
       "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -2115,14 +2147,6 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-28_autonomous-mode-wrapper-for-claude-code.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md",
       "codeberg_links": 2,
       "github_links": 0,
       "finding_type": "ok",
@@ -2274,6 +2298,14 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/NON_REDDIT_CHANNELS_NEXT.md",
       "codeberg_links": 6,
       "github_links": 4,
@@ -2354,6 +2386,1246 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/hn_submission_2026-05-21_234009.json",
+      "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/hn_submission_2026-05-21_234746.json",
+      "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-21.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "github_before_codeberg",
+      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
+      "severity": "medium"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-22.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "github_before_codeberg",
+      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
+      "severity": "medium"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-22_agent-deck_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-22_ai-for-developers_curator_email.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-22_aigearbase_submission.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-22_runtime_truthfulness_fix.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-22_thenextai_submission.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-22_toolshelf_submission.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "github_before_codeberg",
+      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
+      "severity": "medium"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_034620_agentlocker_curator_contact.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_0xwelt_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_agdex_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_agent-analytics_curator_outreach.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_agentdepot_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_aicavo_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_aidevtools_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_aiforcode_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_aimarketing_directory_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_aipowerstacks_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_aitoolboard_submission.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_aitools_inc_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_aitoolsmagic_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_aitoolsync_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_altern_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_andyrewlee_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_authorityaitools_contact_submission.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_authorityaitools_contact_submission.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_b2bsaasmarket_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_choppytoast_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_codeaidirectory_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_codeaidirectory_submission_attempt.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_comeai_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_dariubs_awesome_workflow_curator_outreach.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_deepyard_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_deepyard_submission.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_devtoolcenter_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_docs_route_repair.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_hesreallyhim_curator_outreach.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_indiestack_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_ithiria894_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_launchkittools_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_listyourtool_submission.json",
+      "codeberg_links": 4,
+      "github_links": 4,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_madewithstack_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_nav_ai_submission.json",
+      "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_navtools_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_no_fluff_curator_outreach.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_openagents_submission.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_openaitoolshub_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_remaining_comparison_posts_batch.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_repo_conversion_docs_push.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_requesty_publisher_outreach_backfill.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_simplicitylabs_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_skiln_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_subinium_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_submitaitools_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_thetoolify_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_toolhunter_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_tools_ai_online_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_toolscout_submission.json",
+      "codeberg_links": 4,
+      "github_links": 4,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_toolshelf_submission.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_toolsland_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_vbwebtools_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_vibecodinghub_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_vibehackers_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-23_zhu1090093659_curator_outreach.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_040259_claudestack_submission.json",
+      "codeberg_links": 4,
+      "github_links": 4,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_045030_stackoverflow_lane_repair.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_ai_coding_stack_curator_execution.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_ai_dev_setup_contact_submission.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_ai_dev_setup_contact_submission.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_ai_for_developers_followup_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_aiagents_directory_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_aiagents_directory_submission.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_aiide_distribution_action.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_axme_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_axme_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_bnlnpps_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_bollwerk_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_bollwerk_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_claude_code_alternatives_submission.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_claudetory_submission.json",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_comparison_pages_codeberg_cta_deploy.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_hidstech_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_hidstech_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_homepage_search_intent_deploy.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_kingy_ai_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_kingy_ai_curator_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_paircoder_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_paircoder_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_primary_repo_flat_repair.md",
+      "codeberg_links": 8,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_repo_conversion_first_run_path_tighten.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_saashub_live_listing_correction.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_saviorand_curator_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_sitepoint_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_sitepoint_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_stackoverflow_cooldown_guard_repair.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_stackoverflow_run_check_outcome.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_tembo_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_tembo_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_toolnova_submission.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_wix_engineering_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_wix_engineering_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_wyeworks_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-24_wyeworks_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "github_before_codeberg",
+      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
+      "severity": "medium"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_002428_toolchase_contact_form_submission.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_231150_outcome_system_underpowered.json",
+      "codeberg_links": 6,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_beam_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_beam_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_codivox_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_langpop_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_langpop_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_morph_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_morph_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_nxcode_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_saashub_repo_routing_execution.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_saashub_secondary_surface_comment_execution.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_saashub_secondary_surface_comment_execution.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_toolchase_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_toolchase_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_toolradar_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-25_toolradar_publisher_outreach.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-26.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "github_before_codeberg",
+      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
+      "severity": "medium"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-26_035016_aisaying_feedback_submission.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-26_035016_aisaying_feedback_submission.md",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-26_071504_apollo_outbound_verification.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-26_072248_apollo_outbound_verification.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-26_072359_apollo_outbound_verification.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-26_145518_reddit_comment_published.md",
+      "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-26_164735_reddit_comment_published.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-27.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "github_before_codeberg",
+      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
+      "severity": "medium"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-27_092407_apollo_outbound_verification.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-27_092656_apollo_outbound_verification.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-27_codersera_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-27_sotaaz_publisher_outreach_backfill.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-28_024517_stackoverflow_lane_runtime_repair.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-28_024517_stackoverflow_lane_runtime_repair.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-28_025220_primary_repo_flat_contact_discovery_repair.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-28_025220_primary_repo_flat_contact_discovery_repair.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-28_0948_start_here_guide.json",
+      "codeberg_links": 1,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-28_1138_cfg_contact_live.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-28_cfg_contact_submission.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-28_dupple_publisher_outreach.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-28_stackoverflow_manual_delivery.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-29.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-29_0930_nested_analysis_loops_deployed.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-30.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-30_081100_ci-cd-content-amplification.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-30_1238_social_card_deployed.json",
+      "codeberg_links": 1,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-31.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/marketing_2026-05-31_1603.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/reddit_next_window_bodies.json",
+      "codeberg_links": 16,
+      "github_links": 10,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/archive_pre_june_2026/reddit_structural_bodies.json",
+      "codeberg_links": 18,
+      "github_links": 12,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_status_latest.json",
       "codeberg_links": 2,
       "github_links": 2,
@@ -2394,1214 +3666,6 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/hn_submission_2026-05-21_234009.json",
-      "codeberg_links": 4,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/hn_submission_2026-05-21_234746.json",
-      "codeberg_links": 4,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-21.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "github_before_codeberg",
-      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
-      "severity": "medium"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "github_before_codeberg",
-      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
-      "severity": "medium"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_agent-deck_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_ai-for-developers_curator_email.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_aigearbase_submission.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_runtime_truthfulness_fix.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_thenextai_submission.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_toolshelf_submission.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "github_before_codeberg",
-      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
-      "severity": "medium"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_034620_agentlocker_curator_contact.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_0xwelt_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_agdex_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_agent-analytics_curator_outreach.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_agentdepot_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aicavo_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aidevtools_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aiforcode_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aimarketing_directory_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aipowerstacks_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aitoolboard_submission.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aitools_inc_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aitoolsmagic_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aitoolsync_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_altern_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_andyrewlee_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_authorityaitools_contact_submission.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_authorityaitools_contact_submission.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_b2bsaasmarket_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_choppytoast_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_codeaidirectory_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_codeaidirectory_submission_attempt.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_comeai_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_dariubs_awesome_workflow_curator_outreach.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_deepyard_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_deepyard_submission.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_devtoolcenter_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_docs_route_repair.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_hesreallyhim_curator_outreach.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_indiestack_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_ithiria894_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_launchkittools_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_listyourtool_submission.json",
-      "codeberg_links": 4,
-      "github_links": 4,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_madewithstack_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_nav_ai_submission.json",
-      "codeberg_links": 4,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_navtools_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_no_fluff_curator_outreach.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_openagents_submission.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_openaitoolshub_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_remaining_comparison_posts_batch.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_repo_conversion_docs_push.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_requesty_publisher_outreach_backfill.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_simplicitylabs_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_skiln_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_subinium_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_submitaitools_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_thetoolify_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_toolhunter_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_tools_ai_online_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_toolscout_submission.json",
-      "codeberg_links": 4,
-      "github_links": 4,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_toolshelf_submission.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_toolsland_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_vbwebtools_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_vibecodinghub_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_vibehackers_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_zhu1090093659_curator_outreach.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_040259_claudestack_submission.json",
-      "codeberg_links": 4,
-      "github_links": 4,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_045030_stackoverflow_lane_repair.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_ai_coding_stack_curator_execution.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_ai_dev_setup_contact_submission.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_ai_dev_setup_contact_submission.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_ai_for_developers_followup_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_aiagents_directory_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_aiagents_directory_submission.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_aiide_distribution_action.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_axme_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_axme_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_bnlnpps_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_bollwerk_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_bollwerk_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_claude_code_alternatives_submission.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_claudetory_submission.json",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_comparison_pages_codeberg_cta_deploy.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_hidstech_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_hidstech_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_homepage_search_intent_deploy.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_kingy_ai_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_kingy_ai_curator_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_paircoder_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_paircoder_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_primary_repo_flat_repair.md",
-      "codeberg_links": 8,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_repo_conversion_first_run_path_tighten.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_saashub_live_listing_correction.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_saviorand_curator_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_sitepoint_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_sitepoint_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_stackoverflow_cooldown_guard_repair.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_stackoverflow_run_check_outcome.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_tembo_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_tembo_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_toolnova_submission.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_wix_engineering_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_wix_engineering_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_wyeworks_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_wyeworks_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "github_before_codeberg",
-      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
-      "severity": "medium"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_002428_toolchase_contact_form_submission.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_231150_outcome_system_underpowered.json",
-      "codeberg_links": 6,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_beam_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_beam_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_codivox_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_langpop_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_langpop_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_morph_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_morph_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_nxcode_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_saashub_repo_routing_execution.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_saashub_secondary_surface_comment_execution.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_saashub_secondary_surface_comment_execution.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_toolchase_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_toolchase_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_toolradar_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-25_toolradar_publisher_outreach.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "github_before_codeberg",
-      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
-      "severity": "medium"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_035016_aisaying_feedback_submission.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_035016_aisaying_feedback_submission.md",
-      "codeberg_links": 4,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_071504_apollo_outbound_verification.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072248_apollo_outbound_verification.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_072359_apollo_outbound_verification.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_145518_reddit_comment_published.md",
-      "codeberg_links": 4,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-26_164735_reddit_comment_published.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "github_before_codeberg",
-      "detail": "GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.",
-      "severity": "medium"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_092407_apollo_outbound_verification.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_092656_apollo_outbound_verification.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_codersera_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-27_sotaaz_publisher_outreach_backfill.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_024517_stackoverflow_lane_runtime_repair.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_024517_stackoverflow_lane_runtime_repair.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_025220_primary_repo_flat_contact_discovery_repair.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_025220_primary_repo_flat_contact_discovery_repair.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_0948_start_here_guide.json",
-      "codeberg_links": 1,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_1138_cfg_contact_live.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_cfg_contact_submission.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_dupple_publisher_outreach.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-28_stackoverflow_manual_delivery.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-29_0930_nested_analysis_loops_deployed.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_081100_ci-cd-content-amplification.json",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-30_1238_social_card_deployed.json",
-      "codeberg_links": 1,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
       "codeberg_links": 4,
       "github_links": 2,
@@ -3619,14 +3683,6 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_capability_latest.json",
-      "codeberg_links": 4,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_capability_latest.md",
       "codeberg_links": 2,
       "github_links": 0,
       "finding_type": "ok",
@@ -3717,22 +3773,6 @@
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-26_145518_reddit-reddit-com-r-ai-agents-seedance-2-0-is-impressive-it-s-still-not-a-produc.md",
       "codeberg_links": 2,
       "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_next_window_bodies.json",
-      "codeberg_links": 16,
-      "github_links": 10,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_structural_bodies.json",
-      "codeberg_links": 18,
-      "github_links": 12,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -4066,6 +4106,14 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/toml-workflow-configuration-guide.md",
+      "codeberg_links": 3,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/unattended-coding-agent-what-done-actually-means.md",
       "codeberg_links": 2,
       "github_links": 2,
@@ -4077,6 +4125,14 @@
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/vendor-neutral-ai-coding-platform-independent-workflow.md",
       "codeberg_links": 2,
       "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/verification-patterns-for-ai-generated-code.md",
+      "codeberg_links": 4,
+      "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"

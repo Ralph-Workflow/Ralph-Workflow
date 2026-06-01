@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-28T07:12:13.607466+00:00",
+  "generated_at": "2026-06-01T07:00:31.273668+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -45,14 +45,263 @@
           "label": "GitHub issue"
         }
       ],
-      "recommended_next_step": "Telegram consulting contact path is explicitly confirmed",
-      "status": "outreach_prepared",
-      "last_contact_at": "2026-05-28T16:56:39.007493+00:00",
-      "last_contact_path": "telegram:https://t.me/ctxtdev",
-      "outreach_email_artifact": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_ctxtdev_publisher_outreach_email.txt",
-      "outreach_email_subject": "Ralph Workflow for your next contract-first agent workflow roundup",
-      "outreach_email_recipient": "Telegram: t.me/ctxtdev",
-      "contact_method": "telegram"
+      "recommended_next_step": "Telegram consulting contact path is explicitly confirmed"
+    },
+    {
+      "target": "AXME Code",
+      "article_url": "https://code.axme.ai/",
+      "root_url": "https://code.axme.ai/",
+      "hook": "Agent-native durability and Claude Code memory/safety positioning",
+      "reason": "Adjacent reliability problem from the workflow side; likely receptive to comparative mention.",
+      "outreach_subject": "RalphWorkflow as a complementary workflow layer to durable agent runs",
+      "channels": [
+        {
+          "type": "email",
+          "value": "contact@axme.ai",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://code.axme.ai/docs",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://code.axme.ai",
+          "label": "website"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/AxmeAI/axme-code/issues/new",
+          "label": "GitHub issue"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "WyeWorks",
+      "article_url": "https://www.wyeworks.com/blog",
+      "root_url": "https://www.wyeworks.com/",
+      "hook": "Workflow-engineering positioning and AI delivery consulting audience",
+      "reason": "Publishes on AI workflow engineering and can plausibly cite open-source workflow systems.",
+      "outreach_subject": "RalphWorkflow might fit your workflow-engineering follow-up",
+      "channels": [
+        {
+          "type": "email",
+          "value": "hello@wyeworks.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://www.wyeworks.com/about-us",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://www.wyeworks.com/blog",
+          "label": "contact form"
+        },
+        {
+          "type": "website",
+          "value": "https://www.wyeworks.com",
+          "label": "website"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/wyeworks",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/wyeworks",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/wyeworks",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "Bollwerk / Werkstatt",
+      "article_url": "https://bollwerk.ai/blog/werkstatt-open-source/",
+      "root_url": "https://bollwerk.ai/",
+      "hook": "Werkstatt open-source workflow/skill discipline positioning",
+      "reason": "Adjacent coding-agent workflow audience; good fit for an adjacent-system mention or comparison.",
+      "outreach_subject": "RalphWorkflow as an adjacent workflow-system reference for Werkstatt readers",
+      "channels": [
+        {
+          "type": "email",
+          "value": "sales@bollwerk.ai",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://bollwerk.ai",
+          "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://bollwerk.ai/assets/preload-helper-ckwbz45p.js",
+          "label": "support page"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/Bollwerkio/werkstatt/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/obra/superpowers/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/bollwerkai",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/BollwerkAI",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/bollwerkai",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "ToolChase",
+      "article_url": "https://toolchase.com/blog/best-ai-coding-tools-2026/",
+      "root_url": "https://toolchase.com/",
+      "hook": "AI coding tools comparison page already covering Claude Code, Codex, Cursor, and Aider",
+      "reason": "Direct comparison/discovery audience already evaluating AI coding tools and adjacent workflow choices.",
+      "outreach_subject": "Ralph Workflow for your next AI coding tools comparison refresh",
+      "channels": [
+        {
+          "type": "email",
+          "value": "hello@toolchase.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://toolchase.com/about",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://toolchase.com/advertise",
+          "label": "advertise page"
+        },
+        {
+          "type": "website",
+          "value": "https://toolchase.com/contact",
+          "label": "contact page"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/ToolChase",
+          "label": "X/Twitter"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "Beam",
+      "article_url": "https://getbeam.dev/blog/ai-coding-agents-comparison-2026.html",
+      "root_url": "https://getbeam.dev/",
+      "hook": "Claude Code vs Cursor vs Codex comparison for terminal-first builders",
+      "reason": "Highly adjacent audience already thinking about agent autonomy, workflow fit, and terminal-native execution.",
+      "outreach_subject": "Ralph Workflow as a workflow-system reference for your coding agents comparison",
+      "channels": [
+        {
+          "type": "email",
+          "value": "frank@nextuptechnologies.co",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://getbeam.dev/blog/claude-code-agent-teams-guide.html",
+          "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://getbeam.dev",
+          "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://getbeam.dev/blog/beam-gemini-cli-support.html",
+          "label": "support page"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/tmux/tmux/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/zellij-org/zellij/issues/new",
+          "label": "GitHub issue"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "NxCode",
+      "article_url": "https://www.nxcode.io/resources/news/codex-vs-cursor-vs-claude-code-2026",
+      "root_url": "https://www.nxcode.io/",
+      "hook": "Codex vs Cursor vs Claude Code comparison with workflow-specific tradeoffs",
+      "reason": "Direct AI-coding comparison audience already evaluating when autonomous background agents beat interactive editors.",
+      "outreach_subject": "Ralph Workflow as a workflow-system addition to your AI coding tools comparison",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://www.nxcode.io/ar/company/about",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://www.nxcode.io/ar/company/careers",
+          "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://www.nxcode.io/ar/contact",
+          "label": "contact page"
+        },
+        {
+          "type": "email",
+          "value": "support@nxcode.io",
+          "label": "email"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/nxcode-io/discussions/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/nxcode",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/NxCodeStudio",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/nxcode",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
     },
     {
       "target": "TIMEWELL",
@@ -93,14 +342,89 @@
           "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "email/contact send path is now identified",
-      "status": "outreach_prepared",
-      "last_contact_at": "2026-05-28T16:56:39.007493+00:00",
-      "last_contact_path": "email:timewell@timewell.jp",
-      "outreach_email_artifact": "/home/mistlight/.openclaw/workspace/drafts/2026-05-28_timewell_publisher_outreach_email.txt",
-      "outreach_email_subject": "Ralph Workflow for your next AI coding tools benchmark update",
-      "outreach_email_recipient": "timewell@timewell.jp",
-      "contact_method": "email"
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "AI Saying",
+      "article_url": "https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix",
+      "root_url": "https://aisaying.net/",
+      "hook": "AI Coding Tools Compared: The Complete 2026 Matrix (14 Tools Ranked)",
+      "reason": "Fresh AI coding tools comparison audience already evaluating terminal agents, editors, and workflow tradeoffs.",
+      "outreach_subject": "Ralph Workflow for your AI coding tools comparison update",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://aisaying.net",
+          "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix",
+          "label": "feedback form"
+        }
+      ],
+      "recommended_next_step": "public feedback-form contact path is now identified"
+    },
+    {
+      "target": "Toolradar",
+      "article_url": "https://toolradar.com/guides/best-ai-coding-tools",
+      "root_url": "https://toolradar.com/",
+      "hook": "Best AI Coding Tools in 2026",
+      "reason": "B2B buyer guide audience already comparing coding-agent tradeoffs and adjacent workflow layers.",
+      "outreach_subject": "Ralph Workflow as a workflow-system addition to your AI coding tools guide",
+      "channels": [
+        {
+          "type": "email",
+          "value": "editorial@toolradar.com",
+          "label": "email"
+        },
+        {
+          "type": "email",
+          "value": "louis@dupple.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://toolradar.com/about",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://toolradar.com/advertise",
+          "label": "advertise page"
+        },
+        {
+          "type": "website",
+          "value": "https://toolradar.com/advertise/case-studies",
+          "label": "advertise page"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/Nadeus/toolradar-mcp/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/toolradar",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/louiscorneloup",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://linkedin.com/company/toolradar",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/in/louis-corneloup-0036b5138",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
     },
     {
       "target": "TLDL",
@@ -136,10 +460,58 @@
           "label": "X/Twitter"
         }
       ],
-      "recommended_next_step": "GitHub issue/PR path is now identified",
-      "status": "contact_prepared_no_sendable_channel",
-      "last_contact_at": "2026-05-28T16:58:24.693485+00:00",
-      "note": "Only GitHub issue, X/Twitter, website channels \u2014 no email found. Marked as prepared but not sendable from this runtime."
+      "recommended_next_step": "GitHub issue/PR path is now identified"
+    },
+    {
+      "target": "Requesty",
+      "article_url": "https://www.requesty.ai/blog/agentic-coding-tools-compared-2026-claude-code-cursor-codex-aider",
+      "root_url": "https://www.requesty.ai/",
+      "hook": "Agentic Coding Tools Compared (2026): Claude Code, Cursor, Codex, Aider, and the Gateway That Connects Them",
+      "reason": "High-intent agentic-coding comparison audience already evaluating tool stacks, gateways, and workflow control layers.",
+      "outreach_subject": "Ralph Workflow for your next agentic coding tools comparison refresh",
+      "channels": [
+        {
+          "type": "email",
+          "value": "sales@requesty.ai",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://requesty.ai",
+          "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://www.requesty.ai",
+          "label": "website"
+        },
+        {
+          "type": "website",
+          "value": "https://www.requesty.ai/support",
+          "label": "support page"
+        },
+        {
+          "type": "email",
+          "value": "support@requesty.ai",
+          "label": "email"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/RequestyAI",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/requesty",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/in/thibaultjaigu",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
     },
     {
       "target": "ComputingForGeeks",
@@ -180,10 +552,33 @@
           "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "public website contact path is now identified",
-      "status": "contact_prepared_website_form_only",
-      "last_contact_at": "2026-05-28T16:58:24.693485+00:00",
-      "note": "Has /contact page but no email address found. X/LinkedIn available. Runtime-sendable email path not discovered."
+      "recommended_next_step": "public website contact path is now identified"
+    },
+    {
+      "target": "SOTAAZ",
+      "article_url": "https://www.sotaaz.com/post/cursor-vs-claude-code-vs-codex-2026-en",
+      "root_url": "https://www.sotaaz.com/",
+      "hook": "2026 AI Coding Tool War: Cursor vs Claude Code vs Codex \u2014 Hands-On Comparison",
+      "reason": "AI-engineer readers already consuming hands-on coding-agent comparisons and adjacent orchestration pieces.",
+      "outreach_subject": "Ralph Workflow for your next AI coding tools comparison update",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://sotaaz.com",
+          "label": "website"
+        },
+        {
+          "type": "email",
+          "value": "support@oncreative.ai",
+          "label": "email"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/sotaaz_lab",
+          "label": "X/Twitter"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
     },
     {
       "target": "SitePoint",
@@ -205,8 +600,8 @@
         },
         {
           "type": "website",
-          "value": "https://www.sitepoint.com/author/sitepointteam",
-          "label": "website"
+          "value": "https://www.sitepoint.com/ai-is-not-your-accessibility-expert-what-llms-still-miss-about-wcag",
+          "label": "about page"
         },
         {
           "type": "email",
@@ -249,30 +644,231 @@
           "label": "X/Twitter"
         }
       ],
-      "recommended_next_step": "email/contact send path is now identified",
-      "status": "sent_via_email",
-      "last_contact_at": "2026-05-24T08:46:12.039160+00:00",
-      "last_contact_path": "email:support@sitepoint.com",
-      "contact_method": "email",
-      "outreach_email_artifact": "/home/mistlight/.openclaw/workspace/drafts/2026-05-24_sitepoint_publisher_outreach_email.md"
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "Dupple",
+      "article_url": "https://dupple.com/learn/claude-code-vs-cursor",
+      "root_url": "https://dupple.com/",
+      "hook": "Claude Code vs Cursor in 2026: Which AI Coding Tool Should You Use?",
+      "reason": "High-reach developer and AI-tools audience already evaluating coding workflows, with a strong newsletter-plus-directory surface that can route qualified evaluators to Codeberg-first workflow comparisons.",
+      "outreach_subject": "Ralph Workflow for your next AI coding workflow comparison refresh",
+      "channels": [
+        {
+          "type": "email",
+          "value": "louis@dupple.com",
+          "label": "email"
+        },
+        {
+          "type": "email",
+          "value": "techpresso@dupple.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://dupple.com/work-with-us",
+          "label": "work with me page"
+        },
+        {
+          "type": "website",
+          "value": "https://dupple.com/about",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://dupple.com/advertise",
+          "label": "advertise page"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/dupple_com",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/louiscorneloup",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/dupple",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/in/louis-corneloup-0036b5138",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "Codersera",
+      "article_url": "https://codersera.com/blog/ai-coding-agents-complete-guide-2026/",
+      "root_url": "https://codersera.com/",
+      "hook": "AI Coding Agents in 2026: The Complete Guide",
+      "reason": "Fresh AI coding agent guide with strong evaluator intent and a public support path that can carry a Codeberg-first workflow addition.",
+      "outreach_subject": "Ralph Workflow for your next AI coding agents guide refresh",
+      "channels": [
+        {
+          "type": "email",
+          "value": "info@codersera.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://codersera.com/about-us",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://codersera.com/blog",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://codersera.com/blog/hire",
+          "label": "contact page"
+        },
+        {
+          "type": "email",
+          "value": "support@codersera.com",
+          "label": "email"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/anthropics/claude-code/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/QwenLM/WebWorldncd/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/codersera",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/codersera11",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/codersera",
+          "label": "LinkedIn"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/codersera1",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "Codivox",
+      "article_url": "https://codivox.com/comparisons/ai-coding-tools/",
+      "root_url": "https://codivox.com/",
+      "hook": "AI Coding Tools Comparison 2026",
+      "reason": "Direct AI coding comparison page with a public email path and a fit for workflow-layer positioning.",
+      "outreach_subject": "Ralph Workflow for your AI coding tools comparison page",
+      "channels": [
+        {
+          "type": "email",
+          "value": "hello@codivox.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://codivox.com/about",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://codivox.com/contact",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://codivox.com/hire",
+          "label": "contact page"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/codivox",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/codivox",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
+    },
+    {
+      "target": "Morph",
+      "article_url": "https://www.morphllm.com/best-ai-coding-agents-2026",
+      "root_url": "https://www.morphllm.com/",
+      "hook": "14 Best AI Coding Agents (2026): Full Rankings",
+      "reason": "Fresh AI coding agent rankings page already comparing terminal agents and multi-agent workflows; good fit for a workflow-system addition that points evaluators to Codeberg first.",
+      "outreach_subject": "Ralph Workflow for your AI coding agents rankings page",
+      "channels": [
+        {
+          "type": "email",
+          "value": "info@morphllm.com",
+          "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://www.morphllm.com/about",
+          "label": "about page"
+        },
+        {
+          "type": "website",
+          "value": "https://www.morphllm.com/contact",
+          "label": "contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://www.morphllm.com/docs",
+          "label": "contact page"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/Aider-AI/aider/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/BurntSushi/ripgrep/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/makenotion/claude-code-notion-plugin/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/CerebrasSystems/status/1978874694825840679",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/morphllm",
+          "label": "X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/company/morphllm",
+          "label": "LinkedIn"
+        }
+      ],
+      "recommended_next_step": "email/contact send path is now identified"
     }
-  ],
-  "omitted_recent_targets": [
-    "AI Saying",
-    "AXME Code",
-    "Beam",
-    "Bollwerk / Werkstatt",
-    "Codersera",
-    "Codivox",
-    "Dupple",
-    "Morph",
-    "NxCode",
-    "Requesty",
-    "SOTAAZ",
-    "ToolChase",
-    "Toolradar",
-    "WyeWorks"
-  ],
-  "updated_at": "2026-05-28T16:58:24.693485+00:00",
-  "summary": "Truth-model repair: SitePoint was sent 2026-05-24 (not never). ctxt.dev & TIMEWELL drafts created. TLDL & ComputingForGeeks lack runtime-sendable email channels."
+  ]
 }

@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-01T08:07:07
+Generated: 2026-06-01T09:22:56
 Chosen lane: **primary_repo_flat_contact_handoff_packet**
 
 ## Why this lane
@@ -10,7 +10,8 @@ Chosen lane: **primary_repo_flat_contact_handoff_packet**
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
 - Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.
 - Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.
-- Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (TIMEWELL, SitePoint), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.
+- Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (AXME Code, WyeWorks, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.
+- The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, so another packet refresh would be fake progress even if the exact target list drifted.
 - The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
