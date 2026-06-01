@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-01T14:04:19.768077+02:00",
+  "checked_at": "2026-06-01T15:02:54.687883+02:00",
   "verdict": "qualified_pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
@@ -31,12 +31,12 @@
     {
       "claim": "architecture verification isolates external domain blockers as watchpoints instead of manufacturing new architecture incidents",
       "status": "verified",
-      "details": "External blockers present: marketing-active-loop:live_error, blocked-channel-recovery:timeout, marketing_independent_verification:stale_artifact"
+      "details": "External blockers present: blocked-channel-recovery:timeout, marketing_independent_verification:stale_artifact"
     },
     {
       "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
       "status": "verified",
-      "details": "recent_failures=0, consecutive_passes_since_last_fail=95"
+      "details": "recent_failures=0, consecutive_passes_since_last_fail=94"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -78,7 +78,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Health monitor reports jobs_checked=24 and issues_found=5."
+      "summary": "Health monitor reports jobs_checked=24 and issues_found=4."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
@@ -93,7 +93,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]

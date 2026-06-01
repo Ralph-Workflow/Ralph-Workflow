@@ -38691,3 +38691,87 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The README \u2192 START_HERE \u2192 docs/README journey is coherent, well-ordered, and fully aligned with the positioning. All promoted next-click pages reinforce the same simple-core / composable-orchestration / strong-default-workflow story. No hard failures detected.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (root)",
+      "reason": "Opens with 'operating system for autonomous coding', frames Ralph Workflow as an AI agent orchestrator built on a simple Ralph-loop core that composes into complex workflows, and ships a strong default workflow. No internal plumbing on the first screen. Clear audience fit/non-fit. Result-first evaluation language throughout."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Shortest honest first run. Leads with product story, task selection guidance, clear install/run, and a result-oriented success definition ('real repo change that matches the written task, meaningful checks that ran'). No artifact or handoff plumbing."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself after README and START_HERE. Routes by user goal. Includes a 'Keep proof secondary' directive that directly enforces the positioning guardrails. Product-framing section offers deeper positioning pages instead of process receipts."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces simple-at-center / stronger-in-composition / useful-before-customization story. Does not drift into plumbing or reviewable-output framing."
+    },
+    {
+      "path": "docs/unattended-coding-agent.md",
+      "reason": "Frames unattended use as accountable not magical. Keeps the engineering-practice dependency front and center. Routes back to the same journey."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The documentation system is well-aligned with the positioning. README \u2192 START_HERE \u2192 docs/README flows coherently with consistent core messaging. No internal leakage in lead positions. Promoted next-click pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, first-task-guide.md, unattended-coding-agent.md) reinforce the same story instead of fighting it. Audience fit/non-fit is explicit. Link anxiety is low. The PyPI README is a secondary surface with appropriately more operational detail.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with exact positioning language ('operating system for autonomous coding'), immediately explains simple Ralph-loop core \u2192 composable framework, leads with result-first evaluation, calls out audience fit explicitly, and the built-in capabilities list is brief and in a non-lead position."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run with result-first success criteria. Clean install/run flow. No artifacts, bundles, or internal plumbing. Next pages are minimal and precise."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Routes users cleanly by intent. Includes 'Keep proof secondary' section \u2014 an explicit structural choice that matches the positioning guardrails. Codeberg primary is called out."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.

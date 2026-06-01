@@ -2722,3 +2722,12 @@
 [2026-06-01 14:05:16] Starting Codeberg -> GitHub sync
 [2026-06-01 14:05:16] Updating existing sync clone
 [2026-06-01 14:05:21] Already up to date (HEAD=d421ab47cb8ed09de9ccec8e061641476c047154)
+[2026-06-01 14:36:04] Starting Codeberg -> GitHub sync
+[2026-06-01 14:36:04] Creating dedicated sync clone in /tmp/ralph-github-sync
+[2026-06-01 14:36:20] Already up to date (HEAD=d421ab47cb8ed09de9ccec8e061641476c047154)
+[2026-06-01 15:06:35] Starting Codeberg -> GitHub sync
+[2026-06-01 15:06:35] Updating existing sync clone
+[2026-06-01 15:06:40] Already up to date (HEAD=d421ab47cb8ed09de9ccec8e061641476c047154)
+[2026-06-01 15:06:44] Starting Codeberg -> GitHub sync
+[2026-06-01 15:06:44] Updating existing sync clone
+[2026-06-01 15:06:49] Already up to date (HEAD=d421ab47cb8ed09de9ccec8e061641476c047154)
