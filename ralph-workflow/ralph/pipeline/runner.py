@@ -7,6 +7,7 @@ plumbing that connects them.
 
 from __future__ import annotations
 
+import os
 from inspect import signature
 from typing import TYPE_CHECKING, cast
 
@@ -31,11 +32,10 @@ from ralph.mcp.server.lifecycle import (
     start_mcp_server,
 )
 from ralph.mcp.session_plan import build_session_mcp_plan
+from ralph.onboarding import CODEBERG_STAR_CTA
 from ralph.phases import handle_phase, register_role_handlers
 from ralph.pipeline import checkpoint as ckpt
-from ralph.pipeline._runner_interrupt import (
-    handle_keyboard_interrupt as _handle_keyboard_interrupt,
-)
+from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt as _handle_keyboard_interrupt
 from ralph.pipeline._runner_mcp_validation import (
     default_probe_agent_transports as _default_probe_agent_transports,
 )
@@ -745,19 +745,7 @@ def _handle_inline_effect(
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
-        emit_display_line(display, None, "[green]Pipeline completed successfully.[/green]")
-        # Periodic star CTA — shown ~20% of successful runs.
-        # Only fires after first-run (first-run already shows full welcome panel with star CTA).
-        # Uses process-id hash to avoid deterministic spam: each user sees it ~1 in 5 runs.
-        import os as _os
-        _show_cta = (hash(str(_os.getpid()) + str(_os.getenv('USER', ''))) % 5) == 0
-        if _show_cta:
-            try:
-                from ralph.onboarding import CODEBERG_STAR_CTA
-                emit_display_line(display, None, f"[bold yellow]{CODEBERG_STAR_CTA}[/bold yellow]")
-            except ImportError:
-                pass
-        return 0
+        return _emit_success_exit(display)
 
     if isinstance(effect, ExitFailureEffect):
         emit_display_line(
@@ -777,6 +765,17 @@ def _handle_inline_effect(
         return recovered_state
 
     return None
+
+
+def _emit_success_exit(display: ParallelDisplay | LegacyConsoleDisplay | None) -> int:
+    emit_display_line(display, None, "[green]Pipeline completed successfully.[/green]")
+    # Periodic star CTA - shown ~20% of successful runs.
+    # Only fires after first-run (first-run already shows full welcome panel with star CTA).
+    # Uses process-id hash to avoid deterministic spam: each user sees it ~1 in 5 runs.
+    show_cta = (hash(str(os.getpid()) + str(os.getenv("USER", ""))) % 5) == 0
+    if show_cta:
+        emit_display_line(display, None, f"[bold yellow]{CODEBERG_STAR_CTA}[/bold yellow]")
+    return 0
 
 
 def _call_determine_effect_from_policy(
@@ -909,4 +908,105 @@ def execute_agent_effect(
         invoke_agent=deps.invoke_agent,
         agent_invocation_error=deps.agent_invocation_error,
         agent_registry=deps.agent_registry,
-        show_phase_start_cb=deps.show_p
+        show_phase_start_cb=deps.show_phase_start_cb,
+        set_session_id_cb=deps.set_session_id_cb,
+        start_mcp_server_fn=cast(
+            "_StartMcpServerFn | None",
+            effective_start_fn or deps.start_mcp_server_fn,
+        ),
+        shutdown_mcp_server_fn=cast(
+            "_ShutdownMcpServerFn | None",
+            effective_shutdown_fn or deps.shutdown_mcp_server_fn,
+        ),
+        check_mcp_bridge_health_fn=cast(
+            "_CheckMcpBridgeHealthFn | None",
+            effective_health_fn or deps.check_mcp_bridge_health_fn,
+        ),
+        materialize_system_prompt_fn=effective_materialize_fn
+        or deps.materialize_system_prompt_fn,
+        mcp_supervisor_factory=cast(
+            "_McpSupervisorFactory | None",
+            effective_supervisor or deps.mcp_supervisor_factory,
+        ),
+        heartbeat_policy_from_env_fn=effective_heartbeat_fn or deps.heartbeat_policy_from_env_fn,
+    )
+    return _ee_execute_agent_effect(effect, config, effective_deps, workspace_scope, **opts)
+
+
+def execute_commit_effect(
+    effect: CommitEffect,
+    create_commit_fn: Callable[[Path | str, str], str],
+    stage_all_fn: Callable[[Path | str], None],
+    repo_root: Path,
+    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    **opts: object,
+) -> PipelineEvent:
+    """Execute a commit effect while preserving runner-level dependency injection hooks."""
+    return _ee_execute_commit_effect(
+        effect,
+        repo_root,
+        display,
+        create_commit_fn=create_commit_fn,
+        stage_all_fn=stage_all_fn,
+        has_commit_work_fn=repo_has_commit_work,
+        render_commit_message_fn=render_commit_message,
+        **opts,
+    )
+
+
+def emit_phase_transition_if_changed(
+    display: ParallelDisplay | LegacyConsoleDisplay,
+    previous_phase: str,
+    state: PipelineState,
+    *,
+    verbosity: Verbosity,
+    pipeline_policy: PipelinePolicy,
+) -> str:
+    """Emit phase-transition surfaces while honoring runner-level patched display hooks."""
+    effective_close_fn = (
+        show_phase_close_banner
+        if show_phase_close_banner is not _original_show_phase_close_banner
+        else None
+    )
+    effective_transition_fn = (
+        show_phase_transition
+        if show_phase_transition is not _original_show_phase_transition
+        else None
+    )
+    return _pt_emit_phase_transition_if_changed(
+        display,
+        previous_phase,
+        state,
+        verbosity=verbosity,
+        pipeline_policy=pipeline_policy,
+        show_close_banner_fn=effective_close_fn,
+        show_transition_fn=effective_transition_fn,
+    )
+
+
+def write_start_commit_if_absent(workspace_root: Path) -> None:
+    """Persist the current HEAD SHA as the cycle baseline when no baseline exists yet."""
+    if read_cycle_baseline(workspace_root) is not None:
+        return
+
+    repo: Repo | None = None
+    try:
+        repo = Repo(workspace_root)
+        write_cycle_baseline(workspace_root, str(repo.head.commit.hexsha), force=True)
+    except (InvalidGitRepositoryError, OSError, ValueError):
+        return
+    finally:
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+        if callable(close):
+            close()
+
+
+execute_effect = _execute_effect
+handle_inline_effect = _handle_inline_effect
+call_determine_effect_from_policy = _call_determine_effect_from_policy
+invoke_execute_effect_with_optional_display = _invoke_execute_effect_with_optional_display
+load_policy_bundle_for_run = _load_policy_bundle_for_run
+run_pipeline_step = _run_pipeline_step
+save_checkpoint_or_log = _save_checkpoint_or_log
+notify_pipeline_subscriber = _notify_pipeline_subscriber
+handle_keyboard_interrupt = _handle_keyboard_interrupt
