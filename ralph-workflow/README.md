@@ -146,7 +146,7 @@ Ralph Workflow is meant to get you to a strong implementation starting point whi
 A good run should leave you with:
 
 - code that compiles, tests, or clearly shows where work remains
-- review artifacts and logs that explain what happened
+- logs and output that explain what happened
 - a result that is worth continuing from, not discarding and restarting
 
 That may be a finished small task, or it may be a substantial first pass toward production on a larger one.
