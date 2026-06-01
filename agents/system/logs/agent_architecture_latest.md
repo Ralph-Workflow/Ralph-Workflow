@@ -1,45 +1,51 @@
-# Agent Architecture Watchdog — Refresh 2026-06-01 22:20 CEST
+# Agent Architecture Watchdog Report
 
-## Verdict: WATCH
+- **Checked:** 2026-06-02T00:11:20+02:00
+- **Verdict:** watch
+- **Architecture-owned gates:** green (independent verification: qualified_pass)
 
-Architecture-owned gates are **green**. Whole-stack certification remains **watch** because of two external blockers.
+## Live Topology
 
-## What's Green
+| Metric | Value |
+|--------|-------|
+| Total jobs | 24 |
+| Enabled | 24 |
+| Disabled | 0 |
+| LastError | 1 (blocked-channel-recovery) |
 
-| Layer | Status | Evidence |
-|-------|--------|----------|
-| Live cron topology | ✅ GREEN | 24 jobs, 24 enabled, 0 disabled, 0 running, 0 last-error |
-| Architecture verifier | ✅ GREEN | Independent verification qualified_pass at 22:20 UTC |
-| Loop integrity | ✅ GREEN | agent-architecture-watchdog=ok, ralph-docs-watchdog=ok |
-| Docs verifier | ✅ GREEN | Independently verified pass at 20:20 UTC |
-| Market intelligence consumption | ✅ GREEN | 3 code-backed consumers loaded |
+## Blocker Map
 
-## What's Red
+| Blocker | Owner | Severity | Detail |
+|---------|-------|----------|--------|
+| blocked-channel-recovery | external | high | Live timeout error, 1153-repeat escalation critical, 600s timeout |
+| marketing independent verification | external | high | Fail-closed, stale since 2026-05-28 |
+| docs mustFix ×3 | external | medium | 303-repeat escalation critical, unresolved review follow-ups |
+| pypi-auto-unblocker no self-improvement | external | low | No self-improvement mandate |
 
-| Blocker | Severity | Owner |
-|---------|----------|-------|
-| Marketing independent verification stale (~4 days, May 28) | HIGH | marketing owner loop |
-| blocked-channel-recovery timeout escalation (1139 repeats) | CRITICAL | system (external domain) |
+## Repairs Applied This Run
 
-## Repairs This Run
+1. **Fixed missing ordered_fix_plan key** — Checker was failing on AGENT_ARCHITECTURE_FAIL: missing keys: ordered_fix_plan. Added the required key with 4 prioritized items.
+2. **Refreshed live topology** — 24/24 enabled, 0 disabled, 1 lastError (blocked-channel-recovery timeout).
+3. **Revalidated independent verification chain** — Fresh independent verify → qualified_pass, verifier → ok (zero errors), checker → AGENT_ARCHITECTURE_OK, loop integrity → both loops ok.
 
-- **Refreshed live topology:** Confirmed 24/24 enabled, 0 disabled, 0 running, 0 errors.
-- **Reverified independent signoff:** Confirmed architecture-independent-verification remains qualified_pass.
-- **Revalidated shared consumption:** market_intelligence_consumption_latest.json shows all consumers loaded.
+## What's Still Red
 
-No architecture-owned repairs were needed — topology was already green.
+- blocked-channel-recovery: live timeout error, 1153 repeats, critical escalation
+- marketing independent verification: fail since May 28
+- docs mustFix: 3 items, 303 repeats, critical escalation
 
-## Still Needs Independent Verification
+## Independent Verification
 
-1. Fresh marketing independent pass backed by measurable primary-repo movement.
-2. Resolution of blocked-channel-recovery timeout escalation.
-
-## Independent Verification Status
-
-- **Performed:** Yes (2026-06-01 22:20 UTC)
 - **Verdict:** qualified_pass
-- **Artifacts:** agent_architecture_independent_verification.json, agent_architecture_verifier_latest.md
+- **Artifact:** agent_architecture_independent_verification.json (fresh as of this run)
+- Architecture verifier fails closed on stale signoff ✓
+- Checker passes: AGENT_ARCHITECTURE_OK ✓
+- Loop integrity/topology green ✓
+- Market-intelligence reuse machine-verifiable ✓
+- Docs verifier stable (31 consecutive passes) ✓
 
-## Small Gate Passed
+## Notes
 
-Architecture-side gates passed. No hidden self-certification detected. Ownership boundaries intact. External blockers correctly isolated.
+- Architecture-owned gates are independently verified green.
+- Whole-stack certification blocked by external owner-loop residue.
+- Small gate: 24/24 jobs green on architecture side, checker/verifier/loop-integrity all pass.

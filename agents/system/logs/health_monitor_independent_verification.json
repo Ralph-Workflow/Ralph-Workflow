@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-31T20:34:22.808606+02:00",
+  "checked_at": "2026-06-01T23:52:29.448221+02:00",
   "verdict": "fail",
   "summary": "Independent verification found blockers that prevent the repaired health monitor from being certified healthy.",
   "verified_repairs": [
@@ -12,15 +12,11 @@
       "claim": "architecture-verifier path is healthy after the health-monitor repair",
       "status": "verified",
       "details": "agent_architecture_verifier_latest.md currently reports Status: independently verified pass."
-    },
-    {
-      "claim": "docs loop artifact is genuinely green under the tightened contract",
-      "status": "verified",
-      "details": "ralph_agentic_latest.json has status=pass, loopHealthy=true, shouldUserNeedToRepeatThis=false, empty mustFix, and all criteria pass."
     }
   ],
   "remaining_blockers": [
-    "health monitor latest run is not green: issues_found=4",
+    "health monitor latest run is not green: issues_found=11",
+    "docs agentic artifact is not fully green under the tightened contract",
     "loop integrity still reports autonomous-marketing-stack as None"
   ],
   "evidence": [
@@ -30,7 +26,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Latest health-monitor run reports issues_found=4 and jobs_checked=26."
+      "summary": "Latest health-monitor run reports issues_found=11 and jobs_checked=24."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",

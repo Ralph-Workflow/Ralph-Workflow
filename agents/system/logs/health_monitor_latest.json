@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-01T22:36:18.704239",
+  "ts": "2026-06-01T23:50:47.230321",
   "jobs_checked": 24,
   "issues_found": 11,
   "issues": [
@@ -19,7 +19,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 5964.78,
+      "artifact_age_minutes": 6039.26,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -60,8 +60,8 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1146",
-      "repeats_in_recent_history": 1146,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1153",
+      "repeats_in_recent_history": 1153,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
@@ -72,8 +72,8 @@
       "name": "docs_agentic_review_escalation",
       "category": "escalation_required",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=296",
-      "repeats_in_recent_history": 296,
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=303",
+      "repeats_in_recent_history": 303,
       "owner_domain": "docs",
       "incident_key": "docs_agentic_review::loop_verification_fail",
       "escalation_level": "critical",
@@ -84,8 +84,8 @@
       "name": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation",
       "category": "escalation_required",
       "last_error": "Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=60",
-      "repeats_in_recent_history": 60,
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=67",
+      "repeats_in_recent_history": 67,
       "owner_domain": "docs",
       "incident_key": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph::review_followup_required",
       "escalation_level": "critical",
@@ -96,8 +96,8 @@
       "name": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation",
       "category": "escalation_required",
       "last_error": "Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=60",
-      "repeats_in_recent_history": 60,
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=67",
+      "repeats_in_recent_history": 67,
       "owner_domain": "docs",
       "incident_key": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original::review_followup_required",
       "escalation_level": "critical",
@@ -108,8 +108,8 @@
       "name": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation",
       "category": "escalation_required",
       "last_error": "Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=60",
-      "repeats_in_recent_history": 60,
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=67",
+      "repeats_in_recent_history": 67,
       "owner_domain": "docs",
       "incident_key": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an::review_followup_required",
       "escalation_level": "critical",
@@ -124,22 +124,22 @@
       "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\"status\": \"pass\", \"summary\": \"Docs system is well-aligned. README \\u2192 START_HERE \\u2192 docs/README journey is coherent, all promoted next-click pages reinforce the same story, positioning is clean, no inte"
     },
     {
-      "type": "immediate_review_followup_owner_action_cooldown",
+      "type": "immediate_review_followup_owner_action",
       "job": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-01T18:44:59.636376+00:00"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780350614470:68\"\n}"
     },
     {
-      "type": "immediate_review_followup_owner_action_cooldown",
+      "type": "immediate_review_followup_owner_action",
       "job": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-01T18:45:01.848538+00:00"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780350619933:69\"\n}"
     },
     {
-      "type": "immediate_review_followup_owner_action_cooldown",
+      "type": "immediate_review_followup_owner_action",
       "job": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-01T18:45:04.144503+00:00"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780350623211:70\"\n}"
     },
     {
       "type": "rerun_independent_architecture_verification",
@@ -151,43 +151,37 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-01T22:35:53.739840+02:00\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780346157335:61\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-01T23:50:26.390343+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_agentic_review_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780350629729:71\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780350632416:72\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780350635268:73\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780350638487:74\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780346173048:63\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     }
   ]
 }
