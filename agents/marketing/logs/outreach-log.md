@@ -116,3 +116,5 @@
 **Deploy:** Commit `b6447ee`, deployed via Capistrano to production at 10:10 UTC. Both cross-links verified live.
 
 **Process guard installed:** Principle 8 added to MARKETING_WORKFLOW_PRINCIPLES.md — new blog posts covering a previously-covered tool comparison set must explicitly cross-link to earlier posts and use a structurally distinct section organization.
+
+**2026-06-01 20:10 UTC** — GitHub mirror gained 1 star (now 2). Primary Codeberg repo still flat at 12 stars across 9-measurement window. PyPI steady at 1339 dl/month. No new forks or watchers on either host. No other meaningful adoption signal this cycle.
