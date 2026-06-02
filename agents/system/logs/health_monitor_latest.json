@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-02T16:03:29.387031",
+  "ts": "2026-06-02T17:15:07.244722",
   "jobs_checked": 26,
   "issues_found": 11,
   "issues": [
@@ -94,8 +94,8 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout_risk repeat_count=21",
-      "repeats_in_recent_history": 21,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout_risk repeat_count=27",
+      "repeats_in_recent_history": 27,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout_risk",
       "escalation_level": "critical",
@@ -150,36 +150,6 @@
       "job": "marketing_independent_verification_blockers_distribution-lane-latest-json-is-missing-or-stal",
       "ok": true,
       "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-06-02T13:30:28.801852+00:00"
-    },
-    {
-      "type": "rerun_docs_verifier",
-      "job": "docs_agentic_review",
-      "ok": true,
-      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"The docs system is clean, coherent, and aligned with positioning. README \\u2192 START_HERE \\u2192 docs/README flows well, promoted next-click pages reinforce rather than figh"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_primary-codeberg-readme-needs-a-stronger-more-pr",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780408995998:213\"\n}"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_copy-across-docs-readme-ai-agent-orchestration-c",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_primary-readme-lacks-the-when-it-fits-when-it-do",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     }
   ]
 }

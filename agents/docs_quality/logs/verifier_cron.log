@@ -18392,3 +18392,44 @@ DOCS_EDITORIAL_OK
 
 AGENTIC
 {"status": "pass", "summary": "Docs are solid. Positioning is consistent across all surfaces, journey is coherent, no internal leakage, copy is clean and confident. The README > START_HERE > docs/README path works as one route.", "loopHealthy": true, "criteria": {"positioning": "pass", "accuracy": "pass", "internalLeakage": "pass", "copyQuality": "pass", "informationArchitecture": "pass", "journeyCoherence": "pass"}, "mustFix": ["The Codeberg primary README and GitHub mirror README have drifted \u2014 GitHub copy is substantially different and more detailed. The mirror should either sync or the primary should be the canonical source edited forward."], "strongestEvidence": [{"path": "/home/mistlight/Ralph-Workflow/README.md", "reason": "Opens with the tagline, frames as orchestrator built on simple Ralph-loop core, strong default workflow, clear audience fit/non-fit, result-first evaluation, engineering-practice honesty. No artifact language, no internal plumbing, no transcript/diff framing."}, {"path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md", "reason": "Opens with positioning, good task guidance, clear install path, success criteria focused on real outcomes, routes to docs/README as the next step."}, {"path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md", "reason": "Explicitly positions itself after README and START_HERE, has clean routing sections with clear intent labels, includes 'Keep proof secondary' warning, routes to product-framing pages that reinforce the same story."}, {"path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md", "reason": "Consistent positioning copy, 'simple at the center, stronger in composition' language, honest 'useful before customization' promise, appropriate next links."}], "shouldUserNeedToRepeatThis": false}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is healthy and faithful to the positioning reference. README \u2192 START_HERE \u2192 docs/README journey is coherent with consistent messaging across all surfaces. No internal-leakage, artifact-plumbing, or stale-framing issues.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Nails the positioning: opens with 'operating system for autonomous coding', frames simple-core/powerful-composition, strong default workflow, start-with-extend-later pattern. No internal plumbing or artifact language on the first screen."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Coherent first-run surface with correct task-selection guardrails, Codeberg-primary framing, and clean routing to docs/README."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Well-structured docs map with intent-based routing. Keeps proof secondary. Routes to product-framing pages that reinforce the same story."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/ralph-workflow/README.md",
+      "reason": "PyPI README adds useful detail (Ralph-origin paragraph, depth presets, 'fast way to tell if it fits' test) without diluting or duplicating the main README's positioning."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
