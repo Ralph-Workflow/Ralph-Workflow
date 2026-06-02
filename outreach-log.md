@@ -251,6 +251,18 @@ The marketing loop has hit a structural ceiling: owned content (blog) is healthy
 
 # Outreach Log
 
+## 2026-06-02 (Tuesday) — Reddit monitoring (12:00 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-06-02_1200.md`
+- **Suspension status:** Day 5 of 7. Active since May 31 11:19 CEST. **~119 hours stale.**
+- **DDG pattern confirmed:** Session-scoped rate-limit (~6 working queries then collapse). Same pattern as June 1. Still not recovery — just an empirical session cap.
+- **Reddit direct:** 403 blocked (30th consecutive day, new block code).
+- **Non-Reddit intelligence:** Faros.ai 10,000-developer survey (91% PR review time spike, 19% experienced-engineer slowdown) is the strongest external validation of the RalphWorkflow thesis seen across the entire suspension window.
+- **Shortlist:** Empty — all May 28 threads evicted per age-eviction rules.
+- **Posting verdict:** No posting. Suspension holds.
+- **Escalation countdown:** ~2 days until June 4 11:19 CEST. Write escalation notification if unrecovered.
+- **DDG session-limit rule added:** Treat >6 working queries then total collapse as a rate-limit event, not recovery. Re-enable requires 2+ separate sessions across 2+ passes.
+- **Type:** **MONITOR / SUSPENSION_HELD**
+
 ## 2026-05-29 (Friday) — Marketing workflow audit #10: vendored README repaired, PyPI v0.8.8 prepared, draft inflation pruned, openclaw-path crash fixed (01:29 CEST / 23:29 UTC)
 
 - **Audit context:** Cron-triggered re-analysis of RalphWorkflow marketing loop. Codeberg 12⭐ (+0), PyPI 1,498/mo (10/day), Apollo window until June 1, blog pipeline is only autonomous lane shipping real external actions (24 posts, +2 deployed today). Spidering guard working: 102→83→3 logs/day.

@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-02T09:20:40.950905+02:00",
+  "checked_at": "2026-06-02T13:02:57.047285+02:00",
   "verdict": "qualified_pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
@@ -11,7 +11,7 @@
     {
       "claim": "architecture audit metadata matches the live Gateway cron topology",
       "status": "verified",
-      "details": "openclaw cron list --json reports 25 live jobs, 25 enabled, 0 disabled, and the architecture artifact matches that state."
+      "details": "openclaw cron list --json reports 26 live jobs, 26 enabled, 0 disabled, and the architecture artifact matches that state."
     },
     {
       "claim": "architecture verifier now fails closed on stale independent verification",
@@ -34,11 +34,6 @@
       "details": "External blockers present: blocked-channel-recovery:timeout, marketing_independent_verification:stale_artifact"
     },
     {
-      "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
-      "status": "verified",
-      "details": "recent_failures=2, consecutive_passes_since_last_fail=105"
-    },
-    {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
       "status": "verified",
       "details": "market_intelligence_consumption_latest.json contains acceptable runtime proof for agents/marketing/run.py and agents/marketing/reddit_monitor.py."
@@ -56,11 +51,15 @@
   ],
   "remaining_blockers": [
     "stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+    "docs verifier did not show independent pass",
+    "latest docs verifier verdict is not pass: 'fail'",
     "marketing independent verification is not pass: 'fail'"
   ],
   "architecture_errors": [],
   "external_blockers": [
     "stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+    "docs verifier did not show independent pass",
+    "latest docs verifier verdict is not pass: 'fail'",
     "marketing independent verification is not pass: 'fail'"
   ],
   "evidence": [
@@ -93,7 +92,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]

@@ -1,18 +1,18 @@
 {
-  "timestamp": "2026-06-01T14:36:07.901614+00:00",
+  "timestamp": "2026-06-02T10:10:03.630357+00:00",
   "sitemap_urls_total": 102,
   "google_indexing": {
     "status": "gsc_search_analytics",
-    "pages_with_search_presence": 14,
+    "pages_with_search_presence": 16,
     "total_urls": 102,
-    "total_impressions_28d": 372,
-    "total_clicks_28d": 21,
-    "ctr_28d": 5.65,
+    "total_impressions_28d": 404,
+    "total_clicks_28d": 22,
+    "ctr_28d": 5.45,
     "top_pages": [
       {
         "url": "https://ralphworkflow.com/",
-        "impressions": 324,
-        "clicks": 21
+        "impressions": 353,
+        "clicks": 22
       },
       {
         "url": "https://ralphworkflow.com/contact",
@@ -45,6 +45,11 @@
         "clicks": 0
       },
       {
+        "url": "https://ralphworkflow.com/docs/spec-driven-ai-agent",
+        "impressions": 3,
+        "clicks": 0
+      },
+      {
         "url": "https://ralphworkflow.com/docs/example-review-bundle",
         "impressions": 2,
         "clicks": 0
@@ -53,25 +58,20 @@
         "url": "https://ralphworkflow.com/docs/example-review-bundle.html",
         "impressions": 2,
         "clicks": 0
-      },
-      {
-        "url": "https://ralphworkflow.com/docs/ralph-workflow-vs-aider",
-        "impressions": 2,
-        "clicks": 0
       }
     ],
-    "estimated_indexed": 14
+    "estimated_indexed": 16
   },
-  "gap_unindexed": 88,
-  "pct_indexed_estimate": 13.7,
+  "gap_unindexed": 86,
+  "pct_indexed_estimate": 15.7,
   "escalation_threshold": {
     "pct_unindexed_limit": 50,
-    "unindexed_pct": 86.3,
+    "unindexed_pct": 84.3,
     "triggered": true
   },
   "escalation": {
     "first_detected": "2026-05-31T07:11:07.410924+00:00",
-    "days_since": 1,
+    "days_since": 2,
     "chronic": false,
     "action": "monitoring"
   }

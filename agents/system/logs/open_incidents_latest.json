@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-06-02T07:20:53.656771+00:00",
+  "updated_at": "2026-06-02T09:37:11.043657+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 568,
+      "repeat_count": 570,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2021,7 +2021,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T05:43:52.667880+00:00",
+      "last_seen": "2026-06-02T09:37:11.043586+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
@@ -4005,7 +4005,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 926,
+      "repeat_count": 930,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -8009,8 +8009,8 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T07:20:36.774963+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T08:24:16.223705+02:00\"\n}",
+      "last_seen": "2026-06-02T09:37:11.043613+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T09:20:40.950905+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
       "closed_at": "2026-06-02T07:20:44.566863+00:00"
@@ -12581,7 +12581,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 1282,
+      "repeat_count": 1286,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -12785,7 +12785,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-02T07:20:53.656731+00:00",
+      "last_seen": "2026-06-02T09:37:11.043602+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -14837,7 +14837,7 @@
       "name": "docs_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-23T15:57:16.529082+00:00",
-      "repeat_count": 101,
+      "repeat_count": 105,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -15029,7 +15029,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T20:18:56.570205+00:00",
+      "last_seen": "2026-06-02T09:37:11.043596+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
@@ -15127,7 +15127,7 @@
       "name": "docs_verifier_stability",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T15:57:16.529187+00:00",
-      "repeat_count": 108,
+      "repeat_count": 112,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -15353,7 +15353,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T20:18:56.570223+00:00",
+      "last_seen": "2026-06-02T09:37:11.043608+00:00",
       "last_error": "latest docs verifier verdict is not pass: 'fail'",
       "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
@@ -19838,13 +19838,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 1237,
+      "repeat_count": 1241,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-06-02T07:20:53.656710+00:00",
+      "last_seen": "2026-06-02T09:37:11.043534+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null

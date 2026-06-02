@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-06-02T10:47:36.364311+00:00",
+  "links_applied": [
+    {
+      "parent": "ralph-workflow-comparison-guide",
+      "child": "offline-ai-coding-local-llm-guide",
+      "link_text": "Can You Actually Run AI Coding Agents Offline? A Practical Guide to Local LLM Development",
+      "context": "isolating AI agent execution",
+      "paragraph_hint": "- **The task is too big to babysit.** Multi-hour or overnight engineering work that would waste your time if you watched...",
+      "dry_run": false
+    },
+    {
+      "parent": "ai-coding-tools-comparison-2026",
+      "child": "ralph-workflow-in-5-minutes",
+      "link_text": "Ralph Workflow in 5 Minutes",
+      "context": "staying provider-independent",
+      "paragraph_hint": "**Key differentiators:**\n- Composable loop architecture (planning loop \u2192 build loop \u2192 verification loop)\n- Policy-define...",
+      "dry_run": false
+    },
+    {
+      "parent": "codex-opencode-cline-vs-ralph-workflow-2026",
+      "child": "safe-ai-code-execution-sandbox-isolation",
+      "link_text": "Safe AI Code Execution: How to Let a Coding Agent Run Commands Without Risking Your System",
+      "context": "TOML configuration for multi-agent workflows",
+      "paragraph_hint": "- [AI Coding Tools Compared 2026: A Practical Guide to What Each One Actually Does](/blog/ai-coding-tools-comparison-202...",
+      "dry_run": false
+    },
+    {
+      "parent": "ai-coding-tools-comparison-2026",
+      "child": "spec-driven-ai-agent-explicit-contracts",
+      "link_text": "Spec-Driven AI Agent: Why Explicit Contracts Change What Your Agent Produces",
+      "context": "staying provider-independent",
+      "paragraph_hint": "A free and open-source composable loop framework and AI orchestrator. Ralph Workflow wraps the coding agents you already...",
+      "dry_run": false
+    },
+    {
+      "parent": "ralph-workflow-vs-conductor-oss",
+      "child": "toml-workflow-configuration-guide",
+      "link_text": "TOML Workflow Configuration for AI Agents: A Complete Guide to pipeline.toml",
+      "context": "TOML configuration for multi-agent workflows",
+      "paragraph_hint": "These two tools solve complementary problems at different layers of the stack. Conductor OSS is built for enterprise inf...",
+      "dry_run": false
+    },
+    {
+      "parent": "ralph-workflow-vs-conductor-oss",
+      "child": "vendor-neutral-ai-coding-platform-independent-workflow",
+      "link_text": "Vendor-Neutral AI Coding: Why Your Workflow Should Not Depend on One Provider",
+      "context": "TOML configuration for multi-agent workflows",
+      "paragraph_hint": "For a hands-on look at TOML configuration for multi-agent workflows, we also wrote **[TOML Workflow Configuration for AI...",
+      "dry_run": false
+    },
+    {
+      "parent": "ralph-workflow-comparison-guide",
+      "child": "verification-patterns-for-ai-generated-code",
+      "link_text": "3 Verification Patterns That Make AI-Generated Code Trustworthy",
+      "context": "TOML configuration for multi-agent workflows",
+      "paragraph_hint": "- **The task is too big to babysit.** Multi-hour or overnight engineering work that would waste your time if you watched...",
+      "dry_run": false
+    }
+  ],
+  "dry_run": false
+}

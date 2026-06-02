@@ -152,5 +152,51 @@
         "error": null
       }
     ]
+  },
+  {
+    "timestamp": "2026-06-02T09:57:03.598762+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 102,
+    "total_sitemap_urls": 102,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 2,
+        "total": 2,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-06-02T10:49:41.484663+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 102,
+    "total_sitemap_urls": 102,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 2,
+        "total": 2,
+        "status_code": 200,
+        "error": null
+      }
+    ]
   }
 ]
