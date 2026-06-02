@@ -1,15 +1,19 @@
-# Ralph Workflow Live Demo Outputs
+# Ralph Workflow Demo Captures
 
-Real terminal captures from running Ralph Workflow v0.8.8 on a fresh project.
-Every file in this directory was captured from actual runs — no mock-ups, no edited output.
+Real, unedited terminal output from Ralph Workflow v0.8.8.
 
 ## Files
 
-- **`init-output.txt`** — Full `ralph --init` output including the banner, baseline capabilities table, and first-run setup message
-- **`diagnose-output.txt`** — Full `ralph --diagnose` output: git status, agent inventory, config validation, MCP server inventory, workspace files, pre-flight check
-- **`dry-run-output.txt`** — `ralph --dry-run` showing pipeline phase progression and agent chain selection (if available)
+| File | Description |
+|------|-------------|
+| `init-output.txt` | `ralph --init` on a fresh project |
+| `diagnose-output.txt` | `ralph --diagnose` — agent + config validation |
+| `dry-run-output.txt` | `ralph --dry-run` — full pipeline preview |
+| `ralph-demo.cast` | 🌟 **Full asciinema recording** — watch the terminal session |
 
-## Source Commit
+## Watch the Demo
 
-These outputs were generated from commit `[latest]` of the Ralph Workflow source.
-To reproduce: install `ralph-workflow` from PyPI, create a new git repo, and follow START_HERE.md.
+[![asciicast](https://asciinema.org/a/0w40X35EdQNi0noT.svg)](https://asciinema.org/a/0w40X35EdQNi0noT)
+
+*Click the image above to watch the full terminal recording on asciinema.org.*
+*These are genuine, unedited outputs — no mock-ups.*

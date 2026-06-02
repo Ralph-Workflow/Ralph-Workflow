@@ -93,6 +93,7 @@ Real terminal output from Ralph Workflow v0.8.8 on a fresh project:
 | `ralph --init` | [init-output.txt](docs/sphinx/_static/demo/init-output.txt) — banner, capabilities, first-run setup |
 | `ralph --diagnose` | [diagnose-output.txt](docs/sphinx/_static/demo/diagnose-output.txt) — agent inventory, config, MCP check |
 | `ralph --dry-run` | [dry-run-output.txt](docs/sphinx/_static/demo/dry-run-output.txt) — pipeline phases and iteration plan |
+| ▶ **Full demo** | [![asciicast](https://asciinema.org/a/0w40X35EdQNi0noT.svg)](https://asciinema.org/a/0w40X35EdQNi0noT) — watch the complete terminal session |
 
 These are **unedited terminal captures** from a real run — not mock-ups.
 
