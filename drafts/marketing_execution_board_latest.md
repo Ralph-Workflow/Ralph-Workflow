@@ -1,1 +1,1 @@
-/home/mistlight/.openclaw/workspace/drafts/2026-06-01_marketing_execution_board.md
+/home/mistlight/.openclaw/workspace/drafts/2026-06-02_marketing_execution_board.md

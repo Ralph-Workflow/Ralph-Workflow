@@ -333,6 +333,49 @@ def run():
         except Exception as e:
             repairs.append(f"FAILED to repair distribution lane state: {e}")
 
+    # 5th-recurrence hardening: content-hash-based receipt.
+    # The 4th-recurrence time-based receipt BLOCKED legitimate repairs
+    # (receipt from an earlier repair froze all writes for 24h, letting
+    # stale content from outcome_execution_board_runner overwrite the
+    # watchdog's repair while the receipt blocked the next repair cycle).
+    # Fix: receipt stores content hashes of both artifacts. Downstream
+    # writers check the hash; if the current content matches the receipt
+    # hash, the watchdog repair is still current → block overwrites.
+    # If content has been reverted to stale (hash mismatch), allow
+    # overwrites — the watchdog repair was broken and needs re-repair.
+    import hashlib
+    receipt_path = os.path.join(LOGS_DIR, "stale_artifact_watchdog_receipt.json")
+    board_content = ""
+    lane_content = ""
+    try:
+        board_target = os.path.realpath(EXEC_BOARD_LINK) if os.path.exists(EXEC_BOARD_LINK) else ""
+        if board_target and os.path.exists(board_target):
+            with open(board_target) as bf:
+                board_content = bf.read()
+    except Exception:
+        pass
+    try:
+        if os.path.exists(DIST_LANE_STATE):
+            with open(DIST_LANE_STATE) as lf:
+                lane_content = lf.read()
+    except Exception:
+        pass
+    receipt = {
+        "repaired_at": now_iso(),
+        "board_repaired": board_repaired,
+        "lane_repaired": lane_repaired,
+        "recurrence_count": 5,
+        "board_content_sha256": hashlib.sha256(board_content.encode()).hexdigest() if board_content else None,
+        "lane_content_sha256": hashlib.sha256(lane_content.encode()).hexdigest() if lane_content else None,
+        "hardened": True,
+        "note": "5th-recurrence hardening: content-hash-based. If current content hash matches, the repair is intact. If mismatch, downstream writers MAY overwrite (repair was reverted).",
+    }
+    try:
+        with open(receipt_path, "w") as rf:
+            json.dump(receipt, rf, indent=2)
+    except Exception:
+        pass
+
     result = {
         "checked_at": now_iso(),
         "execution_board": board,

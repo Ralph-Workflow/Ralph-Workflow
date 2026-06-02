@@ -8,7 +8,9 @@ import subprocess
 import sys
 import urllib.parse
 from dataclasses import dataclass, is_dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+UTC = timezone.utc
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +50,7 @@ CURATOR_CONTACT_HANDOFF_LATEST_PATH = DRAFTS_DIR / 'curator_contact_handoff_pack
 PRIMARY_REPO_FLAT_CONTACT_DISCOVERY_LATEST_PATH = LOG_DIR / 'primary_repo_flat_contact_discovery_latest.json'
 PRIMARY_REPO_FLAT_CONTACT_HANDOFF_LATEST_PATH = DRAFTS_DIR / 'primary_repo_flat_contact_handoff_packet_latest.md'
 PENDING_CONFIRMATION_HANDOFF_LATEST_PATH = DRAFTS_DIR / 'distribution_confirmation_follow_through_latest.md'
+HANDOFF_SUPPRESSION_MARKER_PATH = LOG_DIR / 'handoff_packet_suppression.json'
 STACKOVERFLOW_LATEST_PATH = LOG_DIR / 'stackoverflow_answer_lane_latest.json'
 STACKOVERFLOW_HANDOFF_LATEST_PATH = DRAFTS_DIR / 'stackoverflow_answer_handoff_packet_latest.md'
 DIRECTORY_CONFIRMATION_EXECUTION_LATEST_PATH = DRAFTS_DIR / 'directory_confirmation_execution_latest.md'
@@ -3015,6 +3018,32 @@ def _github_auth_available() -> bool:
     ).returncode == 0
 
 
+def _handoff_suppression_active() -> bool:
+    """Check if the handoff packet suppression marker is active and unexpired.
+
+    Returns True when the suppression marker exists, is active, and has not expired.
+    When True, all handoff packet generation paths MUST skip regeneration.
+    """
+    if not HANDOFF_SUPPRESSION_MARKER_PATH.exists():
+        return False
+    try:
+        suppression = json.loads(HANDOFF_SUPPRESSION_MARKER_PATH.read_text())
+    except Exception:
+        return False
+    if not suppression.get('active'):
+        return False
+    expires_at = suppression.get('expires_at')
+    if not expires_at:
+        return True  # no expiry — treat as active
+    try:
+        expiry = datetime.fromisoformat(expires_at)
+    except Exception:
+        return True
+    if datetime.now(UTC) > expiry:
+        return False
+    return True
+
+
 def choose_distribution_lane(
     now: datetime | None = None,
     *,
@@ -4233,6 +4262,27 @@ def choose_distribution_lane(
         write_latest_md=persist_latest_artifacts,
     ))
 
+    SUPPRESSED_HANDOFF_STEMS = {
+        'primary_repo_flat_contact_handoff_packet',
+        'curator_contact_handoff_packet',
+        'comparison_backlink_handoff_packet',
+        'reddit_discussion_handoff_packet',
+    }
+    if _handoff_suppression_active() and lane in SUPPRESSED_HANDOFF_STEMS:
+        print(
+            f"[choose_distribution_lane] Handoff suppression active — "
+            f"overriding lane {lane} → measurement_hold",
+            flush=True,
+        )
+        original_lane = lane
+        lane = 'measurement_hold'
+        reason = (
+            f'Handoff packet churn suppressor is active; '
+            f'suppressing {original_lane} that was regenerated as '
+            f'prepared-only without live delivery. Wait for fresh live '
+            f'delivery window before regenerating.'
+        )
+
     decision = LaneDecision(
         lane=lane,
         reason=reason,
@@ -4342,6 +4392,51 @@ def persist_latest_lane_decision(
     if write_action_log:
         write_marketing_action_log(persisted, now)
     return persisted
+
+
+def _watchdog_recently_repaired(now: datetime, max_age_hours: float = 24.0) -> bool:
+    """5th-recurrence hardening: content-hash-aware repair check.
+    
+    Returns True only if:
+    1. Watchdog repaired recently, AND
+    2. Current content hashes match receipt (= repair is intact)
+    
+    If hashes mismatch, the repair was reverted by another process,
+    so this returns False to allow legitimate overwrites.
+    """
+    _receipt = LOG_DIR / 'stale_artifact_watchdog_receipt.json'
+    if not _receipt.exists():
+        return False
+    try:
+        import hashlib
+        _rd = json.loads(_receipt.read_text(encoding='utf-8'))
+        _repaired_at = str(_rd.get('repaired_at', '') or '').strip()
+        _board_hash = _rd.get('board_content_sha256')
+        _lane_hash = _rd.get('lane_content_sha256')
+        if not _repaired_at:
+            return False
+        _repair_dt = datetime.fromisoformat(_repaired_at[:19])
+        _age_hours = (now - _repair_dt).total_seconds() / 3600
+        if _age_hours >= max_age_hours:
+            return False
+        # Content-hash check: if hashes match, repair is intact → block
+        if _board_hash and _lane_hash:
+            _board_target = os.path.realpath(DRAFTS_DIR / 'marketing_execution_board_latest.md') if (DRAFTS_DIR / 'marketing_execution_board_latest.md').exists() else None
+            if _board_target and os.path.exists(_board_target):
+                _current_board = open(_board_target).read()
+                if hashlib.sha256(_current_board.encode()).hexdigest() != _board_hash:
+                    return False
+            _lane_path = LOG_DIR / 'distribution_lane_latest.json'
+            if _lane_path.exists():
+                _current_lane = open(_lane_path).read()
+                if hashlib.sha256(_current_lane.encode()).hexdigest() != _lane_hash:
+                    return False
+            return True
+        # Fallback: old receipt format without hashes — conservative block
+        return True
+    except Exception:
+        return False
+    return False
 
 
 def write_action_brief(

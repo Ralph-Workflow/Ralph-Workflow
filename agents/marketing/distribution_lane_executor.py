@@ -1335,6 +1335,10 @@ def _write_directory_confirmation_execution(now: datetime) -> tuple[Path, list[s
     repair_rows = _secondary_surface_repair_rows(payload)
     artifact = DRAFTS_DIR / f'{now.strftime("%Y-%m-%d")}_directory_confirmation_execution.md'
     latest_artifact = DRAFTS_DIR / 'directory_confirmation_execution_latest.md'
+    # Regeneration guard (2026-05-31): skip if this same-date artifact already exists
+    # and is < 6 hours old — prevents the daily draft-inflation loop.
+    if artifact.exists() and (now.timestamp() - artifact.stat().st_mtime) < 21600:
+        return artifact, [], {}
     lines = [
         '# Ralph Workflow directory confirmation execution',
         f'Generated: {now.isoformat(timespec="seconds")}',
@@ -3508,6 +3512,10 @@ def _write_manual_handoff_follow_through(
     comparison_packet_path: Path | None = None,
 ) -> Path:
     artifact = DRAFTS_DIR / f'{now.strftime("%Y-%m-%d")}_{title}.md'
+    # Regeneration guard (2026-05-31): skip if this same-date artifact already exists
+    # and is < 6 hours old — prevents the daily draft-inflation loop.
+    if artifact.exists() and (now.timestamp() - artifact.stat().st_mtime) < 21600:
+        return artifact
     lines = [
         '# Ralph Workflow Manual Handoff Follow-Through',
         f'Generated: {now.isoformat(timespec="seconds")}',
@@ -3943,6 +3951,11 @@ def _write_comparison_backlink_execution(
 
 def _write_distribution_reset_execution(decision: LaneDecision, now: datetime, market_intelligence: dict[str, Any] | None) -> tuple[Path, list[str]]:
     artifact = DRAFTS_DIR / f'{now.strftime("%Y-%m-%d")}_distribution_reset_execution.md'
+    # Regeneration guard (2026-05-31): skip if this same-date artifact already exists
+    # and is < 6 hours old — prevents the daily draft-inflation loop documented in
+    # outreach-log.md audit #14.
+    if artifact.exists() and (now.timestamp() - artifact.stat().st_mtime) < 21600:
+        return artifact, []
     comparison_pages = _top_comparison_pages(market_intelligence, limit=8)
     curator_rows = _load_curator_queue_rows()
     comparison_rows = _comparison_queue_rows(COMPARISON_QUEUE_LATEST_PATH)
@@ -4290,6 +4303,10 @@ def _write_apollo_runtime_blocker_review_packet(
 ) -> tuple[Path, list[str]]:
     artifact = DRAFTS_DIR / f'{now.strftime("%Y-%m-%d")}_apollo_runtime_blocker_review_packet.md'
     latest_artifact = DRAFTS_DIR / 'apollo_runtime_blocker_review_packet_latest.md'
+    # Regeneration guard (2026-05-31): skip if this same-date artifact already exists
+    # and is < 6 hours old — prevents the daily draft-inflation loop.
+    if artifact.exists() and (now.timestamp() - artifact.stat().st_mtime) < 21600:
+        return artifact, []
     launch_packet = DRAFTS_DIR / 'apollo_launch_handoff_packet_latest.md'
     sequence_name = str(apollo_status.get('sequence_name') or 'Apollo sequence').strip()
     blocker_status = str(
@@ -5199,7 +5216,7 @@ def _schedule_measurement_hold_release_run(
     command.extend([
         '--delete-after-run',
         '--light-context',
-        '--model', 'openai-codex/gpt-5.4',
+        '--model', 'openrouter/deepseek/deepseek-v4-pro',
         '--thinking', 'medium',
         '--timeout-seconds', '1800',
         '--message', message,
@@ -5596,6 +5613,56 @@ def _verified_infrastructure_state(now: datetime) -> list[str]:
 def _write_marketing_execution_board(now: datetime) -> tuple[Path, list[str]]:
     artifact = DRAFTS_DIR / f'{now.strftime("%Y-%m-%d")}_marketing_execution_board.md'
     latest_artifact = DRAFTS_DIR / 'marketing_execution_board_latest.md'
+    # Regeneration guard (2026-05-31): skip if this same-date artifact already exists
+    # and is < 6 hours old — prevents the daily draft-inflation loop.
+    if artifact.exists() and (now.timestamp() - artifact.stat().st_mtime) < 21600:
+        return artifact, []
+
+    # 5th-recurrence hardening (2026-06-02): content-hash-based receipt check.
+    # The 4th-recurrence time-based receipt BLOCKED legitimate repairs — if a
+    # receipt existed, ALL writes were blocked for 24h, including fresh repairs
+    # after the watchdog's own artifacts were reverted by stale runners.
+    # Fix: compare current content hash to receipt hash. If they match, the
+    # watchdog repair is intact → block. If mismatch (artifact was reverted),
+    # allow overwrite.
+    import hashlib
+    _receipt = LOG_DIR / 'stale_artifact_watchdog_receipt.json'
+    if _receipt.exists():
+        try:
+            with open(_receipt) as _rf:
+                _rd = json.loads(_rf.read())
+            _board_hash = _rd.get('board_content_sha256')
+            _lane_hash = _rd.get('lane_content_sha256')
+            _repaired_at = _rd.get('repaired_at', '')
+            if _board_hash and _lane_hash and _repaired_at:
+                _repair_dt = datetime.fromisoformat(_repaired_at[:19])
+                _age_hours = (now - _repair_dt).total_seconds() / 3600
+                if _age_hours < 24.0:
+                    # Check if current content matches receipt (= repair is intact)
+                    _current_board = None
+                    _board_target = os.path.realpath(latest_artifact) if latest_artifact.exists() else None
+                    if _board_target and os.path.exists(_board_target):
+                        with open(_board_target) as _bf:
+                            _current_board = _bf.read()
+                    _lane_path = LOG_DIR / 'distribution_lane_latest.json'
+                    _current_lane = None
+                    if _lane_path.exists():
+                        with open(_lane_path) as _lf:
+                            _current_lane = _lf.read()
+                    _match = True
+                    if _current_board:
+                        _current_board_hash = hashlib.sha256(_current_board.encode()).hexdigest()
+                        if _current_board_hash != _board_hash:
+                            _match = False
+                    if _current_lane:
+                        _current_lane_hash = hashlib.sha256(_current_lane.encode()).hexdigest()
+                        if _current_lane_hash != _lane_hash:
+                            _match = False
+                    if _match:
+                        return artifact, []
+                    # Hash mismatch — artifact reverted, allow overwrite
+        except Exception:
+            pass
 
     curator_queue_rows = _load_curator_queue_rows()
     comparison_queue_rows = _comparison_queue_rows(COMPARISON_QUEUE_LATEST_PATH)
