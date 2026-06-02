@@ -1,41 +1,50 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-25T18:53:00
+Generated: 2026-06-02T05:45:00
 
-## Why this board exists
-- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
-- Multiple live lanes already exist, so this board consolidates the best executable assets instead of letting them stay siloed across separate packet files.
-- Use this as the single follow-through surface during measurement holds and overlapping review windows.
+## Adoption snapshot
+- Codeberg: 12⭐ 2 watchers 2 forks → flat across 9 samples
+- GitHub: 2⭐ 2 watchers → +1⭐ in window (first movement!)
+- PyPI: 1329/mo (5/day) v0.8.8
 
-## Active review windows
-- Apollo next review: 2026-05-29T09:00:01.629178+02:00
-- Apollo launch review: 2026-06-05T09:00:01.629178+02:00
-- Short review-window congestion clears at: 2026-05-25T23:07:41
-- StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
-- StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
-- Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
-- Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
+## Review windows
+- Hold window: RELEASED at 2026-06-02T03:37 UTC (05:37 CEST)
+- Short review window: active through June 8 (handoff suppressor)
 
-## Best executable assets still waiting
-### 1. Manual publisher outreach asset
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md
-- Targets: ComputingForGeeks
-- Why this matters: A current Codeberg-first manual follow-through asset already exists for the active primary-repo-flat target set; use it instead of regenerating the packet.
+## Lane status
+- Current lane: measurement_hold
+- Lane status: ?
+- Action type: ?
+- External distribution: BLOCKED (gh_auth, SMTP, pypi_token env vars)
+- Blog content: SATURATED (44 posts live, 40+ gate)
+- SEO CTR improvements: DEPLOYED (commit a8ae342, June 2)
+- Watchdog content-hash hardening: DEPLOYED (commit abbdffd, June 2)
 
-## Shared findings reused
-- market_intelligence_latest.json → positioning truths and comparison framing
-- adoption_metrics_latest.json → Codeberg movement remains the primary success gate
-- curator_outreach_queue_latest.json / comparison_backlink_queue_latest.json → live prepared execution queues
-- primary_repo_flat_contact_discovery_latest.json → fresh publisher-contact lane
-- apollo_sequence_status_latest.json / apollo_sequence_launch_packet_latest.md → launch-ready managed outbound state
-- stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
+## Process repairs shipped this run
+- 6th-recurrence stale-board fix: (a) regeneration guard now validates content date matches today, not just mtime; (b) post-write receipt hash update breaks infinite reversion loop
+- 5th-recurrence hardening: content-hash-based receipt check (abbdffd, June 2)
 
-## Verified infrastructure state (programmatic, not fabricated)
-- **Telegraph guard**: clear
-- **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
-- **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
-- **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED
+## Best executable assets right now
+1. **Blog CTA audit** — 44 blog posts live on ralphworkflow.com. Audit for Codeberg CTA coverage and add CTAs to any posts missing them. Largest addressable conversion surface for 127/day organic traffic.
+2. **StackOverflow posting** — 12 drafts ready, next window Wed Jun 3 03:15 CEST (tomorrow, cron-scheduled)
+3. **Start Here / first-task guide** — #1 priority per ADOPTION_FUNNEL_NEXT.md, addresses 1,339 downloads → 0⭐ conversion gap
+4. **Repo conversion optimizer** — improve Codeberg README/landing conversion rate
 
-## Process rule now in force
-- Do not generate another siloed packet when one of the assets above is already current.
-- During a hold window, refresh stale packets if needed, then point back to this board instead of inventing another reset artifact.
+## 6th-recurrence fix details
+- Root cause: regeneration guard checked mtime only. Stale writer at 04:54 bumped mtime with May 25 content, guard returned the stale artifact.
+- Fix 1: regeneration guard now parses content date. If board says May 25 but file is June 2, falls through to regenerate.
+- Fix 2: post-write receipt hash update. After overwriting reverted content, updates the watchdog receipt so subsequent stale writes see a match and block.
+- Call site protection: only `_write_marketing_execution_board()` in distribution_lane_executor.py. No other function writes board content through this path.
+
+## Infrastructure state
+- Board SHA256: (calculated post-write)
+- Git mirror sync: active (every 30 min to GitHub)
+- Codeberg SSO: active
+- GSC API: connected for rank tracking
+- PyPI v0.8.8: live (despite pypi_token blocker)
+- Crontab: 16 marketing jobs running
+
+## Process rules in force
+- Do not generate another siloed packet when an asset above is already current
+- Handoff suppressor active through June 8
+- Three-strikes escalation: 6th recurrence → framework repair executed
+- If board is empty and no blockers clear, execute a concrete distribution_architecture_repair

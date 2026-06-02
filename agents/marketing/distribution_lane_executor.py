@@ -5615,8 +5615,18 @@ def _write_marketing_execution_board(now: datetime) -> tuple[Path, list[str]]:
     latest_artifact = DRAFTS_DIR / 'marketing_execution_board_latest.md'
     # Regeneration guard (2026-05-31): skip if this same-date artifact already exists
     # and is < 6 hours old — prevents the daily draft-inflation loop.
+    # 6th-recurrence fix (2026-06-02): also verify content date matches today.
+    # The mtime-only guard was fooled by stale-content overwrites (board dated
+    # May 25 at 04:54, mtime updated, guard returned the stale artifact).
     if artifact.exists() and (now.timestamp() - artifact.stat().st_mtime) < 21600:
-        return artifact, []
+        _content_first_lines = artifact.read_text().split('\n')[:5]
+        _content_today = now.strftime('%Y-%m-%d') in '\n'.join(_content_first_lines)
+        if _content_today:
+            return artifact, []
+        # Content date doesn't match today — artifact was overwritten with stale
+        # content but mtime was bumped. Fall through to regenerate.
+
+    _needs_receipt_update = False  # 6th-recurrence: track for post-write receipt update
 
     # 5th-recurrence hardening (2026-06-02): content-hash-based receipt check.
     # The 4th-recurrence time-based receipt BLOCKED legitimate repairs — if a
@@ -5661,8 +5671,14 @@ def _write_marketing_execution_board(now: datetime) -> tuple[Path, list[str]]:
                     if _match:
                         return artifact, []
                     # Hash mismatch — artifact reverted, allow overwrite
+                    # 6th-recurrence fix (2026-06-02): update receipt hash after
+                    # overwrite so subsequent stale writers see the match and block.
+                    # Without this, every reverted write re-validates the overwrite,
+                    # creating an infinite reversion loop.
         except Exception:
             pass
+    # Track whether we need to persist an updated receipt after writing.
+    _needs_receipt_update = not _match if ('_match' in dir()) else False
 
     curator_queue_rows = _load_curator_queue_rows()
     comparison_queue_rows = _comparison_queue_rows(COMPARISON_QUEUE_LATEST_PATH)
@@ -6219,6 +6235,31 @@ def _write_marketing_execution_board(now: datetime) -> tuple[Path, list[str]]:
     content = '\n'.join(lines) + '\n'
     artifact.write_text(content, encoding='utf-8')
     latest_artifact.write_text(content, encoding='utf-8')
+
+    # 6th-recurrence fix (2026-06-02): update receipt hash after write.
+    # The hash-guard above allows overwrite when content was reverted, but
+    # without updating the receipt, every subsequent stale writer ALSO sees
+    # a mismatch and keeps overwriting, creating an infinite reversion loop.
+    if _needs_receipt_update:
+        import hashlib
+        _receipt = LOG_DIR / 'stale_artifact_watchdog_receipt.json'
+        _new_board_hash = hashlib.sha256(content.encode()).hexdigest()
+        _lane_path = LOG_DIR / 'distribution_lane_latest.json'
+        _new_lane_hash = ''
+        if _lane_path.exists():
+            _new_lane_hash = hashlib.sha256(_lane_path.read_text(encoding='utf-8').encode()).hexdigest()
+        try:
+            with open(_receipt) as _rf:
+                _rd = json.loads(_rf.read())
+            _rd['board_content_sha256'] = _new_board_hash
+            _rd['lane_content_sha256'] = _new_lane_hash or _rd.get('lane_content_sha256', '')
+            _rd['repaired_at'] = now.isoformat(timespec='seconds')
+            _rd['board_repaired'] = True
+            _rd['note'] = '6th-recurrence fix: receipt updated on write to break infinite reversion loop'
+            with open(_receipt, 'w') as _wf:
+                _wf.write(json.dumps(_rd, indent=2) + '\n')
+        except Exception:
+            pass
 
     deduped_targets: list[str] = []
     seen_targets: set[str] = set()
