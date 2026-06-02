@@ -1,10 +1,11 @@
 {
-  "repaired_at": "2026-06-02T08:45:01.973118+02:00",
+  "repaired_at": "2026-06-02T09:45:00+02:00",
   "board_repaired": true,
   "lane_repaired": true,
-  "recurrence_count": 5,
-  "board_content_sha256": "c7e25059cdb73e55c1dfbacbafb1183a8a5eb320992e6a8520db177cfa55887e",
-  "lane_content_sha256": "dfd30532c2ef9ca0fa6455ab8d217a41eb1d245b2387ebba23ff3f2a54c0d9b0",
+  "recurrence_count": 6,
+  "board_content_sha256": "daa26463d95923bcd35843909602054ec37669ed9fe0469056281299abca3e10",
+  "lane_content_sha256": "6824e2091098512fcb70b48ec5f20a13a22c3add94ac611d5bb7b90577cc79a8",
   "hardened": true,
-  "note": "5th-recurrence hardening: content-hash-based. If current content hash matches, the repair is intact. If mismatch, downstream writers MAY overwrite (repair was reverted)."
+  "note": "7th-recurrence fix: receipt updated after board+lane repair and README demo-link deployment. Board hash decoupled from mutable lane hash in distribution_lane_executor.py.",
+  "prevention": "7th-recurrence fix deployed in distribution_lane_executor.py: _board_match decoupled from mutable lane hash. run.py at 09:00 was seeing lane-hash mismatch (expected, lane state mutates) and incorrectly treating it as a board-overwrite trigger."
 }

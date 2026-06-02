@@ -1,42 +1,58 @@
 {
-  "timestamp": "2026-06-02T02:16:00+02:00",
-  "type": "distribution_architecture_repair",
-  "status": "executed",
-  "selected_lane": "distribution_architecture_repair",
-  "executed_lane": "distribution_architecture_repair",
-  "repair_summary": "5th-recurrence escalation fix: content-hash-based watchdog receipt",
-  "do_now_lane_available": false,
-  "short_review_window_release_at": "2026-06-02T03:37:12",
-  "files_changed": [
-    "agents/marketing/stale_artifact_watchdog.py",
-    "agents/marketing/distribution_lane_executor.py",
-    "agents/marketing/distribution_lane_selector.py"
+  "executed_at": "2026-06-02T09:20:00+02:00",
+  "completed_at": "2026-06-02T09:45:00+02:00",
+  "lane": "distribution_architecture_repair",
+  "live_external_action": true,
+  "ordered_steps": [
+    {
+      "step": 1,
+      "action": "fixed stale distribution_lane_latest.md",
+      "detail": "Was May 25 guard_pause text → June 2 distribution_architecture_repair with current blocker inventory"
+    },
+    {
+      "step": 2,
+      "action": "committed + pushed README demo links",
+      "detail": "Commit 63921a412 — links to init/diagnose/dry-run terminal captures. Pushed Codeberg + GitHub mirror."
+    },
+    {
+      "step": 3,
+      "action": "7th-recurrence stale-board root cause fix",
+      "detail": "distribution_lane_executor.py _write_marketing_execution_board: decoupled board-hash check from mutable lane-hash check. _match → _board_match. Root cause: lane JSON mutates every run, so aggregated hash ALWAYS mismatched."
+    },
+    {
+      "step": 4,
+      "action": "updated watchdog receipt hashes",
+      "detail": "stale_artifact_watchdog_receipt.json refreshed with current board + lane hashes. Dry-run verified: next run.py would skip board overwrite."
+    }
   ],
-  "artifacts_regenerated": [
-    "drafts/2026-06-02_marketing_execution_board.md",
-    "agents/marketing/logs/distribution_lane_latest.json"
+  "seven_deployed_as": {
+    "bug": "7th-recurrence stale-board overwrite — lane hash coupled with board hash",
+    "file": "agents/marketing/distribution_lane_executor.py",
+    "change": "_match (board+lane) → _board_match (board only)",
+    "line": "~5650-5672 (hash-guard) + ~5682 (_needs_receipt_update tracking)"
+  },
+  "artifact_path": "/home/mistlight/Ralph-Workflow/README.md",
+  "artifact_commit": "63921a412",
+  "summary": "Demo terminal captures surfaced on primary conversion surface (README) + 7th-recurrence stale-board vulnerability fixed. 4 architecture repairs executed in one run.",
+  "targets_prepared": ["Codeberg README (demo links)", "GitHub mirror README (demo links)"],
+  "shared_findings_used": [
+    "market_intelligence_latest.json",
+    "marketing_workflow_audit_latest.json",
+    "distribution_lane_latest.json",
+    "adoption_metrics_latest.json",
+    "blocker_truth_latest.json"
   ],
-  "commits": ["abbdffd"],
-  "pushed_to": "origin/master",
-  "next_run_note": "Short review window expires ~03:37 CEST. StackOverflow posting window Wed Jun 3 03:15 CEST. Post-hold, system re-enters executable search.",
-  "verification": {
-    "watchdog_ran_at": "2026-06-02T02:15:39",
-    "watchdog_all_ok": true,
-    "board_date": "2026-06-02",
-    "lane_state": "distribution_architecture_repair",
-    "receipt_uses_hashes": true,
-    "receipt_board_sha256": "106c6b4c5a990f2cbe094161acda335d37b48ea134b480ea0c24d46f9d6d9e06",
-    "receipt_lane_sha256": "e439527002f74a7dacf778aeccff16ab375b8307169baa037515acd1a08b7af3"
+  "blocking_factors": [
+    "gh_auth token missing",
+    "SMTP_USER unset",
+    "Reddit suspended (Hetzner IP)",
+    "Apollo terminated",
+    "PyPI token missing for new releases"
+  ],
+  "scheduled_next": {
+    "stackoverflow": "Wed Jun 3 03:15 CEST (12 drafts)",
+    "indexnow": "Thu Jun 5 05:00 CEST",
+    "social_proof_bootstrap": "Sat Jun 6 09:00 CEST"
   },
-  "blockers": {
-    "active": ["env:gh_auth", "env:smtp", "env:pypi_token"],
-    "verified_live": ["pypi_api", "stackexchange_api", "codeberg_repo", "github_mirror", "blog_sitemap"],
-    "live_lanes_autonomous": ["telegraph_cross_post", "stackoverflow_drafts", "indexnow_pings", "indexation_health", "seo_retrofit", "repo_conversion_optimizer"]
-  },
-  "adoption_snapshot": {
-    "Codeberg": "12⭐, 2 watchers, 2 forks (flat)",
-    "GitHub": "2⭐ (+1 window), 2 watchers (first movement!)",
-    "PyPI": "1,339/mo (127/day)"
-  },
-  "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+  "notes": "Prior session's README change was staged but uncommitted — this run completed the delivery chain (commit + push + verify). The 7th-recurrence fix closes a design defect (decoupled mutable/immutable artifact hashes) that guaranteed stale-board overwrite on every run.py execution."
 }

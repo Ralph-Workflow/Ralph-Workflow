@@ -1,5 +1,5 @@
 # Ralph Workflow StackOverflow Answer Handoff Packet
-Generated: 2026-06-01T00:18:42.596442
+Generated: 2026-06-01T00:18:42.596442 | **Score corrected: 2026-06-02T10:13 CEST** (was 4.35, actual is 2)
 
 ## Why this is still the live answer lane
 - The same high-intent question is still the strongest qualified StackOverflow target in the current window.
@@ -9,7 +9,7 @@ Generated: 2026-06-01T00:18:42.596442
 ## Target
 - **Question:** Boss wants us to add more AI to our workflow
 - **URL:** https://stackoverflow.com/questions/79928220/boss-wants-us-to-add-more-ai-to-our-workflow
-- **Current score:** 4.35
+- **Current score:** 2
 - **Current answers:** 1
 - **Reused draft:** `/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-31_boss-wants-us-to-add-more-ai-to-our-workflow.md`
 
@@ -53,7 +53,7 @@ Before turning agents loose:
 
 ### 4. Tooling options (free and open-source)
 
-You don't need an enterprise platform for this. The pattern described above (plan→execute→verify→review with TOML task specs) exists in open-source orchestrators that wrap Claude Code, Codex, or your existing agents. Ralph Workflow is one — free, runs on your machine, Codeberg-hosted. Whatever tool you choose, the structure matters more than the model: bounded tasks with separated verification beat unlimited chat sessions every time.
+You don't need an enterprise platform for this. The pattern described above (plan→execute→verify→review with TOML task specs) exists in open-source orchestrators that wrap Claude Code, Codex, or your existing agents. Ralph Workflow is one — free, runs on your machine, Codeberg-hosted. [Here's the full getting-started flow](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) (init → diagnose → dry-run, ~19 seconds). Whatever tool you choose, the structure matters more than the model: bounded tasks with separated verification beat unlimited chat sessions every time.
 
 ### 5. Rollout path (do this tomorrow)
 

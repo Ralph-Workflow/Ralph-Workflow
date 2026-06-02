@@ -1,10 +1,11 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-02T09:15:32
+Generated: 2026-06-02T10:58:09
 Chosen lane: **measurement_hold**
 
 ## Why this lane
-- Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.
+- Directory confirmation has never produced a Codeberg backlink; no postable external lane is open and no unpublished guide remains. Hold for the next truthful execution window.
 - Primary Codeberg adoption is flat in the current measurement window.
+- 1 live external marketing action(s) already shipped in the last 6 hours.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
