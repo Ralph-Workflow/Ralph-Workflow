@@ -1,0 +1,67 @@
+2026-06-02 08:52:36.132 | DEBUG    | ralph.config.loader:load_toml:68 - Loaded config from /home/mistlight/.config/ralph-workflow.toml
+Created: /tmp/ralph-demo-1780383142/PROMPT.md
+2026-06-02 08:52:36.548 | DEBUG    | ralph.config.loader:load_toml:68 - Loaded config from /home/mistlight/.config/ralph-workflow.toml
+2026-06-02 08:52:36.555 | DEBUG    | ralph.git.operations:append_to_gitignore:484 - Appended 3 patterns to .gitignore
+2026-06-02 08:52:36.555 | DEBUG    | ralph.config.loader:load_toml:68 - Loaded config from /home/mistlight/.config/ralph-workflow.toml
+╭───────── Ralph Workflow ──────────╮
+│  ____       _       _     _       │
+│ |  _ \ __ _| |_ __ | |__ | |__    │
+│ | |_) / _` | | '_ \| '_ \| '_ \   │
+│ |  _ < (_| | | |_) | | | | | | |  │
+│ |_| \_\__,_|_| .__/|_| |_|_| |_|  │
+│               |_|                 │
+╰───────────── v0.8.8 ──────────────╯
+Welcome to Ralph Workflow
+PROMPT-driven agent orchestrator
+╭─────────────────────── Ralph Workflow first-run setup ───────────────────────╮
+│                                                                              │
+│  Ralph Workflow orchestrates AI coding agents through a planning →           │
+│  development loop driven by your PROMPT.md.                                  │
+│  New to Ralph Workflow? Read docs/sphinx/getting-started.md for a            │
+│  step-by-step walkthrough.                                                   │
+│  Offline docs: python -m pydoc ralph · run make serve-docs from              │
+│  ralph-workflow/ for the full HTML reference.                                │
+│                                                                              │
+│  Ensure your AI agents are on PATH (e.g., `claude`, `opencode`, `agy`)       │
+│  Local config files:                                                         │
+│    • mcp.toml                                                                │
+│    • pipeline.toml                                                           │
+│    • artifacts.toml                                                          │
+│  Next steps:                                                                 │
+│    1. Edit PROMPT.md with your implementation task                           │
+│    2. Install AI agents if missing (e.g., `claude`, `opencode`, `agy`)       │
+│    3. (Optional) Run ralph --init-local-config when this repo needs an       │
+│  optional full project-local override copy of the user-global config set     │
+│    4. (Recommended) Run ralph --diagnose to verify agents, MCP servers, and  │
+│  config before the first real run                                            │
+│    5. Run ralph to start the pipeline                                        │
+│    6. Run `ralph --regenerate-config` to reset configs                       │
+│    7. ⭐ Star https://codeberg.org/RalphWorkflow/Ralph-Workflow so we know   │
+│  you're using it — stars drive development priority                          │
+│  Error reporting: Ralph Workflow sends anonymous crash data and performance  │
+│  metrics. No personal data is collected. See                                 │
+│  ~/.config/ralph-workflow-user.ini for details.                              │
+│                                                                              │
+│  ⭐ Star https://codeberg.org/RalphWorkflow/Ralph-Workflow so we know        │
+│  you're using it — stars drive development priority                          │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+2026-06-02 08:52:37.162 | DEBUG    | ralph.config.mcp_loader:_load_mcp_toml:70 - Loading MCP config from /home/mistlight/Ralph-Workflow/ralph-workflow/ralph/policy/defaults/mcp.toml
+2026-06-02 08:52:37.163 | DEBUG    | ralph.config.mcp_loader:_load_mcp_toml:70 - Loading MCP config from /home/mistlight/.config/ralph-workflow-mcp.toml
+2026-06-02 08:52:37.164 | DEBUG    | ralph.config.mcp_loader:_load_mcp_toml:70 - Loading MCP config from /tmp/ralph-demo-1780383142/.agent/mcp.toml
+2026-06-02 08:52:37.164 | DEBUG    | ralph.config.mcp_loader:load_mcp_config:141 - MCP config loaded: 0 server(s), web_search.enabled=True
+                             Baseline Capabilities                              
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Capability                 ┃ Type     ┃ Status                               ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ Workspace Ops              │ Built-in │ OK — always available                │
+│ Git Read Ops               │ Built-in │ OK — always available                │
+│ Artifact Ops               │ Built-in │ OK — always available                │
+│ Plan Read                  │ Built-in │ OK — always available                │
+│ Media Read                 │ Built-in │ OK — always available                │
+│ Web search (DuckDuckGo)    │ Managed  │ OK                                   │
+│ Page retrieval (visit_url) │ Managed  │ OK                                   │
+│ Docs MCP (localhost:6280)  │ Managed  │ not_installed — run `ralph --init`   │
+│                            │          │ or check config                      │
+│ Skill bundles              │ Managed  │ OK                                   │
+└────────────────────────────┴──────────┴──────────────────────────────────────┘

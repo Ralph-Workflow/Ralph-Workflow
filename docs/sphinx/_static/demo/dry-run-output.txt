@@ -1,0 +1,17 @@
+2026-06-02 08:53:11.396 | DEBUG    | ralph.config.loader:load_toml:68 - Loaded config from /home/mistlight/.config/ralph-workflow.toml
+2026-06-02 08:53:11.757 | DEBUG    | ralph.config.loader:load_toml:68 - Loaded config from /home/mistlight/.config/ralph-workflow.toml
+2026-06-02 08:53:11.757 | DEBUG    | ralph.config.loader:load_toml:63 - Config file not found, skipping: /tmp/ralph-demo-1780383142/.agent/ralph-workflow.toml
+2026-06-02 08:53:11.758 | DEBUG    | ralph.config.loader:load_config:201 - Configuration validated successfully
+2026-06-02 08:53:11.831 | DEBUG    | ralph.config.mcp_loader:_load_mcp_toml:70 - Loading MCP config from /home/mistlight/Ralph-Workflow/ralph-workflow/ralph/policy/defaults/mcp.toml
+2026-06-02 08:53:11.832 | DEBUG    | ralph.config.mcp_loader:_load_mcp_toml:70 - Loading MCP config from /home/mistlight/.config/ralph-workflow-mcp.toml
+2026-06-02 08:53:11.832 | DEBUG    | ralph.config.mcp_loader:_load_mcp_toml:70 - Loading MCP config from /tmp/ralph-demo-1780383142/.agent/mcp.toml
+2026-06-02 08:53:11.832 | DEBUG    | ralph.config.mcp_loader:load_mcp_config:141 - MCP config loaded: 0 server(s), web_search.enabled=True
+2026-06-02 08:53:11.833 | DEBUG    | ralph.agents.registry:register:130 - Registered agent: claude
+2026-06-02 08:53:11.833 | DEBUG    | ralph.agents.registry:register:130 - Registered agent: claude-headless
+2026-06-02 08:53:11.833 | DEBUG    | ralph.agents.registry:register:130 - Registered agent: codex
+2026-06-02 08:53:11.833 | DEBUG    | ralph.agents.registry:register:130 - Registered agent: opencode
+2026-06-02 08:53:11.833 | DEBUG    | ralph.agents.registry:register:130 - Registered agent: agy
+2026-06-02 08:53:11.833 | DEBUG    | ralph.agents.registry:from_config:119 - Loaded 5 agents from config
+Dry run mode
+  Phase: planning
+  Iterations: 5

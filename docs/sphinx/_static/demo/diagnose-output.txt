@@ -1,0 +1,82 @@
+
+Ralph Workflow Diagnostics
+
+                 Git Repository                 
+┌─────────────────┬────────────────────────────┐
+│ Repository root │ /tmp/ralph-demo-1780383142 │
+│ Working tree    │ Clean                      │
+└─────────────────┴────────────────────────────┘
+         Configuration          
+┌────────────────────┬─────────┐
+│ Config loaded      │ Success │
+│ Developer iters    │ 5       │
+│ Checkpoint enabled │ True    │
+└────────────────────┴─────────┘
+                        Agents                        
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Agent           ┃ Config                 ┃ PATH    ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ claude          │ Configured: claude     │ on PATH │
+│ claude-headless │ Configured: claude -p  │ on PATH │
+│ codex           │ Configured: codex exec │ missing │
+│ opencode        │ Configured: opencode   │ on PATH │
+│ agy             │ Configured: agy        │ missing │
+└─────────────────┴────────────────────────┴─────────┘
+                 Effective Session MCP Inventory                  
+┏━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Server ┃ Origin ┃ Transport ┃ Exposure                         ┃
+┡━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ (none) │ -      │ -         │ No effective session MCP servers │
+└────────┴────────┴───────────┴──────────────────────────────────┘
+                            Custom MCP Servers                            
+┏━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━┓
+┃ Server ┃ Transport ┃ Status                           ┃ Tools ┃ Detail ┃
+┡━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━┩
+│ (none) │ -         │ No custom MCP servers configured │ -     │ -      │
+└────────┴───────────┴──────────────────────────────────┴───────┴────────┘
+                         Workspace Files                         
+┌───────────────────────────────────────────┬───────────────────┐
+│ PROMPT.md (Implementation prompt)         │ Exists: 394 bytes │
+│ .agent/ralph-workflow.toml (Local config) │ Not found         │
+│ .agent/checkpoint.json (Checkpoint)       │ Not found         │
+└───────────────────────────────────────────┴───────────────────┘
+                             Baseline Capabilities                              
+┏━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┓
+┃                ┃          ┃                ┃ Update         ┃                ┃
+┃ Capability     ┃ Type     ┃ Status         ┃ Available      ┃ Last Checked   ┃
+┡━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━┩
+│ Workspace Ops  │ Built-in │ OK — always    │ no             │ N/A            │
+│                │          │ available      │                │                │
+│ Git Read Ops   │ Built-in │ OK — always    │ no             │ N/A            │
+│                │          │ available      │                │                │
+│ Artifact Ops   │ Built-in │ OK — always    │ no             │ N/A            │
+│                │          │ available      │                │                │
+│ Plan Read      │ Built-in │ OK — always    │ no             │ N/A            │
+│                │          │ available      │                │                │
+│ Media Read     │ Built-in │ OK — always    │ no             │ N/A            │
+│                │          │ available      │                │                │
+│ Web search     │ Managed  │ installed_hea… │ no             │ 2026-06-02T06… │
+│ (DuckDuckGo)   │          │                │                │                │
+│ Page retrieval │ Managed  │ installed_hea… │ no             │ 2026-06-02T06… │
+│ (visit_url)    │          │                │                │                │
+│ Docs MCP       │ Managed  │ not_installed  │ no             │ (never)        │
+│ (localhost:62… │          │                │                │                │
+│ Skill bundles  │ Managed  │ installed_hea… │ no             │ 2026-06-02T06… │
+└────────────────┴──────────┴────────────────┴────────────────┴────────────────┘
+      Pre-flight Validation      
+┌─────────────────┬─────────────┐
+│ Agent chains    │ Satisfiable │
+│ Recovery config │ Valid       │
+└─────────────────┴─────────────┘
+╭───────────────────────────────── Next steps ─────────────────────────────────╮
+│                                                                              │
+│    • Install at least one supported agent: Claude Code                       │
+│  (https://docs.claude.com/claude-code), Codex CLI                            │
+│  (https://codex.openai.com), OpenCode (https://opencode.ai), or Google Anti  │
+│  Gravity (https://github.com/google-antigravity/antigravity-cli).            │
+│                                                                              │
+│  New to Ralph Workflow? docs/sphinx/getting-started.md — step-by-step        │
+│  walkthrough.                                                                │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
