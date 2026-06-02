@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-02T17:15:07.244722",
+  "ts": "2026-06-02T18:10:05.005473",
   "jobs_checked": 26,
   "issues_found": 11,
   "issues": [
@@ -94,8 +94,8 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout_risk repeat_count=27",
-      "repeats_in_recent_history": 27,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout_risk repeat_count=47",
+      "repeats_in_recent_history": 47,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout_risk",
       "escalation_level": "critical",
@@ -150,6 +150,66 @@
       "job": "marketing_independent_verification_blockers_distribution-lane-latest-json-is-missing-or-stal",
       "ok": true,
       "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-06-02T13:30:28.801852+00:00"
+    },
+    {
+      "type": "rerun_docs_verifier",
+      "job": "docs_agentic_review",
+      "ok": true,
+      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\"status\": \"pass\", \"summary\": \"README \\u2192 START_HERE \\u2192 docs/README journey is coherent, positioned correctly, and free of internal leakage. Promoted next-click pages reinforce the same story. No must-fi"
+    },
+    {
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "docs_agentic_review_mustFix_github-mirror-start-here-md-links-to-ralph-workf",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-02T16:09:22.561263+00:00"
+    },
+    {
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "docs_agentic_review_mustFix_primary-repo-readme-docs-table-points-to-ralphwo",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-02T16:09:26.389218+00:00"
+    },
+    {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T18:09:37.775672+02:00\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780416583513:229\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_github-mirror-start-here-md-links-to-ralph-workf_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_primary-repo-readme-docs-table-points-to-ralphwo_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780416598496:231\"\n}"
     }
   ]
 }
