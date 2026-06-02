@@ -1,0 +1,7 @@
+{
+  "exhausted_question_urls": [
+    "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code"
+  ],
+  "updated_at": "2026-06-02T20:16:00",
+  "note": "5.0 draft delivered manually to mistlight via Matrix on June 2 20:16; marking exhausted to prevent cron re-drafting"
+}
