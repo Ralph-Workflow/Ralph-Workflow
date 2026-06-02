@@ -110,7 +110,20 @@ Keep asking:
 - is content still the bottleneck?
 - should this shift to docs, repo conversion, examples, or distribution?
 
-## Principle 8: Re-analyze the workflow itself
+## Principle 8: No duplicate-topic posts without cross-links
+
+When publishing a new blog post that covers a comparison target set already covered by an earlier post:
+
+1. The newer post MUST explicitly cross-link to the earlier post with a differentiated purpose statement
+2. The earlier post MUST gain a reciprocal link to the newer post
+3. If the two posts cover the same tools and the same comparison angle, do not publish the second post — consolidate into the existing one instead
+4. Each post must have a structurally distinct section organization (not just different word order)
+
+Violating this creates duplicate-content risk with Google. Two posts covering the same 8-tool comparison target set with zero internal links looks like thin content spam to a search engine — even if both posts are individually well-written.
+
+**This is a process gate, not a recommendation.** Before committing any new blog post, verify against existing content for tool-set overlap.
+
+## Principle 9: Re-analyze the workflow itself
 At regular intervals, review:
 - what work was done
 - what that work was supposed to improve
@@ -161,6 +174,21 @@ If you cannot guarantee a fresh opening, do not post. Write the body with a genu
 - Statement of a common failure: "The thing that breaks first in unattended coding runs is not the code — it's the handoff."
 - Reframe the premise: "The question isn't which model is smartest. It's which workflow actually ends in something you can review."
 - Concrete observation: "What I kept getting wrong early on was treating 'the agent said done' as a finish line instead of a checkpoint."
+
+## Principle 10: Break the local maximum
+
+A system that optimizes itself can get very good at doing things that don't matter. This is the *local maximum trap*: each audit fixes hygiene, tightens guards, and improves internal metrics while actual outcomes — repo stars, downloads-to-stars conversion, external trust — stay flat.
+
+When the system has completed 48+ audit patches with zero adoption delta, it is not failing to improve. It is succeeding at optimizing the wrong things. The solution is not another monitoring patch. It is a structural break: a new agent, a new lane, a new execution path that targets the actual bottleneck (social proof, not content) and accepts that some internal perfection metrics will regress while outcome metrics get the budget.
+
+**Mandate**:
+- If the primary adoption metric (Codeberg star delta) remains zero after 3 consecutive audit runs, the system MUST create a new agent, replace a stale lane, or deploy a structural change — not generate another report.
+- Internal hygiene improvements (wording tightenings, guard refinements, duplicate suppression) are not substitutes for growth actions.
+- Every new marketing agent MUST name its expected outcome, measurement window, and replacement condition if it fails within that window.
+- Runtime changes (commits, pushes, agent creation) beat report-generation when outcomes are flat.
+
+**Diagnostic**:
+If `skipped_regeneration_guard` or `noop` appears in the daily log for 3+ consecutive runs, the lane is saturated and must be replaced, not refined.
 
 ## Working question
 What is the highest-leverage thing I can do right now to increase real RalphWorkflow adoption?

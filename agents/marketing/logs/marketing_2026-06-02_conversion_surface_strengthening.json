@@ -1,0 +1,44 @@
+{
+  "runId": "2026-06-02T0908Z_conversion_surface_strengthening",
+  "timestamp": "2026-06-02T09:08:57Z",
+  "trigger": "cron marketing-active-loop 10:56 CEST",
+  "decision": "strengthen_first_task_guide",
+  "decisionRationale": "ADOPTION_FUNNEL_NEXT identifies conversion (interest → first use) as the bottleneck. The #1 recommended fix is a strong first-task guide. Current version was 1792 bytes / 45 lines of vague advice — insufficient to convert a visitor into someone who actually runs the tool. This is not fake progress: it's a structural repo-surface improvement with zero blockers, directly addressing the conversion bottleneck.",
+  "actions": [
+    {
+      "type": "conversion_surface_strengthening",
+      "file": "docs/first-task-guide.md",
+      "before": "1792 bytes, 45 lines of vague task-type categories with no spec template, no execution walkthrough, no review loop, no honest-assessment section",
+      "after": "11421 bytes, ~210 lines: full conversion guide with task selection criteria + good/bad tables, spec template + real example, execution command, morning-after review loop, next-steps options, honest assessment (when it works/when it doesn't), links to asciinema V2 demo, START_HERE, prompt templates, blog deep-dive, install/docs",
+      "commitHash": "5246be088",
+      "commitSubject": "feat(docs): strengthen first-task-guide with full conversion walkthrough",
+      "pushStatus": "pushed to Codeberg origin + GitHub mirror"
+    }
+  ],
+  "optionsRejected": [
+    {
+      "option": "SEO-tune comparison pages",
+      "reason": "Comparison pages are already decent (~85-96 lines each, consistent CTA footers). SEO tuning them further would be low-marginal-return polishing of an already-adequate surface. The first-task-guide was the bottleneck — visitors land on README, click docs, see a thin guide, and bounce."
+    },
+    {
+      "option": "Manual publisher outreach refresh",
+      "reason": "ComputingForGeeks contact packet is already current (May 27). Re-surfacing would be fake progress per Principle 3."
+    },
+    {
+      "option": "SO lane strengthening",
+      "reason": "Already strengthened in the 10:13 CEST run (asciinema link added, score corrected). Posting window opens tomorrow. Further pre-cooldown touching is fake progress."
+    },
+    {
+      "option": "Create new agent for social proof",
+      "reason": "Principle 10 triggers new agent creation when Codeberg stays flat for 3+ audit runs. While Codeberg is flat at 12 stars, this is a conversion-bottleneck problem, not an awareness-bottleneck problem. A new agent would not fix the conversion surface. Strengthening the first-task-guide is a structural change that directly addresses the funnel bottleneck. Agent creation remains available for next run if Codeberg stays flat."
+    }
+  ],
+  "stateAfterRun": {
+    "primaryRepo": "docs/first-task-guide.md substantially strengthened (1792→11421 bytes)",
+    "commitPushed": "Codeberg origin + GitHub mirror",
+    "blockedLanes": "7 (unchanged: Reddit, Apollo, GitHub auth, SMTP, PyPI, manual outreach, SO cooldown)",
+    "activeLanes": "none externally; conversion surface is internal-only",
+    "nextRunWindow": "SO posting window opens Wed Jun 3 03:15 CEST (~17h from now). SO answer is prepared, asciinema-linked, and strengthened."
+  },
+  "selfImprovementCheck": "This run directly executes ADOPTION_FUNNEL_NEXT's highest-priority recommendation (stronger first-task guide). No new self-improvements needed from this run beyond logging the action."
+}

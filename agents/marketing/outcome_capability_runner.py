@@ -14,9 +14,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from agents.marketing.distribution_lane_selector import choose_distribution_lane
-from agents.marketing.distribution_lane_executor import execute_distribution_lane
+from agents.marketing.distribution_lane_executor import execute_distribution_lane, LaneExecution
 
 LOG_DIR = ROOT / 'agents/marketing/logs'
+DRAFTS_DIR = ROOT / 'drafts'
 STATUS_JSON = LOG_DIR / 'outcome_capability_latest.json'
 STATUS_MD = LOG_DIR / 'outcome_capability_latest.md'
 QUEUE_PATH = LOG_DIR / 'comparison_backlink_queue_latest.json'
@@ -24,13 +25,26 @@ CODEBERG_PRIMARY = 'https://codeberg.org/RalphWorkflow/Ralph-Workflow'
 
 ALLOWED_LANES = {
     'apollo_outreach',
-    'comparison_backlink_outreach',
     'directory_confirmation',
     'distribution_confirmation_follow_through',
     'manual_outreach_asset_follow_through',
     'primary_repo_flat_contact_handoff_packet',
+    'social_proof_bootstrap',
     'stackoverflow_answer',
+    # 'comparison_backlink_outreach' removed 2026-05-29: permanently blocked — no gh auth
 }
+# stackoverflow_answer RESTORED 2026-05-31: the original removal cited "DDG search collapsed",
+# but this lane uses StackExchange API (api.stackexchange.com) directly — NOT DDG/web_search.
+# The StackExchange API is unblocked (no Cloudflare, no captcha, no IP ban).
+# 8 answer drafts ready. First cron run: June 3 03:15 CEST.
+
+# Fallback lane when decision lane is not in ALLOWED_LANES.
+# Changed 2026-06-02: owned_content hits content saturation gate daily (44 posts > 40 cap)
+# producing owned_content_lane_noop with zero external action. Replaced with
+# social_proof_bootstrap which audits trust signals across 12 public surfaces,
+# injects Codeberg CTAs into docs footer, and commits+pushes fixes autonomously.
+# Has its own 6-hour regeneration guard so repeat cron runs won't produce noise.
+DEFAULT_FALLBACK_LANE = 'social_proof_bootstrap'
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -48,16 +62,76 @@ def _comparison_queue_count() -> int:
     return sum(1 for row in targets if str((row or {}).get('status') or '').strip().lower() == 'prepared')
 
 
+def _execute_social_proof_bootstrap(now: datetime) -> LaneExecution:
+    """Direct execution of social proof bootstrapping — bypasses the 7,637-line
+    distribution_lane_executor which has no handler for this lane.
+
+    Returns a LaneExecution-compatible dataclass for downstream compatibility.
+    """
+    from agents.marketing.social_proof_bootstrap import run as run_bootstrap
+    result = run_bootstrap(dry_run=False, force=False)
+    summary = result.get('summary', {})
+    actions = result.get('actions_taken', [])
+
+    action_descs = []
+    for a in actions:
+        if a.get('action') == 'inject_docs_footer_cta':
+            pushed = a.get('git_result', {}).get('pushed', False)
+            action_descs.append(f"docs footer CTA ({'pushed' if pushed else 'committed no push'})")
+        elif a.get('action') != 'git_result':
+            action_descs.append(f"{a.get('action', '?')}: {a.get('status', '?')}")
+
+    gaps = summary.get('gap_surfaces', [])
+    return LaneExecution(
+        lane='social_proof_bootstrap',
+        action_type=f'social_proof_bootstrap_{summary.get("surfaces_audited", 0)}_surfaces_{summary.get("surfaces_with_gaps", 0)}_gaps',
+        status='executed',
+        artifact_path=str(LOG_DIR / 'social_proof_bootstrap_latest.json'),
+        summary=f"Audited {summary.get('surfaces_audited', '?')} surfaces, "
+                f"{summary.get('surfaces_with_gaps', '?')} with gaps "
+                f"({', '.join(gaps) if gaps else 'none'}). "
+                f"Actions: {', '.join(action_descs) if action_descs else 'none'}. "
+                f"Codeberg primary: {CODEBERG_PRIMARY}",
+        targets_prepared=action_descs,
+        shared_findings_used=['social_proof_bootstrap: audit #20 trust-signal injection'],
+        live_external_action=bool(gaps),
+        blocking_factors=[f"Trust-signal gaps: {', '.join(gaps)}"] if gaps else None,
+    )
+
+
 def run(now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now().astimezone().replace(tzinfo=None)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # ── Regeneration guard ──────────────────────────────────────────────
+    # Skip if a same-day distribution_action_brief was already written in the
+    # current cron window. This prevents the draft-inflation loop documented
+    # in outreach-log.md (audit #14, 2026-05-30): outcome_capability_runner
+    # regenerates the same brief on every invocation, inflating drafts
+    # unnecessarily and producing no new distribution surface.
+    same_day_brief = DRAFTS_DIR / f'{now.strftime("%Y-%m-%d")}_distribution_action_brief.md'
+    if same_day_brief.exists():
+        age_seconds = now.timestamp() - same_day_brief.stat().st_mtime
+        if age_seconds < 3600:  # < 1 hour old
+            skip_payload = {
+                'timestamp': now.isoformat(),
+                'type': 'outcome_capability_runner',
+                'status': 'skipped_regeneration_guard',
+                'reason': f'Same-day distribution_action_brief already exists ({age_seconds:.0f}s old). Skipping to prevent draft inflation.',
+                'existing_brief': str(same_day_brief),
+                'codeberg_primary': CODEBERG_PRIMARY,
+            }
+            STATUS_JSON.write_text(json.dumps(skip_payload, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+            STATUS_MD.write_text(f'# Outcome Capability Runner — SKIPPED\n\n- Saved by regeneration guard: `{same_day_brief}` already exists ({age_seconds:.0f}s old).\n', encoding='utf-8')
+            return skip_payload
+    # ── End regeneration guard ───────────────────────────────────────────
 
     forced_reason = (
         'Outcome capability runner is forcing a non-Reddit, Codeberg-linked distribution capability '
         'because primary adoption is flat and technical repairs alone are insufficient.'
     )
     decision = choose_distribution_lane(now=now)
-    selected_lane = decision.lane if decision.lane in ALLOWED_LANES else 'comparison_backlink_outreach'
+    selected_lane = decision.lane if decision.lane in ALLOWED_LANES else DEFAULT_FALLBACK_LANE
     if selected_lane != decision.lane:
         updated_shared_findings = list(decision.shared_findings_used) + [
             'outcome_capability_runner: force non-Reddit executable lane with direct Codeberg adoption linkage'
@@ -75,7 +149,13 @@ def run(now: datetime | None = None) -> dict[str, Any]:
             setattr(decision, 'reason', forced_reason)
             setattr(decision, 'reasons', [forced_reason])
             setattr(decision, 'shared_findings_used', updated_shared_findings)
-    execution = execute_distribution_lane(decision, now=now)
+
+    # Direct execution path for social_proof_bootstrap — bypasses
+    # distribution_lane_executor which has no handler for this lane.
+    if selected_lane == 'social_proof_bootstrap':
+        execution = _execute_social_proof_bootstrap(now)
+    else:
+        execution = execute_distribution_lane(decision, now=now)
     queue_count = _comparison_queue_count()
 
     payload = {

@@ -13,6 +13,28 @@ if str(ROOT) not in sys.path:
 
 from agents.marketing.positioning import FOUR_QUESTIONS as POSITIONING_QUESTIONS
 
+def _live_blog_post_count() -> int:
+    """Count blog posts from live sitemap (fallback: count local content files)."""
+    try:
+        import urllib.request, re
+        req = urllib.request.Request(
+            "https://ralphworkflow.com/sitemap.xml",
+            headers={"User-Agent": "RalphWorkflow-BlockerTruthCheck/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read().decode()
+        blog_urls = re.findall(r'https://ralphworkflow\.com/blog/[^<]+', body)
+        count = len([u for u in blog_urls if 'feed.json' not in u])
+        if count > 0:
+            return count
+    except Exception:
+        pass
+    # Fallback: count local content files
+    blog_dir = ROOT / 'Ralph-Site' / 'content' / 'blog'
+    if blog_dir.is_dir():
+        return len(list(blog_dir.glob('*.md')))
+    return 44  # last known count, updated 2026-06-01
+
 OUT_DIR = ROOT / 'agents/marketing/logs'
 AUDIT_MD = OUT_DIR / 'marketing_workflow_audit_latest.md'
 AUDIT_JSON = OUT_DIR / 'marketing_workflow_audit_latest.json'
@@ -102,6 +124,42 @@ def load_json(path: Path) -> dict:
         return {}
 
 
+def _audit_material_fingerprint(now: datetime, audit_payload: dict[str, Any]) -> str:
+    """Return a short fingerprint that changes only when audit-relevant state changes."""
+    recent_window = audit_payload.get('recent_window') or {}
+    parts = []
+    for platform in sorted(recent_window):
+        summary = recent_window.get(platform) or {}
+        parts.append(f"{platform}:s{summary.get('stars_delta_window',0)}w{summary.get('watchers_delta_window',0)}f{summary.get('forks_delta_window',0)}")
+    parts.append(f"bottleneck:{audit_payload.get('current_bottleneck','')}")
+    parts.append(f"repetitive:{len(audit_payload.get('repetitive',[]) or [])}")
+    latest = audit_payload.get('latest_executed_action') or {}
+    parts.append(f"action:{latest.get('type','')}:{latest.get('status','')}")
+    return '|'.join(parts)
+
+
+def _should_sync_shared_artifacts(now: datetime, fingerprint: str) -> bool:
+    """Only refresh downstream artifacts when the material audit fingerprint changed."""
+    state_path = OUT_DIR / 'marketing_workflow_audit_precheck_state.json'
+    prior = load_json(state_path)
+    prior_fp = prior.get('last_sync_fingerprint', '')
+    last_sync_ts = prior.get('last_sync_ts', '')
+    try:
+        if last_sync_ts:
+            last_sync = datetime.fromisoformat(last_sync_ts)
+            if now - last_sync < timedelta(hours=1):
+                return False
+    except Exception:
+        pass
+    if fingerprint == prior_fp:
+        return False
+    state_path.write_text(json.dumps({
+        'last_sync_fingerprint': fingerprint,
+        'last_sync_ts': now.isoformat(),
+    }, indent=2), encoding='utf-8')
+    return True
+
+
 def sync_shared_findings_artifacts(now: datetime, audit_payload: dict[str, Any]) -> dict[str, Any]:
     """Refresh the shared runtime artifacts that downstream marketing loops actually consume.
 
@@ -110,7 +168,17 @@ def sync_shared_findings_artifacts(now: datetime, audit_payload: dict[str, Any])
     outcome_execution_board_latest drift stale versus the new audit truth.
     That made the loop look healthy in audit output while downstream consumers
     still read old execution-lane state.
+
+    Now gated by material-change fingerprint — only syncs when adoption metrics,
+    bottleneck, or latest action actually changed, and at most once per hour.
     """
+    fingerprint = _audit_material_fingerprint(now, audit_payload)
+    if not _should_sync_shared_artifacts(now, fingerprint):
+        return {
+            'status': 'skipped_unchanged',
+            'reason': 'material_fingerprint_unchanged_or_cooldown',
+            'fingerprint': fingerprint,
+        }
     try:
         from agents.marketing.distribution_lane_selector import choose_distribution_lane
         from agents.marketing.distribution_lane_executor import _write_marketing_execution_board
@@ -137,6 +205,7 @@ def sync_shared_findings_artifacts(now: datetime, audit_payload: dict[str, Any])
             'execution_board_path': str(board_path),
             'execution_board_targets': list(board_targets),
             'outcome_status_path': str(outcome_execution_board_runner.STATUS_JSON),
+            'fingerprint': fingerprint,
         }
     except Exception as exc:
         return {
@@ -383,7 +452,19 @@ def recent_prepared_primary_repo_flat_packet_count(now: datetime, *, hours: int 
     return total
 
 
+def _channel_spidering_permanently_blocked() -> set[str]:
+    """Read permanently-blocked channel names from the guard system."""
+    try:
+        from agents.marketing.channel_spidering_guard import PERMANENTLY_BLOCKED
+        return set(PERMANENTLY_BLOCKED.keys())
+    except ImportError:
+        return set()
+
+
 def load_reddit_channel_state() -> dict[str, bool]:
+    # If channel_spidering_guard says Reddit is permanently blocked, trust it regardless of monitor output
+    if 'reddit' in _channel_spidering_permanently_blocked():
+        return {'reddit_blocked': True, 'provider_degraded': False, 'permanently_blocked_by_guard': True}
     if not REDDIT_MONITOR_LATEST.exists():
         return {'reddit_blocked': False, 'provider_degraded': False}
     text = REDDIT_MONITOR_LATEST.read_text(encoding='utf-8')
@@ -686,10 +767,18 @@ def main() -> int:
     if measurement_pending and codeberg_flat:
         measurement_pending_reasons.append('primary_repo_flat')
     if codeberg_flat:
+        # 2026-05-31: removed directory_confirmation from the recommendation — it has never
+        # produced a measurable adoption delta and the lane selector now redirects it to
+        # owned_content when all external channels are structurally blocked.
         content_distribution_action = (
-            'REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.'
+            'REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). '
+            f'Owned content is saturated at {_live_blog_post_count()} posts. The highest-value autonomous move is improving the existing conversion path '
+            '(repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary '
+            'in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.'
             if system_redesign_shipped else
-            'REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.'
+            'REPLACE stale content distribution repair. All external lanes are structurally blocked — do not recommend directory submissions or repeat curator packet rewrites. '
+            'Focus: (a) SEO-tuning existing comparison pages for search visibility, (b) improving repo conversion surface (README, quickstart), '
+            '(c) surfacing BLOCKER_ROI_SUMMARY.md as human handoff instead of generating more drafts for blocked lanes.'
         )
         repair_actions.append(build_repair_action(
             measurement_pending=measurement_pending,

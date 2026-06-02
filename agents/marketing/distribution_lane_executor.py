@@ -5649,36 +5649,32 @@ def _write_marketing_execution_board(now: datetime) -> tuple[Path, list[str]]:
                 _age_hours = (now - _repair_dt).total_seconds() / 3600
                 if _age_hours < 24.0:
                     # Check if current content matches receipt (= repair is intact)
+                    # 7th-recurrence fix (2026-06-02): decouple board hash check from
+                    # lane hash check. The 6th-recurrence fix aggregated both into one
+                    # _match flag. But the lane JSON is EXPECTED to change during a run
+                    # (lane selector sets measurement_hold, etc.). This caused EVERY run
+                    # to see a lane-hash mismatch → _match=False → board overwrite gate
+                    # opens. The board content is the asset that must be protected;
+                    # the lane state is mutable by design.
                     _current_board = None
                     _board_target = os.path.realpath(latest_artifact) if latest_artifact.exists() else None
                     if _board_target and os.path.exists(_board_target):
                         with open(_board_target) as _bf:
                             _current_board = _bf.read()
-                    _lane_path = LOG_DIR / 'distribution_lane_latest.json'
-                    _current_lane = None
-                    if _lane_path.exists():
-                        with open(_lane_path) as _lf:
-                            _current_lane = _lf.read()
-                    _match = True
-                    if _current_board:
+                    _board_match = True
+                    if _current_board and _board_hash:
                         _current_board_hash = hashlib.sha256(_current_board.encode()).hexdigest()
-                        if _current_board_hash != _board_hash:
-                            _match = False
-                    if _current_lane:
-                        _current_lane_hash = hashlib.sha256(_current_lane.encode()).hexdigest()
-                        if _current_lane_hash != _lane_hash:
-                            _match = False
-                    if _match:
+                        _board_match = (_current_board_hash == _board_hash)
+                    if _board_match:
                         return artifact, []
-                    # Hash mismatch — artifact reverted, allow overwrite
-                    # 6th-recurrence fix (2026-06-02): update receipt hash after
-                    # overwrite so subsequent stale writers see the match and block.
-                    # Without this, every reverted write re-validates the overwrite,
-                    # creating an infinite reversion loop.
+                    # Board hash mismatch — artifact was reverted, allow overwrite.
+                    # 7th-recurrence fix: update receipt hash after overwrite so
+                    # subsequent stale writers see the match and block.
         except Exception:
             pass
     # Track whether we need to persist an updated receipt after writing.
-    _needs_receipt_update = not _match if ('_match' in dir()) else False
+    # 7th-recurrence fix: use _board_match (decoupled from mutable lane hash).
+    _needs_receipt_update = not _board_match if ('_board_match' in dir()) else False
 
     curator_queue_rows = _load_curator_queue_rows()
     comparison_queue_rows = _comparison_queue_rows(COMPARISON_QUEUE_LATEST_PATH)

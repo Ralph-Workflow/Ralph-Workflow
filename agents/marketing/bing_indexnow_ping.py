@@ -21,7 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -45,6 +45,10 @@ KNOWN_EXTRA_PAGES = [
     "https://ralphworkflow.com/compare/",
 ]
 REQUEST_TIMEOUT = 20  # seconds
+# Prevent multiple same-day submissions. Cron runs Mon/Thu 05:00 — if any
+# other script path calls this, it should skip when a submission already
+# happened today. IndexNow explicitly warns against over-pinging.
+SAME_DAY_COOLDOWN_HOURS = 23
 
 
 def _now_iso() -> str:
@@ -131,9 +135,41 @@ def submit_urls_batch(urls: list[str], endpoint: str) -> dict[str, Any]:
         return {"ok": False, "status": 0, "body": str(e)[:500]}
 
 
+def _same_day_submission_exists(now: datetime) -> bool:
+    """Return True if a submission already happened within the cooldown window.
+
+    Prevents over-pinging: IndexNow explicitly warns that excessive submissions
+    risk rate-limiting or abuse flagging. If any caller already submitted within
+    SAME_DAY_COOLDOWN_HOURS, skip to avoid duplicate pings.
+    """
+    state = load_state()
+    last_ts = state.get("last_submit_ts")
+    if not last_ts:
+        return False
+    try:
+        last = datetime.fromisoformat(last_ts)
+    except Exception:
+        return False
+    # Normalize both to UTC for safe comparison
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    delta = now - last
+    return delta.total_seconds() < (SAME_DAY_COOLDOWN_HOURS * 3600)
+
+
 def run() -> None:
     """Main entry: fetch sitemap, extract URLs, submit to IndexNow endpoints."""
     print(f"=== IndexNow bulk-submit {_now_iso()} ===")
+
+    now = datetime.now()
+    if _same_day_submission_exists(now):
+        state = load_state()
+        last_ts = state.get("last_submit_ts", "unknown")
+        print(f"  ⏭️  Skipping — last submission was at {last_ts} (within {SAME_DAY_COOLDOWN_HOURS}h cooldown)")
+        sys.exit(0)
+
     state = load_state()
 
     # 1. Fetch sitemap

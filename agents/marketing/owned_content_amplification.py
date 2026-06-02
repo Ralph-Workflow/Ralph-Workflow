@@ -73,6 +73,8 @@ PUBLISHED_KEYWORD_CLUSTERS = {
     'autonomous-coding-compared',               # Autonomous AI Coding Tools Compared
     'ai-coding-tools-compared-2026',            # AI Coding Tools Compared 2026
     'is-ralph-right-for-you',                   # Decision Guide
+    'quickstart-getting-started',              # Ralph Workflow in 5 Minutes
+    'ai-coding-agent-testing-strategy',           # NEW: testing strategy for AI-generated code
     'ralph-workflow-vs-aider',                  # comparison
     'ralph-workflow-vs-claude-code',            # comparison
     'ralph-workflow-vs-conductor-oss',          # comparison
@@ -103,23 +105,6 @@ UNCOVERED_KEYWORD_CLUSTERS = [
             'that work across all build systems.'
         ),
         'codeberg_cta_angle': 'Ralph Workflow runs as a CLI tool — plug it directly into any CI/CD pipeline via ralph run.',
-    },
-    {
-        'cluster': 'ai-coding-agent-testing-strategy',
-        'title': 'Testing AI-Generated Code: A Strategy for Reviewing Autonomous Coding Output',
-        'target_keywords': [
-            'test AI generated code', 'review AI coding output', 'AI code quality assurance',
-            'testing autonomous coding', 'AI code review workflow',
-            'validate AI-generated pull requests',
-        ],
-        'angle': (
-            'Most articles cover how to run AI coding agents, but skip the hardest part: '
-            'how to actually test and validate what they produce. Practical strategies '
-            'including differential testing, property-based tests for AI output, '
-            'and the "review budget" concept — how much time you should spend reviewing '
-            'vs. how much the agent saved you.'
-        ),
-        'codeberg_cta_angle': 'Ralph Workflow\'s verification phase runs your test suite automatically before handing off.',
     },
     {
         'cluster': 'ai-coding-agent-benchmarks-real-world',
@@ -187,8 +172,38 @@ def find_next_uncovered_cluster(existing_slugs: set[str]) -> dict | None:
     return None
 
 
+CONTENT_SATURATION_THRESHOLD = 40  # 2026-06-01: at 44 live posts, each new post has near-zero SEO value (13/44 indexed)
+
+
+def _live_post_count() -> int:
+    """Count live blog posts from sitemap; fall back to local content directory."""
+    try:
+        import re
+        req = urllib.request.Request(
+            "https://ralphworkflow.com/sitemap.xml",
+            headers={"User-Agent": "RalphWorkflow-ContentSatGuard/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read().decode()
+        blog_urls = re.findall(r'https://ralphworkflow\.com/blog/[^<]+', body)
+        count = len([u for u in blog_urls if 'feed.json' not in u])
+        if count > 0:
+            return count
+    except Exception:
+        pass
+    blog_dir = ROOT / 'Ralph-Site' / 'content' / 'blog'
+    if blog_dir.is_dir():
+        return len(list(blog_dir.glob('*.md')))
+    return 44
+
+
 def can_publish_now() -> tuple[bool, str]:
-    """Check if we're allowed to publish now (cooldown, etc.)."""
+    """Check if we're allowed to publish now (cooldown, saturation, etc.)."""
+    # Content saturation gate: when ≥THRESHOLD posts, new posts have vanishing SEO value.
+    # Redirect effort to retrofitting existing posts instead.
+    live_count = _live_post_count()
+    if live_count >= CONTENT_SATURATION_THRESHOLD:
+        return False, f'content saturation ({live_count} live posts >= {CONTENT_SATURATION_THRESHOLD} threshold; redirect to SEO retrofit of existing posts)'
     state = load_json(LANE_STATE_PATH)
     last_pub = state.get('last_published_at')
     if last_pub:
@@ -212,6 +227,11 @@ def generate_blog_post(cluster: dict, dry_run: bool = False) -> dict:
     slug = cluster['cluster']
     title = cluster['title']
     
+    # Use cluster-specific angle as the body; add a Ralph Workflow CTA footer.
+    # The angle field carries the full editorial direction from the content strategy.
+    cta = cluster.get('codeberg_cta_angle', 'Ralph Workflow runs as a CLI tool — plug it directly into any CI/CD pipeline via ralph run.')
+    keywords_csv = ', '.join(cluster.get('target_keywords', ['AI coding agent', 'autonomous coding'])[:5])
+
     content_md = f"""---
 title: "{title}"
 published_on: "{datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
@@ -228,55 +248,15 @@ description: "{cluster['angle'][:150]}"
 
 {cluster['angle']}
 
-## The Problem
-
-Most developers start with a single AI coding agent and hit the same wall: 
-one model can only do so much. Claude Code is great at reasoning but slow.
-DeepSeek is fast and cheap but misses edge cases. Codex CLI has good tool
-integration but limited context windows.
-
-## The Solution
-
-The key insight is that **you don't have to pick one**. The best workflows
-route different phases to different models:
-
-1. **Planning** → Strong reasoning model (Claude)
-2. **Development** → Fast coding model (DeepSeek / Codex)
-3. **Review** → Bug-detection model (Claude with different prompting)
-4. **Fix** → Targeted fast model (DeepSeek for specific corrections)
-
-This is cost arbitrage applied to AI coding: you use the expensive model only
-where it adds value, and the cheap model everywhere else.
-
-## How Ralph Workflow Implements This
+## How Ralph Workflow addresses this
 
 [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) is a free
-and open-source orchestrator that lets you configure this pipeline via a single
-TOML file. Each phase gets its own model, its own agent, and its own
-validation gate.
+and open-source orchestrator that turns AI coding agents into unattended
+workflows with built-in verification, fix loops, and review gates.
 
-```toml
-[phases.planning]
-agent = "claude-code"
-model = "claude-sonnet-4-20250514"
+{cta}
 
-[phases.development]
-agent = "codex-cli"
-model = "gpt-5"
-
-[phases.review]
-agent = "claude-code"
-model = "claude-sonnet-4-20250514"
-prompt = "review for bugs, edge cases, and security issues"
-
-[phases.fix]
-agent = "claude-code"
-model = "claude-haiku-4-20250514"
-```
-
-## Getting Started
-
-{cluster['codeberg_cta_angle']}
+## Getting started
 
 ```bash
 pip install ralph-workflow
@@ -290,8 +270,7 @@ ralph run --task "Build a REST API for user authentication"
 
 ---
 
-*This content was generated as part of the Ralph Workflow content pipeline.
-Content is reviewed before deployment.*
+*Keywords: {keywords_csv}.*
 """
     
     output_path = BLOG_DIR / f"{slug}.md"
@@ -392,9 +371,16 @@ def main() -> int:
     if dry_run:
         print('[DRY RUN] Owned Content Amplification Lane')
     
-    # Check cooldown
+    # Check cooldown / saturation
     can, reason = can_publish_now()
     if not can and '--force' not in sys.argv:
+        # If blocked by content saturation, redirect to SEO retrofit
+        if 'saturation' in reason.lower():
+            print(f'SKIP publish: {reason} — redirecting to SEO retrofit lane')
+            from agents.marketing.seo_retrofit_lane import run as retrofit_run
+            result = retrofit_run(dry_run=dry_run)
+            print(f'Retrofit complete: {json.dumps(result.get("summary", result), indent=2)}')
+            return 0
         print(f'SKIP: {reason}')
         return 0
 

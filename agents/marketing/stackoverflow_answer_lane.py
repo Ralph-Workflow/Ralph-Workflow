@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
 """
-StackOverflow Answer Lane for Ralph Workflow.
+StackOverflow Answer DRAFTING Lane for Ralph Workflow.
 
 Finds StackOverflow questions where Ralph Workflow provides a genuine answer,
-drafts helpful non-promotional answers, and logs them for execution.
+drafts helpful non-promotional answers, and logs them for manual review + posting.
 
 StackOverflow allows searching without an account (via Google/site search).
-Posting requires an account — this script drafts and logs; human approves final posting.
+Posting requires a human account — this script ONLY DRAFTS ANSWER TEXT;
+the answer is written to a handoff packet for manual placement. None of the
+currently drafted answers have been manually posted. Treat this as a DRAFTING
+lane, not an autonomous distribution channel.
 
-This is the highest-leverage cold distribution channel available:
+Reclassified 2026-05-31: was misleadingly labeled "highest-leverage cold
+distribution channel" in prior audit artifacts, but until a human posts at
+least one answer and a conversion is measured, it is only a drafting pipeline.
+
+Genuine advantages (if/when manually executed):
 - Reaches developers at the exact problem-solving moment
 - Not blocked by Cloudflare, captchas, or IP bans
 - Question-answer format is natural and non-promotional
 - Ralph Workflow's positioning maps directly onto common SO pain points
+
+Truthful state as of 2026-05-31: 8 drafts exist, 0 have been posted by a human.
 """
 from __future__ import annotations
 
@@ -38,8 +47,12 @@ SO_LOG = LOG_DIR / "stackoverflow_answer_lane_latest.json"
 DRAFT_DIR = ROOT / "drafts" / "stackoverflow"
 DRAFT_DIR.mkdir(parents=True, exist_ok=True)
 HANDOFF_PACKET_LATEST = ROOT / "drafts" / "stackoverflow_answer_handoff_packet_latest.md"
-RECENT_DRAFT_LOOKBACK = timedelta(days=7)
+RECENT_DRAFT_LOOKBACK = timedelta(days=3)  # was 7 — reduced 2026-06-01: 7-day lookback blocked all results against fixed search specs
 RATE_LIMIT_COOLDOWN = timedelta(hours=6)
+# Hard cap on total unposted SO drafts — prevent infinite draft inflation when
+# no human has ever posted one. The system owns marketing outcomes, not just
+# activity; drafting more than this without a single placement is low-signal noise.
+SO_DRAFT_CAP = 15
 
 # Product truths for Ralph Workflow
 RALPH_PRODUCT = {
@@ -67,79 +80,97 @@ SO_PAIN_TAGS = [
     "coding-assistant",
 ]
 
+# SO_SEARCH_SPECS rewritten 2026-05-31: removed exact-phrase quotes that matched 0 real
+# StackOverflow questions (verified against SE API: 9/10 old specs returned 0 results).
+# New spec format: tag-filtered broad natural-language queries that match how real
+# developers write on SO. Quota budget is 10 queries/day — every one must pay.
+#
+# Verified productive searches (live SE API test 2026-05-31):
+#   [claude-code] autonomous → 1 result (280 views, real question)
+#   [claude] or [opencode] or [aider] agent workflow review → 1 result (176 views)
+
 SO_SEARCH_SPECS = [
-    # Keep the highest-intent, product-adjacent searches first so a tight Stack
-    # Exchange quota window is spent on questions that can actually convert into
-    # qualified Codeberg-first evaluator traffic.
+    # ── tag-filtered: direct category targeting ──
+    # q terms are kept short (1-3 keywords) to match natural SO question text.
+    # Long phrase queries produce 0 results; the SE search engine matches literal text,
+    # not semantic meaning. Add more terms via `tagged` and let the scoring/classify
+    # functions filter for relevance downstream.
     {
-        "title": "production reliability",
-        "tagged": "openai-api",
-        "label": "production-reliability",
-        "q": '"production reliability" autonomous agent workflow review verification',
-        "body": "review verification checkpoint",
-    },
-    {
-        "title": "useful results",
-        "tagged": "artificial-intelligence",
-        "label": "useful-results",
-        "q": '"useful results" ai coding agents review verification workflow',
-        "body": "review verification workflow",
-    },
-    {
-        "title": "autonomous mode wrapper",
+        "title": "claude-code autonomous",
         "tagged": "claude-code",
-        "label": "claude-code-autonomous-wrapper",
-        "q": '"Claude Code" autonomous mode wrapper',
-        "body": "continue test reflect iterate subagents",
+        "label": "claude-code-autonomous",
+        "q": "autonomous",
+        "body": "autonomous agent workflow",
     },
     {
-        "title": "autonomous coding",
+        "title": "claude-code workflow agent",
+        "tagged": "claude-code",
+        "label": "claude-code-workflow",
+        "q": "workflow agent",
+        "body": "workflow agent orchestration",
+    },
+    {
+        "title": "ai coding agent reliable",
         "tagged": "artificial-intelligence",
-        "label": "autonomous-coding",
-        "q": '"autonomous coding" unattended review verification',
-        "body": "unattended review verification",
+        "label": "ai-coding-reliable",
+        "q": "agent verification review",
+        "body": "verification review reliable",
     },
     {
-        "title": "review output",
+        "title": "ai dev workflow structure",
         "tagged": "artificial-intelligence",
-        "label": "review-output",
-        "q": '"review output" ai agent verify done',
-        "body": "verify done review",
+        "label": "ai-dev-workflow",
+        "q": "workflow structure",
+        "body": "workflow structure maintainable",
     },
     {
-        "title": "verify output",
+        "title": "multi-agent testing",
         "tagged": "artificial-intelligence",
-        "label": "verify-output",
-        "q": '"verify output" ai coding review tests',
-        "body": "review tests verification",
+        "label": "multi-agent-testing",
+        "q": "agent testing reflect",
+        "body": "testing reflect iterate",
     },
     {
-        "title": "agent workflow",
+        "title": "coding agent checkpoint resume",
         "tagged": "artificial-intelligence",
-        "label": "agent-workflow",
-        "q": '"agent workflow" orchestration review verification',
-        "body": "orchestration review verification",
+        "label": "agent-handoff",
+        "q": "checkpoint resume continue",
+        "body": "checkpoint resume continue",
     },
     {
-        "title": "checkpoint resume",
+        "title": "autonomous coding complete",
+        "tagged": "artificial-intelligence",
+        "label": "autonomous-accept",
+        "q": "autonomous complete",
+        "body": "acceptance criteria complete",
+    },
+    {
+        "title": "claude code subagent",
+        "tagged": "claude-code",
+        "label": "claude-subagent",
+        "q": "subagent",
+        "body": "subagent iterate",
+    },
+    {
+        "title": "agent background overnight",
+        "tagged": "artificial-intelligence",
+        "label": "agent-background",
+        "q": "overnight unattended",
+        "body": "background overnight unattended",
+    },
+    {
+        "title": "ai coding finish verify",
         "tagged": "openai-api",
-        "label": "checkpoint-resume",
-        "q": '"checkpoint resume" agent session recover',
-        "body": "resume recover session",
+        "label": "ai-finish-verify",
+        "q": "agent finish verify",
+        "body": "finish verify proof",
     },
     {
-        "title": "know when done",
-        "tagged": "artificial-intelligence",
-        "label": "know-when-done",
-        "q": '"know when done" ai coding verify complete',
-        "body": "verify complete acceptance criteria",
-    },
-    {
-        "title": "unattended run",
-        "tagged": "artificial-intelligence",
-        "label": "unattended-run",
-        "q": '"unattended run" autonomous coding review verification',
-        "body": "autonomous review verification",
+        "title": "codex opus agent orchestrator",
+        "tagged": "openai-api",
+        "label": "openai-orchestrator",
+        "q": "agent orchestrator",
+        "body": "orchestrator loop workflow",
     },
 ]
 
@@ -213,27 +244,44 @@ DISQUALIFYING_TERMS = [
 ]
 
 STRONG_FIT_TERMS = [
+    # Terms that real StackOverflow users write in AI-coding questions.
+    # Must be a superset of the most common HIGH_INTENT_TERMS because
+    # is_draft_worthy() uses this as a hard gate (strong_fit_hits > 0).
+    # If a term is in HIGH_INTENT but not here, a question can score well
+    # (score_question adds points) but still fail the draft-worthiness gate.
     "acceptance criteria",
     "actually done",
+    "agent",
     "autonomous",
+    "background",
     "checkpoint",
+    "coding",
     "complete",
+    "continue",
     "done",
     "finish",
     "handoff",
+    "iterate",
+    "orchestrat",
+    "overnight",
+    "pipeline",
+    "plan",
     "proof",
+    "recover",
+    "reflect",
     "reliable",
     "resume",
     "review",
-    "reflect",
+    "session",
+    "spec",
     "subagent",
+    "test",
     "trust",
     "unattended",
     "verification",
     "verify",
+    "workflow",
     "wrapper",
-    "continue",
-    "iterate",
 ]
 
 SEARCH_RUNTIME: dict[str, Any] = {
@@ -421,19 +469,27 @@ def _search_excerpts(spec: dict[str, str], label: str) -> list[dict]:
 
 
 def so_search_site(spec: dict[str, str]) -> list[dict]:
-    """Search StackOverflow via the official Stack Exchange API."""
-    params = {
+    """Search StackOverflow via the official Stack Exchange API.
+
+    Uses `q` (full-text search across title + body) as the primary search.
+    `tagged` restricts to specific SO tags. `title_filter`, if present,
+    additionally restricts to matching question titles.
+    """
+    q = spec.get("q", "").strip()
+    tagged = spec.get("tagged", "").strip()
+    title_filter = spec.get("title_filter", "").strip()
+
+    params: dict[str, str] = {
         "pagesize": "10",
         "order": "desc",
         "sort": "relevance",
-        "title": spec.get("title", ""),
     }
-    q = spec.get("q", "")
     if q:
         params["q"] = q
-    tagged = spec.get("tagged", "")
     if tagged:
         params["tagged"] = tagged
+    if title_filter:
+        params["title"] = title_filter
 
     label = spec.get('label', spec.get('title', 'query'))
     try:
@@ -563,10 +619,17 @@ def score_question(question: dict, detail: dict | None = None) -> float:
     if "claude code" in text and any(term in text for term in ["wrapper", "continue", "iterate", "reflect", "subagent"]):
         score += 1.4
 
-    if detail and detail.get("answers", 0) and detail["answers"] > 0:
-        score -= 0.8
+    # Questions with existing answers are HIGHER-SIGNAL: they're getting
+    # traffic and the current answers are opportunities for better ones.
+    # Only penalize if the answer is already accepted (harder to displace).
     if detail and detail.get("accepted_answer"):
-        score -= 1.4
+        score -= 0.5
+    if detail and detail.get("view_count", 0) > 50:
+        score += 0.3
+    if detail and detail.get("view_count", 0) > 200:
+        score += 0.5
+    if detail and detail.get("view_count", 0) > 1000:
+        score += 0.8
 
     if detail and detail.get("votes") and detail["votes"] > 3:
         score += 0.5
@@ -594,10 +657,10 @@ def is_draft_worthy(question: dict) -> bool:
     if strong_fit_hits == 0:
         return False
     if question.get("accepted_answer") and question.get("answers", 0) > 0:
-        return score >= 3.2 and strong_fit_hits >= 2
-    if score >= 3.4 and strong_fit_hits >= 1:
+        return score >= 2.8 and strong_fit_hits >= 2
+    if score >= 3.0 and strong_fit_hits >= 1:
         return True
-    return score >= 2.4 and strong_fit_hits >= 2
+    return score >= 2.0 and strong_fit_hits >= 1
 
 
 def _results_include_live_candidate(results: list[dict[str, Any]], *, preview_limit: int = 3) -> bool:
@@ -858,6 +921,30 @@ def main() -> int:
     SEARCH_RUNTIME["halted_after_rate_limit"] = False
 
     previous = _load_previous_lane_state()
+
+    # Draft cap guard (2026-05-31): halt drafting when unposted draft count ≥ SO_DRAFT_CAP.
+    # Prevents infinite draft inflation when no human has ever placed a single answer.
+    draft_file_paths = sorted(DRAFT_DIR.glob('so_answer_*.md'), key=lambda p: p.stat().st_mtime)
+    if len(draft_file_paths) >= SO_DRAFT_CAP:
+        preserved = dict(previous)
+        preserved['generated_at'] = started_at.isoformat()
+        preserved['status'] = 'draft_cap_halted'
+        preserved['total_unposted_drafts'] = len(draft_file_paths)
+        preserved['draft_cap'] = SO_DRAFT_CAP
+        preserved['draft_cap_reason'] = (
+            f'{len(draft_file_paths)} unposted drafts exist (cap={SO_DRAFT_CAP}) '
+            'and 0 have ever been posted by a human. Drafting more answers without '
+            'a single placement is low-signal activity — halt until a human posts at '
+            'least one draft or the cap is raised with placement proof.'
+        )
+        SO_LOG.write_text(json.dumps(preserved, indent=2), encoding='utf-8')
+        print(
+            f'[SO Answer Lane] Halted: {len(draft_file_paths)} unposted drafts hit the '
+            f'SO_DRAFT_CAP ({SO_DRAFT_CAP}). Post at least one existing draft before '
+            'drafting more. See stackoverflow_answer_lane_latest.json for the full state.'
+        )
+        return 0
+
     cooldown_until = _active_rate_limit_cooldown(previous, started_at)
     if cooldown_until:
         preserved = dict(previous)
@@ -960,6 +1047,7 @@ def main() -> int:
     drafts: list[dict] = []
     reused_existing_draft: dict[str, Any] | None = None
     skipped_existing_drafts = 0
+    search_space_exhausted = False  # 2026-06-01: detect when all high-fit results are re-drafts
     for q in top_questions:
         q["pain_family"] = classify_pain_family(q, q)
         if not is_draft_worthy(q):
@@ -997,6 +1085,14 @@ def main() -> int:
         })
         print(f"  Drafted: {draft_file.name}")
 
+    # 2026-06-01: Detect search-space exhaustion — if every draft-worthy question was skipped
+    # as already-drafted, the fixed search specs have exhausted the current question pool.
+    # Signal so cron cadence can adapt.
+    draft_worthy_count = sum(1 for q in top_questions if is_draft_worthy(q))
+    if draft_worthy_count > 0 and draft_worthy_count == skipped_existing_drafts:
+        search_space_exhausted = True
+        print("[SO Answer Lane] Search space exhausted — all draft-worthy questions are recently drafted. Broadening search may help.")
+
     # Save results
     result = {
         "generated_at": datetime.now().isoformat(),
@@ -1014,6 +1110,7 @@ def main() -> int:
         "questions_scored": len(scored),
         "drafts_created": len(drafts),
         "skipped_existing_drafts": skipped_existing_drafts,
+        "search_space_exhausted": search_space_exhausted,
         "reused_existing_draft": reused_existing_draft,
         "manual_follow_through": bool(reused_existing_draft and not drafts),
         "top_questions": [

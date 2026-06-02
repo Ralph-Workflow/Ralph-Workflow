@@ -60,7 +60,8 @@ DEFAULT_COOLDOWN_HOURS = {
     "mastodon": 24.0,             # anti-bot active
     "smtp-outreach": 24.0,        # no SMTP_USER, can't send
     "primary_repo_flat_contact_discovery": 6.0,
-    "telegraph": 6.0,              # blog cross-post — rate-limit to 3 posts per batch, 6h cooldown
+    "telegraph": 0.25,             # blog cross-post — once-daily cron, 15min guard against double-fire
+    "comparison_backlink": 24.0,    # permanently blocked — no gh auth, cannot submit PRs
 }
 
 # Channels that are PERMANENTLY BLOCKED and should never be attempted
@@ -71,6 +72,7 @@ PERMANENTLY_BLOCKED: dict[str, str] = {
     "smtp-outreach": "SMTP_USER environment variable not set. No send capability. Requires human credential handoff.",
     "hackernews": "Human-gated posting. Show HN packet created but unposted across 9+ audit cycles (structural ceiling rule triggered at 3). Packet generation must stop. Requires human to post.",
     "lobsters": "Human-gated invite-wall. 9+ cycles stalemated, no invitation obtained. Packet generation must stop. Requires human to obtain invite and post.",
+    "comparison_backlink": "8 prepared comparison PRs, 0 delivery path. gh auth login missing — cannot submit PRs. Prepared-but-undeliverable across 3+ cycles. Must not be selected as a distribution lane until gh auth succeeds.",
 }
 
 

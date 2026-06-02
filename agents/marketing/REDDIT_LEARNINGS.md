@@ -687,3 +687,84 @@ Rule: no opening from this list may appear in more than one subreddit in the sam
 - The primary autonomous distribution lane is now ralphworkflow.com/blog content production + Codeberg/PyPI outbound linking.
 - When next SEO report identifies new keyword gaps, write blog posts directly in Ralph-Site/content/blog/, commit, push, and cap deploy. Do not create draft files in drafts/ for Telegraph.
 - GitHub Discussions outreach is the next autonomous lane to explore (available, unblocked, unused).
+
+## New lessons — 2026-05-29 (15:19 CEST)
+
+### What worked (or held)
+- The 72-hour self-suspension rule (established May 29 09:50) is correct: total search collapse continuing into day 3 means carrying forward the May 28 11:19 CEST shortlist is no longer honest. Dropped those 4 aging threads.
+- The monitor correctly refused to fabricate opportunities. Zero fresh retrieval = zero shortlist. No false-positive opportunity was invented.
+- The non-Reddit market-intelligence scan (competitor analysis) still works and was refreshed today — the system has an alternative signal source that validates that the broader market has not vanished.
+
+### What did not work
+- Total search provider collapse: DuckDuckGo 100% blocked across 5/5 queries this pass (4th consecutive zero-result pass). Reddit direct still 403 blocked.
+- Last usable retrieval remains May 28 11:19 CEST — **~28 hours stale** at this pass.
+- The preserved shortlist has now aged past utility. Threads #3 (11 days) and #4 (8 days) should not have survived this long.
+
+### Wording and selection lessons
+- Apply the hard age-eviction rule from May 29 09:50: drop threads from shortlist when age exceeds 5 days for question-led threads, 7 days for discussion threads. Do not carry stale threads across total-collapse passes.
+- When provider collapse exceeds 48 hours (now 28h into this pass), the monitor should self-suspend the Reddit-specific scan and keep only the non-Reddit market-intelligence and competitor-analysis lanes active.
+- If collapse hits 72 hours without recovery, the Reddit monitoring cron should be removed or reduced to a once-daily health-check ping only.
+
+### New process rule
+- The Reddit monitor is now structurally degraded beyond research value. The remaining autonomous distribution lanes are blog content production (ralphworkflow.com/blog), competitor analysis refresh, and Apollo measurement review (due June 1).
+- Monitor will continue as a lightweight health-check pass once daily, but will stop re-reporting the stale shortlist and stop generating new search queries.
+
+## Self-suspension confirmed — 2026-05-30 (15:16 CEST)
+
+### Structural collapse entering day 3 (~50 hours)
+- The self-suspension countdown is tracking correctly. At this pass, ~50 hours elapsed since last usable retrieval (2026-05-28 11:19 CEST).
+- DuckDuckGo web_search 100% blocked across all 3 query families (9th consecutive zero-result pass). Reddit direct 403 blocked (every pass since May 23).
+- The 48-hour threshold (~May 30 11:19 CEST) was crossed ~4 hours before this pass. Brief outage-only report mode is active.
+- The 72-hour auto-suspension threshold (~May 31 11:19 CEST) is ~22 hours away.
+
+### Next expected action
+- At the first cron pass after ~May 31 11:19 CEST, write `agents/marketing/logs/reddit_monitor_suspension.json` with last-usable-retrieval timestamp, suspension trigger time, and re-enable conditions.
+- After suspension marker is written, the Reddit monitor will stop executing search queries until provider recovery or human re-enable.
+
+### New process rule (reinforced)
+- When the 72-hour self-suspension threshold triggers, the monitor MUST write the suspension marker and stop executing. Do not continue producing brief outage reports indefinitely — a hard stop at 72h prevents indefinite low-value token burn.
+- Remaining market intelligence lanes (competitor analysis, blog production, Apollo review) continue independently of Reddit suspension.
+
+## New lessons — 2026-05-29 (21:36 CEST)
+
+### Self-suspension rule confirmed operational
+- The 72-hour self-suspension rule (May 29 09:50) is correctly keeping the monitor honest. This pass: 0 fresh results, 0 stale threads carried forward, brief outage report only — no false-positive opportunities invented.
+- The 48-hour threshold is active (~34h elapsed since last usable retrieval). The monitor correctly switched from "stale shortlist report" mode to "brief outage confirmation" mode as prescribed.
+
+### What worked (or held)
+- The self-suspension transition is working correctly. The 15:19 CEST pass dropped all 4 aging threads. This (21:36 CEST) pass produced only a brief outage confirmation with no stale shortlist carry-forward.
+- Non-Reddit market intelligence (competitor analysis) refreshed independently at 20:03 CEST today — 8 competitors monitored, no positional drift.
+- The monitor correctly refused to fabricate shortlist entries for the 6th consecutive zero-result pass.
+
+### What did not work
+- DuckDuckGo web_search 100% blocked on 5/5 queries (6th consecutive failed pass). Reddit direct 403 blocked (every pass since May 23).
+- Last usable retrieval: 2026-05-28 11:19 CEST — now **~34 hours stale**.
+- No search provider recovery seen. Self-suspension at the 72-hour mark (expected ~May 30 20:00 UTC) is the only structural next step.
+
+### Wording and selection lessons
+- The self-suspension process is validated: the transition from carrying a stale shortlist to producing brief outage-only reports to full suspension is structurally sound.
+- Once the 72-hour threshold triggers self-suspension, the system should log the suspension timestamp and re-check only if a provider status change is detected, not on every cron tick.
+- No new process rules needed — the existing May 29 rules cover this scenario correctly.
+
+### New process rule
+- When the 72-hour self-suspension threshold triggers, the monitor should write a single suspension marker file and stop executing until either (a) a search provider health-check passes, or (b) the human explicitly re-enables the monitor.
+- The suspension marker should include the last-usable-retrieval timestamp, the suspension trigger time, and the conditions for re-enabling.
+
+## New lessons — 2026-06-01 (19:15 CEST)
+
+### What changed
+- **DDG showed first flicker of life in ~4 days.** A single broad non-Reddit query returned real results after 4+ days of total collapse. Subsequent 7+ queries returned bot-detection. Pattern looks like a session-scoped rate-limit rather than uniform provider behavior.
+- **Still insufficient for re-enable.** One working query out of 8+ attempts does not constitute stable recovery. Re-enable requires 2+ consecutive passes with reliable coverage.
+- **Reddit direct still 403-blocked.** 29 days on Hetzner Helsinki IP. No change.
+
+### What worked (or held)
+- The suspension correctly held despite the partial recovery signal. One working query is not enough to re-open Reddit monitoring.
+- Non-Reddit market intelligence was refreshed from the brief working window. $6K MUO story, Petie Clark's overnight rules blog, Karpathy autoresearch, and Claude+Codex handoff tools all validate the same market thesis.
+
+### What did not work
+- DDG is still too intermittent to trust for systematic Reddit scanning. Session-scoped rate-limits mean the first query can succeed while all subsequent ones fail.
+
+### Rule updates
+- Add a **partial-recovery stabilization check**: DDG must clear 3+ consecutive query families successfully across 2+ passes before re-enable is considered, even if the suspension marker hasn't triggered.
+- Add the **first-query-success trap** to suspension re-enable conditions: DDG showing occasional working results does not mean the monitoring path is open.
+- Escalation countdown: 3 days until June 4 ~11:19 CEST. If no sustained recovery, notify mistlight about provider migration. 

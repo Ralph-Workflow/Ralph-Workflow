@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-02T07:00:26.452773+00:00",
+  "generated_at": "2026-06-02T09:18:06.397241+00:00",
   "status": "fail",
   "total_files_with_repo_links": 510,
   "high_severity_count": 1,
@@ -357,6 +357,14 @@
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_spec_driven_draft.md",
       "codeberg_links": 2,
       "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-02_primary_repo_flat_contact_handoff_packet.md",
+      "codeberg_links": 20,
+      "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -2306,14 +2314,6 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
-      "codeberg_links": 2,
-      "github_links": 0,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/NON_REDDIT_CHANNELS_NEXT.md",
       "codeberg_links": 6,
       "github_links": 4,
@@ -3690,9 +3690,9 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_distribution_architecture_repair.json",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02.json",
       "codeberg_links": 2,
-      "github_links": 0,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"

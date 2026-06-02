@@ -232,6 +232,50 @@ def latest_measurement_hold_window(now: datetime, log_dir: Path) -> dict[str, An
     }
 
 
+# ── Hold-exhaustion circuit-breaker ───────────────────────────────────────────
+# When the lane selector has no viable lanes (all distribution channels blocked
+# on human-gated credentials) and redirects to measurement_hold 3+ times in a
+# 24-hour window with zero live external actions between them, the system is in
+# a hold deadlock. The measurement window can't move because the hold prevents
+# actions; the hold can't lift because no action changes the measurement.
+#
+# The circuit-breaker forces a break to the safest autonomous lane (owned_content)
+# to ensure at least one real action ships before the next hold check.
+
+HOLD_EXHAUSTION_CONSECUTIVE_THRESHOLD = 2
+# 2026-06-01: Reduced from 3→2. At 3, the system was deadlocking too long
+# while all lanes were structurally blocked. At 2, circuit-breaks faster
+# into owned_content or blocker escalation.
+HOLD_EXHAUSTION_WINDOW_HOURS = 24
+
+
+def hold_exhausted(now: datetime, log_dir: Path) -> bool:
+    """Return True if 3+ consecutive measurement_hold actions in the exhaustion
+    window with zero live external actions between them — a hold deadlock."""
+    from datetime import timedelta
+
+    payloads = recent_marketing_log_payloads(log_dir)
+    cutoff = now - timedelta(hours=HOLD_EXHAUSTION_WINDOW_HOURS)
+
+    hold_count = 0
+    for _path, payload, timestamp in payloads:
+        if timestamp < cutoff:
+            break
+        action_type = str(
+            payload.get('action_type') or payload.get('action') or ''
+        ).strip()
+        if 'measurement_hold' in action_type.lower():
+            hold_count += 1
+            continue
+        # Any payload with live_external_action=true resets the cascade
+        if payload.get('live_external_action') is True:
+            # If we already have 3+ holds before this live action, still exhausted
+            # (live action happened AFTER the holds, not BETWEEN them)
+            break
+
+    return hold_count >= HOLD_EXHAUSTION_CONSECUTIVE_THRESHOLD
+
+
 # ── Self-improvement ──────────────────────────────────────────────────────────
 # Note: measurement_hold_runtime.py provides a shared runtime library consulted
 # by other agents. Self-improvement is indirect: flat outcomes should trigger
