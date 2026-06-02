@@ -1,33 +1,12 @@
 {
-  "lane": "distribution_architecture_repair",
-  "reason": "active-loop repair at 2026-06-02 01:50 CEST — watchdog receipt was blocking legitimate stale-content fix (5th recurrence escalation)",
+  "lane": "distribution_architecture_guard_pause",
+  "reason": "pause duplicate guard churn until the fingerprint changes",
   "reasons": [],
   "owned_content_posts_last_36h": 0,
   "unsubmitted_directory_channels": [],
-  "shared_findings_used": [
-    "blocker_truth_latest.json",
-    "marketing_workflow_audit_latest.json",
-    "market_intelligence_latest.json"
-  ],
-  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-02_marketing_execution_board.md",
+  "shared_findings_used": [],
+  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_distribution_action_brief.md",
   "short_review_window_release_at": "2026-06-02T03:37:12",
-  "skip_directory_submissions": true,
-  "skip_curator_outreach": true,
-  "generated_at": "2026-06-02T01:50:00+02:00",
-  "active_blockers": [
-    "env:gh_auth",
-    "env:smtp",
-    "env:pypi_token"
-  ],
-  "live_lanes_autonomous": [
-    "telegraph_cross_post",
-    "stackoverflow_drafts",
-    "indexnow_pings",
-    "indexation_health",
-    "seo_retrofit",
-    "repo_conversion_optimizer"
-  ],
-  "blog_count": 44,
-  "content_saturation_active": true,
-  "notes": "5th recurrence escalation — watchdog receipt mechanism caused write-block for 3h that was preventing legitimate stale-content repair. Receipt fixed in same run."
+  "skip_directory_submissions": false,
+  "skip_curator_outreach": false
 }

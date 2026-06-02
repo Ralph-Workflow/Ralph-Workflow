@@ -1,47 +1,41 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-06-02T02:23:00+02:00 (active-loop — process repair + SEO CTR action)
+Generated: 2026-05-25T18:53:00
 
-## State
-- Codeberg: 12⭐, 2 watchers, 2 forks (flat 9+ samples)
-- GitHub: 2⭐ (+1 window), 2 watchers
-- PyPI: v0.8.8 live — 1,339 downloads/month (127/day)
-- Blog: 44 posts (content saturated)
-- Blockers: env:gh_auth, env:smtp, env:pypi_token
-- Verified live: pypi_api, stackexchange_api, codeberg_repo, github_mirror, blog_sitemap, indexnow_api, capistrano_deploy
+## Why this board exists
+- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
+- Multiple live lanes already exist, so this board consolidates the best executable assets instead of letting them stay siloed across separate packet files.
+- Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
-## This run (2026-06-02 ~02:00–02:23 CEST)
-1. **distribution_architecture_repair** — 5th-recurrence watchdog hardening (commit `abbdffd`):
-   - `stale_artifact_watchdog.py`: receipt stores content SHA-256 hashes
-   - `distribution_lane_executor.py`: `_write_marketing_execution_board` checks hashes before blocking
-   - `distribution_lane_selector.py`: `_watchdog_recently_repaired` uses hash-based comparison
-   - Fresh board + lane state generated, receipt regenerated
-2. **seo_comparison_ctr** — improved titles on 2 highest-value comparison pages:
-   - `ralph-workflow-comparison-guide`: "AI Coding Tools Compared: Which One Actually Finishes While You Sleep?" + early Codeberg CTA above fold
-   - `ai-coding-tools-comparison-2026`: "Claude Code vs Cursor vs Copilot vs Aider vs Ralph Workflow" (tool-vs-tool keywords)
-   - Both submitted to IndexNow (200 OK), deployed live (release `20260602002311`)
+## Active review windows
+- Apollo next review: 2026-05-29T09:00:01.629178+02:00
+- Apollo launch review: 2026-06-05T09:00:01.629178+02:00
+- Short review-window congestion clears at: 2026-05-25T23:07:41
+- StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
+- StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
+- Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
+- Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
 
-## Process rule (5th recurrence — hardened)
-Watchdog receipt now uses content-hash comparison:
-- If receipt hashes match current content → repair intact → downstream writes blocked
-- If mismatch → reversion occurred → legitimate overwrites allowed
-- This replaces the 24h time-based blind block that trapped the 5th recurrence
+## Best executable assets still waiting
+### 1. Manual publisher outreach asset
+- When: Do now
+- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md
+- Targets: ComputingForGeeks
+- Why this matters: A current Codeberg-first manual follow-through asset already exists for the active primary-repo-flat target set; use it instead of regenerating the packet.
 
-## Executable autonomous lanes
-- Telegraph cross-post: Daily 06:00 (run_posting.py)
-- StackOverflow drafts: Wed/Sun 03:15 (7 drafts queued, next: Wed Jun 3)
-- IndexNow pings: Mon+Thu 05:00
-- Indexation health: Sat 05:30
-- SEO retrofit: Sat 10:00
-- Repo conversion optimizer: Sun 08:00
+## Shared findings reused
+- market_intelligence_latest.json → positioning truths and comparison framing
+- adoption_metrics_latest.json → Codeberg movement remains the primary success gate
+- curator_outreach_queue_latest.json / comparison_backlink_queue_latest.json → live prepared execution queues
+- primary_repo_flat_contact_discovery_latest.json → fresh publisher-contact lane
+- apollo_sequence_status_latest.json / apollo_sequence_launch_packet_latest.md → launch-ready managed outbound state
+- stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
 
-## Short review window
-- Release at: 2026-06-02 03:37 CEST (~1h from now)
-- Post-release: Hold-expires, system re-enters executable search
-- Note: StackOverflow posting window Wed Jun 3 03:15
+## Verified infrastructure state (programmatic, not fabricated)
+- **Telegraph guard**: clear
+- **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
+- **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
+- **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED
 
-## Follow-through truth
-- Handoff packets: SUPPRESSED (7-day, expires ~Jun 8)
-- StackOverflow: 7 drafts queued, next posting window Wed Jun 3 03:15
-- All external lanes human-gated (gh_auth, smtp, pypi_token)
-- Content saturated at 44 posts
-- SEO title changes measurable in GSC within 1-3 days
+## Process rule now in force
+- Do not generate another siloed packet when one of the assets above is already current.
+- During a hold window, refresh stale packets if needed, then point back to this board instead of inventing another reset artifact.

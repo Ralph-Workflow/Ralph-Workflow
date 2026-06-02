@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-06-01T23:06:28.029880+00:00",
+  "updated_at": "2026-06-01T23:48:48.375379+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 535,
+      "repeat_count": 557,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1881,15 +1881,103 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355163250:42\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=533"
+        },
+        {
+          "at": "2026-06-01T23:16:33.612227+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355793470:54\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=536"
+        },
+        {
+          "at": "2026-06-01T23:17:01.233969+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355821193:70\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=538"
+        },
+        {
+          "at": "2026-06-01T23:17:53.290276+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355873248:83\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=539"
+        },
+        {
+          "at": "2026-06-01T23:19:30.092565+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355970047:94\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=543"
+        },
+        {
+          "at": "2026-06-01T23:35:43.306671+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356943264:102\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=547"
+        },
+        {
+          "at": "2026-06-01T23:35:57.608845+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356957568:108\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=548"
+        },
+        {
+          "at": "2026-06-01T23:36:10.092306+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356970056:115\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=549"
+        },
+        {
+          "at": "2026-06-01T23:46:39.239207+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357599204:133\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=553"
+        },
+        {
+          "at": "2026-06-01T23:46:56.068354+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357615944:140\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=554"
+        },
+        {
+          "at": "2026-06-01T23:47:15.388780+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357635343:149\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=555"
+        },
+        {
+          "at": "2026-06-01T23:48:37.171475+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357717137:162\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=556"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029806+00:00",
+      "last_seen": "2026-06-01T23:47:47.559299+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-06-01T23:06:03.295304+00:00"
+      "closed_at": "2026-06-01T23:48:37.171492+00:00"
     },
     "marketing_independent_verification::loop_verification_fail": {
       "key": "marketing_independent_verification::loop_verification_fail",
@@ -3869,7 +3957,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 887,
+      "repeat_count": 909,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -7701,15 +7789,95 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355181447:48\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T01:04:42.025996+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=885"
+        },
+        {
+          "at": "2026-06-01T23:17:14.041752+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355833995:76\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checke::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=889"
+        },
+        {
+          "at": "2026-06-01T23:17:22.713899+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355842678:79\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checke::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=890"
+        },
+        {
+          "at": "2026-06-01T23:18:12.845862+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355892790:89\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T01:16:33.582401+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=891"
+        },
+        {
+          "at": "2026-06-01T23:19:56.563438+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T01:17:33.202668+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=895"
+        },
+        {
+          "at": "2026-06-01T23:36:14.945492+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356974906:119\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T01:31:09.682430+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=899"
+        },
+        {
+          "at": "2026-06-01T23:36:23.262098+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356983221:124\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checke::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=900"
+        },
+        {
+          "at": "2026-06-01T23:36:31.081747+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356991048:127\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checke::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=901"
+        },
+        {
+          "at": "2026-06-01T23:47:12.486676+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357632441:148\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checke::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=905"
+        },
+        {
+          "at": "2026-06-01T23:47:29.562794+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357649508:154\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checke::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=906"
+        },
+        {
+          "at": "2026-06-01T23:47:41.308301+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357661252:158\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checke::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=907"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029842+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T01:05:46.807095+02:00\"\n}",
+      "last_seen": "2026-06-01T23:47:47.559339+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checke",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-06-01T23:06:21.478502+00:00"
+      "closed_at": "2026-06-01T23:47:41.308328+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -11106,7 +11274,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T05:06:09.078715+00:00",
-      "repeat_count": 326,
+      "repeat_count": 348,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -11902,15 +12070,79 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355167030:43\"\n}",
           "outcome": "resolved",
           "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=324"
+        },
+        {
+          "at": "2026-06-01T23:16:52.083868+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355812050:62\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=328"
+        },
+        {
+          "at": "2026-06-01T23:17:57.192056+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355877141:84\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=330"
+        },
+        {
+          "at": "2026-06-01T23:19:33.616937+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=334"
+        },
+        {
+          "at": "2026-06-01T23:35:48.239804+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356948196:104\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=338"
+        },
+        {
+          "at": "2026-06-01T23:46:43.653488+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357603597:134\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=344"
+        },
+        {
+          "at": "2026-06-01T23:47:01.216893+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357621180:142\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=345"
+        },
+        {
+          "at": "2026-06-01T23:47:18.877976+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357638843:151\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=346"
+        },
+        {
+          "at": "2026-06-01T23:48:41.756893+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357721716:163\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=347"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029816+00:00",
+      "last_seen": "2026-06-01T23:47:47.559311+00:00",
       "last_error": "mustFix has unresolved entries",
       "likely_cause": "Docs system is well-aligned. README \u2192 START_HERE \u2192 docs/README journey is coherent, all promoted next-click pages reinforce the same story, positioning is clean, no internal leakage on top-level surfaces. Minor dual-README structural note but no hard failures.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-06-01T23:06:07.078168+00:00"
+      "closed_at": "2026-06-01T23:48:41.756912+00:00"
     },
     "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc::review_followup_required": {
       "key": "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc::review_followup_required",
@@ -12197,7 +12429,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 1221,
+      "repeat_count": 1243,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -12401,7 +12633,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-01T23:06:28.029811+00:00",
+      "last_seen": "2026-06-01T23:47:47.559305+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -15628,7 +15860,7 @@
       "name": "agent_architecture_json",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-24T06:57:01.168631+00:00",
-      "repeat_count": 218,
+      "repeat_count": 240,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -16398,15 +16630,103 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355178537:47\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=216"
+        },
+        {
+          "at": "2026-06-01T23:16:56.839207+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355816797:66\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=219"
+        },
+        {
+          "at": "2026-06-01T23:17:10.267091+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355830223:74\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=220"
+        },
+        {
+          "at": "2026-06-01T23:17:19.803305+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355839763:78\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=221"
+        },
+        {
+          "at": "2026-06-01T23:18:09.194245+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355889126:88\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=222"
+        },
+        {
+          "at": "2026-06-01T23:19:52.794608+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=226"
+        },
+        {
+          "at": "2026-06-01T23:36:10.115012+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356970072:116\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=230"
+        },
+        {
+          "at": "2026-06-01T23:36:19.677206+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356979486:122\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=231"
+        },
+        {
+          "at": "2026-06-01T23:36:28.239283+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356988196:126\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=232"
+        },
+        {
+          "at": "2026-06-01T23:47:05.793386+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357625667:143\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=236"
+        },
+        {
+          "at": "2026-06-01T23:47:25.511859+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357645468:152\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=237"
+        },
+        {
+          "at": "2026-06-01T23:47:38.260387+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357658221:157\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=238"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029837+00:00",
+      "last_seen": "2026-06-01T23:47:47.559334+00:00",
       "last_error": "live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25",
       "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=['docs-stack-aggressive-10min-self-heal', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-momentum-watchdog', 'marketing-reflection', 'marketing-workflow-audit-precheck', 'ralph-workflow-full-house-docs-audit', 'stackoverflow-post-cooldown-run-check']",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "closed_at": "2026-06-01T23:06:18.567929+00:00"
+      "closed_at": "2026-06-01T23:47:38.260404+00:00"
     },
     "content-poster::timeout_risk": {
       "key": "content-poster::timeout_risk",
@@ -18248,7 +18568,7 @@
       "name": "marketing-workflow-audit",
       "category": "live_error",
       "first_seen": "2026-05-28T06:16:07.362295+00:00",
-      "repeat_count": 135,
+      "repeat_count": 157,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -18747,15 +19067,103 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=133"
+        },
+        {
+          "at": "2026-06-01T23:16:20.052205+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=136"
+        },
+        {
+          "at": "2026-06-01T23:16:33.492228+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=137"
+        },
+        {
+          "at": "2026-06-01T23:17:44.147556+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=139"
+        },
+        {
+          "at": "2026-06-01T23:19:19.046160+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780355958769:92\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=143"
+        },
+        {
+          "at": "2026-06-01T23:35:26.621089+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=147"
+        },
+        {
+          "at": "2026-06-01T23:35:41.116061+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=148"
+        },
+        {
+          "at": "2026-06-01T23:35:52.760666+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=149"
+        },
+        {
+          "at": "2026-06-01T23:46:28.290524+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=153"
+        },
+        {
+          "at": "2026-06-01T23:46:43.628628+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=154"
+        },
+        {
+          "at": "2026-06-01T23:47:01.000362+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=155"
+        },
+        {
+          "at": "2026-06-01T23:48:29.685536+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=156"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029786+00:00",
+      "last_seen": "2026-06-01T23:47:47.559277+00:00",
       "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
       "likely_cause": "UNKNOWN: FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
       "path": null,
-      "closed_at": "2026-06-01T23:05:54.689913+00:00"
+      "closed_at": "2026-06-01T23:48:29.685551+00:00"
     },
     "marketing-active-loop::timeout_risk": {
       "key": "marketing-active-loop::timeout_risk",
@@ -19038,13 +19446,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 1176,
+      "repeat_count": 1198,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029796+00:00",
+      "last_seen": "2026-06-01T23:47:47.559287+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null
@@ -19148,7 +19556,7 @@
       "name": "marketing-active-loop",
       "category": "live_error",
       "first_seen": "2026-05-28T21:40:08.141022+00:00",
-      "repeat_count": 36,
+      "repeat_count": 58,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -19279,15 +19687,111 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "marketing-active-loop_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=34"
+        },
+        {
+          "at": "2026-06-01T23:16:12.731809+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780355772671:49\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=37"
+        },
+        {
+          "at": "2026-06-01T23:16:25.466336+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=38"
+        },
+        {
+          "at": "2026-06-01T23:16:37.780470+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=39"
+        },
+        {
+          "at": "2026-06-01T23:17:37.040692+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=40"
+        },
+        {
+          "at": "2026-06-01T23:19:11.206350+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780355950913:90\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=44"
+        },
+        {
+          "at": "2026-06-01T23:35:17.870583+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=48"
+        },
+        {
+          "at": "2026-06-01T23:35:29.681180+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=49"
+        },
+        {
+          "at": "2026-06-01T23:35:43.612944+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=50"
+        },
+        {
+          "at": "2026-06-01T23:46:21.853376+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780357581804:128\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=54"
+        },
+        {
+          "at": "2026-06-01T23:46:35.916740+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=55"
+        },
+        {
+          "at": "2026-06-01T23:46:48.668422+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=56"
+        },
+        {
+          "at": "2026-06-01T23:48:24.412507+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-active-loop:live_error repeat_count=57"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029759+00:00",
+      "last_seen": "2026-06-01T23:47:47.559244+00:00",
       "last_error": "\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
       "likely_cause": "UNKNOWN: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of cred",
       "path": null,
-      "closed_at": "2026-06-01T23:05:49.642532+00:00"
+      "closed_at": "2026-06-01T23:48:24.412524+00:00"
     },
     "docs_agentic_review_mustFix_rename-or-rephrase-artifact-handoff-in-the-githu::review_followup_required": {
       "key": "docs_agentic_review_mustFix_rename-or-rephrase-artifact-handoff-in-the-githu::review_followup_required",
@@ -19870,7 +20374,7 @@
       "name": "agent-architecture-watchdog",
       "category": "live_error",
       "first_seen": "2026-05-29T16:02:31.931501+00:00",
-      "repeat_count": 32,
+      "repeat_count": 54,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -19977,15 +20481,95 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355157620:40\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=30"
+        },
+        {
+          "at": "2026-06-01T23:16:23.259060+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355783217:51\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=33"
+        },
+        {
+          "at": "2026-06-01T23:16:37.761343+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355797719:55\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=34"
+        },
+        {
+          "at": "2026-06-01T23:16:52.273528+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355812228:64\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=35"
+        },
+        {
+          "at": "2026-06-01T23:17:47.109574+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355867076:81\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=36"
+        },
+        {
+          "at": "2026-06-01T23:19:22.910362+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780355962874:93\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=40"
+        },
+        {
+          "at": "2026-06-01T23:35:31.394334+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356931346:99\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=44"
+        },
+        {
+          "at": "2026-06-01T23:35:45.965109+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780356945904:103\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=45"
+        },
+        {
+          "at": "2026-06-01T23:46:32.450072+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357592413:130\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=50"
+        },
+        {
+          "at": "2026-06-01T23:46:48.513970+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357608481:135\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=51"
+        },
+        {
+          "at": "2026-06-01T23:48:32.061931+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357712029:160\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=53"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029790+00:00",
+      "last_seen": "2026-06-01T23:47:47.559281+00:00",
       "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
       "likely_cause": "UNKNOWN: FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
       "path": null,
-      "closed_at": "2026-06-01T23:05:57.653302+00:00"
+      "closed_at": "2026-06-01T23:48:32.061947+00:00"
     },
     "docs_agentic_review_mustFix_reviewable-output-md-is-correctly-gated-as-secon::review_followup_required": {
       "key": "docs_agentic_review_mustFix_reviewable-output-md-is-correctly-gated-as-secon::review_followup_required",
@@ -20800,7 +21384,7 @@
       "name": "ralph-site-owner-loop",
       "category": "live_error",
       "first_seen": "2026-05-31T03:43:18.832537+00:00",
-      "repeat_count": 24,
+      "repeat_count": 46,
       "owner_domain": "site",
       "escalation_level": "critical",
       "owner_actions": [
@@ -20875,15 +21459,95 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780355152008:39\"\n}",
           "outcome": "resolved",
           "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=22"
+        },
+        {
+          "at": "2026-06-01T23:16:15.977722+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780355775942:50\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=25"
+        },
+        {
+          "at": "2026-06-01T23:16:29.785786+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780355789739:53\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=26"
+        },
+        {
+          "at": "2026-06-01T23:17:40.184955+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780355860147:80\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=28"
+        },
+        {
+          "at": "2026-06-01T23:19:15.988904+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780355955939:91\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=32"
+        },
+        {
+          "at": "2026-06-01T23:35:21.632013+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780356921599:98\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=36"
+        },
+        {
+          "at": "2026-06-01T23:35:48.264044+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780356948219:105\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=38"
+        },
+        {
+          "at": "2026-06-01T23:46:25.418266+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780357585381:129\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=42"
+        },
+        {
+          "at": "2026-06-01T23:46:39.218771+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780357599182:132\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=43"
+        },
+        {
+          "at": "2026-06-01T23:46:55.819061+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780357615778:139\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=44"
+        },
+        {
+          "at": "2026-06-01T23:48:27.010208+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780357706972:159\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-site-owner-loop_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-site-owner-loop:live_error repeat_count=45"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029780+00:00",
+      "last_seen": "2026-06-01T23:47:47.559269+00:00",
       "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
       "likely_cause": "UNKNOWN: FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
       "path": null,
-      "closed_at": "2026-06-01T23:05:52.036604+00:00"
+      "closed_at": "2026-06-01T23:48:27.010227+00:00"
     },
     "docs_agentic_review_mustFix_link-root-mirror-readmes-to-start-here-md-or-ens::review_followup_required": {
       "key": "docs_agentic_review_mustFix_link-root-mirror-readmes-to-start-here-md-or-ens::review_followup_required",
@@ -22025,7 +22689,7 @@
       "name": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph",
       "category": "review_followup_required",
       "first_seen": "2026-06-01T14:41:37.652140+00:00",
-      "repeat_count": 90,
+      "repeat_count": 112,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -22252,22 +22916,110 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355169960:44\"\n}",
           "outcome": "resolved",
           "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=88"
+        },
+        {
+          "at": "2026-06-01T23:16:41.839521+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355801798:57\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=91"
+        },
+        {
+          "at": "2026-06-01T23:16:56.812010+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355816773:65\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=92"
+        },
+        {
+          "at": "2026-06-01T23:17:09.966028+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355829925:73\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=93"
+        },
+        {
+          "at": "2026-06-01T23:18:00.063876+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355880026:85\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=94"
+        },
+        {
+          "at": "2026-06-01T23:19:38.232220+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=98"
+        },
+        {
+          "at": "2026-06-01T23:35:52.733710+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356952686:107\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=102"
+        },
+        {
+          "at": "2026-06-01T23:36:08.386488+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356968353:114\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=103"
+        },
+        {
+          "at": "2026-06-01T23:36:19.231004+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356979198:121\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=104"
+        },
+        {
+          "at": "2026-06-01T23:47:05.846604+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357625803:144\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=109"
+        },
+        {
+          "at": "2026-06-01T23:47:28.174565+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357648133:153\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=110"
+        },
+        {
+          "at": "2026-06-01T23:48:45.405070+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357725363:164\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph_escalation::escalation_required::Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both::Incident escalation level=critical: docs_agentic_review_mustFix_reconcile-dual-readmes-root-readme-md-and-ralph:review_followup_required repeat_count=111"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029822+00:00",
+      "last_seen": "2026-06-01T23:47:47.559318+00:00",
       "last_error": "Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Reconcile dual READMEs: root `README.md` and `ralph-workflow/README.md` share title but diverge in content \u2014 intentional (repo vs PyPI audiences) but will still confuse users who browse Codeberg and hit both",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-06-01T23:06:09.994893+00:00"
+      "closed_at": "2026-06-01T23:48:45.405098+00:00"
     },
     "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original::review_followup_required": {
       "key": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original::review_followup_required",
       "name": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original",
       "category": "review_followup_required",
       "first_seen": "2026-06-01T14:41:37.652169+00:00",
-      "repeat_count": 90,
+      "repeat_count": 112,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -22478,22 +23230,118 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355172816:45\"\n}",
           "outcome": "resolved",
           "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=88"
+        },
+        {
+          "at": "2026-06-01T23:16:47.133898+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355807009:61\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=91"
+        },
+        {
+          "at": "2026-06-01T23:17:01.160977+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355821118:68\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=92"
+        },
+        {
+          "at": "2026-06-01T23:17:13.014295+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355832969:75\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=93"
+        },
+        {
+          "at": "2026-06-01T23:18:03.048837+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355882945:86\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=94"
+        },
+        {
+          "at": "2026-06-01T23:19:42.799268+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355982762:95\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=98"
+        },
+        {
+          "at": "2026-06-01T23:35:57.922021+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356957866:109\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=102"
+        },
+        {
+          "at": "2026-06-01T23:36:12.356013+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356972315:117\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=103"
+        },
+        {
+          "at": "2026-06-01T23:36:22.179378+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356982143:123\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=104"
+        },
+        {
+          "at": "2026-06-01T23:46:55.795015+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357615757:138\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=108"
+        },
+        {
+          "at": "2026-06-01T23:47:12.286811+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357632245:147\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=109"
+        },
+        {
+          "at": "2026-06-01T23:47:31.937978+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357651887:155\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=110"
+        },
+        {
+          "at": "2026-06-01T23:48:48.375356+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357728336:165\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original_escalation::escalation_required::Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-uses-the-original:review_followup_required repeat_count=111"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029827+00:00",
+      "last_seen": "2026-06-01T23:47:47.559323+00:00",
       "last_error": "Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Minor: `ralph-workflow/README.md` uses 'the original Ralph loop' origin framing, slightly conflating generic Ralph with Ralph Workflow against positioning guidance",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-06-01T23:06:12.850949+00:00"
+      "closed_at": "2026-06-01T23:48:48.375375+00:00"
     },
     "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an::review_followup_required": {
       "key": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an::review_followup_required",
       "name": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an",
       "category": "review_followup_required",
       "first_seen": "2026-06-01T14:41:37.652192+00:00",
-      "repeat_count": 90,
+      "repeat_count": 112,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -22696,22 +23544,110 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355175769:46\"\n}",
           "outcome": "resolved",
           "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=88"
+        },
+        {
+          "at": "2026-06-01T23:16:52.108465+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355812066:63\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=91"
+        },
+        {
+          "at": "2026-06-01T23:17:05.832986+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355825771:71\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=92"
+        },
+        {
+          "at": "2026-06-01T23:17:15.715890+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355835681:77\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=93"
+        },
+        {
+          "at": "2026-06-01T23:18:06.060452+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355886025:87\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=94"
+        },
+        {
+          "at": "2026-06-01T23:19:48.973908+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355988905:96\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=98"
+        },
+        {
+          "at": "2026-06-01T23:36:03.831434+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356963778:113\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=102"
+        },
+        {
+          "at": "2026-06-01T23:36:16.003695+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356975958:120\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=103"
+        },
+        {
+          "at": "2026-06-01T23:36:25.336667+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356985294:125\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=104"
+        },
+        {
+          "at": "2026-06-01T23:47:00.556807+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357620522:141\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=108"
+        },
+        {
+          "at": "2026-06-01T23:47:16.386849+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357636347:150\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=109"
+        },
+        {
+          "at": "2026-06-01T23:47:34.709843+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357654670:156\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an_escalation::escalation_required::Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs::Incident escalation level=critical: docs_agentic_review_mustFix_minor-ralph-workflow-readme-md-pushes-privacy-an:review_followup_required repeat_count=110"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029832+00:00",
+      "last_seen": "2026-06-01T23:47:47.559328+00:00",
       "last_error": "Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Minor: `ralph-workflow/README.md` pushes Privacy and Dev Verification sections onto the PyPI landing surface \u2014 these belong deeper in the docs",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-06-01T23:06:15.802616+00:00"
+      "closed_at": "2026-06-01T23:47:34.709867+00:00"
     },
     "ralph-workflow-docs-verifier-supervisor::live_error": {
       "key": "ralph-workflow-docs-verifier-supervisor::live_error",
       "name": "ralph-workflow-docs-verifier-supervisor",
       "category": "live_error",
       "first_seen": "2026-06-01T22:15:16.316948+00:00",
-      "repeat_count": 22,
+      "repeat_count": 44,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -22762,15 +23698,111 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355160361:41\"\n}",
           "outcome": "resolved",
           "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=20"
+        },
+        {
+          "at": "2026-06-01T23:16:28.741262+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355788708:52\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=23"
+        },
+        {
+          "at": "2026-06-01T23:16:41.870905+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355801825:58\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=24"
+        },
+        {
+          "at": "2026-06-01T23:16:56.985491+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355816938:67\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=25"
+        },
+        {
+          "at": "2026-06-01T23:17:50.134351+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780355870099:82\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=26"
+        },
+        {
+          "at": "2026-06-01T23:19:26.573353+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=30"
+        },
+        {
+          "at": "2026-06-01T23:35:34.834941+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356934796:101\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=34"
+        },
+        {
+          "at": "2026-06-01T23:35:50.122236+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356950032:106\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=35"
+        },
+        {
+          "at": "2026-06-01T23:36:03.700385+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780356963662:112\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=36"
+        },
+        {
+          "at": "2026-06-01T23:46:35.895384+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357595853:131\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=40"
+        },
+        {
+          "at": "2026-06-01T23:46:51.388739+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357611353:137\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=41"
+        },
+        {
+          "at": "2026-06-01T23:47:12.237505+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357632200:146\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=42"
+        },
+        {
+          "at": "2026-06-01T23:48:34.534855+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357714502:161\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=43"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:06:28.029801+00:00",
+      "last_seen": "2026-06-01T23:47:47.559293+00:00",
       "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
-      "likely_cause": "UNKNOWN: FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
+      "likely_cause": "IMMEDIATE_FAIL: script crashing early - FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
       "path": null,
-      "closed_at": "2026-06-01T23:06:00.397869+00:00"
+      "closed_at": "2026-06-01T23:48:34.534872+00:00"
     }
   }
 }
