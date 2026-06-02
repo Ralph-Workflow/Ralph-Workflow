@@ -421,7 +421,27 @@ class PrimaryRepoFlatTruthfulnessTests(unittest.TestCase):
         self.assertEqual(findings, [])
 
 
+_DLS_PATCHES = [
+    patch.object(distribution_lane_selector, '_handoff_suppression_active', return_value=False),
+    patch.object(distribution_lane_selector, '_apollo_sequence_measurement_status', return_value={'measurement_pending': False}),
+    patch.object(distribution_lane_selector, '_load_recent_monitor_summary', return_value={}),
+    patch.object(distribution_lane_selector, '_stack_overflow_measurement_pending', lambda now: False),
+    patch.object(distribution_lane_selector, '_owned_content_publication_available', return_value=False),
+]
+
 class DistributionLaneSelectorTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        for p in _DLS_PATCHES:
+            p.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        for p in _DLS_PATCHES:
+            p.stop()
+        super().tearDownClass()
+
     def test_recent_live_action_family_count_counts_sent_curator_email(self):
         now = datetime(2026, 5, 23, 18, 0, 0)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1435,6 +1455,18 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
 
 class DistributionLaneSelectorFallbackTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        for p in _DLS_PATCHES:
+            p.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        for p in _DLS_PATCHES:
+            p.stop()
+        super().tearDownClass()
+
     def test_prefers_directory_confirmation_when_live_secondary_surface_repair_packet_is_current(self):
         now = datetime(2026, 5, 25, 20, 57, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -2282,6 +2314,18 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
 
 
 class StackOverflowAnswerLaneTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        for p in _DLS_PATCHES:
+            p.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        for p in _DLS_PATCHES:
+            p.stop()
+        super().tearDownClass()
+
     def test_meaningful_outreach_activity_requires_fresh_draft(self):
         self.assertTrue(stackoverflow_answer_lane._meaningful_outreach_activity(drafts_created=1))
         self.assertFalse(stackoverflow_answer_lane._meaningful_outreach_activity(drafts_created=0))
@@ -2673,6 +2717,18 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
 
 
 class DistributionLaneSelectorManualContactFreshnessTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        for p in _DLS_PATCHES:
+            p.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        for p in _DLS_PATCHES:
+            p.stop()
+        super().tearDownClass()
+
     def test_falls_back_to_distribution_reset_when_manual_handoff_lacks_current_contact_discovery(self):
         now = datetime(2026, 5, 23, 18, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -2820,6 +2876,18 @@ class ApolloSequenceStatusTests(unittest.TestCase):
 
 
 class MarketingWorkflowAuditBurstTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        for p in _DLS_PATCHES:
+            p.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        for p in _DLS_PATCHES:
+            p.stop()
+        super().tearDownClass()
+
     def test_flags_same_day_directory_submission_burst_as_failing_tactic(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

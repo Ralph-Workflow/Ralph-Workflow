@@ -1,71 +1,111 @@
 {
-  "ts": "2026-06-02T22:03:13.601177",
+  "ts": "2026-06-02T23:34:03.211576",
   "jobs_checked": 26,
-  "issues_found": 5,
+  "issues_found": 7,
   "issues": [
     {
       "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
       "name": "Push research findings to git repo",
       "category": "timeout",
-      "consecutive_errors": 1,
+      "consecutive_errors": 2,
       "last_status": "error",
-      "last_error": "AbortError: This operation was aborted",
+      "last_error": "cron: job execution timed out",
       "timeout_seconds": 3600,
-      "last_duration_ms": 224438,
-      "likely_cause": "UNKNOWN: AbortError: This operation was aborted"
+      "last_duration_ms": 3604558,
+      "likely_cause": "TIMEOUT_TOO_TIGHT: script took 3604558ms but limit was 3600s - needs more headroom"
     },
     {
-      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
-      "name": "blocked-channel-recovery",
-      "category": "timeout_risk",
-      "consecutive_errors": 0,
-      "last_status": "ok",
-      "last_error": "",
-      "timeout_seconds": 600,
-      "last_duration_ms": 890582,
-      "duration_ratio": 1.484,
-      "likely_cause": "PRE_TIMEOUT_RISK: script at 890582ms / 600s limit - duration exceeds 90%"
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier",
+      "category": "artifact_contract_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+      "required_text": "Status: independently verified pass",
+      "likely_cause": "Verifier artifact exists but does not show required pass contract"
     },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 406.68,
+      "artifact_age_minutes": 497.53,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime",
+      "category": "artifact_contract_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:timeout\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T23:33:48.073037+02:00\"\n}",
+      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
     },
     {
       "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
       "name": "Push research findings to git repo_escalation",
       "category": "escalation_required",
-      "last_error": "AbortError: This operation was aborted",
-      "likely_cause": "Incident escalation level=critical: Push research findings to git repo:timeout repeat_count=14",
-      "repeats_in_recent_history": 14,
+      "last_error": "cron: job execution timed out",
+      "likely_cause": "Incident escalation level=critical: Push research findings to git repo:timeout repeat_count=21",
+      "repeats_in_recent_history": 21,
       "owner_domain": "site",
       "incident_key": "Push research findings to git repo::timeout",
       "escalation_level": "critical",
       "blocked_by": []
     },
     {
-      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
-      "name": "blocked-channel-recovery_escalation",
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout_risk repeat_count=95",
-      "repeats_in_recent_history": 95,
-      "owner_domain": null,
-      "incident_key": "blocked-channel-recovery::timeout_risk",
+      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=600",
+      "repeats_in_recent_history": 600,
+      "owner_domain": "architecture",
+      "incident_key": "agent_architecture_verifier::artifact_contract_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime_escalation",
+      "category": "escalation_required",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:timeout\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T23:33:48.073037+02:00\"\n}",
+      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=979",
+      "repeats_in_recent_history": 979,
+      "owner_domain": "architecture",
+      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
   "repairs_attempted": [
     {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": false,
+      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:timeout\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T23:33:48.0730"
+    },
+    {
       "type": "owner_loop_escalation",
       "job": "Push research findings to git repo_escalation",
       "ok": true,
-      "detail": "owner=ralph-site-owner-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780430582926:247\"\n}"
+      "detail": "owner=ralph-site-owner-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780436031200:8\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780436034475:9\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780436037026:10\"\n}"
     }
   ]
 }
