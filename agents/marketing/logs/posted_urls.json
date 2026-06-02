@@ -1124,7 +1124,55 @@
       "error": null,
       "draft_hash": "01af03346a6c4772159f0752bfe067edfca17dcb1b43f002b07853d89709c586",
       "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/toml-workflow-configuration-guide.md"
+    },
+    {
+      "date": "2026-06-02",
+      "draft": "codex-opencode-cline-vs-ralph-workflow-2026.md",
+      "title": "Codex CLI vs OpenCode vs Cline vs Ralph Workflow 2026: Which AI Coding Agent Actually Runs Unattended?",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/Codex-CLI-vs-OpenCode-vs-Cline-vs-Ralph-Workflow-2026-Which-AI-Coding-Agent-Actually-Runs-Unattended-06-02",
+      "error": null,
+      "draft_hash": "ed0fca7f2723ae5062c2e9d0ebacd8f9d5e879e6892444cc8d882dba5bdf4c6e",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/codex-opencode-cline-vs-ralph-workflow-2026.md"
+    },
+    {
+      "date": "2026-06-02",
+      "draft": "real-task-walkthrough-overnight-refactoring.md",
+      "title": "Untitled",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/Untitled-06-02-23",
+      "error": null,
+      "draft_hash": "14283f62b607fda08fdcaa2be79fe0eb93acebdd93f520de7928bd4a77b77a7c",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/real-task-walkthrough-overnight-refactoring.md"
+    },
+    {
+      "date": "2026-06-02",
+      "draft": "spec-driven-ai-agent-explicit-contracts.md",
+      "title": "Spec-Driven AI Agent: Why Explicit Contracts Change What Your Agent Produces",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/Spec-Driven-AI-Agent-Why-Explicit-Contracts-Change-What-Your-Agent-Produces-06-02",
+      "error": null,
+      "draft_hash": "c7b3413b6d930de8263726a6122c468844a105399bcf6276e4a7832018fee6f4",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/spec-driven-ai-agent-explicit-contracts.md"
+    },
+    {
+      "date": "2026-06-02",
+      "draft": "your-first-overnight-task-start-here-guide.md",
+      "title": "Untitled",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/Untitled-06-02-24",
+      "error": null,
+      "draft_hash": "4031664da9e6051eceeea556a877a2113774015f4c59ca34e0e847f0339ba0d7",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md"
     }
   ],
-  "last_run": "2026-06-01T08:02:29.666341"
+  "last_run": "2026-06-02T06:00:01.419929"
 }

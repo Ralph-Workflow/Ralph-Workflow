@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-06-02T02:03:10.165419+00:00",
+  "updated_at": "2026-06-02T03:36:38.871770+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 565,
+      "repeat_count": 566,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2005,7 +2005,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T01:11:08.583738+00:00",
+      "last_seen": "2026-06-02T03:00:10.590589+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
@@ -3989,7 +3989,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 918,
+      "repeat_count": 921,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -7933,15 +7933,39 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T03:54:11.268572+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=918"
+        },
+        {
+          "at": "2026-06-02T03:00:19.203572+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780369219169:196\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T04:59:16.264615+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=919"
+        },
+        {
+          "at": "2026-06-02T03:05:00.715706+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780369500670:197\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T05:00:10.326289+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=920"
+        },
+        {
+          "at": "2026-06-02T03:36:28.647847+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T05:04:20.025340+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=921"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T02:02:34.088057+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T03:54:11.268572+02:00\"\n}",
+      "last_seen": "2026-06-02T03:36:04.636600+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T05:04:20.025340+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-06-02T02:02:51.633836+00:00"
+      "closed_at": "2026-06-02T03:36:28.647873+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -11338,7 +11362,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T05:06:09.078715+00:00",
-      "repeat_count": 348,
+      "repeat_count": 350,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -12198,15 +12222,31 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357721716:163\"\n}",
           "outcome": "resolved",
           "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=347"
+        },
+        {
+          "at": "2026-06-02T03:04:20.060495+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=349"
+        },
+        {
+          "at": "2026-06-02T03:04:34.012132+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=350"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:47:47.559311+00:00",
+      "last_seen": "2026-06-02T03:03:26.720162+00:00",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Docs system is well-aligned. README \u2192 START_HERE \u2192 docs/README journey is coherent, all promoted next-click pages reinforce the same story, positioning is clean, no internal leakage on top-level surfaces. Minor dual-README structural note but no hard failures.",
+      "likely_cause": "Docs system coheres cleanly around the positioning. Top-level surfaces lead with product story, not internals. README\u2192START_HERE\u2192docs/README journey works with clean handoffs. Promoted next-click pages all open with consistent positioning language and reinforce the same narrative.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-06-01T23:48:41.756912+00:00"
+      "closed_at": "2026-06-02T03:04:34.012156+00:00"
     },
     "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc::review_followup_required": {
       "key": "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc::review_followup_required",
@@ -12493,7 +12533,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 1257,
+      "repeat_count": 1266,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -12697,7 +12737,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-02T02:03:10.165368+00:00",
+      "last_seen": "2026-06-02T03:36:38.871730+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -18656,7 +18696,7 @@
       "name": "marketing-workflow-audit",
       "category": "live_error",
       "first_seen": "2026-05-28T06:16:07.362295+00:00",
-      "repeat_count": 171,
+      "repeat_count": 180,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -19307,22 +19347,62 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780365780935:195\"\n}",
           "outcome": "resolved",
           "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=169"
+        },
+        {
+          "at": "2026-06-02T02:59:59.966779+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=172"
+        },
+        {
+          "at": "2026-06-02T03:00:16.190781+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=173"
+        },
+        {
+          "at": "2026-06-02T03:04:15.460673+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=176"
+        },
+        {
+          "at": "2026-06-02T03:04:29.775259+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=177"
+        },
+        {
+          "at": "2026-06-02T03:36:23.440689+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=179"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T02:03:10.165355+00:00",
+      "last_seen": "2026-06-02T03:36:38.871718+00:00",
       "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
       "likely_cause": "UNKNOWN: FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
       "path": null,
-      "closed_at": "2026-06-02T02:03:00.969660+00:00"
+      "closed_at": "2026-06-02T03:36:23.440712+00:00"
     },
     "marketing-active-loop::timeout_risk": {
       "key": "marketing-active-loop::timeout_risk",
       "name": "marketing-active-loop",
       "category": "timeout_risk",
       "first_seen": "2026-05-28T07:34:26.647530+00:00",
-      "repeat_count": 31,
+      "repeat_count": 40,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -19437,15 +19517,55 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780365777327:194\"\n}",
           "outcome": "resolved",
           "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=29"
+        },
+        {
+          "at": "2026-06-02T02:59:56.493699+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=32"
+        },
+        {
+          "at": "2026-06-02T03:00:13.401460+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=33"
+        },
+        {
+          "at": "2026-06-02T03:04:11.864634+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=36"
+        },
+        {
+          "at": "2026-06-02T03:04:25.677709+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=37"
+        },
+        {
+          "at": "2026-06-02T03:36:17.649853+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=39"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T02:03:10.165337+00:00",
+      "last_seen": "2026-06-02T03:36:38.871696+00:00",
       "last_error": "",
       "likely_cause": "UNKNOWN: no error details",
       "path": null,
-      "closed_at": "2026-06-02T02:02:57.577466+00:00"
+      "closed_at": "2026-06-02T03:36:17.649885+00:00"
     },
     "marketing-research-daily::timeout_risk": {
       "key": "marketing-research-daily::timeout_risk",
@@ -19662,13 +19782,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 1212,
+      "repeat_count": 1221,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-06-02T02:03:10.165362+00:00",
+      "last_seen": "2026-06-02T03:36:38.871724+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null
@@ -24091,6 +24211,108 @@
       "likely_cause": "IMMEDIATE_FAIL: script crashing early - FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
       "path": null,
       "closed_at": "2026-06-02T01:11:25.836472+00:00"
+    },
+    "docs_agentic_review_mustFix_swap-docker-and-pipx-order-in-main-repo-root-rea::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_swap-docker-and-pipx-order-in-main-repo-root-rea::review_followup_required",
+      "name": "docs_agentic_review_mustFix_swap-docker-and-pipx-order-in-main-repo-root-rea",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T03:03:12.365009+00:00",
+      "repeat_count": 2,
+      "owner_domain": "docs",
+      "escalation_level": "owner",
+      "owner_actions": [
+        {
+          "at": "2026-06-02T03:03:55.174226+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_swap-docker-and-pipx-order-in-main-repo-root-rea::review_followup_required::Swap Docker and pipx order in main repo-root README Quick start \u2014 pipx should appear first as the primary install path for a Python CLI::Reviewer left unresolved required follow-up item in mustFix: Swap Docker and pipx order in main repo-root README Quick start \u2014 pipx should appear first as the primary install path for a Python CLI"
+        },
+        {
+          "at": "2026-06-02T03:04:37.713109+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_swap-docker-and-pipx-order-in-main-repo-root-rea_escalation::escalation_required::Swap Docker and pipx order in main repo-root README Quick start \u2014 pipx should appear first as the primary install path for a Python CLI::Incident escalation level=owner: docs_agentic_review_mustFix_swap-docker-and-pipx-order-in-main-repo-root-rea:review_followup_required repeat_count=2"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-02T03:03:26.720169+00:00",
+      "last_error": "Swap Docker and pipx order in main repo-root README Quick start \u2014 pipx should appear first as the primary install path for a Python CLI",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Swap Docker and pipx order in main repo-root README Quick start \u2014 pipx should appear first as the primary install path for a Python CLI",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-02T03:04:37.713129+00:00"
+    },
+    "docs_agentic_review_mustFix_give-the-numbered-quick-start-flow-ralph-diagnos::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_give-the-numbered-quick-start-flow-ralph-diagnos::review_followup_required",
+      "name": "docs_agentic_review_mustFix_give-the-numbered-quick-start-flow-ralph-diagnos",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T03:03:12.365022+00:00",
+      "repeat_count": 2,
+      "owner_domain": "docs",
+      "escalation_level": "owner",
+      "owner_actions": [
+        {
+          "at": "2026-06-02T03:04:00.770743+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_give-the-numbered-quick-start-flow-ralph-diagnos::review_followup_required::Give the numbered quick-start flow (ralph --diagnose \u2192 PROMPT.md \u2192 ralph \u2192 sleep) its own visual section in the main README instead of floating between the pipx block and the START_HERE link::Reviewer left unresolved required follow-up item in mustFix: Give the numbered quick-start flow (ralph --diagnose \u2192 PROMPT.md \u2192 ralph \u2192 sleep) its own visual section in the main README instead of floating between the pipx block and the START_HERE link"
+        },
+        {
+          "at": "2026-06-02T03:04:41.545392+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_give-the-numbered-quick-start-flow-ralph-diagnos_escalation::escalation_required::Give the numbered quick-start flow (ralph --diagnose \u2192 PROMPT.md \u2192 ralph \u2192 sleep) its own visual section in the main README instead of floating between the pipx block and the START_HERE link::Incident escalation level=owner: docs_agentic_review_mustFix_give-the-numbered-quick-start-flow-ralph-diagnos:review_followup_required repeat_count=2"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-02T03:03:26.720178+00:00",
+      "last_error": "Give the numbered quick-start flow (ralph --diagnose \u2192 PROMPT.md \u2192 ralph \u2192 sleep) its own visual section in the main README instead of floating between the pipx block and the START_HERE link",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Give the numbered quick-start flow (ralph --diagnose \u2192 PROMPT.md \u2192 ralph \u2192 sleep) its own visual section in the main README instead of floating between the pipx block and the START_HERE link",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-02T03:04:41.545416+00:00"
+    },
+    "docs_agentic_review_mustFix_review-ralph-workflow-docs-sphinx-pages-for-posi::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_review-ralph-workflow-docs-sphinx-pages-for-posi::review_followup_required",
+      "name": "docs_agentic_review_mustFix_review-ralph-workflow-docs-sphinx-pages-for-posi",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T03:03:12.365032+00:00",
+      "repeat_count": 2,
+      "owner_domain": "docs",
+      "escalation_level": "owner",
+      "owner_actions": [
+        {
+          "at": "2026-06-02T03:04:06.763579+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_review-ralph-workflow-docs-sphinx-pages-for-posi::review_followup_required::Review ralph-workflow/docs/sphinx/ pages for positioning alignment to complete the full-surface audit::Reviewer left unresolved required follow-up item in mustFix: Review ralph-workflow/docs/sphinx/ pages for positioning alignment to complete the full-surface audit"
+        },
+        {
+          "at": "2026-06-02T03:04:53.510662+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_review-ralph-workflow-docs-sphinx-pages-for-posi_escalation::escalation_required::Review ralph-workflow/docs/sphinx/ pages for positioning alignment to complete the full-surface audit::Incident escalation level=owner: docs_agentic_review_mustFix_review-ralph-workflow-docs-sphinx-pages-for-posi:review_followup_required repeat_count=2"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-02T03:03:26.720185+00:00",
+      "last_error": "Review ralph-workflow/docs/sphinx/ pages for positioning alignment to complete the full-surface audit",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Review ralph-workflow/docs/sphinx/ pages for positioning alignment to complete the full-surface audit",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-02T03:04:53.510684+00:00"
     }
   }
 }

@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-06-02T06:29:32.650935",
+  "dry_run": false,
+  "counts": {
+    "total": 5,
+    "measurement_hold": 3,
+    "non_distribution_execution": 1,
+    "distribution": 0,
+    "other": 1
+  },
+  "rate_exceeded": false,
+  "violations": [],
+  "churn_ratio_danger": false,
+  "action": "pass_clean",
+  "details": "all metrics within acceptable range"
+}
