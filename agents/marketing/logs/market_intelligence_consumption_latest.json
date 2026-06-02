@@ -1,6 +1,6 @@
 {
   "schema_version": "market-intelligence-consumption.v1",
-  "updated_at": "2026-06-02T06:17:37.789896+00:00",
+  "updated_at": "2026-06-02T07:15:24.506670+00:00",
   "shared_artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
   "runtime_proven_consumers": [
     "agents/marketing/reddit_monitor.py",
@@ -12,17 +12,17 @@
   ],
   "producer": {
     "name": "competitor_analysis.py",
-    "recorded_at": "2026-06-01T18:22:34.616367+00:00",
-    "artifact_generated_at": "2026-06-01T20:22:34.616115"
+    "recorded_at": "2026-06-02T06:21:05.723863+00:00",
+    "artifact_generated_at": "2026-06-02T08:21:05.722135"
   },
   "consumers": {
     "agents/marketing/run.py": {
       "consumer": "agents/marketing/run.py",
-      "recorded_at": "2026-06-01T07:00:30.375625+00:00",
+      "recorded_at": "2026-06-02T07:00:26.325006+00:00",
       "required": false,
       "status": "loaded",
-      "artifact_generated_at": "2026-06-01T09:00:30.346370",
-      "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-01.md",
+      "artifact_generated_at": "2026-06-02T08:21:05.722135",
+      "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-02.md",
       "competitor_count": 8,
       "comparison_page_count": 8
     },
@@ -38,11 +38,11 @@
     },
     "agents/marketing/distribution_lane_executor.py": {
       "consumer": "agents/marketing/distribution_lane_executor.py",
-      "recorded_at": "2026-06-02T06:17:37.789796+00:00",
+      "recorded_at": "2026-06-02T07:15:24.506599+00:00",
       "required": false,
       "status": "loaded",
-      "artifact_generated_at": "2026-06-01T20:22:34.616115",
-      "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-01.md",
+      "artifact_generated_at": "2026-06-02T08:21:05.722135",
+      "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-02.md",
       "competitor_count": 8,
       "comparison_page_count": 8
     },

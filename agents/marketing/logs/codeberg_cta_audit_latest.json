@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-01T07:00:30.456844+00:00",
+  "generated_at": "2026-06-02T07:00:26.452773+00:00",
   "status": "fail",
-  "total_files_with_repo_links": 505,
+  "total_files_with_repo_links": 510,
   "high_severity_count": 1,
   "medium_severity_count": 11,
   "high_severity_findings": [
@@ -340,6 +340,14 @@
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-31_primary_repo_flat_contact_handoff_packet.md",
       "codeberg_links": 8,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-01_primary_repo_flat_contact_handoff_packet.md",
+      "codeberg_links": 20,
       "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -2043,7 +2051,7 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md",
-      "codeberg_links": 8,
+      "codeberg_links": 20,
       "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -3666,6 +3674,30 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-01_overnight_demo_proof_page.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_distribution_architecture_repair.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
       "codeberg_links": 4,
       "github_links": 2,
@@ -3772,6 +3804,14 @@
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit-posts/2026-05-26_145518_reddit-reddit-com-r-ai-agents-seedance-2-0-is-impressive-it-s-still-not-a-produc.md",
       "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/social_proof_bootstrap_latest.json",
+      "codeberg_links": 6,
       "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -3979,8 +4019,8 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-comparison-guide.md",
-      "codeberg_links": 2,
-      "github_links": 2,
+      "codeberg_links": 4,
+      "github_links": 4,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"

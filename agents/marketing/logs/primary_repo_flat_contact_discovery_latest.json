@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-01T07:00:31.273668+00:00",
+  "generated_at": "2026-06-02T07:00:34.670055+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -361,6 +361,11 @@
           "type": "website",
           "value": "https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix",
           "label": "feedback form"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/stevencheng/status/2059836738449854898",
+          "label": "X/Twitter"
         }
       ],
       "recommended_next_step": "public feedback-form contact path is now identified"
@@ -607,11 +612,6 @@
           "type": "email",
           "value": "support@sitepoint.com",
           "label": "email"
-        },
-        {
-          "type": "github_issue",
-          "value": "https://github.com/discourse/discourse/issues/new",
-          "label": "GitHub issue"
         },
         {
           "type": "x",

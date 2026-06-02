@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-02T08:17:52
+Generated: 2026-06-02T09:15:32
 Chosen lane: **measurement_hold**
 
 ## Why this lane

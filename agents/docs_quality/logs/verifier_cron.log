@@ -18157,3 +18157,52 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{"status": "pass", "summary": "Docs system is well-aligned with positioning. Core journey is coherent, no hard failures. Three README variants are drifting apart (root, pypi, github-mirror) and need consolidation, but the framing is consistent across all surfaces.", "loopHealthy": true, "criteria": {"positioning": "pass", "accuracy": "pass", "internalLeakage": "pass", "copyQuality": "pass", "informationArchitecture": "pass", "journeyCoherence": "pass"}, "mustFix": ["Three README variants (root, pypi, github-mirror) have drifted apart \u2014 consolidate into one canonical source or add a sync mechanism", "Root README is thinner than pypi README; missing the 'fast way to tell' and 'when it fits' sections that directly serve the evaluation guidance in the positioning doc", "Root README links to ralphworkflow.com/docs while START_HERE/docs/README use local paths \u2014 minor inconsistency in the routing surface", "START_HERE.md could walk through the first wake-up experience more concretely rather than staying at the principle level"], "strongestEvidence": [{"path": "pypi README (ralph-workflow/README.md)", "reason": "Strongest single surface: opens with tagline, includes 'fast way to tell whether Ralph Workflow fits', has explicit fits/does-not-fit table, and contains the 'What to expect from a run' section that directly echoes the positioning doc's evaluation guidance."}, {"path": "docs/ai-agent-orchestration-cli.md", "reason": "Opens with the 'simple at the center' framing from the positioning doc, reinforces default workflow priority, routes to appropriate next pages. Clean example of the secondary page pattern working."}, {"path": "START_HERE.md", "reason": "Correctly scoped as first-run guidance. Avoids internal detail. 'Next pages only if you need them' is a good low-link-anxiety pattern. Thinner than ideal on concrete walkthrough but the structure is sound."}, {"path": "docs/README.md", "reason": "Good docs map with clear 'choose one route' structure. Routes to product framing pages first before proof pages. 'Keep proof secondary' section directly echoes the positioning doc."}], "shouldUserNeedToRepeatThis": false}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned. README -> START_HERE -> docs/README journey is coherent, positioning matches the canon, no internal leakage on top surfaces, copy is clean.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "PyPI package README (ralph-workflow/README.md) links to local docs/sphinx/ paths that won't resolve for pipx installers \u2014 should link to ralphworkflow.com/docs instead",
+    "GitHub mirror README buries the mirror disclaimer in the star links row rather than stating it prominently up top"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with 'operating system for autonomous coding', explains simple Ralph-loop core, composable framework, strong default workflow, ambitious work framing \u2014 fully canon-aligned"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Leads with 'GitHub is the mirror' banner, shortest honest first run, result-first evaluation framing, routes clearly to deeper docs"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Clean docs map that routes by user intent, explicitly codes proof-secondary posture, reinforces Codeberg-primary messaging at the bottom"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

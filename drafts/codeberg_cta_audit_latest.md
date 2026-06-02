@@ -1,8 +1,8 @@
 # Codeberg CTA Audit Report
-Generated: 2026-06-01T07:00:30.456844+00:00
+Generated: 2026-06-02T07:00:26.452773+00:00
 
 ## Summary: FAIL
-- Files with repo links: 505
+- Files with repo links: 510
 - High severity issues: 1
 - Medium severity issues: 11
 

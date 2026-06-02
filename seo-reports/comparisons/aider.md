@@ -1,6 +1,6 @@
 # Ralph Workflow vs Aider
 
-**Last updated:** June 01, 2026 · [Edit this comparison](https://codeberg.org/Ralph-Workflow/Ralph-Workflow) · [← Back to all comparisons](/comparisons)
+**Last updated:** June 02, 2026 · [Edit this comparison](https://codeberg.org/Ralph-Workflow/Ralph-Workflow) · [← Back to all comparisons](/comparisons)
 
 ## At a Glance
 
