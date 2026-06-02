@@ -1,8 +1,19 @@
 {
-  "ts": "2026-06-02T21:03:36.031995",
+  "ts": "2026-06-02T22:03:13.601177",
   "jobs_checked": 26,
-  "issues_found": 3,
+  "issues_found": 5,
   "issues": [
+    {
+      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
+      "name": "Push research findings to git repo",
+      "category": "timeout",
+      "consecutive_errors": 1,
+      "last_status": "error",
+      "last_error": "AbortError: This operation was aborted",
+      "timeout_seconds": 3600,
+      "last_duration_ms": 224438,
+      "likely_cause": "UNKNOWN: AbortError: This operation was aborted"
+    },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery",
@@ -20,17 +31,29 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 347.05,
+      "artifact_age_minutes": 406.68,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
+    },
+    {
+      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
+      "name": "Push research findings to git repo_escalation",
+      "category": "escalation_required",
+      "last_error": "AbortError: This operation was aborted",
+      "likely_cause": "Incident escalation level=critical: Push research findings to git repo:timeout repeat_count=14",
+      "repeats_in_recent_history": 14,
+      "owner_domain": "site",
+      "incident_key": "Push research findings to git repo::timeout",
+      "escalation_level": "critical",
+      "blocked_by": []
     },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout_risk repeat_count=81",
-      "repeats_in_recent_history": 81,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout_risk repeat_count=95",
+      "repeats_in_recent_history": 95,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout_risk",
       "escalation_level": "critical",
@@ -39,22 +62,10 @@
   ],
   "repairs_attempted": [
     {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
-    },
-    {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T21:03:24.131476+02:00\"\n}"
-    },
-    {
       "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
+      "job": "Push research findings to git repo_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780427007777:239\"\n}"
+      "detail": "owner=ralph-site-owner-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780430582926:247\"\n}"
     }
   ]
 }
