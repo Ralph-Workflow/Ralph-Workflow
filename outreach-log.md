@@ -8202,3 +8202,14 @@ Removing `noindex` from the 8 vs pages and breaking the template pattern with un
 ### StackOverflow answer lane
 - **When:** 2026-06-02 13:17:13
 - **Note:** StackOverflow answer lane ran: found 8 questions, scored 8, drafted 1 answers, skipped 4 recent duplicate candidates; refreshed canonical handoff packet from the best existing draft for manual-ready follow-through. Top question: Autonomous mode / wrapper for Claude Code?.
+
+### 2026-06-02 — Reddit monitoring (15:05 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-06-02_1505.md`
+- **Suspension status:** Day 5 of 7. Active since May 31 11:19 CEST. ~122 hours stale.
+- **DDG pattern:** Session-scoped rate-limit confirmed for 3rd consecutive pass (~6 queries then total collapse). Same pattern as June 1.
+- **Reddit direct:** 403 blocked (30th consecutive day).
+- **Key non-Reddit intelligence:** OvernightAgent (a20185/OvernightAgent) — NEW near-direct competitor, Node/TS CLI for overnight agent runs, queue-based not spec-driven. Claude Code May 2026 overhaul absorbing agent-view + parallel sessions natively. DEV.to delivery-slowdown article reproducing 91% PR review time spike. Augment Code multi-agent workspace guide (6 patterns).
+- **Shortlist:** Empty — no fresh Reddit retrieval.
+- **Posting verdict:** No posting. Suspension holds.
+- **Escalation countdown:** ~2 days until June 4 11:19 CEST.
+- **Type:** **MONITOR / SUSPENSION_HELD**

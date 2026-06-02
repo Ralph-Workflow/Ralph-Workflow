@@ -1,10 +1,10 @@
 {
-  "repaired_at": "2026-06-02T14:30:01.131646+02:00",
+  "repaired_at": "2026-06-02T15:11:23",
   "board_repaired": true,
   "lane_repaired": true,
   "recurrence_count": 5,
-  "board_content_sha256": "fd22094f0973f7aa38e4b4ee2e1837238d94d307802fd6d015074f11e87953c2",
-  "lane_content_sha256": "cef7f3ce91b36014dc93ace679ae3eb56f1aa567e83cd077a7762a53ea6a5550",
+  "board_content_sha256": "a4f1db0ab9c1093d0715daa0c3c3628f101ba2d0d667430aeebb5fd26fb1dda0",
+  "lane_content_sha256": "ec0e80134a363bda00f084112a132ea63bed3e0c8a8e5f66f4c956257fe7f54d",
   "hardened": true,
-  "note": "5th-recurrence hardening: content-hash-based. If current content hash matches, the repair is intact. If mismatch, downstream writers MAY overwrite (repair was reverted)."
+  "note": "6th-recurrence fix: receipt updated on write to break infinite reversion loop"
 }
