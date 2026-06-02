@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-02T18:31:13.899331+02:00",
+  "checked_at": "2026-06-02T20:07:58.621513+02:00",
   "verdict": "qualified_pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
@@ -31,12 +31,12 @@
     {
       "claim": "architecture verification isolates external domain blockers as watchpoints instead of manufacturing new architecture incidents",
       "status": "verified",
-      "details": "External blockers present: blocked-channel-recovery:timeout_risk, marketing_independent_verification:loop_verification_fail, marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar:review_followup_required, marketing_independent_verification_blockers_primary-repo-adoption-is-flat-without-a-live-mea:review_followup_required, marketing_independent_verification_blockers_measurement-hold-is-active-but-the-consolidated:review_followup_required, marketing_independent_verification_blockers_reddit-is-blocked-but-no-shipped-replacement-dis:review_followup_required, marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required, marketing_independent_verification_blockers_marketing-execution-board-latest-md-is-missing-o:review_followup_required, marketing_independent_verification_blockers_outcome-execution-board-latest-json-is-missing-o:review_followup_required, marketing_independent_verification_blockers_distribution-lane-latest-json-is-missing-or-stal:review_followup_required"
+      "details": "External blockers present: blocked-channel-recovery:timeout_risk, marketing_independent_verification:stale_artifact"
     },
     {
       "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
       "status": "verified",
-      "details": "recent_failures=14, consecutive_passes_since_last_fail=30"
+      "details": "recent_failures=14, consecutive_passes_since_last_fail=45"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -55,12 +55,10 @@
     }
   ],
   "remaining_blockers": [
-    "stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
     "marketing independent verification is not pass: 'fail'"
   ],
   "architecture_errors": [],
   "external_blockers": [
-    "stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
     "marketing independent verification is not pass: 'fail'"
   ],
   "evidence": [
@@ -78,7 +76,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Health monitor reports jobs_checked=26 and issues_found=11."
+      "summary": "Health monitor reports jobs_checked=26 and issues_found=4."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
@@ -93,7 +91,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]

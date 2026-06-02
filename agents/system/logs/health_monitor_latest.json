@@ -1,7 +1,7 @@
 {
-  "ts": "2026-06-02T18:23:35.980670",
+  "ts": "2026-06-02T20:05:10.819074",
   "jobs_checked": 26,
-  "issues_found": 11,
+  "issues_found": 4,
   "issues": [
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
@@ -18,156 +18,36 @@
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
-      "category": "loop_verification_fail",
+      "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "verdict": "fail",
-      "required_verdict": "pass",
-      "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-without-a-live-mea",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "Primary repo adoption is flat without a live measurement-pending repair window.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption is flat without a live measurement-pending repair window."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_measurement-hold-is-active-but-the-consolidated",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "Measurement hold is active, but the consolidated execution board is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json).",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Measurement hold is active, but the consolidated execution board is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json)."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_reddit-is-blocked-but-no-shipped-replacement-dis",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "Reddit is blocked, but no shipped replacement distribution/system redesign is recorded yet.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Reddit is blocked, but no shipped replacement distribution/system redesign is recorded yet."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "Workflow audit still reports needs_repair.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Workflow audit still reports needs_repair."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_marketing-execution-board-latest-md-is-missing-o",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "marketing_execution_board_latest.md is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json).",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: marketing_execution_board_latest.md is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json)."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_outcome-execution-board-latest-json-is-missing-o",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "outcome_execution_board_latest.json is missing or stale (stale_timestamp_vs_marketing_execution_board_latest.md).",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: outcome_execution_board_latest.json is missing or stale (stale_timestamp_vs_marketing_execution_board_latest.md)."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification_blockers_distribution-lane-latest-json-is-missing-or-stal",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "last_error": "distribution_lane_latest.json is missing or stale (stale_generated_timestamp_vs_marketing_execution_board_latest.md).",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: distribution_lane_latest.json is missing or stale (stale_generated_timestamp_vs_marketing_execution_board_latest.md)."
+      "artifact_age_minutes": 288.57,
+      "max_age_minutes": 240,
+      "likely_cause": "Required runtime artifact is stale"
     },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout_risk repeat_count=51",
-      "repeats_in_recent_history": 51,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout_risk repeat_count=70",
+      "repeats_in_recent_history": 70,
+      "owner_domain": null,
+      "incident_key": "blocked-channel-recovery::timeout_risk",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
+      "name": "blocked-channel-recovery_escalation",
+      "category": "escalation_required",
+      "last_error": "",
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout_risk repeat_count=71",
+      "repeats_in_recent_history": 71,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout_risk",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
-  "repairs_attempted": [
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-06-02T13:30:13.836231+00:00"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-without-a-live-mea",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-06-02T13:30:16.015626+00:00"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "marketing_independent_verification_blockers_measurement-hold-is-active-but-the-consolidated",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-06-02T13:30:18.272603+00:00"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "marketing_independent_verification_blockers_reddit-is-blocked-but-no-shipped-replacement-dis",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-06-02T13:30:20.330882+00:00"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-06-02T13:30:22.451899+00:00"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "marketing_independent_verification_blockers_marketing-execution-board-latest-md-is-missing-o",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-06-02T13:30:24.532023+00:00"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "marketing_independent_verification_blockers_outcome-execution-board-latest-json-is-missing-o",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-06-02T13:30:26.642222+00:00"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "marketing_independent_verification_blockers_distribution-lane-latest-json-is-missing-or-stal",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; cooldown_minutes=180; last_action_at=2026-06-02T13:30:28.801852+00:00"
-    },
-    {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
-    },
-    {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T18:23:24.039379+02:00\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    }
-  ]
+  "repairs_attempted": []
 }

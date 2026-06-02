@@ -1,15 +1,15 @@
 # Outcome Execution Board Runner
 
-- Generated: `2026-06-02T19:02:24.940270`
-- Repair needed at start: `True`
-- Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-06-02_marketing_execution_board.md`
-- Selected lane: `measurement_hold`
-- Action type: `truth_snapshot_only`
-- Executed lane: `None`
+- Generated: `2026-05-25T18:53:00`
+- Repair needed at start: `False`
+- Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md`
+- Selected lane: `distribution_architecture_guard_pause`
+- Action type: `distribution_architecture_guard_pause`
+- Executed lane: `distribution_architecture_guard_pause`
 - Truthful do-now lane available: `False`
-- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-06-02_marketing_execution_board.md`
+- Artifact: `/tmp/guard-pause.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
-- Measurement window: Review Codeberg-linked movement within 7 days.
+- Measurement window: Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.
 - Next truthful checkpoint: `2026-06-05T00:00:00` (short_review_window_release)
 - Checkpoint reason: Current short review window clears.
 
@@ -19,4 +19,4 @@
 - Preserves fake-green protection: if the board has no truthful do-now asset, that absence is logged explicitly instead of being masked by queue refreshes.
 
 ## Summary
-Execution board refreshed, but no truthful do-now lane was available; the board itself is the structural truth source.
+Reused existing distribution-architecture guard artifact.

@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-02T19:02:24
+Generated: 2026-06-02T20:10:17
 Chosen lane: **measurement_hold**
 
 ## Why this lane
@@ -13,8 +13,10 @@ Chosen lane: **measurement_hold**
 - Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.
 - Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (AXME Code, WyeWorks, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.
 - The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, so another packet refresh would be fake progress even if the exact target list drifted.
+- GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.
 - The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
+- The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
 - A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.
 - A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
