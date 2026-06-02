@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-06-02T02:16:00+02:00",
+  "type": "distribution_architecture_repair",
+  "status": "executed",
+  "selected_lane": "distribution_architecture_repair",
+  "executed_lane": "distribution_architecture_repair",
+  "repair_summary": "5th-recurrence escalation fix: content-hash-based watchdog receipt",
+  "do_now_lane_available": false,
+  "short_review_window_release_at": "2026-06-02T03:37:12",
+  "files_changed": [
+    "agents/marketing/stale_artifact_watchdog.py",
+    "agents/marketing/distribution_lane_executor.py",
+    "agents/marketing/distribution_lane_selector.py"
+  ],
+  "artifacts_regenerated": [
+    "drafts/2026-06-02_marketing_execution_board.md",
+    "agents/marketing/logs/distribution_lane_latest.json"
+  ],
+  "commits": ["abbdffd"],
+  "pushed_to": "origin/master",
+  "next_run_note": "Short review window expires ~03:37 CEST. StackOverflow posting window Wed Jun 3 03:15 CEST. Post-hold, system re-enters executable search.",
+  "verification": {
+    "watchdog_ran_at": "2026-06-02T02:15:39",
+    "watchdog_all_ok": true,
+    "board_date": "2026-06-02",
+    "lane_state": "distribution_architecture_repair",
+    "receipt_uses_hashes": true,
+    "receipt_board_sha256": "106c6b4c5a990f2cbe094161acda335d37b48ea134b480ea0c24d46f9d6d9e06",
+    "receipt_lane_sha256": "e439527002f74a7dacf778aeccff16ab375b8307169baa037515acd1a08b7af3"
+  },
+  "blockers": {
+    "active": ["env:gh_auth", "env:smtp", "env:pypi_token"],
+    "verified_live": ["pypi_api", "stackexchange_api", "codeberg_repo", "github_mirror", "blog_sitemap"],
+    "live_lanes_autonomous": ["telegraph_cross_post", "stackoverflow_drafts", "indexnow_pings", "indexation_health", "seo_retrofit", "repo_conversion_optimizer"]
+  },
+  "adoption_snapshot": {
+    "Codeberg": "12⭐, 2 watchers, 2 forks (flat)",
+    "GitHub": "2⭐ (+1 window), 2 watchers (first movement!)",
+    "PyPI": "1,339/mo (127/day)"
+  },
+  "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+}
