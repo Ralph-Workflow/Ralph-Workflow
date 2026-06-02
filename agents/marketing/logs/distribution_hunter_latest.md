@@ -1,15 +1,15 @@
 # Distribution Hunter
 
-- Generated: `2026-06-02T00:13:55.930085`
+- Generated: `2026-06-02T07:34:55.455516`
 - Pending system-design repairs seen: `outcome_system_underpowered`
-- Selected lane: `owned_content`
-- Action type: `owned_content_lane_noop`
-- Status: `skipped`
+- Selected lane: `measurement_hold`
+- Action type: `measurement_hold_execution`
+- Status: `prepared`
 - Live external action: `False`
-- Artifact: `None`
-- Expected outcome: Advance distribution via lane owned_content without defaulting back to monitoring-only work.
+- Artifact: `/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_073455_measurement_hold.md`
+- Expected outcome: Advance distribution via lane measurement_hold without defaulting back to monitoring-only work.
 - Measurement window: Review outcome movement within 7 days.
 - Fake-green guard: This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.
 
 ## Summary
-Owned-content lane stayed selected, but no fresh repo-native guide remained unpublished for Telegraph. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.
+Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions. Scheduled an automatic post-hold marketer rerun at the exact short-window release time.

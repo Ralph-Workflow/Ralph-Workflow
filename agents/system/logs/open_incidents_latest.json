@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-02T03:36:38.871770+00:00",
+  "updated_at": "2026-06-02T04:38:50.536667+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
@@ -3989,7 +3989,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 921,
+      "repeat_count": 922,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -7957,15 +7957,23 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T05:04:20.025340+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=921"
+        },
+        {
+          "at": "2026-06-02T04:38:44.882680+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T06:28:26.384245+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=922"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T03:36:04.636600+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T05:04:20.025340+02:00\"\n}",
+      "last_seen": "2026-06-02T04:38:38.132653+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T06:28:26.384245+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-06-02T03:36:28.647873+00:00"
+      "closed_at": "2026-06-02T04:38:44.882698+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -12533,7 +12541,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 1266,
+      "repeat_count": 1268,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -12737,7 +12745,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-02T03:36:38.871730+00:00",
+      "last_seen": "2026-06-02T04:38:50.536647+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -18696,7 +18704,7 @@
       "name": "marketing-workflow-audit",
       "category": "live_error",
       "first_seen": "2026-05-28T06:16:07.362295+00:00",
-      "repeat_count": 180,
+      "repeat_count": 182,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -19387,15 +19395,23 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=179"
+        },
+        {
+          "at": "2026-06-02T04:38:42.749174+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780375122717:198\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=181"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T03:36:38.871718+00:00",
-      "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
-      "likely_cause": "UNKNOWN: FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
+      "last_seen": "2026-06-02T04:38:50.536626+00:00",
+      "last_error": "\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
+      "likely_cause": "UNKNOWN: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of cred",
       "path": null,
-      "closed_at": "2026-06-02T03:36:23.440712+00:00"
+      "closed_at": "2026-06-02T04:38:42.749193+00:00"
     },
     "marketing-active-loop::timeout_risk": {
       "key": "marketing-active-loop::timeout_risk",
@@ -19782,13 +19798,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 1221,
+      "repeat_count": 1223,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-06-02T03:36:38.871724+00:00",
+      "last_seen": "2026-06-02T04:38:50.536643+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null
