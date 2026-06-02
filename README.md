@@ -1,7 +1,12 @@
 # Ralph Workflow
 
 > **The operating system for autonomous coding.**
->
+
+[![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
+[![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
 > Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 
 **⭐ Star on Codeberg** → [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) (Codeberg primary) | **GitHub mirror** → [github.com/Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow)
@@ -102,7 +107,6 @@ Maintained docs source in this repo: [`ralph-workflow/docs/sphinx/`](ralph-workf
 | [Configuration](https://ralphworkflow.com/docs/configuration.html) | Agent routing, phase policies, model selection |
 | [User Stories](https://ralphworkflow.com/docs/user-stories.html) | Real workflows from real runs |
 | [Real Overnight Demo](docs/overnight-demo-real.md) | Real task spec → real Ralph output (800+ assertions, 5 platforms) |
-| [Walkthrough](https://ralphworkflow.com/blog/real-task-walkthrough-overnight-refactoring/) | Step-by-step overnight refactoring example |
 
 ## Engineering-practice requirements
 
