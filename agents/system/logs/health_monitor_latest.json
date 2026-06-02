@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-02T03:54:40.665421",
+  "ts": "2026-06-02T04:03:10.407287",
   "jobs_checked": 25,
   "issues_found": 7,
   "issues": [
@@ -42,7 +42,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 6283.14,
+      "artifact_age_minutes": 6291.59,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -51,8 +51,8 @@
       "name": "marketing-active-loop_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=27",
-      "repeats_in_recent_history": 27,
+      "likely_cause": "Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=31",
+      "repeats_in_recent_history": 31,
       "owner_domain": "marketing",
       "incident_key": "marketing-active-loop::timeout_risk",
       "escalation_level": "critical",
@@ -63,8 +63,8 @@
       "name": "marketing-workflow-audit_escalation",
       "category": "escalation_required",
       "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
-      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=167",
-      "repeats_in_recent_history": 167,
+      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=171",
+      "repeats_in_recent_history": 171,
       "owner_domain": "marketing",
       "incident_key": "marketing-workflow-audit::live_error",
       "escalation_level": "critical",
@@ -75,8 +75,8 @@
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1208",
-      "repeats_in_recent_history": 1208,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1212",
+      "repeats_in_recent_history": 1212,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
@@ -88,19 +88,19 @@
       "type": "rerun_job",
       "job": "marketing-active-loop",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780365268357:187\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780365773874:193\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing-active-loop_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780365271591:188\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780365777327:194\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing-workflow-audit_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780365274252:189\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780365780935:195\"\n}"
     }
   ]
 }

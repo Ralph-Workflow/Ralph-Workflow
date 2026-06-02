@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-06-02T03:54:22.346042+02:00",
+    "checked_at": "2026-06-02T04:07:00.024702+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 25,
     "live_jobs_enabled": 25,
@@ -187,9 +187,9 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-06-02T03:54:11.268572+02:00",
+    "checked_at": "2026-06-02T04:07:08.905312+02:00",
     "verdict": "qualified_pass",
-    "previous_artifact_checked_at": "2026-06-02T03:54:11.268572+02:00",
+    "previous_artifact_checked_at": "2026-06-02T04:02:41.044582+02:00",
     "previous_artifact_verdict": "qualified_pass",
     "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
@@ -209,24 +209,22 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-06-02T03:54:11.268572+02:00",
+    "architecture_verifier_checked_at": "2026-06-02T04:07:08.905312+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
     },
-    "health_monitor_issues_found": 17,
+    "health_monitor_issues_found": 7,
     "health_monitor_issue_names": [
       "marketing-active-loop",
       "marketing-workflow-audit",
       "blocked-channel-recovery",
-      "ralph-workflow-docs-verifier-supervisor",
       "marketing_independent_verification"
     ],
     "health_monitor_issue_categories": [
       "marketing-active-loop:timeout_risk",
       "marketing-workflow-audit:live_error",
       "blocked-channel-recovery:timeout",
-      "ralph-workflow-docs-verifier-supervisor:live_error",
       "marketing_independent_verification:stale_artifact"
     ],
     "marketing_workflow_audit_timeout_seconds": 3600,
@@ -264,14 +262,12 @@
       "marketing-active-loop",
       "marketing-workflow-audit",
       "blocked-channel-recovery",
-      "ralph-workflow-docs-verifier-supervisor",
       "marketing_independent_verification"
     ],
     "external_watch_issue_categories": [
       "marketing-active-loop:timeout_risk",
       "marketing-workflow-audit:live_error",
       "blocked-channel-recovery:timeout",
-      "ralph-workflow-docs-verifier-supervisor:live_error",
       "marketing_independent_verification:stale_artifact"
     ],
     "required_runtime_consumers_present": [
