@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-28T19:11:28.779757+02:00",
+  "checked_at": "2026-06-02T15:16:28.090038+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
@@ -9,32 +9,36 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_channel_blocked', 'apollo_channel_blocked', 'primary_repo_adoption_flat']"
+      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_channel_blocked', 'apollo_channel_blocked', 'primary_repo_adoption_flat', 'measurement_hold_active']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "repair_window_status=measurement_pending; failing_tactics=['primary_repo_flat_window', 'mirror_repo_flat_window']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat']"
+      "summary": "repair_window_status=needs_repair; failing_tactics=['primary_repo_flat_window']; measurement_pending_reasons=['primary_repo_flat']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/drafts/marketing_execution_board_latest.md",
-      "summary": "fresh=True; reason=ok"
+      "summary": "fresh=False; reason=stale_generated_timestamp_vs_distribution_lane_latest.json"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json",
-      "summary": "fresh=True; reason=ok"
+      "summary": "fresh=False; reason=stale_timestamp_vs_marketing_execution_board_latest.md"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_lane_latest.json",
-      "summary": "fresh=True; reason=ok"
+      "summary": "fresh=False; reason=stale_generated_timestamp_vs_marketing_execution_board_latest.md"
     }
   ],
   "watchpoints": [
-    "primary repo adoption remains measurement-pending after shipped repairs",
-    "reddit is blocked from this environment, but a replacement distribution execution has already shipped",
     "Apollo outbound is externally blocked (cloudflare_auth_blocked) with fresh telemetry"
   ],
   "blockers": [
     "Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.",
-    "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
+    "Primary repo adoption is flat without a live measurement-pending repair window.",
+    "Measurement hold is active, but the consolidated execution board is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json).",
+    "Reddit is blocked, but no shipped replacement distribution/system redesign is recorded yet.",
+    "Workflow audit still reports needs_repair.",
+    "marketing_execution_board_latest.md is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json).",
+    "outcome_execution_board_latest.json is missing or stale (stale_timestamp_vs_marketing_execution_board_latest.md).",
+    "distribution_lane_latest.json is missing or stale (stale_generated_timestamp_vs_marketing_execution_board_latest.md)."
   ]
 }

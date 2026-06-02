@@ -1,31 +1,20 @@
 # Conversion Surface Watchdog — Audit Report
-Generated: 2026-06-02T09:21:40.264951+00:00
+Generated: 2026-06-02T14:46:01.184232+00:00
 
 **Status:** PASS
 
 - Total posts audited: **44**
-- Average conversion score: **8.2/13**
-- Below autofix threshold (≤6): **9**
-- Strong posts (≥8): **29**
+- Average conversion score: **10.3/13**
+- Below autofix threshold (≤6): **0**
+- Strong posts (≥8): **44**
 - Weak posts (≤4): **0**
-
-## Auto-Fixes Applied
-
-- **unattended-coding-agent-what-done-actually-means** (score 5): added_standard_conversion_block
-- **ai-agent-workflow-composer-composable-pipelines** (score 6): added_standard_conversion_block
-- **ai-coding-workflow-automation-loop-structure** (score 6): added_standard_conversion_block
-- **claude-code-automation-unattended-sessions** (score 6): added_standard_conversion_block
-- **debugging-failed-overnight-ai-coding-run** (score 6): added_standard_conversion_block
 
 ## Score Distribution
 
--  5: █ (1)
--  6: ████████ (8)
--  7: ██████ (6)
--  8: ███████████ (11)
--  9: ███ (3)
-- 10: ██████████████ (14)
-- 11: █ (1)
+-  9: █████████ (9)
+- 10: █████████████████████████ (25)
+- 11: ████ (4)
+- 13: ██████ (6)
 
 ## Scoring Guide
 

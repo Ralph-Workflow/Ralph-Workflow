@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-06-02T13:00:17.244004+00:00",
+  "updated_at": "2026-06-02T14:03:29.378539+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 573,
+      "repeat_count": 580,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2017,22 +2017,38 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780379037573:200\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=568"
+        },
+        {
+          "at": "2026-06-02T13:15:15.060352+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780406115005:208\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=574"
+        },
+        {
+          "at": "2026-06-02T13:47:25.856755+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780408045824:211\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=580"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T12:59:27.365040+00:00",
+      "last_seen": "2026-06-02T13:47:21.179064+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-06-02T05:43:57.619678+00:00"
+      "closed_at": "2026-06-02T13:47:25.856772+00:00"
     },
     "marketing_independent_verification::loop_verification_fail": {
       "key": "marketing_independent_verification::loop_verification_fail",
       "name": "marketing_independent_verification",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-22T23:28:25.701171+00:00",
-      "repeat_count": 625,
+      "repeat_count": 639,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -3995,7 +4011,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-28T19:54:45.773452+00:00",
+      "last_seen": "2026-06-02T14:03:29.378490+00:00",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -4005,7 +4021,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 934,
+      "repeat_count": 942,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -8005,15 +8021,31 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780384844529:203\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T08:24:16.223705+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=926"
+        },
+        {
+          "at": "2026-06-02T13:15:17.402012+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T13:06:32.960804+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=935"
+        },
+        {
+          "at": "2026-06-02T13:47:27.844435+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780408047806:212\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T15:16:43.713733+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=942"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T12:59:27.365087+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T13:06:32.960804+02:00\"\n}",
+      "last_seen": "2026-06-02T13:47:21.179094+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T15:16:43.713733+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-06-02T07:20:44.566863+00:00"
+      "closed_at": "2026-06-02T13:47:27.844461+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -11410,7 +11442,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T05:06:09.078715+00:00",
-      "repeat_count": 351,
+      "repeat_count": 356,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -12286,15 +12318,23 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=350"
+        },
+        {
+          "at": "2026-06-02T14:03:24.458514+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=356"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-02T12:59:27.365055+00:00",
+      "last_seen": "2026-06-02T14:02:41.913235+00:00",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Clean pass. The README\u2192START_HERE\u2192docs/README journey is coherent and positioning-aligned. Every surface leads with product framing before internals, and the promoted next-click pages reinforce the same story instead of fighting it.",
+      "likely_cause": "Docs are fundamentally aligned with positioning. README\u2192START_HERE\u2192docs/README journey works cleanly. No internal leakage on top-level surfaces. Minor consistency gaps in mirror disclaimer prominence and copy repetition across promoted pages.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-06-02T03:04:34.012156+00:00"
+      "closed_at": "2026-06-02T14:03:24.458536+00:00"
     },
     "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc::review_followup_required": {
       "key": "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc::review_followup_required",
@@ -12581,7 +12621,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 1291,
+      "repeat_count": 1293,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -12785,7 +12825,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-02T12:59:27.365049+00:00",
+      "last_seen": "2026-06-02T13:15:22.289694+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -13557,7 +13597,7 @@
       "name": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T13:44:56.633992+00:00",
-      "repeat_count": 107,
+      "repeat_count": 121,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -14181,13 +14221,21 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "blocked_external",
           "issue_signature": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair_escalation::escalation_required::Workflow audit still reports needs_repair.::Incident escalation level=critical: marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required repeat_count=106"
+        },
+        {
+          "at": "2026-06-02T13:30:22.451899+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair::review_followup_required::Workflow audit still reports needs_repair.::Reviewer left unresolved required follow-up item in blockers: Workflow audit still reports needs_repair."
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-27T10:37:33.668054+00:00",
+      "last_seen": "2026-06-02T14:03:29.378506+00:00",
       "last_error": "Workflow audit still reports needs_repair.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Workflow audit still reports needs_repair.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -15040,7 +15088,7 @@
       "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T15:57:16.529121+00:00",
-      "repeat_count": 21,
+      "repeat_count": 35,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -15111,13 +15159,21 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779988047436:59\"\n}",
           "outcome": "blocked_external",
           "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar::review_followup_required::Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.::Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification."
+        },
+        {
+          "at": "2026-06-02T13:30:13.836231+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780407013785:209\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar::review_followup_required::Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.::Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification."
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-28T19:54:45.773458+00:00",
+      "last_seen": "2026-06-02T14:03:29.378495+00:00",
       "last_error": "Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -15695,7 +15751,7 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-without-a-live-mea",
       "category": "review_followup_required",
       "first_seen": "2026-05-24T04:52:58.918683+00:00",
-      "repeat_count": 6,
+      "repeat_count": 20,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -15733,13 +15789,21 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779600074395:88\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-06-02T13:30:16.015626+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_primary-repo-adoption-is-flat-without-a-live-mea::review_followup_required::Primary repo adoption is flat without a live measurement-pending repair window.::Reviewer left unresolved required follow-up item in blockers: Primary repo adoption is flat without a live measurement-pending repair window."
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-24T05:21:25.360593+00:00",
+      "last_seen": "2026-06-02T14:03:29.378498+00:00",
       "last_error": "Primary repo adoption is flat without a live measurement-pending repair window.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption is flat without a live measurement-pending repair window.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -17769,7 +17833,7 @@
       "name": "marketing_independent_verification_blockers_measurement-hold-is-active-but-the-consolidated",
       "category": "review_followup_required",
       "first_seen": "2026-05-26T04:53:24.988502+00:00",
-      "repeat_count": 6,
+      "repeat_count": 20,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -17807,15 +17871,23 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779788369526:8\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-06-02T13:30:18.272603+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_measurement-hold-is-active-but-the-consolidated::review_followup_required::Measurement hold is active, but the consolidated execution board is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json).::Reviewer left unresolved required follow-up item in blockers: Measurement hold is active, but the consolidated execution board is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json)."
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-26T09:39:35.327973+00:00",
-      "last_error": "Measurement hold is active, but the consolidated execution board is missing or stale.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Measurement hold is active, but the consolidated execution board is missing or stale.",
+      "last_seen": "2026-06-02T14:03:29.378501+00:00",
+      "last_error": "Measurement hold is active, but the consolidated execution board is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json).",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Measurement hold is active, but the consolidated execution board is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json).",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
     },
     "marketing_independent_verification_blockers_reddit-monitor-is-degraded-without-a-fresh-healt::review_followup_required": {
@@ -24376,13 +24448,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout_risk",
       "first_seen": "2026-06-02T11:07:35.106062+00:00",
-      "repeat_count": 5,
+      "repeat_count": 21,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-06-02T12:59:27.365002+00:00",
+      "last_seen": "2026-06-02T14:03:29.378475+00:00",
       "last_error": "",
       "likely_cause": "PRE_TIMEOUT_RISK: script at 890582ms / 600s limit - duration exceeds 90%",
       "path": null
@@ -24405,12 +24477,13 @@
           "issue_signature": "docs_agentic_review_mustFix_primary-repo-readme-docs-table-4-entries-and-git::review_followup_required::Primary repo README docs table (4 entries) and GitHub mirror docs table (5 entries) have diverged \u2014 the mirror should reflect Codeberg content, not accumulate extras like the Walkthrough link::Reviewer left unresolved required follow-up item in mustFix: Primary repo README docs table (4 entries) and GitHub mirror docs table (5 entries) have diverged \u2014 the mirror should reflect Codeberg content, not accumulate extras like the Walkthrough link"
         }
       ],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
       "last_seen": "2026-06-02T12:59:27.365068+00:00",
       "last_error": "Primary repo README docs table (4 entries) and GitHub mirror docs table (5 entries) have diverged \u2014 the mirror should reflect Codeberg content, not accumulate extras like the Walkthrough link",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Primary repo README docs table (4 entries) and GitHub mirror docs table (5 entries) have diverged \u2014 the mirror should reflect Codeberg content, not accumulate extras like the Walkthrough link",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-02T13:15:12.755602+00:00"
     },
     "docs_agentic_review_mustFix_subpackage-readme-is-long-and-includes-configura::review_followup_required": {
       "key": "docs_agentic_review_mustFix_subpackage-readme-is-long-and-includes-configura::review_followup_required",
@@ -24430,12 +24503,216 @@
           "issue_signature": "docs_agentic_review_mustFix_subpackage-readme-is-long-and-includes-configura::review_followup_required::Subpackage README is long and includes configuration detail closer to deep docs territory; consider trimming or restructuring for PyPI concision::Reviewer left unresolved required follow-up item in mustFix: Subpackage README is long and includes configuration detail closer to deep docs territory; consider trimming or restructuring for PyPI concision"
         }
       ],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
       "last_seen": "2026-06-02T12:59:27.365078+00:00",
       "last_error": "Subpackage README is long and includes configuration detail closer to deep docs territory; consider trimming or restructuring for PyPI concision",
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Subpackage README is long and includes configuration detail closer to deep docs territory; consider trimming or restructuring for PyPI concision",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-02T13:15:12.755607+00:00"
+    },
+    "marketing_independent_verification_blockers_reddit-is-blocked-but-no-shipped-replacement-dis::review_followup_required": {
+      "key": "marketing_independent_verification_blockers_reddit-is-blocked-but-no-shipped-replacement-dis::review_followup_required",
+      "name": "marketing_independent_verification_blockers_reddit-is-blocked-but-no-shipped-replacement-dis",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T13:30:11.751695+00:00",
+      "repeat_count": 14,
+      "owner_domain": "marketing",
+      "escalation_level": "critical",
+      "owner_actions": [
+        {
+          "at": "2026-06-02T13:30:20.330882+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_reddit-is-blocked-but-no-shipped-replacement-dis::review_followup_required::Reddit is blocked, but no shipped replacement distribution/system redesign is recorded yet.::Reviewer left unresolved required follow-up item in blockers: Reddit is blocked, but no shipped replacement distribution/system redesign is recorded yet."
+        }
+      ],
+      "status": "blocked_external",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ],
+      "last_seen": "2026-06-02T14:03:29.378503+00:00",
+      "last_error": "Reddit is blocked, but no shipped replacement distribution/system redesign is recorded yet.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Reddit is blocked, but no shipped replacement distribution/system redesign is recorded yet.",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
+    },
+    "marketing_independent_verification_blockers_marketing-execution-board-latest-md-is-missing-o::review_followup_required": {
+      "key": "marketing_independent_verification_blockers_marketing-execution-board-latest-md-is-missing-o::review_followup_required",
+      "name": "marketing_independent_verification_blockers_marketing-execution-board-latest-md-is-missing-o",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T13:30:11.751706+00:00",
+      "repeat_count": 14,
+      "owner_domain": "marketing",
+      "escalation_level": "critical",
+      "owner_actions": [
+        {
+          "at": "2026-06-02T13:30:24.532023+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_marketing-execution-board-latest-md-is-missing-o::review_followup_required::marketing_execution_board_latest.md is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json).::Reviewer left unresolved required follow-up item in blockers: marketing_execution_board_latest.md is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json)."
+        }
+      ],
+      "status": "blocked_external",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ],
+      "last_seen": "2026-06-02T14:03:29.378508+00:00",
+      "last_error": "marketing_execution_board_latest.md is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json).",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: marketing_execution_board_latest.md is missing or stale (stale_generated_timestamp_vs_distribution_lane_latest.json).",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
+    },
+    "marketing_independent_verification_blockers_outcome-execution-board-latest-json-is-missing-o::review_followup_required": {
+      "key": "marketing_independent_verification_blockers_outcome-execution-board-latest-json-is-missing-o::review_followup_required",
+      "name": "marketing_independent_verification_blockers_outcome-execution-board-latest-json-is-missing-o",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T13:30:11.751712+00:00",
+      "repeat_count": 14,
+      "owner_domain": "marketing",
+      "escalation_level": "critical",
+      "owner_actions": [
+        {
+          "at": "2026-06-02T13:30:26.642222+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_outcome-execution-board-latest-json-is-missing-o::review_followup_required::outcome_execution_board_latest.json is missing or stale (stale_timestamp_vs_marketing_execution_board_latest.md).::Reviewer left unresolved required follow-up item in blockers: outcome_execution_board_latest.json is missing or stale (stale_timestamp_vs_marketing_execution_board_latest.md)."
+        }
+      ],
+      "status": "blocked_external",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ],
+      "last_seen": "2026-06-02T14:03:29.378511+00:00",
+      "last_error": "outcome_execution_board_latest.json is missing or stale (stale_timestamp_vs_marketing_execution_board_latest.md).",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: outcome_execution_board_latest.json is missing or stale (stale_timestamp_vs_marketing_execution_board_latest.md).",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
+    },
+    "marketing_independent_verification_blockers_distribution-lane-latest-json-is-missing-or-stal::review_followup_required": {
+      "key": "marketing_independent_verification_blockers_distribution-lane-latest-json-is-missing-or-stal::review_followup_required",
+      "name": "marketing_independent_verification_blockers_distribution-lane-latest-json-is-missing-or-stal",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T13:30:11.751717+00:00",
+      "repeat_count": 14,
+      "owner_domain": "marketing",
+      "escalation_level": "critical",
+      "owner_actions": [
+        {
+          "at": "2026-06-02T13:30:28.801852+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external",
+          "issue_signature": "marketing_independent_verification_blockers_distribution-lane-latest-json-is-missing-or-stal::review_followup_required::distribution_lane_latest.json is missing or stale (stale_generated_timestamp_vs_marketing_execution_board_latest.md).::Reviewer left unresolved required follow-up item in blockers: distribution_lane_latest.json is missing or stale (stale_generated_timestamp_vs_marketing_execution_board_latest.md)."
+        }
+      ],
+      "status": "blocked_external",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ],
+      "last_seen": "2026-06-02T14:03:29.378513+00:00",
+      "last_error": "distribution_lane_latest.json is missing or stale (stale_generated_timestamp_vs_marketing_execution_board_latest.md).",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: distribution_lane_latest.json is missing or stale (stale_generated_timestamp_vs_marketing_execution_board_latest.md).",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
+    },
+    "docs_agentic_review_mustFix_secondary-docs-pages-ai-agent-orchestration-cli::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_secondary-docs-pages-ai-agent-orchestration-cli::review_followup_required",
+      "name": "docs_agentic_review_mustFix_secondary-docs-pages-ai-agent-orchestration-cli",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T13:33:09.731009+00:00",
+      "repeat_count": 4,
+      "owner_domain": "docs",
+      "escalation_level": "owner",
+      "owner_actions": [],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-02T13:33:49.831982+00:00",
+      "last_error": "Secondary docs pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md, first-task-guide.md) all open with the same paragraph verbatim ('Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core...'). This boilerplate repetition weakens trust in copy quality \u2014 each page should lead with its own angle.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Secondary docs pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md, first-task-guide.md) all open with the same paragraph verbatim ('Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core...'). This boilerplate repetition weakens trust in copy quality \u2014 each page should lead with its own angle.",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-02T13:47:21.179114+00:00"
+    },
+    "docs_agentic_review_mustFix_primary-codeberg-readme-needs-a-stronger-more-pr::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_primary-codeberg-readme-needs-a-stronger-more-pr::review_followup_required",
+      "name": "docs_agentic_review_mustFix_primary-codeberg-readme-needs-a-stronger-more-pr",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T14:02:41.913238+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [
+        {
+          "at": "2026-06-02T14:03:16.057366+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780408995998:213\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_primary-codeberg-readme-needs-a-stronger-more-pr::review_followup_required::Primary Codeberg README needs a stronger, more prominent 'GitHub is the mirror' banner instead of the current small inline notation (compare with ralph-workflow/README.md which has it right)::Reviewer left unresolved required follow-up item in mustFix: Primary Codeberg README needs a stronger, more prominent 'GitHub is the mirror' banner instead of the current small inline notation (compare with ralph-workflow/README.md which has it right)"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-02T14:02:41.913243+00:00",
+      "last_error": "Primary Codeberg README needs a stronger, more prominent 'GitHub is the mirror' banner instead of the current small inline notation (compare with ralph-workflow/README.md which has it right)",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Primary Codeberg README needs a stronger, more prominent 'GitHub is the mirror' banner instead of the current small inline notation (compare with ralph-workflow/README.md which has it right)",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-02T14:03:29.378533+00:00"
+    },
+    "docs_agentic_review_mustFix_copy-across-docs-readme-ai-agent-orchestration-c::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_copy-across-docs-readme-ai-agent-orchestration-c::review_followup_required",
+      "name": "docs_agentic_review_mustFix_copy-across-docs-readme-ai-agent-orchestration-c",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T14:02:41.913246+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [
+        {
+          "at": "2026-06-02T14:03:18.304097+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_copy-across-docs-readme-ai-agent-orchestration-c::review_followup_required::Copy across docs/README, ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, and unattended-coding-agent.md all start with near-identical positioning paragraphs \u2014 reduce repetition to make each page's distinct value clearer::Reviewer left unresolved required follow-up item in mustFix: Copy across docs/README, ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, and unattended-coding-agent.md all start with near-identical positioning paragraphs \u2014 reduce repetition to make each page's distinct value clearer"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-02T14:02:41.913249+00:00",
+      "last_error": "Copy across docs/README, ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, and unattended-coding-agent.md all start with near-identical positioning paragraphs \u2014 reduce repetition to make each page's distinct value clearer",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Copy across docs/README, ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, and unattended-coding-agent.md all start with near-identical positioning paragraphs \u2014 reduce repetition to make each page's distinct value clearer",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-02T14:03:29.378536+00:00"
+    },
+    "docs_agentic_review_mustFix_primary-readme-lacks-the-when-it-fits-when-it-do::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_primary-readme-lacks-the-when-it-fits-when-it-do::review_followup_required",
+      "name": "docs_agentic_review_mustFix_primary-readme-lacks-the-when-it-fits-when-it-do",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-02T14:02:41.913251+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [
+        {
+          "at": "2026-06-02T14:03:20.426195+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_primary-readme-lacks-the-when-it-fits-when-it-do::review_followup_required::Primary README lacks the 'When it fits/when it doesn't' checklist and 'What to expect' sections that the PyPI README has \u2014 consider whether the primary should be the richer surface::Reviewer left unresolved required follow-up item in mustFix: Primary README lacks the 'When it fits/when it doesn't' checklist and 'What to expect' sections that the PyPI README has \u2014 consider whether the primary should be the richer surface"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-02T14:02:41.913253+00:00",
+      "last_error": "Primary README lacks the 'When it fits/when it doesn't' checklist and 'What to expect' sections that the PyPI README has \u2014 consider whether the primary should be the richer surface",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Primary README lacks the 'When it fits/when it doesn't' checklist and 'What to expect' sections that the PyPI README has \u2014 consider whether the primary should be the richer surface",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-02T14:03:29.378537+00:00"
     }
   }
 }

@@ -1,148 +1,111 @@
 {
-  "generated_at": "2026-06-02T08:21:05.722135",
-  "source": "competitor_analysis.py",
-  "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
-  "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-02.md",
-  "monitoring_snapshot": "/home/mistlight/.openclaw/workspace/seo-reports/competitors/monitoring_2026-06-02.json",
-  "comparison_pages": [
+  "generated_at": "2026-06-02T14:50:00Z",
+  "source": "daily-marketing-research",
+  "coverage_note": "DuckDuckGo (configured search provider) blocked with bot-detection. Reddit direct unavailable. HN Algolia API fully functional. Google web_fetch raw-html blocked. Coverage is HN-only for community discussion detection.",
+  "coverage_degraded": true,
+  "candidates_scanned": 35,
+  "candidates_shortlisted": 7,
+  "candidates_rejected": 28,
+  "shortlist": [
     {
-      "slug": "hermes-agent",
-      "name": "Hermes Agent",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md"
+      "id": "nightshift",
+      "type": "HN story 48275853",
+      "date": "2026-05-26",
+      "title": "Why codex /goal fails on complex workflows: compaction amnesia and context rot",
+      "url": "https://news.ycombinator.com/item?id=48275853",
+      "author": "shaurya-sethi",
+      "relevance": "HIGH - Directly validates Ralph Workflow's approach. Author built Nightshift (Rust) to solve the same context-rot problem Ralph Workflow solves: enforcing outer-loop boundaries with fresh agent sessions per task. Exactly the 'compact fresh sessions' value prop.",
+      "action": "Engage on HN thread: Frame Ralph Workflow as the TOML-configurable, composable-loop answer to the same problem. Author is clearly thinking in the same direction."
     },
     {
-      "slug": "conductor-oss",
-      "name": "Conductor OSS",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-oss.md"
+      "id": "planbridge",
+      "type": "HN story 48139177",
+      "date": "2026-05-14",
+      "title": "PlanBridge: open-source tool for precise feedback on coding agent plans",
+      "url": "https://news.ycombinator.com/item?id=48139177",
+      "author": "floodfx",
+      "relevance": "HIGH - Validates the pain point around plan review UX. Ralph Workflow already has planning loop + human gates. This is a complementary tool (not competitive).",
+      "action": "Check if PlanBridge hooks could integrate with Ralph Workflow's plan output. Potential partnership/mention angle: 'Ralph Workflow + PlanBridge for plan review in unattended runs'."
     },
     {
-      "slug": "conductor-teams",
-      "name": "Conductor (Teams)",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md"
+      "id": "loom-knowledge-graph",
+      "type": "HN story 47936461",
+      "date": "2026-04-28",
+      "title": "Loom – A Markdown knowledge graph for better coding-agent execution",
+      "url": "https://news.ycombinator.com/item?id=47936461",
+      "author": "z3z1ma",
+      "relevance": "MEDIUM-HIGH - Author explicitly mentions 'Ralph has clean execution loops' as inspiration. Loom is about project-level knowledge graph (different layer). Shows Ralph's influence in the ecosystem.",
+      "action": "Author is an aware Ralph influencer. Cultivate connection. Ralph Workflow could reference Loom as complementary project-level context management."
     },
     {
-      "slug": "aider",
-      "name": "Aider",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/aider.md"
+      "id": "paseo",
+      "type": "HN story 47575827",
+      "date": "2026-05-31",
+      "title": "Paseo, open source environment for coding agents",
+      "url": "https://news.ycombinator.com/item?id=47575827",
+      "author": "boudra",
+      "relevance": "MEDIUM - Multi-provider agent environment with daemon architecture. Not directly competitive (different focus layer). Growing discussion around agent CLIs as 'primitives for orchestration'.",
+      "action": "Monitor. The convergence toward 'CLI as primitive' supports Ralph's agent-agnostic positioning."
     },
     {
-      "slug": "continue",
-      "name": "Continue",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md"
+      "id": "twill-ai-launch",
+      "type": "HN Launch HN 47720418",
+      "date": "2026-04-10",
+      "title": "Twill.ai (YC S25) – Delegate to cloud agents, get back PRs",
+      "url": "https://news.ycombinator.com/item?id=47720418",
+      "author": "danoandco",
+      "relevance": "HIGH - Cloud-based competitor in the 'run Claude Code unattended' space. 95+ comment thread reveals strong demand but also skepticism about cloud-based approaches vs local. Ralph is local-first, which is a key differentiation.",
+      "action": "Key talking point for Ralph: 'Twill moves your code to cloud sandboxes. Ralph Workflow keeps everything local — your code, your agents, your machine.' Pull from the thread's recurring concern about trust/security of cloud coding agents."
     },
     {
-      "slug": "cursor",
-      "name": "Cursor",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/cursor.md"
+      "id": "emdash",
+      "type": "HN story 47140322",
+      "date": "2026-02-24",
+      "title": "Emdash – Open-source agentic development environment",
+      "url": "https://news.ycombinator.com/item?id=47140322",
+      "author": "onecommit",
+      "relevance": "HIGH - 206 points, 71 comments, very active. ADE (Agentic Development Environment) that runs multiple coding agents in parallel with git worktrees. Supports 21 CLIs. Directly in Ralph's competitive space as multi-agent workflow layer. Their angle is desktop app UX + parallel isolation.",
+      "action": "Ralph differentiator: Emdash is a desktop app UI around coding agents. Ralph is a TOML-configured workflow engine you run from CLI. Different use cases: parallel agent management (Emdash) vs structured development loop (Ralph). Good comparison for positioning docs."
     },
     {
-      "slug": "claude-code",
-      "name": "Claude Code",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md"
-    },
-    {
-      "slug": "copilot",
-      "name": "GitHub Copilot",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md"
+      "id": "cc-pipeline",
+      "type": "HN story 47168064",
+      "date": "2026-02-26",
+      "title": "Cc-pipeline – Autonomous Claude Code pipeline that builds your project",
+      "url": "https://news.ycombinator.com/item?id=47168064",
+      "author": "timothyjoh",
+      "relevance": "HIGH - Most direct clone/project in Ralph's space. npx cc-pipeline run with BRIEF.md → automated SDLC pipeline through Claude Code. Very similar concept. Substack writeup documents experiments.",
+      "action": "Compare cc-pipeline vs Ralph Workflow for positioning. cc-pipeline is Claude-ecosystem-specific (uses Claude Agent SDK). Ralph is agent-agnostic. cc-pipeline is npm-only. Ralph is TOML-configured with stronger composability."
     }
   ],
-  "competitors": {
-    "hermes-agent": {
-      "name": "Hermes Agent",
-      "positioning": "Self-improving agent that learns from experience",
-      "site_status": 200,
-      "github_stars": 176312,
-      "key_features_found": [
-        "Persistent memory"
-      ]
-    },
-    "conductor-oss": {
-      "name": "Conductor OSS",
-      "positioning": "Enterprise-grade workflow orchestration for AI agents",
-      "site_status": 200,
-      "github_stars": 31876,
-      "key_features_found": [
-        "Durable execution"
-      ]
-    },
-    "conductor-teams": {
-      "name": "Conductor (Teams)",
-      "positioning": "Markdown-native local-first orchestration for coding teams",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Local-first"
-      ]
-    },
-    "aider": {
-      "name": "Aider",
-      "positioning": "Terminal-based AI pair programming in your git repo",
-      "site_status": 200,
-      "github_stars": 45659,
-      "key_features_found": []
-    },
-    "continue": {
-      "name": "Continue",
-      "positioning": "The leading AI code assistant inside your IDE",
-      "site_status": 200,
-      "github_stars": 33487,
-      "key_features_found": []
-    },
-    "cursor": {
-      "name": "Cursor",
-      "positioning": "The AI code editor built for pair programming with AI",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Composer",
-        "Context-aware"
-      ]
-    },
-    "claude-code": {
-      "name": "Claude Code",
-      "positioning": "Anthropic's official CLI for agentic coding",
-      "site_status": 0,
-      "github_stars": null,
-      "key_features_found": []
-    },
-    "copilot": {
-      "name": "GitHub Copilot",
-      "positioning": "Your AI pair programmer embedded in GitHub and your IDE",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Inline suggestions"
-      ]
-    }
-  },
-  "ralph_core_truths": {
-    "what_is_it": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.",
-    "who_is_it_for": "Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session.",
-    "why_different": "It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.",
-    "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
-  },
-  "ralph_advantage_keywords": [
-    "unattended coding pipeline",
-    "multi-agent orchestration",
-    "Claude Code workflow",
-    "AI agent review loop",
-    "vendor-neutral AI coding",
-    "cost arbitrage AI coding",
-    "policy-defined agent workflow",
-    "TOML agent configuration",
-    "parallel AI coding agents",
-    "AI agent checkpoint resume"
+  "keyword_opportunities": [
+    "compaction amnesia",
+    "context rot in coding agents",
+    "outer-loop orchestration",
+    "agent session isolation",
+    "unattended Claude Code alternative",
+    "local-first AI coding pipeline",
+    "agent-agnostic workflow engine"
   ],
-  "discovered_candidates": [],
-  "reuse_contract": {
-    "runtime_proven_consumers": [
-      "agents/marketing/run.py",
-      "agents/marketing/reddit_monitor.py"
-    ],
-    "prompt_guided_consumers": [
-      "ralph-site-owner-loop",
-      "agent-architecture-watchdog"
-    ],
-    "purpose": "Shared market and competitor findings artifact for site updates, positioning checks, and marketing tactics."
-  }
+  "content_ideas": [
+    {
+      "title": "Why Codex /goal Fails and What Ralph Workflow Does Differently",
+      "rationale": "Nightshift thread (2 days old) validates Ralph's outer-loop approach. Write a blog post or HN comment comparing compaction amnesia solutions."
+    },
+    {
+      "title": "Ralph Workflow vs Twill vs Emdash vs cc-pipeline — Quick Comparison",
+      "rationale": "Multiple tools now target the same space. A comparison page on ralphworkflow.com would capture SEO traffic and help users choose."
+    },
+    {
+      "title": "The Case for Local-First AI Coding Orchestration",
+      "rationale": "Twill thread shows cloud sandboxing has trust concerns. Ralph is local-first. Make this a headline advantage."
+    }
+  ],
+  "recommended_actions": [
+    "Engage on the Nightshift thread (HN 48275853) — the author is exactly Ralph's target user and already thinking in Ralph-compatible terms",
+    "Update the ralphworkflow.com 'vs alternatives' page to include Emdash and cc-pipeline as comparison points",
+    "Write a comparison blog post: 'Why Composability Beats Cloud Sandboxes: Ralph Workflow vs Twill'",
+    "Check if PlanBridge hooks can integrate with Ralph Workflow for the plan review step",
+    "Monitor the Paseo project — their CLI-as-primitive direction converges with Ralph's design philosophy"
+  ]
 }

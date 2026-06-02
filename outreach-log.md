@@ -1,3 +1,16 @@
+### 2026-06-02 (Tuesday) — Reddit monitoring (15:15 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-06-02_1515.md`
+- **Suspension status:** Day 5 of 7. Active since May 31 11:19 CEST. **~122 hours stale.**
+- **DDG pattern confirmed:** Session-scoped rate-limit (6 working queries then collapse) confirmed across 3 consecutive passes. This is now an established empirical constant — not recovery.
+- **DDG session used for:** 3 broad non-Reddit intelligence queries (competitor docs, market surveys) + 3 stale `site:reddit.com` queries. Best of working queries: **OvernightAgent (a20185/OvernightAgent)** — first near-direct competitor project identified. Node/TypeScript queue-based CLI for unattended overnight runs. Differentiation is clear: throughput vs. finish-state trust.
+- **OvernightAgent comparison created:** `seo-reports/comparisons/overnight-agent.md` added to competitive tracking.
+- **Market consolidation observed:** Claude Code Auto Mode GA (30-60min unattended), `/goal` command, `/code-review`, agent view. Category hardening fast. RalphWorkflow positioning window shrinking.
+- **Reddit direct:** 403 blocked (30th consecutive day).
+- **Shortlist:** Empty — all prior threads evicted per age-eviction rules.
+- **Escalation countdown:** ~2 days until June 4 11:19 CEST. Escalation notification will fire if unrecovered.
+- **Posting verdict:** No posting. Suspension holds.
+- **Type:** **MONITOR / SUSPENSION_HELD / COMPETITOR_DISCOVERED**
+
 ### 2026-06-01 — Marketing workflow audit #19 (19:24 CEST)
 **Audit trigger:** Cron scheduled re-analysis (#19). Run at 19:46 CEST.
 

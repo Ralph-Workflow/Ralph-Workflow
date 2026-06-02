@@ -1,518 +1,30 @@
 {
-  "generated_at": "2026-06-02T09:21:40.264951+00:00",
+  "generated_at": "2026-06-02T14:46:01.184232+00:00",
   "agent": "conversion_surface_watchdog",
   "repair_target": "outcome_system_underpowered",
   "total_posts": 44,
-  "avg_score": 8.2,
-  "below_threshold_count": 9,
-  "strong_posts_count": 29,
+  "avg_score": 10.3,
+  "below_threshold_count": 0,
+  "strong_posts_count": 44,
   "weak_posts_count": 0,
   "posts": [
     {
-      "slug": "unattended-coding-agent-what-done-actually-means",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/unattended-coding-agent-what-done-actually-means.md",
-      "lines": 61,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 0,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "WEAK: No free-use invite in final section (pick a task, try tonight, judge result)",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 5
-    },
-    {
-      "slug": "ai-agent-workflow-composer-composable-pipelines",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-workflow-composer-composable-pipelines.md",
-      "lines": 128,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 6
-    },
-    {
-      "slug": "ai-coding-workflow-automation-loop-structure",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-workflow-automation-loop-structure.md",
-      "lines": 63,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 6
-    },
-    {
-      "slug": "claude-code-automation-unattended-sessions",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-automation-unattended-sessions.md",
-      "lines": 64,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 6
-    },
-    {
-      "slug": "debugging-failed-overnight-ai-coding-run",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/debugging-failed-overnight-ai-coding-run.md",
-      "lines": 117,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 6
-    },
-    {
-      "slug": "good-vs-bad-unattended-coding-task-ai-agent",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/good-vs-bad-unattended-coding-task-ai-agent.md",
-      "lines": 149,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 6
-    },
-    {
-      "slug": "is-ralph-workflow-right-for-your-project-decision-guide",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/is-ralph-workflow-right-for-your-project-decision-guide.md",
-      "lines": 163,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 3 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 6
-    },
-    {
-      "slug": "nested-analysis-loops-catch-bugs-before-commit",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/nested-analysis-loops-catch-bugs-before-commit.md",
-      "lines": 77,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 6
-    },
-    {
-      "slug": "offline-ai-coding-local-llm-guide",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/offline-ai-coding-local-llm-guide.md",
-      "lines": 82,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 6
-    },
-    {
-      "slug": "ai-agent-orchestration-cli-composable-alternative",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-orchestration-cli-composable-alternative.md",
-      "lines": 69,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 1
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 7
-    },
-    {
-      "slug": "claude-code-autonomous-mode-wrapper",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-autonomous-mode-wrapper.md",
-      "lines": 117,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 7
-    },
-    {
-      "slug": "how-to-structure-autonomous-ai-agent-workflows-for-production-reliability",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-structure-autonomous-ai-agent-workflows-for-production-reliability.md",
-      "lines": 158,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 7
-    },
-    {
-      "slug": "safe-ai-code-execution-sandbox-isolation",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/safe-ai-code-execution-sandbox-isolation.md",
-      "lines": 106,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 1
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 7
-    },
-    {
-      "slug": "spec-driven-ai-agent-explicit-contracts",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/spec-driven-ai-agent-explicit-contracts.md",
-      "lines": 65,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 7
-    },
-    {
-      "slug": "verification-patterns-for-ai-generated-code",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/verification-patterns-for-ai-generated-code.md",
-      "lines": 128,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 1
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 7
-    },
-    {
-      "slug": "ai-agent-tool-loop-debugging-guide",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-tool-loop-debugging-guide.md",
-      "lines": 95,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 8
-    },
-    {
       "slug": "ai-coding-agent-testing-strategy",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-testing-strategy.md",
-      "lines": 124,
+      "lines": 126,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
         "pip_install": 2,
         "first_task_guide": 2,
-        "free_use_invite": 1,
+        "free_use_invite": 2,
         "ends_with_crosslinks": -2,
         "star_ask": 0
       },
       "findings": [
-        "THIN: Only one free-use signal in final section",
         "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
       ],
-      "total_score": 8
-    },
-    {
-      "slug": "autonomous-ai-coding-tools-compared",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/autonomous-ai-coding-tools-compared.md",
-      "lines": 199,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 8
-    },
-    {
-      "slug": "ci-cd-pipeline-ai-coding-agent",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ci-cd-pipeline-ai-coding-agent.md",
-      "lines": 201,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 8
-    },
-    {
-      "slug": "multi-agent-orchestration-patterns",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/multi-agent-orchestration-patterns.md",
-      "lines": 116,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 8
-    },
-    {
-      "slug": "ralph-workflow-comparison-guide",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-comparison-guide.md",
-      "lines": 182,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 8
-    },
-    {
-      "slug": "ralph-workflow-docker-install-container",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-docker-install-container.md",
-      "lines": 89,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 8
-    },
-    {
-      "slug": "ralph-workflow-in-5-minutes",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-in-5-minutes.md",
-      "lines": 118,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 8
-    },
-    {
-      "slug": "real-task-walkthrough-overnight-refactoring",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/real-task-walkthrough-overnight-refactoring.md",
-      "lines": 170,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 8
-    },
-    {
-      "slug": "toml-workflow-configuration-guide",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/toml-workflow-configuration-guide.md",
-      "lines": 322,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 8
-    },
-    {
-      "slug": "vendor-neutral-ai-coding-platform-independent-workflow",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/vendor-neutral-ai-coding-platform-independent-workflow.md",
-      "lines": 117,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 8
+      "total_score": 9
     },
     {
       "slug": "ai-cost-model-routing-smart-agent-orchestration",
@@ -533,9 +45,9 @@
       "total_score": 9
     },
     {
-      "slug": "codex-opencode-cline-vs-ralph-workflow-2026",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/codex-opencode-cline-vs-ralph-workflow-2026.md",
-      "lines": 151,
+      "slug": "ci-cd-pipeline-ai-coding-agent",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ci-cd-pipeline-ai-coding-agent.md",
+      "lines": 203,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -551,9 +63,27 @@
       "total_score": 9
     },
     {
-      "slug": "your-first-overnight-task-start-here-guide",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md",
-      "lines": 201,
+      "slug": "codex-opencode-cline-vs-ralph-workflow-2026",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/codex-opencode-cline-vs-ralph-workflow-2026.md",
+      "lines": 159,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 9
+    },
+    {
+      "slug": "multi-agent-orchestration-patterns",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/multi-agent-orchestration-patterns.md",
+      "lines": 118,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -567,11 +97,101 @@
         "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
       ],
       "total_score": 9
+    },
+    {
+      "slug": "ralph-workflow-docker-install-container",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-docker-install-container.md",
+      "lines": 91,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 9
+    },
+    {
+      "slug": "ralph-workflow-in-5-minutes",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-in-5-minutes.md",
+      "lines": 121,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 9
+    },
+    {
+      "slug": "toml-workflow-configuration-guide",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/toml-workflow-configuration-guide.md",
+      "lines": 325,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 9
+    },
+    {
+      "slug": "vendor-neutral-ai-coding-platform-independent-workflow",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/vendor-neutral-ai-coding-platform-independent-workflow.md",
+      "lines": 119,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 9
+    },
+    {
+      "slug": "ai-agent-orchestration-cli-composable-alternative",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-orchestration-cli-composable-alternative.md",
+      "lines": 70,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": -2,
+        "star_ask": 1
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
     },
     {
       "slug": "ai-agent-orchestration-landscape-gap-2026",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-orchestration-landscape-gap-2026.md",
-      "lines": 90,
+      "lines": 92,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -605,9 +225,63 @@
       "total_score": 10
     },
     {
+      "slug": "ai-agent-tool-loop-debugging-guide",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-tool-loop-debugging-guide.md",
+      "lines": 97,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
       "slug": "ai-coding-tools-comparison-2026",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-tools-comparison-2026.md",
-      "lines": 230,
+      "lines": 252,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
+      "slug": "autonomous-ai-coding-tools-compared",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/autonomous-ai-coding-tools-compared.md",
+      "lines": 200,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
+      "slug": "claude-code-autonomous-mode-wrapper",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-autonomous-mode-wrapper.md",
+      "lines": 118,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -634,6 +308,42 @@
         "free_use_invite": 2,
         "ends_with_crosslinks": -2,
         "star_ask": 1
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
+      "slug": "how-to-structure-autonomous-ai-agent-workflows-for-production-reliability",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-structure-autonomous-ai-agent-workflows-for-production-reliability.md",
+      "lines": 160,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
+      "slug": "ralph-workflow-comparison-guide",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-comparison-guide.md",
+      "lines": 194,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
       },
       "findings": [
         "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
@@ -679,7 +389,7 @@
     {
       "slug": "ralph-workflow-vs-conductor-oss",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-conductor-oss.md",
-      "lines": 99,
+      "lines": 103,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -785,6 +495,60 @@
       "total_score": 10
     },
     {
+      "slug": "real-task-walkthrough-overnight-refactoring",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/real-task-walkthrough-overnight-refactoring.md",
+      "lines": 173,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
+      "slug": "safe-ai-code-execution-sandbox-isolation",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/safe-ai-code-execution-sandbox-isolation.md",
+      "lines": 107,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": -2,
+        "star_ask": 1
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
+      "slug": "spec-driven-ai-agent-explicit-contracts",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/spec-driven-ai-agent-explicit-contracts.md",
+      "lines": 67,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
       "slug": "spec-driven-ai-agents-why-workflow-is-the-unit-of-work",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/spec-driven-ai-agents-why-workflow-is-the-unit-of-work.md",
       "lines": 234,
@@ -805,7 +569,7 @@
     {
       "slug": "the-overnight-coding-agent-pattern",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/the-overnight-coding-agent-pattern.md",
-      "lines": 178,
+      "lines": 180,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -819,6 +583,60 @@
         "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
       ],
       "total_score": 10
+    },
+    {
+      "slug": "verification-patterns-for-ai-generated-code",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/verification-patterns-for-ai-generated-code.md",
+      "lines": 131,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": -2,
+        "star_ask": 1
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
+      "slug": "your-first-overnight-task-start-here-guide",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md",
+      "lines": 204,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
+      "slug": "good-vs-bad-unattended-coding-task-ai-agent",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/good-vs-bad-unattended-coding-task-ai-agent.md",
+      "lines": 152,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 1
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 11
     },
     {
       "slug": "how-to-run-claude-code-unattended",
@@ -837,53 +655,142 @@
         "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
       ],
       "total_score": 11
-    }
-  ],
-  "auto_fixes": [
-    {
-      "slug": "unattended-coding-agent-what-done-actually-means",
-      "before_score": 5,
-      "action": "added_standard_conversion_block"
-    },
-    {
-      "slug": "ai-agent-workflow-composer-composable-pipelines",
-      "before_score": 6,
-      "action": "added_standard_conversion_block"
-    },
-    {
-      "slug": "ai-coding-workflow-automation-loop-structure",
-      "before_score": 6,
-      "action": "added_standard_conversion_block"
-    },
-    {
-      "slug": "claude-code-automation-unattended-sessions",
-      "before_score": 6,
-      "action": "added_standard_conversion_block"
-    },
-    {
-      "slug": "debugging-failed-overnight-ai-coding-run",
-      "before_score": 6,
-      "action": "added_standard_conversion_block"
-    }
-  ],
-  "unchanged": [
-    {
-      "slug": "good-vs-bad-unattended-coding-task-ai-agent",
-      "reason": "max_fix_limit"
-    },
-    {
-      "slug": "is-ralph-workflow-right-for-your-project-decision-guide",
-      "reason": "max_fix_limit"
     },
     {
       "slug": "nested-analysis-loops-catch-bugs-before-commit",
-      "reason": "max_fix_limit"
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/nested-analysis-loops-catch-bugs-before-commit.md",
+      "lines": 80,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 1
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 11
     },
     {
       "slug": "offline-ai-coding-local-llm-guide",
-      "reason": "max_fix_limit"
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/offline-ai-coding-local-llm-guide.md",
+      "lines": 84,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 1
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 11
+    },
+    {
+      "slug": "ai-agent-workflow-composer-composable-pipelines",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-workflow-composer-composable-pipelines.md",
+      "lines": 140,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
+    },
+    {
+      "slug": "ai-coding-workflow-automation-loop-structure",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-workflow-automation-loop-structure.md",
+      "lines": 75,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
+    },
+    {
+      "slug": "claude-code-automation-unattended-sessions",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-automation-unattended-sessions.md",
+      "lines": 76,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
+    },
+    {
+      "slug": "debugging-failed-overnight-ai-coding-run",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/debugging-failed-overnight-ai-coding-run.md",
+      "lines": 129,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
+    },
+    {
+      "slug": "is-ralph-workflow-right-for-your-project-decision-guide",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/is-ralph-workflow-right-for-your-project-decision-guide.md",
+      "lines": 166,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
+    },
+    {
+      "slug": "unattended-coding-agent-what-done-actually-means",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/unattended-coding-agent-what-done-actually-means.md",
+      "lines": 73,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
     }
   ],
+  "auto_fixes": [],
+  "unchanged": [],
   "measurement_window_days": 14,
   "success_metric": "Codeberg stars_delta_window > 0 within 14 days",
   "kill_condition": "Still flat Codeberg adoption after 14 days despite all blog posts having conversion blocks"
