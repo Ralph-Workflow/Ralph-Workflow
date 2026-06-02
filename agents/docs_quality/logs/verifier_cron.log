@@ -18510,3 +18510,21 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{"status": "pass", "summary": "Docs system is well-aligned with the positioning. README \u2192 START_HERE \u2192 docs map flows coherently, the simple-core/composition framing is consistently applied, and hard failures (internal leakage, process-first language) are avoided across every promoted surface.", "loopHealthy": true, "criteria": {"positioning": "pass", "accuracy": "pass", "internalLeakage": "pass", "copyQuality": "pass", "informationArchitecture": "pass", "journeyCoherence": "pass"}, "mustFix": ["PyPI README (ralph-workflow/README.md:49) suggests 'add tests to an existing module, fix known lint failures' as first tasks, which sits at odds with the positioning doc's 'good first run should sound like the fitness app you wanted to build / a major product milestone.' Minor tension \u2014 the PyPI page targets a more cautious audience, but it chips the ambition framing.", "Primary README 'See it in action' terminal output links are proof/secondary evidence surfaced before the user has seen deeper docs. Positioning says 'do not lead with logs / diffs / internal artifacts.' The section is low in the page and framed as 'unedited terminal captures,' so it clears the bar, but it is the closest call in the review."], "strongestEvidence": [{"path": "/home/mistlight/Ralph-Workflow/README.md", "reason": "Cleanest instantiation of the positioning \u2014 opens with operating-system tagline, explains simple-loop-to-composable-framework, has clear fit/non-fit, routes to START_HERE without link anxiety, emphasizes engineering-practice dependency."}, {"path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md", "reason": "Perfect first-run page \u2014 opens with correct positioning framing, shortest honest path, task selection guidance, explicit success criteria, 'next pages only if you need them' footer that keeps the journey low-anxiety."}, {"path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md", "reason": "Clean docs map with intent-based routing (choose one route) and explicit 'keep proof secondary' guardrail. Reinforces the product story before routing to deep docs."}], "shouldUserNeedToRepeatThis": false}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{"status": "pass", "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README form a coherent, progressive journey. Promoted next-click pages reinforce the same framing. No internal leakage on top-level surfaces. The user should not need to repeat this instruction.", "loopHealthy": true, "criteria": {"positioning": "pass", "accuracy": "pass", "internalLeakage": "pass", "copyQuality": "pass", "informationArchitecture": "pass", "journeyCoherence": "pass"}, "mustFix": ["docs/README.md references ralph-workflow/docs/sphinx/ paths that may not resolve from the GitHub mirror or docs.ralphworkflow.com \u2014 verify these relative links work when the user navigates from that page"], "strongestEvidence": [{"path": "README.md", "reason": "Leads with correct tagline and positioning paragraph; explains simple Ralph-loop core before composition; explicitly states what it is not for; includes engineering-practice dependency section; frames Codeberg as primary and GitHub as mirror."}, {"path": "docs/README.md", "reason": "Includes explicit 'Keep proof secondary' guardrail; routes users by intent with three clear paths; correctly identifies Codeberg as primary repo; keeps documentation map concise without link-dump anxiety."}, {"path": "github-mirror/START_HERE.md", "reason": "Focused on shortest honest first run without drifting into internal plumbing; includes task selection guardrails; references deeper docs only when needed."}, {"path": "ralph-workflow/README.md", "reason": "Sub-package README maintains consistent positioning while adding operational detail appropriate for PyPI consumers."}], "shouldUserNeedToRepeatThis": false}

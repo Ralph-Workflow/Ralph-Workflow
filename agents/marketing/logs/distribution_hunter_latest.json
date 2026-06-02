@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-06-02T07:34:55.455516",
+  "timestamp": "2026-06-02T18:35:31.286759",
   "repair_types_seen": [
     "outcome_system_underpowered"
   ],
   "selected_lane": "measurement_hold",
-  "selected_action_type": "measurement_hold_execution",
-  "execution_status": "prepared",
+  "selected_action_type": "measurement_hold_follow_through",
+  "execution_status": "executed",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_073455_measurement_hold.md",
-  "summary": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions. Scheduled an automatic post-hold marketer rerun at the exact short-window release time.",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_183531_measurement_hold_follow_through.md",
+  "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
   "expected_outcome": "Advance distribution via lane measurement_hold without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
   "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
@@ -26,10 +26,8 @@
       "The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, so another packet refresh would be fake progress even if the exact target list drifted.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
-      "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
       "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
       "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
-      "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
       "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
       "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress."
     ],
@@ -48,10 +46,10 @@
   },
   "execution": {
     "lane": "measurement_hold",
-    "action_type": "measurement_hold_execution",
-    "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_073455_measurement_hold.md",
-    "summary": "Enforced a short measurement hold so the loop stops inventing new reset work immediately after multiple fresh external actions. Scheduled an automatic post-hold marketer rerun at the exact short-window release time.",
+    "action_type": "measurement_hold_follow_through",
+    "status": "executed",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_183531_measurement_hold_follow_through.md",
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
     "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",

@@ -42238,3 +42238,94 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Clean positioning alignment across all top-level surfaces. README opens with 'operating system for autonomous coding' / 'AI agent orchestrator', keeps the simple-core\u2192composable framing, explicitly calls out Codeberg primary / GitHub mirror, leads with result-first evaluation, and routes coherently to START_HERE and docs/README. Promoted secondary pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent, first-task-guide) all use the same fresh framing instead of stale internal plumbing language.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md:1-15",
+      "reason": "Opens with canonical tagline, AI orchestrator definition, and Codeberg-primary/result-first framing in the first two paragraphs. No internal plumbing before product story."
+    },
+    {
+      "path": "README.md:17-27",
+      "reason": "Simple-loop\u2192composable framework framing, explicit 'not a chat window or prompt tool', strong default workflow callout, and clean comparison table that fights instead of reinforces old patterns."
+    },
+    {
+      "path": "README.md:29-37",
+      "reason": "Who it's for / not-for matches the ambitious-well-specified-work positioning exactly."
+    },
+    {
+      "path": "START_HERE.md:1-12",
+      "reason": "Shortest honest first run, opens with Codeberg-primary notice, task selection guidance, and result-first success criteria."
+    },
+    {
+      "path": "docs/README.md:1-48",
+      "reason": "Documentation map routes by user intent, explicitly warns 'keep proof secondary', links to product-framing pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) that all echo the same positioning."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md",
+      "reason": "Takes a potential stale subject ('the spec matters') and frames it as operational necessity for the composable workflow \u2014 not as process ceremony."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with the positioning. README \u2192 START_HERE \u2192 docs map flows coherently, the simple-core/composition framing is consistently applied, and hard failures (internal leakage, process-first language) are avoided across every promoted surface.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "PyPI README (ralph-workflow/README.md:49) suggests 'add tests to an existing module, fix known lint failures' as first tasks, which sits at odds with the positioning doc's 'good first run should sound like the fitness app you wanted to build / a major product milestone.' Minor tension \u2014 the PyPI page targets a more cautious audience, but it chips the ambition framing.",
+    "Primary README 'See it in action' terminal output links are proof/secondary evidence surfaced before the user has seen deeper docs. Positioning says 'do not lead with logs / diffs / internal artifacts.' The section is low in the page and framed as 'unedited terminal captures,' so it clears the bar, but it is the closest call in the review."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Cleanest instantiation of the positioning \u2014 opens with operating-system tagline, explains simple-loop-to-composable-framework, has clear fit/non-fit, routes to START_HERE without link anxiety, emphasizes engineering-practice dependency."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Perfect first-run page \u2014 opens with correct positioning framing, shortest honest path, task selection guidance, explicit success criteria, 'next pages only if you need them' footer that keeps the journey low-anxiety."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Clean docs map with intent-based routing (choose one route) and explicit 'keep proof secondary' guardrail. Reinforces the product story before routing to deep docs."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.

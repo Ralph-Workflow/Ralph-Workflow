@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-06-02T07:18:29.889944
+- Generated: 2026-06-02T19:04:49.506108
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -9,14 +9,16 @@
 - Owned content and outreach exist, but repo/public adoption signals are still low.
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
+- GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent marketing artifact (measurement_hold_execution) was preparation/follow-through work, not a live external execution, so it should not be mistaken for outcome movement.
+- The most recent marketing artifact (measurement_hold_follow_through) was preparation/follow-through work, not a live external execution, so it should not be mistaken for outcome movement.
 
 ## What actually worked
-- Internal repair/follow-through is still running reliably: measurement_hold_execution.
+- Internal repair/follow-through is still running reliably: measurement_hold_follow_through.
 
 ## What did not work
 - Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.
+- Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface.
 
 ## What is repetitive
 - Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.
@@ -31,17 +33,20 @@
 - Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.
 - REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.
 - REPLACE stale content distribution repair. All external lanes are structurally blocked — do not recommend directory submissions or repeat curator packet rewrites. Focus: (a) SEO-tuning existing comparison pages for search visibility, (b) improving repo conversion surface (README, quickstart), (c) surfacing BLOCKER_ROI_SUMMARY.md as human handoff instead of generating more drafts for blocked lanes.
+- Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
 ## Observed risks
 - Repetition risk in outreach opening: "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
 - Failing tactic detected: primary_repo_flat_window
+- Failing tactic detected: mirror_repo_flat_window
 - Dormant risk parked for now: reddit_style_repetition_suspended_while_channel_blocked
 
 ## Outcome evaluation
 - Codeberg: samples=9, stars +0, watchers +0, forks +0
 - PyPI: samples=9, stars +0, watchers +0, forks +0
-- GitHub: samples=9, stars +1, watchers +0, forks +0
+- GitHub: samples=9, stars +0, watchers +0, forks +0
 - Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
+- GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
 - PyPI has 1329 downloads/month (5/day) — real usage signal that repo metrics don't capture.
 
@@ -54,13 +59,17 @@
   - Repair state: needs_execution
   - Kill condition: Another audit still shows flat primary-repo adoption without any new structural marketing capability or replacement execution path
   - Success metric: A new outcome-oriented agent/process/runtime capability is created and logged before the next audit, with a direct link to Codeberg adoption movement
+- **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
+  - Repair state: pending_measurement
+  - Kill condition: N/A (mirror, not primary)
+  - Success metric: GitHub mirror shows any adoption delta
 - No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
-- Measurement-pending reasons: primary_repo_flat
+- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
 
 ## Latest executed marketing action
-- Type: measurement_hold_execution
+- Type: measurement_hold_follow_through
 - Title: Distribution lane execution: measurement_hold
-- Status: prepared (ok=True)
+- Status: executed (ok=True)
 - Outcome-ready: False
 - Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_measurement_hold_execution.json
 

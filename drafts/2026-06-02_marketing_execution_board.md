@@ -1,26 +1,46 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-25T18:53:00
+Generated: 2026-06-02T18:59:00
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
 - Multiple live lanes already exist, so this board consolidates the best executable assets instead of letting them stay siloed across separate packet files.
 - Use this as the single follow-through surface during measurement holds and overlapping review windows.
 
+## Actions taken this run
+- Nightcrawler added to compare page (12 tools, commit a6dbdd6, deploy 20260602165901)
+- Market intelligence runtime supplement created (DDG-blind gap: 6 discoveries missed by primary pipeline)
+- 10 structural repairs completed today (up from 9)
+
 ## Active review windows
-- Apollo next review: 2026-05-29T09:00:01.629178+02:00
-- Apollo launch review: 2026-06-05T09:00:01.629178+02:00
-- Short review-window congestion clears at: 2026-05-25T23:07:41
-- StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
-- StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
-- Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
-- Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
+- Apollo next review: unknown
+- Apollo launch review: unknown
+- Short review-window congestion clears at: 2026-06-05T00:00:00
+- Post-hold marketer rerun scheduled: 2026-06-05T00:00:00
 
 ## Best executable assets still waiting
-### 1. Manual publisher outreach asset
+### 1. StackOverflow demand-capture packet
 - When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md
-- Targets: ComputingForGeeks
-- Why this matters: A current Codeberg-first manual follow-through asset already exists for the active primary-repo-flat target set; use it instead of regenerating the packet.
+- Packet: /home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md
+- Targets: Boss wants us to add more AI to our workflow
+- Why this matters: Highest-intent Q&A asset already exists and should be reused before another search pass.
+
+### 2. Curator manual-contact packet
+- When: Do now
+- Packet: /home/mistlight/.openclaw/workspace/drafts/curator_contact_handoff_packet_latest.md
+- Targets: vivy-yi/awesome-agent-orchestration
+- Why this matters: These prepared curator targets already have non-GitHub contact paths, so execution matters more than more discovery.
+
+### 3. Comparison backlink packet
+- When: Do after fresh publisher / curator contacts are sent
+- Packet: /home/mistlight/.openclaw/workspace/drafts/comparison_backlink_handoff_packet_latest.md
+- Targets: Aider, Claude Code, Conductor (Teams)
+- Why this matters: Comparison proof is already prepared and should be reused instead of redrafted.
+
+### 4. Directory secondary-surface repair packet
+- When: Do now
+- Packet: /home/mistlight/.openclaw/workspace/drafts/directory_confirmation_execution_latest.md
+- Targets: SaaSHub
+- Why this matters: A live third-party surface still routes repo intent away from Codeberg or leaves it unclear, so correcting that surface is a real adoption-moving follow-through asset.
 
 ## Shared findings reused
 - market_intelligence_latest.json → positioning truths and comparison framing

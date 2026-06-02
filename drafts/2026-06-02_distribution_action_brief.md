@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-02T18:18:46
+Generated: 2026-06-02T19:02:24
 Chosen lane: **measurement_hold**
 
 ## Why this lane
@@ -8,6 +8,7 @@ Chosen lane: **measurement_hold**
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
+- 5 prepared curator targets still need a canonical execution handoff packet.
 - Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.
 - Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.
 - Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (AXME Code, WyeWorks, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.

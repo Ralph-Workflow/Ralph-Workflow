@@ -1,0 +1,99 @@
+{
+  "generated_at": "2026-06-02T18:36:00+02:00",
+  "source": "agent_web_search_runtime",
+  "note": "Supplement to market_intelligence_latest.json (which is DDG-blind: bot-detection blocks HTTP-layer DDG in Python scripts). This file captures discoveries from the agent's web_search tool which uses a separate provider path and returns real results.",
+  "coverage_degraded_in_primary": true,
+  "primary_blindspot": "DDG HTTP blocked for Python scripts; HN Algolia API still functional but only covers HN",
+  "discoveries_missed_by_primary_pipeline": [
+    {
+      "id": "nightcrawler",
+      "type": "github_repo",
+      "url": "https://github.com/thebasedcapital/nightcrawler",
+      "stars_at_discovery": 4,
+      "date_discovered": "2026-06-02",
+      "title": "Nightcrawler — Autonomous overnight agent loop for Claude Code",
+      "description": "Open-source TypeScript orchestrator that decomposes multi-hour Claude Code missions into bounded 30-60 minute episodes with structured handoffs, supervised by macOS launchd. Features budget controls, immutable task integrity, progress verification via git diffs, and push notifications.",
+      "relevance": "CRITICAL — 1:1 concept match to Ralph. Explicitly credits 'Ralph Loop (ghuntley.com/ralph) popularized this pattern' in README. The first independent validation that Ralph Workflow's market thesis is correct.",
+      "differentiation": "Nightcrawler: Claude Code-only, macOS-only, episode-based without multi-phase workflow. Ralph Workflow: vendor-neutral, cross-platform, full plan→exec→analyze→commit loop with checkpoint/resume.",
+      "action": "Added to ralphworkflow.com/compare as tool #9 (commit a6dbdd6, deploy 20260602165901). Nightcrawler's creator is an aware Ralph user — potential collaboration/advocacy channel.",
+      "positioning_angle": "Nightcrawler credits Ralph Loop as the pioneer. Ralph Workflow builds on that foundation with cross-platform support, vendor neutrality, and a full multi-phase loop."
+    },
+    {
+      "id": "kodo",
+      "type": "github_repo",
+      "url": "https://github.com/ottiwroteit/kodo-multiagent-workflow-overnight-",
+      "stars_at_discovery": 0,
+      "date_discovered": "2026-06-02",
+      "title": "kodo — Multi-agent orchestrator for AI coding",
+      "description": "Multi-agent orchestrator supporting Claude Code, Cursor, Codex, and Gemini. Features independent verification layer. Claims 24% improvement on real-world GitHub issues in head-to-head tests. Requires Claude Code Max subscription.",
+      "relevance": "HIGH — Second major competitor targeting unattended multi-agent workflow. Independent verification layer is a feature Ralph Workflow should watch closely.",
+      "differentiation": "kodo: Claude Code Max required, multi-agent orchestration with verification. Ralph: free and open-source, spec-driven planning phase, checkpoint/resume, commit phase.",
+      "action": "Monitor. Not added to compare page yet (0 stars, very early). The 24% improvement claim needs independent verification before it's a credible competitive benchmark."
+    },
+    {
+      "id": "oh-my-claudecode",
+      "type": "github_repo",
+      "url": "https://github.com/Yeachan-Heo/oh-my-claudecode",
+      "date_discovered": "2026-06-02",
+      "title": "oh-my-claudecode — Teams-first multi-agent orchestration for Claude Code",
+      "description": "Teams-first approach to multi-agent Claude Code orchestration. Focused on team collaboration patterns.",
+      "relevance": "MEDIUM — Different angle (teams, not solo unattended). Validates that the Claude Code orchestration space is expanding rapidly.",
+      "action": "Monitor. The teams angle is not Ralph's primary use case but shows ecosystem maturation."
+    },
+    {
+      "id": "agentrooms",
+      "type": "web_app",
+      "url": "https://claudecode.run",
+      "date_discovered": "2026-06-02",
+      "title": "Agentrooms — Multi-agent workspace for Claude Code",
+      "description": "Web-based multi-agent workspace for Claude Code. Different deployment model (web app vs CLI).",
+      "relevance": "LOW-MEDIUM — Commercial web app, different market segment than CLI-based open-source orchestrators.",
+      "action": "Monitor for positioning awareness only."
+    },
+    {
+      "id": "claude-code-auto-mode-ga",
+      "type": "market_event",
+      "date": "2026-04-16",
+      "title": "Claude Code Auto Mode went General Availability",
+      "description": "Anthropic's built-in unattended mode for Claude Code is now generally available. This is a significant market shift that could commoditize wrapper tools — or could validate the unattended coding pattern and expand the total addressable market.",
+      "relevance": "HIGH — Major market signal. Anthropic entering the unattended space directly both threatens wrapper tools and validates the core use case. Tools that add value beyond what Auto Mode does (multi-phase workflow, checkpoint/resume, vendor neutrality) survive this shift.",
+      "action": "Position Ralph Workflow against Auto Mode: 'Auto Mode keeps Claude Code running. Ralph Workflow adds planning, verification, analysis, and commit — then lets you swap Claude Code for any agent.'"
+    },
+    {
+      "id": "david-loor-27h-run",
+      "type": "community_event",
+      "date": "2026-05",
+      "url": "https://davidloor.com",
+      "title": "David Loor's 27-hour / 84-task Claude Code run",
+      "description": "Community milestone: 27-hour unattended Claude Code session completing 84 tasks. Published as an article documenting the experiment.",
+      "relevance": "MEDIUM — Social proof for the unattended coding pattern. Shows demand for long-duration agent runs. Ralph Workflow's checkpoint/resume is positioned to handle runs that need to survive interruptions.",
+      "action": "Potential outreach angle: '84 tasks in 27 hours is impressive. Ralph Workflow adds checkpoint/resume so you don't lose progress when something goes wrong at hour 13.'"
+    },
+    {
+      "id": "so-autonomous-claude-code-question",
+      "type": "stackoverflow",
+      "url": "https://stackoverflow.com/questions/79896243",
+      "score": 5.0,
+      "date_discovered": "2026-06-02",
+      "title": "Autonomous mode / wrapper for Claude Code?",
+      "description": "Active SO question asking about autonomous Claude Code wrappers. Score 5.0, only 2 existing answers. Direct Ralph Workflow use-case fit.",
+      "relevance": "HIGH — High-intent demand signal. Question explicitly asks for tools in Ralph's exact niche.",
+      "action": "SO answer draft prepared and handoff packet current. Posting window opens Wed Jun 3 03:15 CEST. Cron fires Wed+Sun at 03:15."
+    }
+  ],
+  "market_shift_assessment": {
+    "summary": "The unattended/overnight Claude Code orchestrator space has rapidly matured from 1-2 projects to 6+ active projects in approximately 8 weeks. Claude Code Auto Mode going GA (April 16) appears to be the catalyst — it both validates and expands the market, while also raising the bar for what wrapper tools must offer to survive.",
+    "ralph_positioning": "Strong. Nightcrawler's explicit credit to Ralph Loop positions Ralph as the pioneer in this space. The key differentiators (cross-platform, vendor-neutral, full multi-phase loop with checkpoint/resume) hold up well against all new entrants.",
+    "risk": "Claude Code Auto Mode commoditizes the basic 'keep it running' layer. Ralph must emphasize the full loop (plan→exec→analyze→commit) and checkpoint/resume as the value add above Auto Mode.",
+    "opportunity": "The space expansion means more people searching for 'autonomous coding agent', 'overnight Claude Code', 'unattended coding workflow' — all terms that Ralph Workflow's SEO pages are positioned to capture."
+  },
+  "keyword_opportunities_new": [
+    "overnight Claude Code orchestrator",
+    "autonomous AI coding loop",
+    "Claude Code episode runner",
+    "AI agent overnight workflow",
+    "unattended coding verification",
+    "multi-agent coding orchestration",
+    "Claude Code mission runner"
+  ]
+}

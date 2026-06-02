@@ -1,21 +1,30 @@
 {
-  "written_at": "2026-06-01T11:53:24.870873+00:00",
+  "written_at": "2026-06-02T19:13:44.455957",
   "active": true,
   "expires_at": "2026-06-08T11:53:24.870873+00:00",
-  "reason": "Prepared-only packet regeneration without live delivery. Suppressing to stop churn.",
+  "reason": "Prepared-only packet regeneration without live delivery. Expanded Jun 2 19:10 to cover discovery stem that regenerated despite suppression. Suppressing to stop churn.",
   "suppressed_stems": [
     "primary_repo_flat_contact_handoff_packet",
     "curator_contact_handoff_packet",
     "comparison_backlink_handoff_packet",
-    "reddit_discussion_handoff_packet"
+    "reddit_discussion_handoff_packet",
+    "primary_repo_flat_contact_discovery",
+    "primary_repo_flat_contact_status_packet"
   ],
   "regeneration_evidence": {
     "primary_repo_flat_contact_handoff_packet": {
-      "count_48h": 3,
+      "count_48h": 2,
       "latest_files": [
-        "2026-06-01_primary_repo_flat_contact_handoff_packet.md",
-        "2026-05-31_primary_repo_flat_contact_handoff_packet.md",
-        "2026-05-12_primary_repo_flat_contact_handoff_packet.md"
+        "2026-06-02_primary_repo_flat_contact_handoff_packet.md",
+        "2026-06-01_primary_repo_flat_contact_handoff_packet.md"
+      ],
+      "churning": true
+    },
+    "primary_repo_flat_contact_discovery": {
+      "count_48h": 2,
+      "latest_files": [
+        "2026-06-02_primary_repo_flat_contact_discovery.md",
+        "2026-06-01_primary_repo_flat_contact_discovery.md"
       ],
       "churning": true
     }
