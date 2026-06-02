@@ -1,7 +1,7 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-06-02T18:35:31
+Generated: 2026-06-03T01:19:31
 - Hold release at: 2026-06-05T00:00:00
-- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-06-02_marketing_execution_board.md
+- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-06-03_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot
 - If the execution board is still empty after the hold clears, choose distribution_architecture_repair instead of another measurement_hold.

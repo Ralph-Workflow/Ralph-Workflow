@@ -1,13 +1,11 @@
 {
-  "timestamp": "2026-06-02T18:35:31.286759",
-  "repair_types_seen": [
-    "outcome_system_underpowered"
-  ],
+  "timestamp": "2026-06-03T01:19:31.304902",
+  "repair_types_seen": [],
   "selected_lane": "measurement_hold",
   "selected_action_type": "measurement_hold_follow_through",
   "execution_status": "executed",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_183531_measurement_hold_follow_through.md",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_011931_measurement_hold_follow_through.md",
   "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
   "expected_outcome": "Advance distribution via lane measurement_hold without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
@@ -20,12 +18,15 @@
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
+      "5 prepared curator targets still need a canonical execution handoff packet.",
       "Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (AXME Code, WyeWorks, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
       "The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, so another packet refresh would be fake progress even if the exact target list drifted.",
+      "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
+      "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
       "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
       "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
       "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
@@ -39,7 +40,7 @@
       "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-02_distribution_action_brief.md",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-03_distribution_action_brief.md",
     "short_review_window_release_at": null,
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
@@ -48,7 +49,7 @@
     "lane": "measurement_hold",
     "action_type": "measurement_hold_follow_through",
     "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_183531_measurement_hold_follow_through.md",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_011931_measurement_hold_follow_through.md",
     "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
     "targets_prepared": [],
     "shared_findings_used": [

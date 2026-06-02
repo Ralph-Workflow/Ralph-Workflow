@@ -1,15 +1,16 @@
 {
-  "generated_at": "2026-06-02T05:18:52.943868+00:00",
+  "generated_at": "2026-06-02T23:18:11.739054+00:00",
   "agent": "social_proof_bootstrap",
   "dry_run": false,
   "audit_results": [
     {
       "surface": "codeberg_readme",
-      "timestamp": "2026-06-02T05:18:52.943897+00:00",
+      "timestamp": "2026-06-02T23:18:11.741490+00:00",
       "reachable": true,
       "cta_analysis": {
         "cta_types_found": [
           "codeberg_star",
+          "codeberg_watch",
           "codeberg_mention",
           "github_mirror_mention",
           "pip_install_cta",
@@ -17,27 +18,26 @@
           "repo_cta_any"
         ],
         "cta_types_missing": [
-          "codeberg_fork",
-          "codeberg_watch"
+          "codeberg_fork"
         ],
         "total_cta_types": 8,
-        "cta_types_present": 6,
-        "coverage_pct": 75.0,
+        "cta_types_present": 7,
+        "coverage_pct": 87.5,
         "all_critical_present": true
       },
       "gaps": [
-        "pypi_downloads_badge",
+        "example_output",
         "comparison_links"
       ],
       "stars": 12,
       "watchers": 2,
       "forks": 2,
       "description": "The operating system for autonomous coding",
-      "readme_length": 5368,
+      "readme_length": 6012,
       "trust_signals": {
-        "pypi_downloads_badge": false,
+        "pypi_downloads_badge": true,
         "docker_quickstart": true,
-        "example_output": true,
+        "example_output": false,
         "comparison_links": false,
         "docs_link": true,
         "install_quick": true,
@@ -47,24 +47,18 @@
     },
     {
       "surface": "docs_footer",
-      "timestamp": "2026-06-02T05:18:53.227834+00:00",
-      "template_exists": true,
+      "timestamp": "2026-06-02T23:18:12.084254+00:00",
+      "template_exists": false,
       "template_path": "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/docs/sphinx_overrides/_themes/ralph-docs/page.html",
       "has_codeberg_cta": false,
       "has_star_cta": false,
       "pages_controlled": 49,
-      "gaps": [
-        "docs_footer_missing_codeberg_cta",
-        "docs_footer_missing_star_cta"
-      ],
-      "has_fork_cta": false,
-      "has_footer_section": true,
-      "live_has_codeberg": true,
-      "live_has_star": true
+      "gaps": [],
+      "error": "Template not found in local checkout"
     },
     {
       "surface": "pypi_page",
-      "timestamp": "2026-06-02T05:18:53.235936+00:00",
+      "timestamp": "2026-06-02T23:18:12.084362+00:00",
       "reachable": true,
       "cta_analysis": {
         "cta_types_found": [
@@ -100,31 +94,30 @@
     {
       "surface": "docs_footer",
       "url": "https://ralphworkflow.com/docs/",
-      "timestamp": "2026-06-02T05:18:53.354060+00:00",
+      "timestamp": "2026-06-02T23:18:12.213003+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
-      "local_files_present": [
+      "local_files_present": [],
+      "local_files_missing": [
         "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/docs/sphinx_overrides/_themes/ralph-docs/page.html"
       ],
-      "local_files_missing": [],
       "gaps": [],
-      "has_fork_cta": false,
-      "page_size": 25889,
+      "has_fork_cta": true,
+      "page_size": 30118,
       "title": "Ralph Workflow manual · Ralph Workflow Docs"
     },
     {
       "surface": "blog_cta",
       "url": "https://ralphworkflow.com/blog/",
-      "timestamp": "2026-06-02T05:18:53.362060+00:00",
+      "timestamp": "2026-06-02T23:18:12.290137+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
-      "local_files_present": [
-        "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/blog/show.html.erb"
-      ],
+      "local_files_present": [],
       "local_files_missing": [
         "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/blog/_blog_repo_cta.html.erb",
+        "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/blog/show.html.erb",
         "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/layouts/blog.html.erb"
       ],
       "gaps": [],
@@ -135,30 +128,30 @@
     {
       "surface": "compare_page",
       "url": "https://ralphworkflow.com/compare",
-      "timestamp": "2026-06-02T05:18:53.467492+00:00",
+      "timestamp": "2026-06-02T23:18:12.357525+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
-      "local_files_present": [
+      "local_files_present": [],
+      "local_files_missing": [
         "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/pages/compare.html.erb"
       ],
-      "local_files_missing": [],
       "gaps": [],
       "has_fork_cta": true,
-      "page_size": 46713,
-      "title": "Ralph Workflow compared to 7 autonomous coding tools — Ralph Workflow"
+      "page_size": 74135,
+      "title": "Ralph Workflow compared to 14 autonomous coding tools — Ralph Workflow"
     },
     {
       "surface": "install_page",
       "url": "https://ralphworkflow.com/install",
-      "timestamp": "2026-06-02T05:18:53.485150+00:00",
+      "timestamp": "2026-06-02T23:18:12.401037+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
-      "local_files_present": [
+      "local_files_present": [],
+      "local_files_missing": [
         "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/pages/install.html.erb"
       ],
-      "local_files_missing": [],
       "gaps": [],
       "has_fork_cta": false,
       "page_size": 31569,
@@ -167,14 +160,14 @@
     {
       "surface": "start_page",
       "url": "https://ralphworkflow.com/start",
-      "timestamp": "2026-06-02T05:18:53.505417+00:00",
+      "timestamp": "2026-06-02T23:18:12.419220+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
-      "local_files_present": [
+      "local_files_present": [],
+      "local_files_missing": [
         "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/pages/start.html.erb"
       ],
-      "local_files_missing": [],
       "gaps": [],
       "has_fork_cta": true,
       "page_size": 30315,
@@ -183,15 +176,15 @@
     {
       "surface": "homepage",
       "url": "https://ralphworkflow.com/",
-      "timestamp": "2026-06-02T05:18:53.527362+00:00",
+      "timestamp": "2026-06-02T23:18:12.446159+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
-      "local_files_present": [
+      "local_files_present": [],
+      "local_files_missing": [
         "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/pages/home.html.erb",
         "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/layouts/application.html.erb"
       ],
-      "local_files_missing": [],
       "gaps": [],
       "has_fork_cta": false,
       "page_size": 78889,
@@ -200,7 +193,7 @@
     {
       "surface": "contact_page",
       "url": "https://ralphworkflow.com/contact",
-      "timestamp": "2026-06-02T05:18:53.626628+00:00",
+      "timestamp": "2026-06-02T23:18:12.472207+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
@@ -216,14 +209,14 @@
     {
       "surface": "privacy_page",
       "url": "https://ralphworkflow.com/privacy",
-      "timestamp": "2026-06-02T05:18:53.654338+00:00",
+      "timestamp": "2026-06-02T23:18:12.502060+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
-      "local_files_present": [
+      "local_files_present": [],
+      "local_files_missing": [
         "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/pages/privacy.html.erb"
       ],
-      "local_files_missing": [],
       "gaps": [],
       "has_fork_cta": false,
       "page_size": 19298,
@@ -232,53 +225,30 @@
     {
       "surface": "terms_page",
       "url": "https://ralphworkflow.com/terms",
-      "timestamp": "2026-06-02T05:18:53.690386+00:00",
+      "timestamp": "2026-06-02T23:18:12.523577+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
-      "local_files_present": [
+      "local_files_present": [],
+      "local_files_missing": [
         "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/app/views/pages/terms.html.erb"
       ],
-      "local_files_missing": [],
       "gaps": [],
       "has_fork_cta": false,
       "page_size": 18967,
       "title": "Terms of service — Ralph Workflow"
     }
   ],
-  "actions_taken": [
-    {
-      "action": "inject_docs_footer_cta",
-      "timestamp": "2026-06-02T05:18:53.703566+00:00",
-      "template": "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/docs/sphinx_overrides/_themes/ralph-docs/page.html",
-      "applied": true,
-      "files_modified": [
-        "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/docs/sphinx_overrides/_themes/ralph-docs/page.html"
-      ]
-    },
-    {
-      "git_result": {
-        "committed": true,
-        "pushed": true,
-        "message": "trust(docs): add Codeberg star/fork/watch CTA to docs footer",
-        "files": [
-          "/home/mistlight/.openclaw/workspace/tmp/ralph-site-remote-check/docs/sphinx_overrides/_themes/ralph-docs/page.html"
-        ],
-        "commit_output": "[main 7077960] trust(docs): add Codeberg star/fork/watch CTA to docs footer\n 1 file changed, 27 insertions(+)",
-        "push_output": ""
-      }
-    }
-  ],
+  "actions_taken": [],
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "summary": {
     "total_surfaces_audited": 12,
-    "surfaces_with_gaps": 2,
-    "total_gaps_found": 4,
+    "surfaces_with_gaps": 1,
+    "total_gaps_found": 2,
     "surfaces_reachable": 12,
-    "actions_executed": 2,
+    "actions_executed": 0,
     "gap_surfaces": [
-      "codeberg_readme",
-      "docs_footer"
+      "codeberg_readme"
     ]
   }
 }

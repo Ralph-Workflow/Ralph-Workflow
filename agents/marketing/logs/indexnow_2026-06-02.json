@@ -359,5 +359,143 @@
         "error": null
       }
     ]
+  },
+  {
+    "timestamp": "2026-06-02T22:22:27.325912+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 102,
+    "total_sitemap_urls": 102,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 2,
+        "total": 2,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-06-02T22:58:52.108528+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 102,
+    "total_sitemap_urls": 102,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 2,
+        "total": 2,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-06-02T23:14:47.640441+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 102,
+    "total_sitemap_urls": 102,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 2,
+        "total": 2,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-06-02T23:36:07.733271+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 102,
+    "total_sitemap_urls": 102,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 2,
+        "total": 2,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-06-02T23:46:30.917554+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 102,
+    "total_sitemap_urls": 102,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 2,
+        "total": 2,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-06-02T23:50:29.857238+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 102,
+    "total_sitemap_urls": 102,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 2,
+        "total": 2,
+        "status_code": 200,
+        "error": null
+      }
+    ]
   }
 ]

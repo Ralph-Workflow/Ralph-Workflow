@@ -1,8 +1,32 @@
 {
-  "timestamp": "2026-06-02T23:14:22.452257",
+  "timestamp": "2026-06-03T01:18:11.063754",
   "type": "outcome_capability_runner",
-  "status": "skipped_regeneration_guard",
-  "reason": "Same-day distribution_action_brief already exists (595s old). Skipping to prevent draft inflation.",
-  "existing_brief": "/home/mistlight/.openclaw/workspace/drafts/2026-06-02_distribution_action_brief.md",
-  "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+  "status": "executed",
+  "selected_lane": "social_proof_bootstrap",
+  "selected_action_type": "social_proof_bootstrap_0_surfaces_1_gaps",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/social_proof_bootstrap_latest.json",
+  "summary": "Audited ? surfaces, 1 with gaps (codeberg_readme). Actions: none. Codeberg primary: https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "direct_codeberg_linkage": {
+    "cta": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "why": "Every generated asset must keep Codeberg as the primary repo target so adoption movement is attributable to the canonical upstream."
+  },
+  "outcome_capability": {
+    "new_runtime_capability": "forced_non_reddit_distribution_lane",
+    "allowed_lanes": [
+      "apollo_outreach",
+      "directory_confirmation",
+      "distribution_confirmation_follow_through",
+      "manual_outreach_asset_follow_through",
+      "primary_repo_flat_contact_handoff_packet",
+      "social_proof_bootstrap",
+      "stackoverflow_answer"
+    ],
+    "fresh_targets_prepared": [],
+    "comparison_queue_prepared_count": 8
+  },
+  "fake_green_guard": "This capability only counts because it created or refreshed an executable non-Reddit lane artifact tied to Codeberg-primary adoption movement.",
+  "shared_findings_used": [
+    "social_proof_bootstrap: audit #20 trust-signal injection"
+  ]
 }

@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-02T23:34:03.211576",
+  "ts": "2026-06-03T00:27:59.757767",
   "jobs_checked": 26,
   "issues_found": 7,
   "issues": [
@@ -27,7 +27,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 497.53,
+      "artifact_age_minutes": 551.41,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -36,7 +36,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:timeout\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T23:33:48.073037+02:00\"\n}",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:timeout\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-03T00:27:45.078628+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
     },
     {
@@ -44,8 +44,8 @@
       "name": "Push research findings to git repo_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: Push research findings to git repo:timeout repeat_count=21",
-      "repeats_in_recent_history": 21,
+      "likely_cause": "Incident escalation level=critical: Push research findings to git repo:timeout repeat_count=29",
+      "repeats_in_recent_history": 29,
       "owner_domain": "site",
       "incident_key": "Push research findings to git repo::timeout",
       "escalation_level": "critical",
@@ -56,8 +56,8 @@
       "name": "agent_architecture_verifier_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=600",
-      "repeats_in_recent_history": 600,
+      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=608",
+      "repeats_in_recent_history": 608,
       "owner_domain": "architecture",
       "incident_key": "agent_architecture_verifier::artifact_contract_fail",
       "escalation_level": "critical",
@@ -67,9 +67,9 @@
       "job_id": "__artifacts__",
       "name": "agent_architecture_verifier_runtime_escalation",
       "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:timeout\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T23:33:48.073037+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=979",
-      "repeats_in_recent_history": 979,
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:timeout\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-03T00:27:45.078628+02:00\"\n}",
+      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=987",
+      "repeats_in_recent_history": 987,
       "owner_domain": "architecture",
       "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
       "escalation_level": "critical",
@@ -87,25 +87,37 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": false,
-      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:timeout\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T23:33:48.0730"
+      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"health monitor reports non-architecture live issues: Push research findings to git repo:timeout\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-03T00:24:17.0615"
     },
     {
       "type": "owner_loop_escalation",
       "job": "Push research findings to git repo_escalation",
       "ok": true,
-      "detail": "owner=ralph-site-owner-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780436031200:8\"\n}"
+      "detail": "owner=ralph-site-owner-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780439089809:14\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780436034475:9\"\n}"
+      "ok": false,
+      "detail": "owner=agent-architecture-watchdog; gateway connect failed: Error: gateway request timeout for connect\nGatewayTransportError: gateway closed (1006 abnormal closure (no close frame)): no close reason\nGateway target: ws://127.0.0.1:18789\nSource: local loopback\nConfig: /home/mistlight/.openclaw/openclaw"
+    },
+    {
+      "type": "direct_architecture_escalation",
+      "job": "agent_architecture_verifier_escalation",
+      "ok": false,
+      "detail": "GatewayTransportError: gateway timeout after 30000ms\nGateway target: ws://127.0.0.1:18789\nSource: local loopback\nConfig: /home/mistlight/.openclaw/openclaw.json\nBind: loopback\nTraceback (most recent call last):\n  File \"/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
+      "ok": false,
+      "detail": "owner=agent-architecture-watchdog; gateway connect failed: Error: gateway closed (1000): \nGatewayTransportError: gateway closed (1000 normal closure): no close reason\nGateway target: ws://127.0.0.1:18789\nSource: local loopback\nConfig: /home/mistlight/.openclaw/openclaw.json\nBind: loopback"
+    },
+    {
+      "type": "direct_architecture_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780436037026:10\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"errors\": [\n    \"stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json\",\n    \"mar"
     }
   ]
 }
