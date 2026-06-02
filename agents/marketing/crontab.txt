@@ -1,7 +1,7 @@
-# Ralph Workflow marketing cron jobs — v3 (2026-06-01 17:06 CEST)
+# Ralph Workflow marketing cron jobs — v4 (2026-06-02 07:30 CEST)
 # Run order: integrity(08:15) → watchdog(08:45) → blocker_truth(08:50) → run.py(09:00)
 # All times in server local time (Europe/Berlin = CEST/CET)
-# 13 jobs total. Apollo: TERMINATED. Reddit: SUSPENDED.
+# 15 jobs total. Apollo: TERMINATED. Reddit: SUSPENDED.
 
 # === CRITICAL: Crontab integrity guard (before any marketing job runs) ===
 15 8 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/cron_integrity_test.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/cron_integrity_cron.log 2>&1
@@ -16,8 +16,10 @@
 0 9 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_cron.log 2>&1
 
 # === CONVERSION (primary metric lane) ===
+0 7 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/conversion_surface_watchdog.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/conversion_surface_watchdog_cron.log 2>&1
 30 7 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/backlink_stagnation_watchdog.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_stagnation_cron.log 2>&1
 0 8 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/repo_conversion_optimizer.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/repo_conversion_cron.log 2>&1
+0 9 * * 6 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/social_proof_bootstrap.py --force >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/social_proof_bootstrap_cron.log 2>&1
 
 # === CONTENT DISTRIBUTION ===
 0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1
