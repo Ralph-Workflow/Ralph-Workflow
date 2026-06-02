@@ -1,15 +1,16 @@
 {
-  "generated_at": "2026-06-01T00:18:52.626800",
-  "status": "manual_ready_follow_through",
+  "generated_at": "2026-06-02T13:17:13.044494",
+  "status": "ok",
   "rate_limited": false,
   "cooldown_active": false,
   "next_retry_at": null,
   "search_errors": [],
   "halted_after_rate_limit": false,
-  "total_questions_found": 7,
-  "questions_scored": 7,
-  "drafts_created": 0,
+  "total_questions_found": 8,
+  "questions_scored": 8,
+  "drafts_created": 1,
   "skipped_existing_drafts": 4,
+  "search_space_exhausted": false,
   "reused_existing_draft": {
     "question_title": "Boss wants us to add more AI to our workflow",
     "question_url": "https://stackoverflow.com/questions/79928220/boss-wants-us-to-add-more-ai-to-our-workflow",
@@ -18,8 +19,15 @@
     "question_score": 4.35,
     "pain_family": "verification-review"
   },
-  "manual_follow_through": true,
+  "manual_follow_through": false,
   "top_questions": [
+    {
+      "title": "Autonomous mode / wrapper for Claude Code?",
+      "url": "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code",
+      "score": 5.0,
+      "votes": 2,
+      "answers": 2
+    },
     {
       "title": "Boss wants us to add more AI to our workflow",
       "url": "https://stackoverflow.com/questions/79928220/boss-wants-us-to-add-more-ai-to-our-workflow",
@@ -70,8 +78,15 @@
       "answers": 6
     }
   ],
-  "drafts": [],
-  "exhausted_question_urls": [
-    "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code"
-  ]
+  "drafts": [
+    {
+      "question_title": "Autonomous mode / wrapper for Claude Code?",
+      "question_url": "https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code",
+      "question_score": 5.0,
+      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-06-02_autonomous-mode-wrapper-for-claude-code.md",
+      "answer_length": 1867,
+      "pain_family": "workflow-orchestration"
+    }
+  ],
+  "exhausted_question_urls": []
 }

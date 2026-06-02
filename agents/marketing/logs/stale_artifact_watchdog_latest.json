@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-02T08:45:01.973317+02:00",
+  "checked_at": "2026-06-02T14:30:01.131790+02:00",
   "execution_board": {
     "artifact": "marketing_execution_board",
     "status": "stale",
@@ -19,8 +19,8 @@
     "issues": [
       "Lane is 'distribution_architecture_guard_pause' \u2014 STALE (May 25 origin)"
     ],
-    "file_mtime": "2026-06-02T08:17:54.394035",
-    "file_age_hours": 0.5,
+    "file_mtime": "2026-06-02T13:05:27.701793",
+    "file_age_hours": 1.4,
     "lane": "distribution_architecture_guard_pause"
   },
   "repairs_made": [
