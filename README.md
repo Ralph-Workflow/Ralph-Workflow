@@ -2,10 +2,7 @@
 
 > **The operating system for autonomous coding.**
 
-[![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
-[![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
-[![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
 
 > Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 
@@ -87,6 +84,18 @@ That's it. The default workflow is already strong enough to start with. Customiz
 
 For first-run guidance — task selection, diagnosis, and a walked-through first wake-up — see **[START_HERE.md](START_HERE.md)**.
 
+## See it in action
+
+Real terminal output from Ralph Workflow v0.8.8 on a fresh project:
+
+| Command | Output |
+|---|---|
+| `ralph --init` | [init-output.txt](docs/sphinx/_static/demo/init-output.txt) — banner, capabilities, first-run setup |
+| `ralph --diagnose` | [diagnose-output.txt](docs/sphinx/_static/demo/diagnose-output.txt) — agent inventory, config, MCP check |
+| `ralph --dry-run` | [dry-run-output.txt](docs/sphinx/_static/demo/dry-run-output.txt) — pipeline phases and iteration plan |
+
+These are **unedited terminal captures** from a real run — not mock-ups.
+
 ## Built-in capabilities
 
 - **Phase routing** — planning agent → development agent → review agent → fix loop
@@ -98,15 +107,12 @@ For first-run guidance — task selection, diagnosis, and a walked-through first
 
 ## Documentation
 
-Maintained docs source in this repo: [`ralph-workflow/docs/sphinx/`](ralph-workflow/docs/sphinx/)
-
 | Page | What it covers |
 |---|---|
 | [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |
 | [Quickstart](https://ralphworkflow.com/docs/quickstart.html) | Write a spec and run it in 10 minutes |
 | [Configuration](https://ralphworkflow.com/docs/configuration.html) | Agent routing, phase policies, model selection |
 | [User Stories](https://ralphworkflow.com/docs/user-stories.html) | Real workflows from real runs |
-| [Real Overnight Demo](docs/overnight-demo-real.md) | Real task spec → real Ralph output (800+ assertions, 5 platforms) |
 
 ## Engineering-practice requirements
 
