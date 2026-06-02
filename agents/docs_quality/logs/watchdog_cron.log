@@ -40999,3 +40999,123 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Positioning is well-embedded across all surfaces. Simple-core/composition/default-workflow framing is consistent. Journey from README \u2192 START_HERE \u2192 docs/README is coherent. Promoted next-click pages reinforce the same story. No hard failures triggered.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Two divergent READMEs (repo-root vs ralph-workflow/) create confusion \u2014 the PyPI-facing one is notably longer and mixes install/privacy/fit/dev-verify on one page",
+    "Main README docs table links exclusively to ralphworkflow.com with no local fallback paths, breaking offline or clone-local journeys",
+    "Minor: 'checkpoint files' in comparison table is borderline internal language leaking into a top-level surface"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md:3",
+      "reason": "Opens with 'operating system for autonomous coding' tagline \u2014 correct positioning front and center"
+    },
+    {
+      "path": "README.md:15",
+      "reason": "'takes the simple Ralph-loop idea ... turns it into a composable loop framework' \u2014 exact positioning language"
+    },
+    {
+      "path": "README.md:17",
+      "reason": "'ships strong enough to start with immediately; customize it later' \u2014 adopt-as-is-first framing"
+    },
+    {
+      "path": "START_HERE.md:6-7",
+      "reason": "Opens with simple-core / composable framing, honest first-run promise"
+    },
+    {
+      "path": "docs/README.md:7-9",
+      "reason": "Explicitly places itself after README + START_HERE, reinforcing hierarchy"
+    },
+    {
+      "path": "docs/README.md:45-46",
+      "reason": "'Keep proof secondary' section \u2014 correctly demotes internal evidence behind product story"
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md:3-4",
+      "reason": "Promoted page opens with correct simple-core/composable/default-workflow framing"
+    },
+    {
+      "path": "docs/unattended-coding-agent.md:3-4",
+      "reason": "Promoted page consistently repeats core framing before deep content"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs cleanly follow the positioning reference. Core framing (OS for autonomous coding, composable loop framework, simple core, strong default) is consistently applied across README, START_HERE, docs/README, and all promoted next-click pages. No hard failures triggered. Minor inconsistencies between the two READMEs need tightening but don't break the journey.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Root README step list (lines 78-81) omits `ralph --diagnose` that the surrounding text mentions \u2014 user gets two slightly different startup flows",
+    "ralph-workflow/README.md and root README.md overlap without clearly differentiating their audiences (PyPI vs Codeberg), risking confusion about which is authoritative",
+    "Docker quick start in both READMEs shows --help but skips the --init step, leaving Docker-first users without the full setup sequence"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md:1-5",
+      "reason": "Opens with exact positioning tagline 'The operating system for autonomous coding' and cleanly identifies as free/open-source AI agent orchestrator"
+    },
+    {
+      "path": "README.md:15-17",
+      "reason": "Defines the product as a 'composable loop framework' built on the simple Ralph-loop core \u2014 exactly the positioning doc's primary framing"
+    },
+    {
+      "path": "README.md:29-37",
+      "reason": "Who-it's-for section perfectly reflects the ambitious/well-specified-work positioning with concrete examples and explicit non-fit cases"
+    },
+    {
+      "path": "START_HERE.md:6-8",
+      "reason": "Opens with the same positioning language and reinforces 'strong default workflow before you customize anything'"
+    },
+    {
+      "path": "docs/README.md:1-10",
+      "reason": "Docs map explicitly positions itself 'after README.md and START_HERE.md' and routes by intent \u2014 good IA"
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md:1-5",
+      "reason": "Every promoted secondary page opens with the same core framing \u2014 no stale or divergent messaging"
+    },
+    {
+      "path": "README.md:107-113",
+      "reason": "Engineering-practice requirements section honestly states Ralph depends on good practices, doesn't replace them \u2014 correct and avoids hype"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.

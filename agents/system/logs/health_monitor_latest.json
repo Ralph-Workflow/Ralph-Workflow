@@ -1,19 +1,8 @@
 {
-  "ts": "2026-06-02T06:38:50.545360",
+  "ts": "2026-06-02T07:44:06.803536",
   "jobs_checked": 25,
-  "issues_found": 5,
+  "issues_found": 3,
   "issues": [
-    {
-      "job_id": "50578fdf-ea83-46bd-8580-36d2bae7ba54",
-      "name": "marketing-workflow-audit",
-      "category": "live_error",
-      "consecutive_errors": 1,
-      "last_status": "error",
-      "last_error": "\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
-      "timeout_seconds": 3600,
-      "last_duration_ms": 6173,
-      "likely_cause": "UNKNOWN: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of cred"
-    },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery",
@@ -30,29 +19,17 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 6447.32,
+      "artifact_age_minutes": 6512.58,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "50578fdf-ea83-46bd-8580-36d2bae7ba54",
-      "name": "marketing-workflow-audit_escalation",
-      "category": "escalation_required",
-      "last_error": "\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
-      "likely_cause": "Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=182",
-      "repeats_in_recent_history": 182,
-      "owner_domain": "marketing",
-      "incident_key": "marketing-workflow-audit::live_error",
-      "escalation_level": "critical",
-      "blocked_by": []
     },
     {
       "job_id": "0b14ccb6-86d5-4ab9-9549-875ae305570a",
       "name": "blocked-channel-recovery_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1223",
-      "repeats_in_recent_history": 1223,
+      "likely_cause": "Incident escalation level=critical: blocked-channel-recovery:timeout repeat_count=1229",
+      "repeats_in_recent_history": 1229,
       "owner_domain": null,
       "incident_key": "blocked-channel-recovery::timeout",
       "escalation_level": "critical",
@@ -70,19 +47,19 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T06:38:40.597636+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T07:43:55.293407+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
-      "job": "marketing-workflow-audit_escalation",
+      "job": "agent_architecture_verifier_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780375122717:198\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780379037573:200\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780379040193:201\"\n}"
     }
   ]
 }

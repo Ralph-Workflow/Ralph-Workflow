@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-06-01T15:21:48.217562+00:00",
-  "live_total_lines": 17,
-  "marketing_job_count": 12,
-  "golden_job_count": 15,
+  "generated_at": "2026-06-02T06:15:01.425878+00:00",
+  "live_total_lines": 18,
+  "marketing_job_count": 13,
+  "golden_job_count": 16,
   "min_marketing_jobs": 8,
   "issues": [],
   "ok": true,
@@ -23,6 +23,7 @@
     "0 4 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/log_janitor.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/log_janitor_cron.log 2>&1",
     "37 */12 * * * /home/mistlight/git-sync.sh",
     "1,31 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_runner.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/watchdog_cron.log 2>&1",
-    "6,36 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/verifier_cron.log 2>&1"
+    "6,36 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/verifier_cron.log 2>&1",
+    "0 9 * * 6 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/social_proof_bootstrap.py --force >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/social_proof_bootstrap_cron.log 2>&1"
   ]
 }
