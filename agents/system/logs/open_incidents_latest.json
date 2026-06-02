@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-06-01T23:48:48.375379+00:00",
+  "updated_at": "2026-06-02T01:54:40.565789+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 557,
+      "repeat_count": 565,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1969,15 +1969,47 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357717137:162\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=556"
+        },
+        {
+          "at": "2026-06-02T01:08:33.169845+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=558"
+        },
+        {
+          "at": "2026-06-02T01:08:35.007485+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=558"
+        },
+        {
+          "at": "2026-06-02T01:08:54.277859+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=559"
+        },
+        {
+          "at": "2026-06-02T01:11:28.413559+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=565"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:47:47.559299+00:00",
+      "last_seen": "2026-06-02T01:11:08.583738+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-06-01T23:48:37.171492+00:00"
+      "closed_at": "2026-06-02T01:11:28.413579+00:00"
     },
     "marketing_independent_verification::loop_verification_fail": {
       "key": "marketing_independent_verification::loop_verification_fail",
@@ -3957,7 +3989,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 909,
+      "repeat_count": 917,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -7869,15 +7901,39 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357661252:158\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checke::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=907"
+        },
+        {
+          "at": "2026-06-02T01:08:45.366176+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\":::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=910"
+        },
+        {
+          "at": "2026-06-02T01:08:46.100165+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\":::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=910"
+        },
+        {
+          "at": "2026-06-02T01:08:59.324339+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T03:08:03.652810+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=911"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:47:47.559339+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\",\n    \"health monitor reports non-architecture live issues: ralph-site-owner-loop:live_error\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checke",
+      "last_seen": "2026-06-02T01:11:08.583747+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (loop_integrity_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-02T03:10:00.473771+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-06-01T23:47:41.308328+00:00"
+      "closed_at": "2026-06-02T01:08:59.324357+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
@@ -12429,7 +12485,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 1243,
+      "repeat_count": 1253,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -12633,7 +12689,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-01T23:47:47.559305+00:00",
+      "last_seen": "2026-06-02T01:54:40.565767+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -15860,7 +15916,7 @@
       "name": "agent_architecture_json",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-24T06:57:01.168631+00:00",
-      "repeat_count": 240,
+      "repeat_count": 248,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -16718,15 +16774,39 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357658221:157\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=238"
+        },
+        {
+          "at": "2026-06-02T01:08:40.180366+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=241"
+        },
+        {
+          "at": "2026-06-02T01:08:40.937857+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=241"
+        },
+        {
+          "at": "2026-06-02T01:08:56.847536+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=242"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:47:47.559334+00:00",
+      "last_seen": "2026-06-02T01:11:08.583744+00:00",
       "last_error": "live_jobs_checked=24 expected 25; live_jobs_enabled=24 expected 25",
       "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=['docs-stack-aggressive-10min-self-heal', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-momentum-watchdog', 'marketing-reflection', 'marketing-workflow-audit-precheck', 'ralph-workflow-full-house-docs-audit', 'stackoverflow-post-cooldown-run-check']",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "closed_at": "2026-06-01T23:47:38.260404+00:00"
+      "closed_at": "2026-06-02T01:08:56.847559+00:00"
     },
     "content-poster::timeout_risk": {
       "key": "content-poster::timeout_risk",
@@ -18568,7 +18648,7 @@
       "name": "marketing-workflow-audit",
       "category": "live_error",
       "first_seen": "2026-05-28T06:16:07.362295+00:00",
-      "repeat_count": 157,
+      "repeat_count": 167,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -19155,22 +19235,70 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=156"
+        },
+        {
+          "at": "2026-06-02T01:08:13.089277+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780362492980:170\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=158"
+        },
+        {
+          "at": "2026-06-02T01:08:17.083963+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780362496985:171\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=158"
+        },
+        {
+          "at": "2026-06-02T01:08:44.741996+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780362524684:176\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=159"
+        },
+        {
+          "at": "2026-06-02T01:10:06.390289+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780362606350:180\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=163"
+        },
+        {
+          "at": "2026-06-02T01:11:20.163313+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780362680130:185\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=165"
+        },
+        {
+          "at": "2026-06-02T01:54:34.294625+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780365274252:189\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-workflow-audit_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: marketing-workflow-audit:live_error repeat_count=166"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:47:47.559277+00:00",
+      "last_seen": "2026-06-02T01:54:40.565759+00:00",
       "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
       "likely_cause": "UNKNOWN: FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
       "path": null,
-      "closed_at": "2026-06-01T23:48:29.685551+00:00"
+      "closed_at": "2026-06-02T01:54:34.294653+00:00"
     },
     "marketing-active-loop::timeout_risk": {
       "key": "marketing-active-loop::timeout_risk",
       "name": "marketing-active-loop",
       "category": "timeout_risk",
       "first_seen": "2026-05-28T07:34:26.647530+00:00",
-      "repeat_count": 17,
+      "repeat_count": 27,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -19221,15 +19349,63 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=14"
+        },
+        {
+          "at": "2026-06-02T01:08:06.996974+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780362486963:168\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=18"
+        },
+        {
+          "at": "2026-06-02T01:08:09.618393+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780362489556:169\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=18"
+        },
+        {
+          "at": "2026-06-02T01:08:39.387392+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780362519277:175\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=19"
+        },
+        {
+          "at": "2026-06-02T01:10:03.653799+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780362603617:179\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=23"
+        },
+        {
+          "at": "2026-06-02T01:11:17.246425+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780362677214:184\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=25"
+        },
+        {
+          "at": "2026-06-02T01:54:31.629129+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780365271591:188\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "marketing-active-loop_escalation::escalation_required::::Incident escalation level=critical: marketing-active-loop:timeout_risk repeat_count=26"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-30T09:47:29.615169+00:00",
+      "last_seen": "2026-06-02T01:54:40.565741+00:00",
       "last_error": "",
       "likely_cause": "UNKNOWN: no error details",
       "path": null,
-      "closed_at": "2026-05-30T09:47:16.389514+00:00"
+      "closed_at": "2026-06-02T01:54:31.629170+00:00"
     },
     "marketing-research-daily::timeout_risk": {
       "key": "marketing-research-daily::timeout_risk",
@@ -19446,13 +19622,13 @@
       "name": "blocked-channel-recovery",
       "category": "timeout",
       "first_seen": "2026-05-28T11:16:15.862904+00:00",
-      "repeat_count": 1198,
+      "repeat_count": 1208,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:47:47.559287+00:00",
+      "last_seen": "2026-06-02T01:54:40.565763+00:00",
       "last_error": "cron: job execution timed out",
       "likely_cause": "TIMEOUT: script is hanging, check for infinite loops or network calls",
       "path": null
@@ -20374,7 +20550,7 @@
       "name": "agent-architecture-watchdog",
       "category": "live_error",
       "first_seen": "2026-05-29T16:02:31.931501+00:00",
-      "repeat_count": 54,
+      "repeat_count": 62,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -20561,15 +20737,55 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780357712029:160\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=53"
+        },
+        {
+          "at": "2026-06-02T01:08:19.220975+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=55"
+        },
+        {
+          "at": "2026-06-02T01:08:24.227039+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=55"
+        },
+        {
+          "at": "2026-06-02T01:08:47.845614+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=56"
+        },
+        {
+          "at": "2026-06-02T01:10:08.886872+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=60"
+        },
+        {
+          "at": "2026-06-02T01:11:22.619185+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent-architecture-watchdog_escalation::escalation_required::\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: agent-architecture-watchdog:live_error repeat_count=62"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:47:47.559281+00:00",
-      "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
-      "likely_cause": "UNKNOWN: FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
+      "last_seen": "2026-06-02T01:11:08.583726+00:00",
+      "last_error": "\u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
+      "likely_cause": "UNKNOWN: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of cred",
       "path": null,
-      "closed_at": "2026-06-01T23:48:32.061947+00:00"
+      "closed_at": "2026-06-02T01:11:22.619203+00:00"
     },
     "docs_agentic_review_mustFix_reviewable-output-md-is-correctly-gated-as-secon::review_followup_required": {
       "key": "docs_agentic_review_mustFix_reviewable-output-md-is-correctly-gated-as-secon::review_followup_required",
@@ -23647,7 +23863,7 @@
       "name": "ralph-workflow-docs-verifier-supervisor",
       "category": "live_error",
       "first_seen": "2026-06-01T22:15:16.316948+00:00",
-      "repeat_count": 44,
+      "repeat_count": 52,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -23794,15 +24010,47 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780357714502:161\"\n}",
           "outcome": "resolved",
           "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=43"
+        },
+        {
+          "at": "2026-06-02T01:08:26.032353+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780362505960:173\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=45"
+        },
+        {
+          "at": "2026-06-02T01:08:30.180077+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780362510114:174\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=45"
+        },
+        {
+          "at": "2026-06-02T01:08:51.114073+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780362531074:177\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=46"
+        },
+        {
+          "at": "2026-06-02T01:11:25.836449+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780362685794:186\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "ralph-workflow-docs-verifier-supervisor_escalation::escalation_required::FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.::Incident escalation level=critical: ralph-workflow-docs-verifier-supervisor:live_error repeat_count=52"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-01T23:47:47.559293+00:00",
+      "last_seen": "2026-06-02T01:11:08.583734+00:00",
       "last_error": "FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has run out of credits or has an insufficient balance. Check your openrouter billing dashboard and top up or switch to a different API key.",
       "likely_cause": "IMMEDIATE_FAIL: script crashing early - FailoverError: \u26a0\ufe0f openrouter (deepseek/deepseek-v4-pro) returned a billing error \u2014 your API key has ",
       "path": null,
-      "closed_at": "2026-06-01T23:48:34.534872+00:00"
+      "closed_at": "2026-06-02T01:11:25.836472+00:00"
     }
   }
 }

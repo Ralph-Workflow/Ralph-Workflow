@@ -40076,3 +40076,190 @@ AGENTIC
 }
 REPAIRS
 - No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "docs system is consistent with the positioning. README\u2192START_HERE\u2192docs/README coheres cleanly; no internal leakage on top-level surfaces; promoted next-click pages reinforce the same story (simple core, orchestrator, strong default, ambitious work). Copy is sharp, link anxiety is low, and the result-first framing is maintained throughout.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "opens with the exact tagline and orchestrator framing; explains the Ralph-loop origin while clearly distinguishing Ralph Workflow as an improvement; default workflow is front and center"
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "crisp first-run page with honest good/bad task split, result-first success criteria, and minimal routes forward \u2014 no internal plumbing, no log-first framing"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "clean switchboard that routes by user question, keeps proof secondary, and explicitly defers deep docs till after the product story is understood"
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "promoted next-click page that reinforces 'simple at the center, stronger in composition, useful before customization' without leaking internal mechanics"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README flows coherently. All promoted next-click pages reinforce the same simple-core / composable-orchestration / strong-default-workflow story. No internal-leakage, artifact-first, or plumbing-first framing on top-level surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md:3-5",
+      "reason": "Opens with 'operating system for autonomous coding' tagline and clear orchestrator framing"
+    },
+    {
+      "path": "README.md:13-15",
+      "reason": "Simple Ralph-loop core \u2192 composable loop framework, default workflow strong enough to start with, 'not a chat window' \u2014 nails all three positioning pillars"
+    },
+    {
+      "path": "docs/README.md:7-9",
+      "reason": "Explicitly frames itself as the page after README and START_HERE, routes by user intent, includes 'Keep proof secondary' section"
+    },
+    {
+      "path": "START_HERE.md:6-8",
+      "reason": "Leads with core positioning, strong default workflow emphasis, result-oriented success criteria"
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted next-click page reinforces the same positioning triad from the first paragraph"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.
+BEFORE
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README journey is coherent. No internal leakage on top-level surfaces. All promoted next-click pages reinforce the same framing. The 'simple at the center, powerful in composition' story reads consistently end to end.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "root README doc table mixes full URLs (ralphworkflow.com) with local path (docs/overnight-demo-real.md); unify to reduce friction",
+    "ralph-workflow/README.md mentions .agent/ dirs and --init-local-config on first screen; benign for a PyPI README but slightly inside-baseball for a first read"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/README.md",
+      "reason": "Leads with 'operating system for autonomous coding' tagline and 'AI agent orchestrator' framing; comparison table is clean; no artifact/review-bundle/handoff language on first screen"
+    },
+    {
+      "path": "/START_HERE.md",
+      "reason": "Shortest honest first run; practical task selection; Codeberg-primary note; feeds into docs/README naturally"
+    },
+    {
+      "path": "/docs/README.md",
+      "reason": "Explicitly positions itself after README+START_HERE; routes by user intent; includes 'Keep proof secondary' section \u2014 directly implements the positioning doc's content boundary"
+    },
+    {
+      "path": "/docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces 'simple at the center, powerful in composition' without introducing stale framing or internal plumbing"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+AFTER
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. The README \u2192 START_HERE \u2192 docs/README journey is coherent, consistent, and free of internal plumbing. Promoted next-click pages reinforce the same simple-core/composable-orchestration story without drift. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md:1-6",
+      "reason": "Opens with the canonical tagline and positions as orchestrator, not chat tool or wrapper \u2014 correct hierarchy in one paragraph."
+    },
+    {
+      "path": "README.md:13-15",
+      "reason": "'Simple Ralph-loop idea' + 'composable loop framework' + 'strong default workflow, customize later' \u2014 the three-part identity is present on the first scroll."
+    },
+    {
+      "path": "README.md:83 (-> START_HERE.md)",
+      "reason": "Explicit 'first-run guidance \u2192 START_HERE.md' with the right next-step framing (task selection, diagnosis, first wake-up)."
+    },
+    {
+      "path": "START_HERE.md:1-11",
+      "reason": "Opens with GitHub-as-mirror, re-establishes simple-core positioning, then delivers a tight first-run script without process-residue."
+    },
+    {
+      "path": "docs/README.md:1-8",
+      "reason": "Opens with same positioning, admits it comes after README+START_HERE, routes by goal. Clear job-to-be-done framing."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md:3-4",
+      "reason": "Promoted next-click page opens with the full identity line \u2014 simple core, composition, strong default \u2014 reinforcing the top-level story instead of introducing new jargon."
+    },
+    {
+      "path": "docs/first-task-guide.md:3-4",
+      "reason": "Same opening pattern. Keeps the user in the same mental model when they click for task guidance."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+REPAIRS
+- No conservative deterministic docs repair was attempted.

@@ -1,51 +1,61 @@
-# Agent Architecture Watchdog Report
+# Agent Architecture Audit
 
-- **Checked:** 2026-06-02T00:11:20+02:00
-- **Verdict:** watch
-- **Architecture-owned gates:** green (independent verification: qualified_pass)
+- Checked: 2026-06-02T03:54:22+02:00
+- Overall health: watch
+- Primary failure mode: Architecture-owned gates are green; whole-stack certification remains blocked by external marketing outcome evidence.
+- Most urgent fix: Marketing owner loop needs fresh measurable primary-repo movement and a current independent-verification pass.
+- Verifier status: pass (fresh at 2026-06-02T03:54:11+02:00)
+- Verifier verdict: qualified_pass
 
-## Live Topology
+## Live topology
 
-| Metric | Value |
-|--------|-------|
-| Total jobs | 24 |
-| Enabled | 24 |
-| Disabled | 0 |
-| LastError | 1 (blocked-channel-recovery) |
+- Live Gateway jobs: 25 total / 25 enabled / 0 disabled
+- Running: Push research findings to git repo, agent-architecture-watchdog, codeberg-github-mirror-sync, marketing-measurement-hold-release, reddit-pipeline-watchdog, system-health-monitor
+- Live last-error: blocked-channel-recovery (timeout), marketing-workflow-audit (OpenRouter billing error)
+- Persisted disabled history only (16 entries, not live): docs-stack-aggressive-10min-self-heal, marketing-measurement-hold-release (x10), marketing-momentum-watchdog, marketing-reflection, marketing-workflow-audit-precheck, ralph-workflow-full-house-docs-audit, stackoverflow-post-cooldown-run-check
 
-## Blocker Map
+## Severity-ranked findings
 
-| Blocker | Owner | Severity | Detail |
-|---------|-------|----------|--------|
-| blocked-channel-recovery | external | high | Live timeout error, 1153-repeat escalation critical, 600s timeout |
-| marketing independent verification | external | high | Fail-closed, stale since 2026-05-28 |
-| docs mustFix ×3 | external | medium | 303-repeat escalation critical, unresolved review follow-ups |
-| pypi-auto-unblocker no self-improvement | external | low | No self-improvement mandate |
+1. **High — Marketing remains externally red on outcome evidence**
+   - Marketing independent verification still fails closed; primary-repo adoption is measurement-pending.
+   - Fix: Marketing owner loop must produce fresh measurable adoption movement, then rerun marketing independent verification.
 
-## Repairs Applied This Run
+2. **Medium — Live Gateway topology matches runtime state**
+   - 25 enabled / 0 disabled / 6 running / 2 last-error. Topology is coherent.
 
-1. **Fixed missing ordered_fix_plan key** — Checker was failing on AGENT_ARCHITECTURE_FAIL: missing keys: ordered_fix_plan. Added the required key with 4 prioritized items.
-2. **Refreshed live topology** — 24/24 enabled, 0 disabled, 1 lastError (blocked-channel-recovery timeout).
-3. **Revalidated independent verification chain** — Fresh independent verify → qualified_pass, verifier → ok (zero errors), checker → AGENT_ARCHITECTURE_OK, loop integrity → both loops ok.
+3. **Medium — Architecture verifier path green on freshness and ownership**
+   - Loop integrity ok, health-monitor blockers correctly externalized, shared market-intelligence consumers verified.
 
-## What's Still Red
+4. **Low — Persisted disabled jobs are history-only**
+   - 16 disabled entries in jobs.json history, 0 live disabled jobs.
 
-- blocked-channel-recovery: live timeout error, 1153 repeats, critical escalation
-- marketing independent verification: fail since May 28
-- docs mustFix: 3 items, 303 repeats, critical escalation
+5. **High — pypi-auto-unblocker has no self-improvement mandate**
+   - Will repeat same tactics forever when outcomes are flat.
 
-## Independent Verification
+## Repaired this run
 
-- **Verdict:** qualified_pass
-- **Artifact:** agent_architecture_independent_verification.json (fresh as of this run)
-- Architecture verifier fails closed on stale signoff ✓
-- Checker passes: AGENT_ARCHITECTURE_OK ✓
-- Loop integrity/topology green ✓
-- Market-intelligence reuse machine-verifiable ✓
-- Docs verifier stable (31 consecutive passes) ✓
+- **refreshed_live_topology** — Fresh `openclaw cron list --json` snapshot: 25/25/0/6/2
+- **fresh_independent_verification** — Reran `agent_architecture_independent_verify.py` → qualified_pass, then `agent_architecture_verifier.py` → pass
+- **reran_audit_and_health_monitor** — Both scripts produced fresh artifacts with current live state
+- **relocalized_runtime_drift** — No architecture-owned topology leakage; remaining red is external
 
-## Notes
+## Still red
 
-- Architecture-owned gates are independently verified green.
-- Whole-stack certification blocked by external owner-loop residue.
-- Small gate: 24/24 jobs green on architecture side, checker/verifier/loop-integrity all pass.
+- Marketing independent verification: fail (artifact from 2026-05-28, 4.4 days stale)
+- marketing-workflow-audit: OpenRouter billing error
+- blocked-channel-recovery: hanging script (timeout, 1208 escalation repeats)
+- marketing-active-loop: 85% timeout usage (27 escalation repeats)
+
+## Independent verification
+
+- Performed: yes (2026-06-02T03:54:11+02:00)
+- Verdict: qualified_pass
+- Summary: Architecture verifier now fails closed on stale signoff; loop topology/ownership green; shared market-intelligence reuse machine-verifiable. External blockers (marketing outcome evidence) correctly isolated.
+
+## Small gate passed
+
+- `python3 agents/system/agent_architecture_checker.py` → AGENT_ARCHITECTURE_OK
+- `python3 agents/system/agent_architecture_independent_verify.py` → qualified_pass
+- `python3 agents/system/agent_architecture_verifier.py` → pass
+- `python3 agents/system/agent_architecture_audit.py` → ok
+- `python3 agents/system/loop_integrity_audit.py` → ok
