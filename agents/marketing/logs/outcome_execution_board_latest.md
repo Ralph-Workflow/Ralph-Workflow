@@ -10,7 +10,7 @@
 - Artifact: `/tmp/guard-pause.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
 - Measurement window: Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.
-- Next truthful checkpoint: `2026-06-03T18:06:12` (short_review_window_release)
+- Next truthful checkpoint: `2026-06-03T19:20:57` (short_review_window_release)
 - Checkpoint reason: Current short review window clears.
 
 ## Structural capability added

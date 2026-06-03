@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-03T09:00:02.331758",
+  "timestamp": "2026-06-03T18:20:57.549484",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -21,7 +21,7 @@
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "5 prepared curator targets still need a canonical execution handoff packet.",
-      "Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.",
+      "Manual-contact-only curator targets are still waiting for execution (vivy-yi/awesome-agent-orchestration), so the loop should use the existing contact-discovery asset before inventing new reset work.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (AXME Code, WyeWorks, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
       "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
