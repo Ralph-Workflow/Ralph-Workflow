@@ -32,6 +32,8 @@ The name comes from the original Ralph loop: repeat a strong prompt until the mo
 | Locked to one vendor | Claude + Codex + OpenCode in the same pipeline — your choice |
 | "Look at the diff" | Runnable, tested software with integration checks |
 
+[See how Ralph Workflow compares to 14 other autonomous coding tools →](https://ralphworkflow.com/compare)
+
 ## Who it's for
 
 Developers and teams who have **ambitious, well-specified work** that's too big to babysit and too risky to trust blindly.
