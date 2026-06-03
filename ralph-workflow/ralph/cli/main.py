@@ -23,6 +23,7 @@ from ralph.api.opencode import list_providers as fetch_providers
 from ralph.cli._cli_override_input import CLIOverrideInput
 from ralph.cli.commands.check_policy import check_policy_command
 from ralph.cli.commands.cleanup import cleanup
+from ralph.cli.commands.contribute import contribute
 from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
 from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.commands.explain import explain_command
@@ -718,6 +719,7 @@ def main(
 
 app.callback(invoke_without_command=True)(main)
 app.command()(cleanup)
+app.command(name="contribute")(contribute)
 
 
 def smoke_interactive_claude() -> None:

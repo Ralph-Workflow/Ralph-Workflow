@@ -2,7 +2,7 @@
 
 > **The operating system for autonomous coding.**
 
-![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
+![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg)
 
 > Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 
@@ -36,17 +36,15 @@ Developers and teams who have **ambitious, well-specified work** that's too big 
 
 It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
 
-## What you wake up to
+## Quick start
+
+Write your task in `PROMPT.md` before you sleep. Ralph reads it, runs planning → development → review cycles, and produces git commits you can inspect in the morning.
 
 ```
 $ ralph --init
 $ $EDITOR PROMPT.md
 $ ralph
 ```
-
-Write your task in `PROMPT.md` before you sleep. Ralph reads it, runs planning → development → review cycles, and produces git commits you can inspect in the morning.
-
-## Quick start
 
 ### Docker (no Python required)
 
@@ -98,6 +96,7 @@ Example terminal output from Ralph Workflow v0.8.8 on a fresh project:
 | `ralph --diagnose` | [diagnose-output.txt](docs/sphinx/_static/demo/diagnose-output.txt) — agent inventory, config, MCP check |
 | `ralph --dry-run` | [dry-run-output.txt](docs/sphinx/_static/demo/dry-run-output.txt) — pipeline phases and iteration plan |
 | ▶ **Full demo** | [![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) — watch the complete first-run flow |
+| ⭐ **Contribute** | `ralph contribute` — opens Codeberg in your browser so you can star the project |
 
 These are **unedited terminal captures** from a real run — not mock-ups.
 
