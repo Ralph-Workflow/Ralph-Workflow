@@ -769,10 +769,10 @@ def _handle_inline_effect(
 
 def _emit_success_exit(display: ParallelDisplay | LegacyConsoleDisplay | None) -> int:
     emit_display_line(display, None, "[green]Pipeline completed successfully.[/green]")
-    # Periodic star CTA - shown ~20% of successful runs.
+    # Periodic star CTA - shown ~50% of successful runs.
     # Only fires after first-run (first-run already shows full welcome panel with star CTA).
-    # Uses process-id hash to avoid deterministic spam: each user sees it ~1 in 5 runs.
-    show_cta = (hash(str(os.getpid()) + str(os.getenv("USER", ""))) % 5) == 0
+    # Uses process-id hash to avoid deterministic spam: each user sees it ~1 in 2 runs.
+    show_cta = (hash(str(os.getpid()) + str(os.getenv("USER", ""))) % 2) == 0
     if show_cta:
         emit_display_line(display, None, f"[bold yellow]{CODEBERG_STAR_CTA}[/bold yellow]")
     return 0
