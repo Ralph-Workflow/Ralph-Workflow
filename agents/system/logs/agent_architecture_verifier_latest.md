@@ -1,12 +1,18 @@
-# Agent Architecture Independent Verification
+# Agent Architecture Verifier
 
-- Checked: 2026-06-03T13:45:25.499748
-- Status: independently verified fail
-- Independent artifact: `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`
-- Independent check time: 2026-06-03T13:37:25.564049+02:00
-- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Qualified external blockers: stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json, marketing independent verification is not pass: 'fail'
+- Checked: 2026-06-03T14:34:58.568092+02:00
+- Status: independently verified pass
+- Verdict: qualified_pass
 
-## Verification result
+## Cross-checks performed
 
-- independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh
+1. **Live cron topology** — Direct `openclaw cron list --json` confirms 26 total / 26 enabled / 0 disabled / 3 running / 1 last-error. Matches audit.
+2. **Health monitor** — 1 issue (marketing_independent_verification:stale_artifact). Docs issues cleared by concurrent run; benign drift.
+3. **Marketing independent** — Verdict: fail (external blocker, correctly classified).
+4. **Docs verifier** — Status: pass.
+5. **Loop integrity** — ralph-docs-watchdog: error, agent-architecture-watchdog: ok.
+6. **Self-repair audit** — 2 loops missing self-improve mandate (pypi-auto-unblocker, internal-linking-watchdog), both correctly reported in findings.
+
+## Conclusion
+
+Architecture-owned gates are green. Sole remaining red is external marketing outcome evidence. Audit artifacts consistent with independently verified live state.

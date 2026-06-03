@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-03T06:26:03.800993",
+  "generated_at": "2026-06-03T15:30:51.610757",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -71,25 +71,21 @@
     "primary_repo_flat_window",
     "mirror_repo_flat_window"
   ],
-  "worked": [
-    "Internal repair/follow-through is still running reliably: measurement_hold_follow_through."
-  ],
+  "worked": [],
   "not_worked": [
     "Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.",
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
-    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.",
-    "The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 2 times inside the last 48 hours."
+    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
-    "Prepared-only primary-repo-flat packet refreshes are repeating without entering a live delivery/review window, so that lane is currently counting packet churn rather than adoption-moving distribution.",
+    "Recent live external action exists (seo_integrity_fix), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
   ],
   "should_change_now": [
-    "Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.",
-    "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 45 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
+    "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 46 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
     "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
   "dormant_risks": [
@@ -100,7 +96,7 @@
       "target_tactic": "content_distribution",
       "failure_type": "primary_repo_flat",
       "repair_kind": "tactic",
-      "action": "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 45 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
+      "action": "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 46 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
       "kill_condition": "Still no Codeberg delta after 7 days of new approach",
       "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
       "priority": 1,
@@ -129,8 +125,8 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent marketing artifact (measurement_hold_follow_through) was preparation/follow-through work, not a live external execution, so it should not be mistaken for outcome movement.",
-    "A fresh outcome-capability runtime is now logged (social_proof_bootstrap), so the system-design repair should be treated as shipped even though repo adoption has not moved yet."
+    "The most recent runtime activity was curator_contact_discovery_execution, but the latest meaningful external/replacement execution remains seo_integrity_fix; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (seo_integrity_fix), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -163,10 +159,10 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_measurement_hold_execution.json",
-    "type": "measurement_hold_follow_through",
-    "title": "Distribution lane execution: measurement_hold",
-    "status": "executed",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_curator_handoff_packet_execution.json",
+    "type": "curator_contact_discovery_execution",
+    "title": "Distribution lane execution: curator_handoff_packet",
+    "status": "prepared",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,
@@ -174,13 +170,13 @@
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_measurement_hold_execution.json",
-    "type": "measurement_hold_follow_through",
-    "title": "Distribution lane execution: measurement_hold",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_120612_principle8_crosslink_fix.json",
+    "type": "seo_integrity_fix",
+    "title": "Principle 8 compliance: add reciprocal cross-links from 3 related posts back to Claude Code #54393 postmortem",
     "status": "executed",
     "ok": true,
-    "live_external_action": false,
-    "outcome_ready": false,
+    "live_external_action": true,
+    "outcome_ready": true,
     "warning": null,
     "url": null
   },
@@ -199,6 +195,6 @@
   "shared_artifact_sync": {
     "status": "skipped_unchanged",
     "reason": "material_fingerprint_unchanged_or_cooldown",
-    "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:2|action:measurement_hold_follow_through:executed"
+    "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:1|action:seo_integrity_fix:executed"
   }
 }

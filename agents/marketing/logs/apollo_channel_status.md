@@ -1,6 +1,6 @@
 # Apollo.io Channel Status
 
-**Last Check:** Tue 2026-06-02 06:17 CEST
+**Last Check:** Wed 2026-06-03 15:40 CEST
 
 | Field | Value |
 |---|---|
@@ -8,11 +8,12 @@
 | **Login Attempted** | No (blocked before login) |
 | **Final URL** | `https://app.apollo.io/#/login` |
 | **Cloudflare Interstitial** | Yes |
-| **Browserless Probe** | cloudflare_auth_blocked |
+| **Browserless Probe** | cloudflare_auth_blocked
+**Auth Endpoint Status Codes** | `[]` (no endpoints reached) |
 
-## Details
+## Details (Updated 2026-06-03 15:40)
 
-Apollo.io is currently behind a Cloudflare interstitial/challenge page. The automated browser could not reach the login form — Cloudflare challenge pages are not bypassed by the headless browser automation.
+Apollo.io is still behind a Cloudflare interstitial/challenge page. The automated browser could not reach the login form — Cloudflare challenge pages are not bypassed by the headless browser automation. No auth endpoints were reachable. Browserless probe saw the same Cloudflare interstitial content.
 
 ## Action Required
 

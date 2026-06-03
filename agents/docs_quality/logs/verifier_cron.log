@@ -20190,3 +20190,141 @@ AGENTIC
   "shouldUserNeedToRepeatThis": false
 }
 [agentic-review] using fresh existing artifact (0s old), skipping opencode
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "All surfaces aligned with positioning. START_HERE sentence tightened. first-task-guide.md CLI fix (pipx install) applied. No promoted page leads with internal mechanics. Journey coherent. System healthy.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (primary)",
+      "reason": "Opens with 'operating system for autonomous coding', simple-loop-core \u2192 composable framework, 'not a chat window', clear fit/non-fit, Codeberg primary, pipx install. Fully aligned."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opening tightened to three scannable sentences from one 39-word clause stack. Shortest honest first run. Bring your existing agents, keep your keys."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by user intent. Explicit 'Keep proof secondary' governance. Each route reinforces the simple-core \u2192 strong-default narrative."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Fixed pipx install command. Practical task-selection guidance. Spec template. Morning-after review framework. No bogus CLI commands remain."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Opens with simple-core framing. Asks 'why not just a chat session'. Explains why default workflow matters. Routes back through START_HERE/docs map."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+[agentic-review] using fresh existing artifact (300s old), skipping opencode
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "All surfaces aligned with positioning. START_HERE sentence tightened. first-task-guide.md CLI fix (pipx install) applied. No promoted page leads with internal mechanics. Journey coherent. System healthy.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (primary)",
+      "reason": "Opens with 'operating system for autonomous coding', simple-loop-core \u2192 composable framework, 'not a chat window', clear fit/non-fit, Codeberg primary, pipx install. Fully aligned."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opening tightened to three scannable sentences from one 39-word clause stack. Shortest honest first run. Bring your existing agents, keep your keys."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by user intent. Explicit 'Keep proof secondary' governance. Each route reinforces the simple-core \u2192 strong-default narrative."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Fixed pipx install command. Practical task-selection guidance. Spec template. Morning-after review framework. No bogus CLI commands remain."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Opens with simple-core framing. Asks 'why not just a chat session'. Explains why default workflow matters. Routes back through START_HERE/docs map."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+[agentic-review] using fresh existing artifact (300s old), skipping opencode
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "All surfaces aligned with positioning. START_HERE sentence tightened. first-task-guide.md CLI fix (pipx install) applied. No promoted page leads with internal mechanics. Journey coherent. System healthy.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (primary)",
+      "reason": "Opens with 'operating system for autonomous coding', simple-loop-core \u2192 composable framework, 'not a chat window', clear fit/non-fit, Codeberg primary, pipx install. Fully aligned."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opening tightened to three scannable sentences from one 39-word clause stack. Shortest honest first run. Bring your existing agents, keep your keys."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by user intent. Explicit 'Keep proof secondary' governance. Each route reinforces the simple-core \u2192 strong-default narrative."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Fixed pipx install command. Practical task-selection guidance. Spec template. Morning-after review framework. No bogus CLI commands remain."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Opens with simple-core framing. Asks 'why not just a chat session'. Explains why default workflow matters. Routes back through START_HERE/docs map."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+[agentic-review] using fresh existing artifact (300s old), skipping opencode

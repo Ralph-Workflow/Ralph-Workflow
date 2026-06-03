@@ -1,9 +1,10 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-03T14:08:22
-Chosen lane: **curator_handoff_packet**
+Generated: 2026-06-03T15:42:22
+Chosen lane: **social_proof_bootstrap**
 
 ## Why this lane
-- Prepared curator targets exist but still lack one canonical execution packet; consolidate the best unsent targets instead of resetting the lane again.
+- Measurement hold saturated (2 holds/24h). Circuit-breaking to social_proof_bootstrap (autonomous, ships real assets). Original lane: measurement_hold. Original reason: SMTP credentials are missing in this environment (SMTP_USER is not set), so any curator handoff packet can never be delivered by the autonomous system. Holding until human provides SMTP credentials rather than generating another packet into the void.
+- Hold-frequency gate: 2 holds/24h → social_proof_bootstrap circuit-break
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 live external marketing action(s) already shipped in the last 6 hours.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
@@ -29,9 +30,6 @@ Chosen lane: **curator_handoff_packet**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 
-## Immediate curator handoff work
-- Build one canonical packet from the highest-priority prepared curator targets that have not been sent yet
-- Include the comparison/backlink handoff packet too when prepared comparison targets are also waiting
-- Reuse the existing target-ready files instead of generating a new queue or another reset note
-- Include exact next actions, ready links, and Codeberg-primary wording so a human can execute quickly
-- Do not count another discovery/reset cycle as progress while prepared targets still await handoff
+## Owned-content lane remains allowed
+- No distribution-lane override triggered yet
+- If the next measurement window is still flat, escalate away from Telegraph-first output

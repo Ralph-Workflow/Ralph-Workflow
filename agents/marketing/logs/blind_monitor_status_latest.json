@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-06-03T13:25:43.670635+00:00",
+  "agent": "blind_monitor_replacement",
+  "dry_run": false,
+  "ddg": {
+    "ok": false,
+    "health": "degraded_http_202",
+    "result_count": 0,
+    "bot_blocked": false,
+    "reddit_ok": false
+  },
+  "brave": {
+    "ok": false,
+    "result_count": 0
+  },
+  "escalation_artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/ddg_escalation_latest.md",
+  "discovery_channels": 0,
+  "recommendation": "Both DDG and Brave are blocked. No search-based discovery is possible from this environment. All distribution must use curated targets, owned surfaces, and manual handoff packets. Escalate to human for provider migration."
+}
