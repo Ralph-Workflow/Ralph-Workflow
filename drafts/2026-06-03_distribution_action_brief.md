@@ -1,12 +1,11 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-03T17:35:55
+Generated: 2026-06-03T18:06:40
 Chosen lane: **social_proof_bootstrap**
 
 ## Why this lane
-- Measurement hold saturated (2 holds/24h). Circuit-breaking to social_proof_bootstrap (autonomous, ships real assets). Original lane: measurement_hold. Original reason: SMTP credentials are missing in this environment (SMTP_USER is not set), so any curator handoff packet can never be delivered by the autonomous system. Holding until human provides SMTP credentials rather than generating another packet into the void.
+- Measurement hold saturated (2 holds/24h). Circuit-breaking to social_proof_bootstrap (autonomous, ships real assets). Original lane: measurement_hold. Original reason: Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.
 - Hold-frequency gate: 2 holds/24h → social_proof_bootstrap circuit-break
 - Primary Codeberg adoption is flat in the current measurement window.
-- 1 live external marketing action(s) already shipped in the last 6 hours.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
