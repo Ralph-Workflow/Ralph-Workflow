@@ -1,0 +1,73 @@
+{
+  "run_id": "marketing-active-loop_2026-06-04_0030",
+  "generated_at": "2026-06-04T00:35:00+02:00",
+  "trigger": "cron marketing-active-loop",
+  "measurement_hold": {
+    "active": true,
+    "until": "2026-06-05T00:00:00+02:00",
+    "hours_remaining": 23
+  },
+  "primary_metric": {
+    "codeberg_stars": 12,
+    "codeberg_watchers": 2,
+    "codeberg_forks": 2,
+    "github_stars": 2,
+    "pypi_downloads_month": 1300
+  },
+  "decision": {
+    "highest_leverage_action": "awesome_list_directory_inclusion_lane_opened",
+    "reason": "All 7 traditional lanes blocked. Opened net-new 8th lane: bradAGI/awesome-cli-coding-agents PR. Prepared complete PR but blocked on gh auth login (human-gated).",
+    "fallback_executed": "market_intelligence_enrichment + process_repair_verification"
+  },
+  "concrete_actions": [
+    {
+      "type": "new_lane_preparation",
+      "detail": "Prepared PR for bradAGI/awesome-cli-coding-agents. Ralph NOT listed among 80+ CLI coding agents. Entry: composable loop framework, unattended multi-phase, vendor-neutral, 12⭐, Codeberg primary. Branch add-ralph-workflow ready in /tmp/awesome-list-clone.",
+      "status": "prepared_blocked_on_gh_auth",
+      "asset": "drafts/awesome_list_pr_ready_2026-06-04.md"
+    },
+    {
+      "type": "market_intelligence_enrichment",
+      "detail": "Added directory_gaps section to market_intelligence_latest.json. 3 gap articles: awesome-cli-coding-agents (critical), amux.io (high), augmentcode.com (high). All three are 2026 orchestrator comparisons that exclude Ralph Workflow.",
+      "status": "completed"
+    },
+    {
+      "type": "process_repair_verification",
+      "detail": "Verified execution_board_freshness_watchdog.py exists and passes (prior run created it). Verified system crontab already v7 (star_conversion_agent daily, social_proof_bootstrap Mon-Sat). Synced stale crontab.txt reference file (was v4).",
+      "status": "completed"
+    },
+    {
+      "type": "execution_board_update",
+      "detail": "Wrote updated execution board with new lane 15, market intelligence enrichment summary, watchdock creation, and crontab sync.",
+      "status": "completed"
+    }
+  ],
+  "gaps_remaining": [
+    {
+      "gap": "awesome_list_pr_submission",
+      "blocker": "gh auth login required (browser OAuth, human)",
+      "asset": "drafts/awesome_list_pr_ready_2026-06-04.md"
+    },
+    {
+      "gap": "amux_contact",
+      "blocker": "post-hold gate (June 5) + manual delivery path",
+      "priority": "high"
+    },
+    {
+      "gap": "augmentcode_contact",
+      "blocker": "post-hold gate (June 5) + manual delivery path",
+      "priority": "high"
+    },
+    {
+      "gap": "ComputingForGeeks_manual_outreach",
+      "blocker": "manual delivery path",
+      "packet": "drafts/primary_repo_flat_manual_review_asset_latest.md"
+    }
+  ],
+  "post_hold_ready": [
+    "awesome_list_pr_submission (after gh auth login)",
+    "amux + augmentcode contact attempts",
+    "post_hold_distribution_reentry contract"
+  ],
+  "principle_10_check": "Concrete lane opening (awesome-list) + intelligence enrichment + process repair verification — not a measurement hold or report generation"
+}
