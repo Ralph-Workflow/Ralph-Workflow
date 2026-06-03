@@ -49,17 +49,21 @@ $ ralph
 ### Docker (no Python required)
 
 ```bash
-docker run --rm -it \
-  -v "$(pwd):/workspace" \
-  -v "$HOME/.ralph:/root/.ralph" \
-  ralphworkflow/ralph --help
-```
-
-Build from source:
-
-```bash
 git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
+docker compose up
+```
+
+Two commands, no Python. `docker compose up` builds and launches Ralph Workflow in a container — bind-mounts your project as `/workspace` and your `~/.ralph` config for agent bundles. Run a specific subcommand:
+
+```bash
+docker compose run --rm ralph --diagnose
+docker compose run --rm ralph --dry-run
+```
+
+Or build without Compose:
+
+```bash
 docker build -t ralph-workflow .
 docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
 ```
