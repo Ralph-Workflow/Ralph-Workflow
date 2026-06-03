@@ -1,16 +1,21 @@
 # Conversion Surface Watchdog — Audit Report
-Generated: 2026-06-02T14:46:01.184232+00:00
+Generated: 2026-06-03T05:00:01.838609+00:00
 
 **Status:** PASS
 
-- Total posts audited: **44**
-- Average conversion score: **10.3/13**
-- Below autofix threshold (≤6): **0**
+- Total posts audited: **45**
+- Average conversion score: **10.2/13**
+- Below autofix threshold (≤6): **1**
 - Strong posts (≥8): **44**
 - Weak posts (≤4): **0**
 
+## Auto-Fixes Applied
+
+- **ai-coding-agent-benchmarks-real-world** (score 5): added_standard_conversion_block
+
 ## Score Distribution
 
+-  5: █ (1)
 -  9: █████████ (9)
 - 10: █████████████████████████ (25)
 - 11: ████ (4)

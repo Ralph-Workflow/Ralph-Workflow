@@ -1,17 +1,37 @@
 {
-  "generated_at": "2026-06-02T14:46:01.184232+00:00",
+  "generated_at": "2026-06-03T05:00:01.838609+00:00",
   "agent": "conversion_surface_watchdog",
   "repair_target": "outcome_system_underpowered",
-  "total_posts": 44,
-  "avg_score": 10.3,
-  "below_threshold_count": 0,
+  "total_posts": 45,
+  "avg_score": 10.2,
+  "below_threshold_count": 1,
   "strong_posts_count": 44,
   "weak_posts_count": 0,
   "posts": [
     {
+      "slug": "ai-coding-agent-benchmarks-real-world",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-benchmarks-real-world.md",
+      "lines": 116,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 0,
+        "first_task_guide": 0,
+        "free_use_invite": 0,
+        "ends_with_crosslinks": 0,
+        "star_ask": 0
+      },
+      "findings": [
+        "MISSING: No pip/pipx install instruction",
+        "MISSING: No first-task guide link",
+        "WEAK: No free-use invite in final section (pick a task, try tonight, judge result)"
+      ],
+      "total_score": 5
+    },
+    {
       "slug": "ai-coding-agent-testing-strategy",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-testing-strategy.md",
-      "lines": 126,
+      "lines": 128,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -65,7 +85,7 @@
     {
       "slug": "codex-opencode-cline-vs-ralph-workflow-2026",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/codex-opencode-cline-vs-ralph-workflow-2026.md",
-      "lines": 159,
+      "lines": 156,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -76,7 +96,7 @@
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+        "WEAK_ENDING: Last 10 lines are 6 cross-links \u2014 no conversion CTA"
       ],
       "total_score": 9
     },
@@ -245,7 +265,7 @@
     {
       "slug": "ai-coding-tools-comparison-2026",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-tools-comparison-2026.md",
-      "lines": 252,
+      "lines": 258,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -263,7 +283,7 @@
     {
       "slug": "autonomous-ai-coding-tools-compared",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/autonomous-ai-coding-tools-compared.md",
-      "lines": 200,
+      "lines": 202,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -335,7 +355,7 @@
     {
       "slug": "ralph-workflow-comparison-guide",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-comparison-guide.md",
-      "lines": 194,
+      "lines": 287,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -789,7 +809,13 @@
       "total_score": 13
     }
   ],
-  "auto_fixes": [],
+  "auto_fixes": [
+    {
+      "slug": "ai-coding-agent-benchmarks-real-world",
+      "before_score": 5,
+      "action": "added_standard_conversion_block"
+    }
+  ],
   "unchanged": [],
   "measurement_window_days": 14,
   "success_metric": "Codeberg stars_delta_window > 0 within 14 days",

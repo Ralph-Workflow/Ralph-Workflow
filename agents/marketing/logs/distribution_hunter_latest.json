@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-06-03T01:19:31.304902",
+  "timestamp": "2026-06-03T06:06:09.078449",
   "repair_types_seen": [],
   "selected_lane": "measurement_hold",
   "selected_action_type": "measurement_hold_follow_through",
   "execution_status": "executed",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_011931_measurement_hold_follow_through.md",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_060609_measurement_hold_follow_through.md",
   "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
   "expected_outcome": "Advance distribution via lane measurement_hold without defaulting back to monitoring-only work.",
   "measurement_window": "Review outcome movement within 7 days.",
@@ -29,6 +29,7 @@
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
       "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
       "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
+      "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
       "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
       "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress."
     ],
@@ -49,7 +50,7 @@
     "lane": "measurement_hold",
     "action_type": "measurement_hold_follow_through",
     "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_011931_measurement_hold_follow_through.md",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_060609_measurement_hold_follow_through.md",
     "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
     "targets_prepared": [],
     "shared_findings_used": [

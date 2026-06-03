@@ -1,10 +1,10 @@
 # PyPI Blocker Escalation
-Generated: 2026-06-03T01:51:33.788424
+Generated: 2026-06-03T06:06:36.803764
 
 ⚠️ **3-DAY ESCALATION**
 
 **Blocked action:** Publish v0.8.8 to PyPI (wheel + sdist built, twine-check PASSED)
-**Days without token:** 5
+**Days without token:** 6
 **Monthly downloads affected:** ~1,299 (seeing old README without Codeberg CTA)
 **What's needed:** Set `PYPI_TOKEN` environment variable to a valid PyPI API token
   with upload scope for the `ralph-workflow` package.
@@ -22,7 +22,7 @@ PyPI v0.8.8 has been built and ready for 3 days but remains unpublished due to m
    Or run manually: `python3 /home/mistlight/.openclaw/workspace/agents/marketing/pypi_auto_unblocker.py`
 
 ## Token was last checked
-2026-06-03T01:51:33.788424
+2026-06-03T06:06:36.803764
 
 ## Codeberg impact
 - Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow

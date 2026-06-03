@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-06-03T01:19:31.304902",
+  "timestamp": "2026-06-03T06:06:09.078449",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "measurement_hold_follow_through",
     "channel": "measurement_hold",
     "title": "Distribution lane execution: measurement_hold",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_011931_measurement_hold_follow_through.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_060609_measurement_hold_follow_through.md"
   },
   "why_this_action": {
     "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
