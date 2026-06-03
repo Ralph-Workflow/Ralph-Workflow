@@ -1,10 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-03T18:06:40
-Chosen lane: **social_proof_bootstrap**
+Generated: 2026-06-03T18:19:21
+Chosen lane: **measurement_hold**
 
 ## Why this lane
-- Measurement hold saturated (2 holds/24h). Circuit-breaking to social_proof_bootstrap (autonomous, ships real assets). Original lane: measurement_hold. Original reason: Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.
-- Hold-frequency gate: 2 holds/24h → social_proof_bootstrap circuit-break
+- Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.
 - Primary Codeberg adoption is flat in the current measurement window.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
@@ -29,6 +28,8 @@ Chosen lane: **social_proof_bootstrap**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 
-## Owned-content lane remains allowed
-- No distribution-lane override triggered yet
-- If the next measurement window is still flat, escalate away from Telegraph-first output
+## Immediate measurement-hold work
+- Do not ship another fresh outreach/reset action in this short review window
+- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
+- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
+- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map
