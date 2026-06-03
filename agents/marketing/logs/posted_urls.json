@@ -1172,7 +1172,19 @@
       "error": null,
       "draft_hash": "4031664da9e6051eceeea556a877a2113774015f4c59ca34e0e847f0339ba0d7",
       "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md"
+    },
+    {
+      "date": "2026-06-03",
+      "draft": "ai-coding-agent-benchmarks-real-world.md",
+      "title": "AI Coding Agent Benchmarks That Actually Matter: Beyond SWE-bench to Real-World Performance",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/AI-Coding-Agent-Benchmarks-That-Actually-Matter-Beyond-SWE-bench-to-Real-World-Performance-06-03",
+      "error": null,
+      "draft_hash": "0e177985d2794f20fa14097721a32cdc3dc78c7f5df8f8a2cd17f65938040c52",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-benchmarks-real-world.md"
     }
   ],
-  "last_run": "2026-06-02T06:00:01.419929"
+  "last_run": "2026-06-03T06:00:01.784214"
 }

@@ -1,27 +1,11 @@
 {
-  "timestamp": "2026-06-03T01:14:24.912822+00:00",
+  "timestamp": "2026-06-03T03:34:20.892651+00:00",
   "links_applied": [
     {
-      "parent": "ai-coding-tools-comparison-2026",
-      "child": "how-to-structure-autonomous-ai-agent-workflows-for-production-reliability",
-      "link_text": "How to Structure Autonomous AI Agent Workflows for Production Reliability",
-      "context": "TOML configuration for multi-agent workflows",
-      "paragraph_hint": "**Key differentiators:**\n- Composable loop architecture (planning loop \u2192 build loop \u2192 verification loop)\n- Policy-define...",
-      "dry_run": false
-    },
-    {
-      "parent": "ai-coding-tools-comparison-2026",
-      "child": "multi-agent-orchestration-patterns",
-      "link_text": "Multi-Agent Orchestration Patterns: Getting AI Agents to Actually Cooperate",
-      "context": "TOML configuration for multi-agent workflows",
-      "paragraph_hint": "For a hands-on look at TOML configuration for multi-agent workflows, we also wrote **[Safe AI Code Execution: How to Let...",
-      "dry_run": false
-    },
-    {
       "parent": "codex-opencode-cline-vs-ralph-workflow-2026",
-      "child": "safe-ai-code-execution-sandbox-isolation",
-      "link_text": "Safe AI Code Execution: How to Let a Coding Agent Run Commands Without Risking Your System",
-      "context": "TOML configuration for multi-agent workflows",
+      "child": "ai-coding-agent-benchmarks-real-world",
+      "link_text": "AI Coding Agent Benchmarks That Actually Matter: Beyond SWE-bench to Real-World Performance",
+      "context": "isolating AI agent execution",
       "paragraph_hint": "- [AI Coding Tools Compared 2026: A Practical Guide to What Each One Actually Does](/blog/ai-coding-tools-comparison-202...",
       "dry_run": false
     }
