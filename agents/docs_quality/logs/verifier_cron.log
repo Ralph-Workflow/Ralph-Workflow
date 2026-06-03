@@ -21001,3 +21001,91 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, aligned, and healthy across all surfaces. Positioning language is consistent, internal mechanics are kept out of top-level story, journey routes are intentional and reinforce each other.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (Codeberg primary)",
+      "reason": "Opens with tagline + orchestrator framing, uses 'simple Ralph-loop core' \u2192 'composable loop framework' arc, explicit who-it's-for/not-for, engineering-practice requirements, routes cleanly to START_HERE.md."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Leads with positioning paragraph, gives shortest honest first run, concrete success criteria, routes to docs/README as the next step. No internal plumbing or artifact language."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Opens with same positioning, recognizes it sits after README + START_HERE, organizes routes by user intent, explicitly keeps proof secondary. Links to product-framing pages before evidence pages."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces simple-core-in-composition story, 'Why the default workflow matters' section, routes back to main journey. No drift."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Self-positions as supporting proof, opens with 'not the main product pitch', orders evidence as working behavior \u2192 real checks \u2192 scope \u2192 logs. Handles its secondary role correctly."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are aligned with positioning. The README \u2192 START_HERE \u2192 docs/README journey is coherent, all surfaces lead with the product story (orchestrator / composable loop framework / operating system for autonomous coding), and no top-level surface leaks internal plumbing or process residue. The promoted next-click pages reinforce the same framing rather than fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Primary Codeberg README documentation section lacks a direct link to docs/README.md (the repo-level docs map) \u2014 START_HERE links to it, but README links only to ralphworkflow.com/docs. Minor gap in IA completeness."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with tagline 'operating system for autonomous coding', describes product as composable loop framework, comparison table stays focused on engineering outcomes not internal plumbing, clear fit/non-fit section, engineering-practice requirements correctly framed."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Keeps the simple-core framing throughout, task selection guidance is honest (vague/risky tasks flagged as bad fits), success criteria defined by real outcomes not artifacts."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Documentation map explicitly says 'Keep proof secondary' and routes proof pages after product/operator path \u2014 correct information hierarchy."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "High-risk title but self-positions correctly as supporting proof used after the product story, avoids becoming a primary differentiator."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
