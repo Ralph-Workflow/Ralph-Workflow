@@ -21089,3 +21089,100 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is healthy and coherent. README \u2192 START_HERE \u2192 docs/README forms a clean funnel with clear role separation. All next-click pages reinforce the same positioning. No top-level internal leakage or process-residue framing.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Main repo README docs table (4 links) is thinner than the GitHub mirror version \u2014 port the richer link structure to the primary Codeberg README so it matches",
+    "The asciicast-only proof in the main README is weaker than the linked-text-files approach in the GitHub mirror; consider duplicating the text-file links approach"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "main repo README",
+      "reason": "Opens with tagline, frames simple-core-to-composable-framework, clear fit/non-fit, engineering-practice requirements section, Codeberg-primary note. No hard failures."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Best docs map in the system. Routes by intent, explicitly defers proof pages, keeps Codeberg-primary framing, uses 'use after README and START_HERE' dependency ordering."
+    },
+    {
+      "path": "ralph-workflow/README.md (PyPI)",
+      "reason": "Strongest standalone README. Better fit/non-fit, better 'what to expect' section, clear 'before your first run' prerequisites, and the 'fast way to tell whether it fits' section is excellent conversion copy."
+    },
+    {
+      "path": "first-task-guide.md",
+      "reason": "Perfectly aligned with positioning. Emphasizes spec quality, honest assessment, morning-after review discipline. No process residue on a top-level surface."
+    },
+    {
+      "path": "reviewable-output.md",
+      "reason": "Correctly positioned as secondary proof page with explicit 'not the main product pitch' disclaimer. Safe despite the topic risk."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-aligned with positioning. README -> START_HERE -> docs/README is a coherent journey. All promoted next-click pages reinforce the same story. No internal leakage, no artifact plumbing, no process-residue framing. Engineering-practice dependency and audience fit/non-fit are explicit. Loop is healthy.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Leads with 'operating system for autonomous coding', 'AI agent orchestrator', simple-core/composable framing, and routes clearly to START_HERE. No artifact/plumbing language."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Opens with the full positioning story (simple core, composable, strong default, as-is first), then gives the shortest honest first run. Routes to docs/README as a clean switchboard."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Opens with correct positioning boilerplate, explicitly says 'Keep proof secondary', categories routes by user intent, and deeper pages reinforce not fight the journey."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Supporting page that opens with correct framing, makes a specific point (simplicity at center), and routes back to main journey. No internal leakage."
+    },
+    {
+      "path": "github-mirror/docs/spec-driven-ai-agent.md",
+      "reason": "Clean supporting page on why specs matter, correctly framed as part of the engineering-practice dependency, not as a product differentiator."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Explicitly self-frames as supporting proof, instructs readers to start with the product story first, orders evidence correctly (working behavior > check > scope > artifacts)."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-06-04T01:06:27.407351",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "social_proof_bootstrap_execution",
+    "channel": "social_proof_bootstrap",
+    "title": "Distribution lane execution: social_proof_bootstrap",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/social_proof_bootstrap_2026-06-04_010627.json"
+  },
+  "why_this_action": {
+    "summary": "social_proof_bootstrap: no actions taken (completed). 0 gap(s) found.",
+    "shared_findings_used": [],
+    "targets_prepared": 0
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": []
+  }
+}

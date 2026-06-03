@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-03T15:30:51.610757",
+  "generated_at": "2026-06-04T01:08:24.062765",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -125,7 +125,7 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was curator_contact_discovery_execution, but the latest meaningful external/replacement execution remains seo_integrity_fix; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The most recent runtime activity was social_proof_bootstrap_execution, but the latest meaningful external/replacement execution remains seo_integrity_fix; do not confuse follow-through with fresh outcome-bearing distribution.",
     "The active loop did execute a live marketing action recently (seo_integrity_fix), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
@@ -159,10 +159,10 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_curator_handoff_packet_execution.json",
-    "type": "curator_contact_discovery_execution",
-    "title": "Distribution lane execution: curator_handoff_packet",
-    "status": "prepared",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-04_social_proof_bootstrap_execution.json",
+    "type": "social_proof_bootstrap_execution",
+    "title": "Distribution lane execution: social_proof_bootstrap",
+    "status": "executed",
     "ok": true,
     "live_external_action": false,
     "outcome_ready": false,

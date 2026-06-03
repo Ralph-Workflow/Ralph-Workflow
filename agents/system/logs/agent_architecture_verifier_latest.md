@@ -1,11 +1,11 @@
 # Agent Architecture Independent Verification
 
-- Checked: 2026-06-04T00:00:16.417796
+- Checked: 2026-06-04T00:34:53.526081
 - Status: independently verified pass
 - Independent artifact: `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`
-- Independent check time: 2026-06-03T23:50:09.019793+02:00
-- Summary: Independent verification confirms the architecture verifier fails closed on stale signoff, the live loop topology/ownership checks remain green, shared market-intelligence reuse stays machine-verifiable, and the remaining blocker is correctly classified as external marketing outcome evidence.
-- Qualified external blockers: stale external-owner evidence: marketing_loop_independent_verification.json (verdict=fail), marketing independent verification is not pass
+- Independent check time: 2026-06-04T00:34:12.649296+02:00
+- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
+- Qualified external blockers: stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json, /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json, marketing independent verification is not pass: 'fail'
 
 ## Verification result
 

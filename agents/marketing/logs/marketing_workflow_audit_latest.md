@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-06-03T15:30:51.610757
+- Generated: 2026-06-04T01:08:24.062765
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -11,7 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was curator_contact_discovery_execution, but the latest meaningful external/replacement execution remains seo_integrity_fix; do not confuse follow-through with fresh outcome-bearing distribution.
+- The most recent runtime activity was social_proof_bootstrap_execution, but the latest meaningful external/replacement execution remains seo_integrity_fix; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (seo_integrity_fix), so the system is still shipping output even though outcome movement is not visible yet.
 
 ## What actually worked

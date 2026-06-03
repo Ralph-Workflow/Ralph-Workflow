@@ -1,19 +1,28 @@
 # DDG Search Provider — Escalation Notification
-Generated: 2026-06-03T22:30:02.898042+00:00
+Generated: 2026-06-04T00:43:00+00:00 (audit #24)
 
-## Status
-- **DDG status**: degraded_http_202
+## Status: BOTH SEARCH PROVIDERS BLOCKED
+- **DDG status**: degraded_http_202 (since May 28 — 7 days as of June 3)
 - **HTTP**: 202
 - **Results**: 0
 - **Bot-blocked**: False
 - **Reddit query test**: FAIL
-- **Brave fallback**: degraded (0 results)
-- **Days since last usable retrieval**: 6 (since 2026-05-28)
+- **Brave fallback**: ❌ ALSO DEGRADED (HTTP 200 but 0 results — new finding)
+- **Days since last usable retrieval**: 7 (since 2026-05-28)
+- **Escalation deadline**: June 4 11:19 CEST (~9 hours from now)
 
-## Escalation deadline: June 4 (in the future)
-Days remaining: 1
-DDG is still down, but the 7-day suspension window has not yet expired.
-The system continues with owned-surface optimization and curated-target distribution.
+## Action Required Before Deadline
+Both DuckDuckGo and Brave search are dead from this environment. No search-based
+discovery is possible. All distribution must use curated targets, owned surfaces,
+and manual handoff packets.
+
+**Human action needed**: Migrate to an alternative search provider (Google Custom
+Search API, SerpAPI, or similar) with API key set in environment. Without working
+search, the system cannot:
+- Find new Reddit/HN/Lobsters discussion opportunities
+- Discover curator contacts or comparison targets
+- Validate competitive intelligence freshness
+- Surface SO questions to answer
 ## Live state
 ```json
 {
