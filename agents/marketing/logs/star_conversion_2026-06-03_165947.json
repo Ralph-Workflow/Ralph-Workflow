@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-06-03T16:59:47.699816",
+  "agent": "star_conversion_agent",
+  "codeberg_stars": 12,
+  "downloads_day": 48,
+  "downloads_month": 1300,
+  "zero_star_samples": 3,
+  "chronic": false,
+  "recommendation_level": "none",
+  "cta_issues": [
+    "\u26a0\ufe0f CTA frequency still at 20% \u2014 should be 50% per audit #22"
+  ],
+  "cta_functional": false
+}

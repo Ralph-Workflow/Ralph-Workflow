@@ -1,5 +1,5 @@
 # DDG Search Provider — Escalation Notification
-Generated: 2026-06-03T13:25:44.776938+00:00
+Generated: 2026-06-03T15:16:24.956448+00:00
 
 ## Status
 - **DDG status**: degraded_http_202
@@ -19,7 +19,7 @@ The system continues with owned-surface optimization and curated-target distribu
 {
   "ddg": {
     "provider": "duckduckgo",
-    "timestamp": "2026-06-03T13:25:43.670671+00:00",
+    "timestamp": "2026-06-03T15:16:23.776376+00:00",
     "ok": false,
     "http_status": 202,
     "result_count": 0,
@@ -31,7 +31,7 @@ The system continues with owned-surface optimization and curated-target distribu
   },
   "brave": {
     "provider": "brave",
-    "timestamp": "2026-06-03T13:25:44.003744+00:00",
+    "timestamp": "2026-06-03T15:16:24.077358+00:00",
     "ok": false,
     "http_status": 200,
     "result_count": 0

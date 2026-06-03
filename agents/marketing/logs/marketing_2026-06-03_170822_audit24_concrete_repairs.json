@@ -1,0 +1,48 @@
+{
+  "timestamp": "$(date -Iseconds)",
+  "action_type": "audit_24_concrete_process_repairs",
+  "status": "completed",
+  "repairs": [
+    {
+      "repair": "star_conversion_agent_path_fix",
+      "description": "Fixed _verify_runner_cta() to read canonical repo path (/home/mistlight/Ralph-Workflow/...) instead of stale Ralph-Site vendor submodule (3 commits behind). Was falsely reporting 20% CTA when canonical had 50% since audit #22.",
+      "files_changed": ["agents/marketing/star_conversion_agent.py"],
+      "verification": "Re-ran agent: now reports '✅ Runner CTA functional at 50% (hash-based, 1-in-2)' correctly.",
+      "was_recurring_failure": true,
+      "strike_count": "~5 false warnings across cron + manual runs before fix"
+    },
+    {
+      "repair": "ralph_site_vendor_submodule_sync",
+      "description": "Updated Ralph-Site vendor/Ralph-Workflow submodule from e356538 to e468cf7 (+3 canonical commits: ralph contribute command, comparison links section, 50% CTA frequency fix).",
+      "commits_gained": [
+        "e468cf7 feat(cli): add 'ralph contribute' command (Codeberg star/fork one-liner)",
+        "054106b trust(readme): add comparison links section + example output signal",
+        "2467243 marketing: deploy star CTA freq fix + README compare link (#marketing)"
+      ],
+      "ralph_site_commit": "a5a90bb",
+      "pushed_to_origin": true
+    },
+    {
+      "repair": "execution_board_stale_update",
+      "description": "Updated 9-day-stale execution board (May 25 → June 3) with current truth: all 7 lanes blocked, vendor submodule synced, star_conversion path fixed, ralph contribute deployed.",
+      "files_changed": ["drafts/2026-06-03_marketing_execution_board.md"],
+      "prev_date": "2026-05-25",
+      "new_date": "2026-06-03"
+    }
+  ],
+  "adoption_status": {
+    "codeberg_stars": 12,
+    "flat_samples": 10,
+    "pypi_downloads_day": 48,
+    "pypi_downloads_month": 1300,
+    "github_mirror_stars": 0
+  },
+  "blocker_status": {
+    "all_7_external_lanes_blocked": true,
+    "ddg_status": "HTTP 202 soft-block",
+    "brave_status": "0 results IP block",
+    "measurement_hold_until": "2026-06-05",
+    "smtp_gate_active": true
+  },
+  "highest_leverage_action_taken": "Concrete process repairs fixing a recurring false-negative bug (star_conversion_agent reporting wrong CTA frequency to every audit) + syncing stale vendor submodule so ralph contribute and the 50% CTA are actually deployed on the live site."
+}

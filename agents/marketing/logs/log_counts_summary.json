@@ -1,26 +1,24 @@
 {
-  "run_at": "2026-05-31T03:00:01.128080",
-  "total_files_before_archive": 1026,
+  "run_at": "2026-06-03T17:31:26.593259",
+  "total_files_before_archive": 164,
   "archived_this_run": 0,
   "recent_7d": {
     "window_days": 7,
-    "total_logs": 819,
-    "hold_actions": 214,
-    "hold_ratio": 0.261,
+    "total_logs": 159,
+    "hold_actions": 13,
+    "hold_ratio": 0.082,
     "by_category": {
-      "other": 447,
-      "measurement_hold": 171,
-      "guard_pause": 61,
-      "publisher": 44,
-      "execution_board": 35,
-      "reddit": 32,
-      "telegraph": 12,
-      "pypi": 9,
-      "confirmation_follow_through": 3,
-      "market_intelligence": 2,
+      "other": 118,
+      "measurement_hold": 16,
+      "pypi": 6,
+      "telegraph": 5,
+      "reddit": 5,
+      "market_intelligence": 3,
+      "publisher": 2,
       "adoption": 1,
       "distribution_hunter": 1,
-      "outcome_capability": 1
+      "outcome_capability": 1,
+      "execution_board": 1
     }
   },
   "hold_ratio_alert_active": false

@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-03T15:51:35.307192+02:00",
+  "checked_at": "2026-06-03T16:56:29.752669+02:00",
   "verdict": "qualified_pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
@@ -36,12 +36,12 @@
     {
       "claim": "architecture verification isolates external domain blockers as watchpoints instead of manufacturing new architecture incidents",
       "status": "verified",
-      "details": "External blockers present: ralph-site-owner-loop:live_error, marketing_independent_verification:stale_artifact"
+      "details": "External blockers present: marketing_independent_verification:stale_artifact"
     },
     {
       "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
       "status": "verified",
-      "details": "recent_failures=9, consecutive_passes_since_last_fail=6"
+      "details": "recent_failures=9, consecutive_passes_since_last_fail=8"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -83,7 +83,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Health monitor reports jobs_checked=26 and issues_found=7."
+      "summary": "Health monitor reports jobs_checked=26 and issues_found=1."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
@@ -98,7 +98,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]
