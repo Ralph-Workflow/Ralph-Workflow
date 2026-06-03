@@ -19627,3 +19627,108 @@ AGENTIC
   "checkedAtUtc": "2026-06-02T21:16:00.000Z"
 }
 [agentic-review] using fresh existing artifact (300s old), skipping opencode
+independent verifier failed signoff
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_FAIL
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [heading-sprawl] Too many second-level headings (9). Max 8.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [top-link-budget] Too many top-of-page links (12). Max 10.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md:1: [top-link-budget] Too many top-of-page links (13). Max 12.
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean, focused, and aligned with positioning. README \u2192 START_HERE \u2192 docs/README works as one coherent route. All promoted next-click pages reinforce the same simple-core/composable-workflow story. No top-level surfaces leak internal plumbing. The review-before-merge page correctly prefaces itself as supporting proof, not the main product pitch. The user should not need to repeat these instructions.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (primary Ralph-Workflow)",
+      "reason": "Leads with 'The operating system for autonomous coding' tagline; explains 'composable loop framework' and simple-core concept; frames 'AI agent orchestrator' clearly; includes 'strong default workflow' language; defines clear audience fit/non-fit; comparison table contrasts without internal plumbing; engineering-practice dependency section is honest and accurate."
+    },
+    {
+      "path": "github-mirror/README.md",
+      "reason": "Mirror maintains identical positioning: same tagline, same composable-loop framing, same 'strong default workflow' and 'operating system' language. Includes 'What you wake up to' section that reinforces the overnight-unattended promise. All comparison, fit/non-fit, and engineering-practice sections preserved."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Opens with Codeberg primary notice. Shortest honest first run. Clean good/bad task framing. Result-oriented success criteria. Routes naturally into docs map without link-dump overload."
+    },
+    {
+      "path": "github-mirror/docs/README.md",
+      "reason": "Curated switchboard with clear user-oriented routing by intent ('fastest first run', 'operator manual', 'repo-root families', 'product framing'). Explicit 'Keep proof secondary' guardrail section self-aware about positioning risk. Routes to pages that reinforce the same story."
+    },
+    {
+      "path": "github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Strong positioning-led framing. Explains why simple core matters for orchestration. Emphasizes default workflow over custom design. Uses practical questions, not marketing abstractions."
+    },
+    {
+      "path": "github-mirror/docs/spec-driven-ai-agent.md",
+      "reason": "Positions specs as operational finish lines, not ceremony. Aligns with engineering-practice dependency messaging. Explains why specs matter for planning, verification, and review simultaneously."
+    },
+    {
+      "path": "github-mirror/docs/review-ai-coding-output-before-merge.md",
+      "reason": "Correctly self-identifies as supporting proof ('not the main product pitch') in its opening. Provides practical merge-review guidance without repositioning the product around diff/merge framing. Subordinates proof details to product story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false,
+  "checkedAtUtc": "2026-06-02T21:16:00.000Z"
+}
+[agentic-review] using fresh existing artifact (0s old), skipping opencode
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The README \u2192 START_HERE \u2192 docs/README journey is coherent, the positioning is consistent with the canonical reference, and internal-plumbing language is properly contained to secondary proof pages. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "first-task-guide.md:114 uses `ralph --pipeline build` while all other docs use `ralph` \u2014 inconsistent and potentially stale flag reference",
+    "The three product-framing pages under docs/ repeat the same opening paragraph verbatim (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md). Deduplicate or differentiate the openings."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding' tagline and 'AI agent orchestrator' framing. The comparison table, who-it's-for section, and engineering-practice requirements all match the positioning doc exactly. No artifact/plumbing language on first screen."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first-run path. Leads with task selection and real evaluation, not internal mechanics. Keeps the 'simple Ralph-loop core' \u2192 'composable workflow' \u2192 'strong default' narrative in one page."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clean switchboard that routes by user intent. The 'Keep proof secondary' section explicitly tells readers to use proof pages only after understanding the product story \u2014 exactly what the positioning doc requires."
+    },
+    {
+      "path": "docs/review-ai-coding-output-before-merge.md",
+      "reason": "Opens with the self-aware disclaimer that it is 'supporting proof, not the main product pitch.' Properly relegated to secondary navigation; not linked from top-level README or START_HERE."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+[agentic-review] using fresh existing artifact (77s old), skipping opencode

@@ -1,0 +1,82 @@
+{
+  "timestamp": "2026-06-03T09:00:02.331758",
+  "weekly_mode": false,
+  "marketing_status": "measurement_hold",
+  "measurement_hold": {
+    "active": true,
+    "hold_started_at": "2026-06-03T06:06:09.078449",
+    "hold_until": "2026-06-05T00:00:00",
+    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_measurement_hold_execution.json",
+    "reason": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window."
+  },
+  "distribution_lane": {
+    "lane": "measurement_hold",
+    "reason": "Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-03_distribution_action_brief.md"
+  },
+  "distribution_execution": {
+    "action_type": "measurement_hold_follow_through",
+    "status": "executed",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_090002_measurement_hold_follow_through.md",
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
+    "targets_prepared": [],
+    "live_external_action": false,
+    "blocking_factors": [],
+    "reused_existing_follow_through": false
+  },
+  "seo": {
+    "timestamp": "2026-06-03T09:00:02.535982",
+    "onpage_score": "100/100 (A)",
+    "homepage_ok": true,
+    "sitemap_urls": 103,
+    "ranked_keywords": 0,
+    "backlinks_approx": 0,
+    "domain_rating": null,
+    "content_gap_pct": 100.0,
+    "content_gap": {
+      "gaps": [],
+      "covered": [
+        "unattended coding agent",
+        "AI agent orchestration CLI",
+        "spec-driven AI agent",
+        "AI coding workflow automation",
+        "Claude Code automation",
+        "Claude Code unattended",
+        "AI agent workflow composer",
+        "Ralph Workflow"
+      ],
+      "coverage_pct": 100.0,
+      "scan_method": "homepage+sitemap",
+      "urls_scanned": 26
+    },
+    "priority_actions": [
+      "Build backlinks: submit to directories, guest post, earn citations"
+    ],
+    "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-06-03.md"
+  },
+  "seo_trends": {
+    "rank_delta": 0.0,
+    "backlinks_delta": 0.0,
+    "domain_rating": null,
+    "prev_avg_ranks": 0.0,
+    "prev_avg_bl": 0.0
+  },
+  "seo_insights_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/seo-insights.json",
+  "content_generation": {
+    "returncode": 0,
+    "stdout": "skipped: active measurement-hold cooldown",
+    "stderr": ""
+  },
+  "posting": {
+    "returncode": 0,
+    "stdout": "skipped: active measurement-hold cooldown",
+    "stderr": ""
+  },
+  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_090002_measurement_hold_skip.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_090002_measurement_hold_follow_through.json",
+  "post_execution_distribution_lane": {
+    "lane": "measurement_hold",
+    "reason": "Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-03_distribution_action_brief.md"
+  }
+}

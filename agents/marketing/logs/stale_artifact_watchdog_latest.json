@@ -1,10 +1,11 @@
 {
-  "checked_at": "2026-06-03T05:29:53.791845+02:00",
+  "checked_at": "2026-06-03T08:45:01.164779+02:00",
   "execution_board": {
     "artifact": "marketing_execution_board",
     "status": "stale",
     "issues": [
       "Content date 2026-05-25 is 9d old \u2014 STALE",
+      "Stale marker: May 25 guard pause",
       "Stale marker: May 25 review window",
       "Stale marker: May 29 apollo review",
       "Stale marker: old PyPI blocker text"
@@ -19,8 +20,8 @@
     "issues": [
       "Lane is 'distribution_architecture_guard_pause' \u2014 STALE (May 25 origin)"
     ],
-    "file_mtime": "2026-06-03T05:06:07.509658",
-    "file_age_hours": 0.4,
+    "file_mtime": "2026-06-03T08:09:14.875400",
+    "file_age_hours": 0.6,
     "lane": "distribution_architecture_guard_pause"
   },
   "repairs_made": [

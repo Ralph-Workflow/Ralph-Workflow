@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-06-02T07:00:34+00:00
+Generated: 2026-06-03T07:00:09+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -127,7 +127,6 @@ Generated: 2026-06-02T07:00:34+00:00
 - Discovered channels:
   - website: https://aisaying.net
   - feedback form: https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix
-  - X/Twitter: https://x.com/stevencheng/status/2059836738449854898
 
 ### 10. Toolradar
 - Hook: Best AI Coding Tools in 2026
@@ -206,6 +205,7 @@ Generated: 2026-06-02T07:00:34+00:00
   - advertise page: https://www.sitepoint.com/advertise
   - about page: https://www.sitepoint.com/ai-is-not-your-accessibility-expert-what-llms-still-miss-about-wcag
   - email: support@sitepoint.com
+  - GitHub issue: https://github.com/discourse/discourse/issues/new
   - X/Twitter: https://twitter.com/billmousoulis
   - X/Twitter: https://twitter.com/daxatron
   - X/Twitter: https://twitter.com/MattMickiewicz
@@ -241,7 +241,6 @@ Generated: 2026-06-02T07:00:34+00:00
   - contact page: https://codersera.com/blog/hire
   - email: support@codersera.com
   - GitHub issue: https://github.com/anthropics/claude-code/issues/new
-  - GitHub issue: https://github.com/QwenLM/WebWorldncd/issues/new
   - X/Twitter: https://twitter.com/codersera
   - X/Twitter: https://twitter.com/codersera11
   - LinkedIn: https://www.linkedin.com/company/codersera
