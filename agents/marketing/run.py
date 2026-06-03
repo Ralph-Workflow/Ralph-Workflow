@@ -542,14 +542,18 @@ def _collapse_non_truthful_hold_lane_to_measurement_hold(
     # Hold-frequency gate: don't collapse to measurement_hold when they're saturated
     hold_count = _count_measurement_hold_actions_24h(now)
     if hold_count > MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H:
+        # 2026-06-03: Redirect to social_proof_bootstrap instead of keeping current lane.
+        # Keeping the lane when holds are saturated just defers the deadlock.
         reasons = list(getattr(distribution_lane, 'reasons', []) or [])
         reasons.insert(
             0,
-            f'measurement holds saturated ({hold_count}/{MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H}); bypassing hold collapse, keeping current lane.',
+            f'measurement holds saturated ({hold_count}/{MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H}); circuit-breaking to social_proof_bootstrap.',
         )
         if is_dataclass(distribution_lane):
-            return replace(distribution_lane, reasons=reasons)
+            return replace(distribution_lane, lane='social_proof_bootstrap', reason=f'Hold-collapse bypassed: {hold_count} holds/24h > limit {MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H}. Circuit-breaking to social_proof_bootstrap.', reasons=reasons)
         distribution_lane.reasons = reasons
+        distribution_lane.lane = 'social_proof_bootstrap'
+        distribution_lane.reason = f'Hold-collapse bypassed: {hold_count} holds/24h > limit {MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H}. Circuit-breaking to social_proof_bootstrap.'
         return distribution_lane
 
     reasons = list(getattr(distribution_lane, 'reasons', []) or [])
@@ -1933,21 +1937,36 @@ def main() -> int:
         if discovery_refresh_log is not None:
             print(f"[run.py] Refreshed stale primary-repo-flat contact discovery: {discovery_refresh_log}", flush=True)
         distribution_lane = choose_distribution_lane(now, persist_latest_artifacts=False)
-        if (
+
+        # ── Universal hold-frequency circuit-breaker ────────────────────────
+        # 2026-06-03: Moved OUT of DISTRIBUTION_ARCHITECTURE_REUSE_LANES-only gate.
+        # The selector returns measurement_hold directly, which bypassed the old
+        # throttle. Now every lane hit at selection time is frequency-gated.
+        hold_count = _count_measurement_hold_actions_24h(now)
+        if getattr(distribution_lane, 'lane', '') == 'measurement_hold' and hold_count > MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H:
+            # Deadlock detected: measurement_hold saturated → redirect to social_proof_bootstrap
+            # social_proof_bootstrap is autonomous, ships real assets, and breaks the hold cycle.
+            distribution_lane = replace(
+                distribution_lane,
+                lane='social_proof_bootstrap',
+                reason=f'Measurement hold deadlock: {hold_count} holds/24h > safe limit {MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H}. Circuit-breaking to social_proof_bootstrap (autonomous, ships real assets).',
+                reasons=[f'Hold-frequency deadlock: {hold_count}/{MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H} holds in 24h → social_proof_bootstrap circuit-break'],
+            )
+            print(f"[run.py] ⚡ Hold-frequency circuit-breaker FIRED: {hold_count} holds/24h → social_proof_bootstrap", flush=True)
+        elif (
             getattr(distribution_lane, 'lane', '') in DISTRIBUTION_ARCHITECTURE_REUSE_LANES
             and _self_repair_throttle_active(now)
             and not getattr(distribution_lane, 'lane', '') == 'distribution_architecture_guard_follow_through'
         ):
             count_24h = _count_system_design_repairs_in_window(now)
-            hold_count = _count_measurement_hold_actions_24h(now)
             if hold_count > MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H:
                 # Hold-frequency gate: don't collapse to measurement_hold when holds are already
-                # saturated. Default to owned_content instead.
+                # saturated. Default to social_proof_bootstrap instead.
                 distribution_lane = replace(
                     distribution_lane,
-                    lane='owned_content',
-                    reason=f'Self-repair throttle engaged ({count_24h} repairs) but measurement holds already saturated ({hold_count}/{MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H}); defaulting to owned_content.',
-                    reasons=[f'Self-repair throttle: {count_24h}/{MAX_SYSTEM_DESIGN_REPAIRS_PER_24H} repairs, {hold_count} holds in 24h → owned_content fallback'],
+                    lane='social_proof_bootstrap',
+                    reason=f'Self-repair throttle engaged ({count_24h} repairs) but measurement holds already saturated ({hold_count}/{MAX_MEASUREMENT_HOLD_ACTIONS_PER_24H}); circuit-breaking to social_proof_bootstrap.',
+                    reasons=[f'Self-repair throttle: {count_24h}/{MAX_SYSTEM_DESIGN_REPAIRS_PER_24H} repairs, {hold_count} holds in 24h → social_proof_bootstrap circuit-break'],
                 )
             else:
                 distribution_lane = replace(

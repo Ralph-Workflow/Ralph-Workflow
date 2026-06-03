@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-06-03T01:18:37.548415+02:00",
+    "checked_at": "2026-06-03T02:26:58.176705+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 26,
     "live_jobs_enabled": 26,
@@ -51,27 +51,16 @@
     "live_running_job_names": [
       "Push research findings to git repo",
       "agent-architecture-watchdog",
+      "apollo-channel-monitor",
       "codeberg-github-mirror-sync",
-      "marketing-active-loop",
-      "marketing-churn-watchdog",
-      "marketing-distribution-hunter",
-      "marketing-outcome-capability-runner",
-      "pypi-auto-unblocker",
-      "ralph-workflow-docs-verifier-supervisor",
+      "marketing-workflow-audit",
+      "ralph-docs-supervisor-precheck",
       "reddit-pipeline-watchdog",
+      "repo-adoption-tracker",
       "system-health-monitor"
     ],
-    "live_last_error_job_names": [
-      "Push research findings to git repo"
-    ],
-    "live_last_error_details": {
-      "Push research findings to git repo": {
-        "lastRunStatus": "error",
-        "lastErrorReason": "timeout",
-        "consecutiveErrors": 2,
-        "lastDiagnosticSummary": "cron: job execution timed out"
-      }
-    },
+    "live_last_error_job_names": [],
+    "live_last_error_details": {},
     "inspected_roots": [
       "/home/mistlight/.openclaw/workspace/agents/system",
       "/home/mistlight/.openclaw/workspace/agents/docs_quality",
@@ -98,7 +87,7 @@
     {
       "severity": "medium",
       "title": "Live Gateway topology matches the current runtime state",
-      "mechanism": "Direct live cron inspection shows 26 enabled/total-visible jobs, 0 disabled jobs, 11 running jobs, and 1 live last-error jobs.",
+      "mechanism": "Direct live cron inspection shows 26 enabled/total-visible jobs, 0 disabled jobs, 9 running jobs, and 0 live last-error jobs.",
       "source_layer": "runtime cron topology",
       "root_cause": "Architecture/runtime topology remains coherent while owner-loop work is in flight.",
       "evidence_refs": [
@@ -175,7 +164,7 @@
     {
       "status": "refreshed_live_topology",
       "target": "live cron topology snapshot",
-      "change": "Refreshed the audit against the current live view: 26 enabled jobs, 0 disabled jobs, 11 running jobs, and 1 live last-error jobs.",
+      "change": "Refreshed the audit against the current live view: 26 enabled jobs, 0 disabled jobs, 9 running jobs, and 0 live last-error jobs.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ]
@@ -206,9 +195,9 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-06-03T01:18:49.672591+02:00",
+    "checked_at": "2026-06-03T02:26:59.353337+02:00",
     "verdict": "qualified_pass",
-    "previous_artifact_checked_at": "2026-06-03T01:16:50.735220+02:00",
+    "previous_artifact_checked_at": "2026-06-03T02:26:24.351382+02:00",
     "previous_artifact_verdict": "qualified_pass",
     "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
@@ -228,18 +217,16 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-06-03T01:18:49.672591+02:00",
+    "architecture_verifier_checked_at": "2026-06-03T02:26:59.353337+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
     },
-    "health_monitor_issues_found": 7,
+    "health_monitor_issues_found": 1,
     "health_monitor_issue_names": [
-      "Push research findings to git repo",
       "marketing_independent_verification"
     ],
     "health_monitor_issue_categories": [
-      "Push research findings to git repo:timeout",
       "marketing_independent_verification:stale_artifact"
     ],
     "marketing_workflow_audit_timeout_seconds": 3600,
@@ -249,19 +236,15 @@
     "live_running_job_names": [
       "Push research findings to git repo",
       "agent-architecture-watchdog",
+      "apollo-channel-monitor",
       "codeberg-github-mirror-sync",
-      "marketing-active-loop",
-      "marketing-churn-watchdog",
-      "marketing-distribution-hunter",
-      "marketing-outcome-capability-runner",
-      "pypi-auto-unblocker",
-      "ralph-workflow-docs-verifier-supervisor",
+      "marketing-workflow-audit",
+      "ralph-docs-supervisor-precheck",
       "reddit-pipeline-watchdog",
+      "repo-adoption-tracker",
       "system-health-monitor"
     ],
-    "live_last_error_job_names": [
-      "Push research findings to git repo"
-    ],
+    "live_last_error_job_names": [],
     "marketing_bottleneck": "distribution_and_message_to_primary_repo_conversion",
     "marketing_repair_window_status": "needs_repair",
     "marketing_measurement_pending_reasons": [
@@ -278,11 +261,9 @@
     "independent_architecture_verdict": "qualified_pass",
     "docs_blocker_localized": false,
     "external_watch_issue_names": [
-      "Push research findings to git repo",
       "marketing_independent_verification"
     ],
     "external_watch_issue_categories": [
-      "Push research findings to git repo:timeout",
       "marketing_independent_verification:stale_artifact"
     ],
     "required_runtime_consumers_present": [
@@ -301,7 +282,7 @@
   "notes": [
     "Architecture green here means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.",
     "Persisted disabled jobs remain history only; live disabled jobs are 0.",
-    "Independent live inspection in this snapshot saw 26 total jobs, 26 enabled, 0 disabled, 11 running, and 1 live last-error jobs.",
+    "Independent live inspection in this snapshot saw 26 total jobs, 26 enabled, 0 disabled, 9 running, and 0 live last-error jobs.",
     "The remaining blocker is external marketing outcome evidence, not architecture runtime drift.",
     "No live timeout-budget repair was applied in this watchdog run."
   ]

@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-06-02T19:15:05.534625",
+  "generated_at": "2026-06-03T02:57:46.995527",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
   "repeated_openings": [
-    "Which of the five made the most difference for your team? Worth thinking about explicitly \u2014 most teams do not name it clearly until after it becomes a bottleneck."
+    "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "adoption_metrics": [
     {
@@ -58,7 +58,7 @@
       "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
-      "PyPI has 1329 downloads/month (5/day) \u2014 real usage signal that repo metrics don't capture."
+      "PyPI has 1329 downloads/month (5/day) — real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [
       "primary_repo_flat"
@@ -79,7 +79,7 @@
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
-    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly \u2014 most teams do not name it clearly until after it becomes a bottleneck.",
+    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.",
     "The primary-repo-flat publisher contact packet was regenerated as prepared-only follow-through 2 times inside the last 48 hours."
   ],
   "low_signal": [
@@ -89,9 +89,8 @@
   ],
   "should_change_now": [
     "Repair the primary-repo-flat follow-through architecture: stop reselecting prepared-only publisher packets unless they have a fresh live delivery window or materially changed targets/channels.",
-    "REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.",
-    "REPLACE stale content distribution repair. All external lanes are structurally blocked \u2014 do not recommend directory submissions or repeat curator packet rewrites. Focus: (a) SEO-tuning existing comparison pages for search visibility, (b) improving repo conversion surface (README, quickstart), (c) surfacing BLOCKER_ROI_SUMMARY.md as human handoff instead of generating more drafts for blocked lanes.",
-    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving."
+    "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 44 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
+    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
   "dormant_risks": [
     "reddit_style_repetition_suspended_while_channel_blocked"
@@ -101,49 +100,24 @@
       "target_tactic": "content_distribution",
       "failure_type": "primary_repo_flat",
       "repair_kind": "tactic",
-      "action": "REPLACE stale content distribution repair. All external lanes are structurally blocked \u2014 do not recommend directory submissions or repeat curator packet rewrites. Focus: (a) SEO-tuning existing comparison pages for search visibility, (b) improving repo conversion surface (README, quickstart), (c) surfacing BLOCKER_ROI_SUMMARY.md as human handoff instead of generating more drafts for blocked lanes.",
+      "action": "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 44 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
       "kill_condition": "Still no Codeberg delta after 7 days of new approach",
       "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
       "priority": 1,
-      "repair_state": "in_progress",
-      "shipped_artifacts": [
-        "Suppression gate expanded to cover discovery+status stems",
-        "Dynamic stem coverage via _handoff_suppression_stems()"
-      ],
-      "in_progress_since": "2026-06-02T19:15:05.534599"
-    },
-    {
-      "target_tactic": "marketing_system_architecture",
-      "failure_type": "outcome_system_underpowered",
-      "repair_kind": "system_design",
-      "action": "REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.",
-      "kill_condition": "Another audit still shows flat primary-repo adoption without any new structural marketing capability or replacement execution path",
-      "success_metric": "A new outcome-oriented agent/process/runtime capability is created and logged before the next audit, with a direct link to Codeberg adoption movement",
-      "priority": 1,
-      "repair_state": "in_progress",
-      "shipped_artifacts": [
-        "handoff_packet_suppression.json expanded to 6 stems (was 4)",
-        "distribution_lane_selector.py: SUPPRESSED_HANDOFF_STEMS now dynamic from JSON",
-        "BLOCKER_ROI_SUMMARY.md refreshed to June 2 state",
-        "MARKETING_SELF_IMPROVEMENT.md updated with architectural repair log",
-        "Nightcrawler added to compare page (repair #10, 18:59 CEST)",
-        "market_intelligence_runtime_supplement.json created (6 DDG-missed discoveries)"
-      ],
-      "in_progress_since": "2026-06-02T19:15:05.534622",
-      "note": "10 structural repairs + 1 architectural repair shipped. Autonomous ceiling reached \u2014 next outcome movement requires human credential action (see BLOCKER_ROI_SUMMARY.md)."
+      "repair_state": "pending_measurement"
     },
     {
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
-      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving.",
+      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
       "kill_condition": "N/A (mirror, not primary)",
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
       "repair_state": "pending_measurement"
     }
   ],
-  "repair_window_status": "needs_repair",
+  "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
     "primary_repo_flat",
     "mirror_repo_flat"
@@ -155,7 +129,8 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent marketing artifact (measurement_hold_follow_through) was preparation/follow-through work, not a live external execution, so it should not be mistaken for outcome movement."
+    "The most recent marketing artifact (measurement_hold_follow_through) was preparation/follow-through work, not a live external execution, so it should not be mistaken for outcome movement.",
+    "A fresh outcome-capability runtime is now logged (social_proof_bootstrap), so the system-design repair should be treated as shipped even though repo adoption has not moved yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -188,7 +163,7 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_measurement_hold_execution.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_measurement_hold_execution.json",
     "type": "measurement_hold_follow_through",
     "title": "Distribution lane execution: measurement_hold",
     "status": "executed",
@@ -199,7 +174,7 @@
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-02_measurement_hold_execution.json",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_measurement_hold_execution.json",
     "type": "measurement_hold_follow_through",
     "title": "Distribution lane execution: measurement_hold",
     "status": "executed",
@@ -225,19 +200,5 @@
     "status": "skipped_unchanged",
     "reason": "material_fingerprint_unchanged_or_cooldown",
     "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:2|action:measurement_hold_follow_through:executed"
-  },
-  "repair_actions_phase": {
-    "phase": "architectural_repair",
-    "completed_today": [
-      "10 structural repairs (compare page additions, conversion surface, sitemap, SO strengthening, watchdog agent, first-task guide, asciinema V2, execution board truth, intelligence supplement)",
-      "1 architectural repair: handoff suppression gate dynamic stem coverage + expanded stem list"
-    ],
-    "shipped_at": "2026-06-02T19:15:05.534624",
-    "remaining_blockers": [
-      "All 7 external distribution lanes require human credential action",
-      "DDG search monitoring dead \u2014 provider migration needed before Jun 4",
-      "Reddit IP-blocked (Day 5/7, effectiveness post-release unknown)",
-      "SO cron posts Jun 3 03:15 \u2014 next real distribution event"
-    ]
   }
 }
