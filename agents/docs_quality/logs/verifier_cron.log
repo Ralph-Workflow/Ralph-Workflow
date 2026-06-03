@@ -20914,3 +20914,90 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README forms a coherent journey. Promoted next-click pages all open with the same core framing (simple Ralph-loop core \u2192 composable \u2192 strong default \u2192 extend later). No internal dev concepts on top-level surfaces. Proof pages correctly labeled secondary. The loop is healthy.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "docs/README.md \"Fastest first successful run\" route links to first-task-guide.md before START_HERE.md \u2014 minor order inversion for the target audience but not a hard failure",
+    "GitHub mirror README's docs table is thinner than primary (drops Configuration, User Stories, CLI rows) \u2014 sync drift risk"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding', defines product as composable loop framework, compares against chat tools, targets ambitious work, links explicitly to START_HERE"
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Perfectly executes positioning: opens with core framing, focuses on spec-as-contract, demands result-first review ('would you merge this?'), includes honest fit/non-fit assessment"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Acts as a clean docs switchboard that reinforces product story first ('Keep proof secondary'), routes by user goal, never defaults to internal architecture"
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Bridges README to actionable first run without leaking internal mechanics; 'simple Ralph-loop core composes into complex workflows' is the exact positioning language"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README flows coherently, next-click pages reinforce the same story, no internal leakage on top-level surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "docs/ pages (first-task-guide, spec-driven-ai-agent, etc.) open with near-verbatim repetitions of the same positioning paragraph \u2014 vary the framing per page to avoid reader fatigue"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with tagline, result-first value prop, composable loop framing, clear audience fit/non-fit, and routes to START_HERE \u2014 no internal leakage on the first screen."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Minimal honest first-run path with concrete task guidance, keeps Codeberg primary framing intact, routes to docs/README only if needed."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Explicit positioning opening, intent-based routing, 'Keep proof secondary' governance rule \u2014 exactly what the rubric asks for."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md",
+      "reason": "Frames itself as secondary proof, not the main pitch \u2014 cleanest example of proof-surface discipline in the system."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
