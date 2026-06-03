@@ -84,9 +84,13 @@ That's it. The default workflow is already strong enough to start with. Customiz
 
 For first-run guidance — task selection, diagnosis, and a walked-through first wake-up — see **[START_HERE.md](START_HERE.md)**.
 
+## Compared to other tools
+
+Ralph Workflow is compared to 14 autonomous coding tools — Claude Code, Cursor, Aider, Continue, Copilot, Hermes Agent, Conductor OSS, kodo, Symphony, and more. See the full comparison matrix and deep-dive pages at **[ralphworkflow.com/compare](https://ralphworkflow.com/compare)**.
+
 ## See it in action
 
-Real terminal output from Ralph Workflow v0.8.8 on a fresh project:
+Example terminal output from Ralph Workflow v0.8.8 on a fresh project:
 
 | Command | Output |
 |---|---|
