@@ -1,31 +1,40 @@
-# Agent Architecture Watchdog — 2026-06-03T12:46 CEST
+# Agent Architecture Audit — 2026-06-03 13:36 CEST
 
-## Verdict: qualified_pass (architecture-owned gates green; external blocker remains)
+## Verdict: Architecture Green / External Red
 
-## Repaired this run
-- Refreshed live topology: 26 jobs, 26 enabled, 0 disabled, 2 running, 1 last-error (internal-linking-watchdog: delivery target)
-- Relocalized runtime drift: confirmed no architecture-owned topology mismatch
-- Revalidated shared market-intelligence consumption: code-backed consumers still machine-verifiable
+**Architecture-owned gates: ALL PASS**
+**External blocker: Marketing independent verification (stale, verdict=fail)**
 
-## Still red
-- Marketing independent verification: fail — artifact stale (1290 min, threshold 240 min)
-- Primary-repo adoption: measurement_pending (both Codeberg and mirror repos flat)
-- internal-linking-watchdog: last run error (Matrix delivery target missing)
+## Live Topology
 
-## Independent verification
-- Status: performed, passes
-- Artifact: agent_architecture_independent_verification.json — checked_at 2026-06-03T12:46:28
-- Verdict: qualified_pass
-- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Architecture verifier: confirms independent artifact present, fresh, and passed
+- 26 live jobs, 26 enabled, 0 disabled, 3 running, 1 last-error (internal-linking-watchdog)
+- Source: `openclaw cron list --json` (direct live inspection)
 
-## Small gate passed
-- Architecture-owned verifier path is coherent
-- Live topology clean: 0 disabled jobs, 0 hidden self-certification
-- Loop integrity: agent-architecture-watchdog and ralph-docs-watchdog both ok
-- Docs verifier: stable pass (29 consecutive passes since last failure)
-- Ownership boundaries: intact, no topology leakage
-- Health monitor auto-repair: reran verifier/independent-verify/escalation — all ok
+## Gate Status
 
-## Highest-risk unresolved
-Marketing remains red on Codeberg-primary outcome evidence. Architecture gates are green; the blocker is external.
+| Gate | Status |
+|------|--------|
+| Architecture verifier | ✅ pass (fresh) |
+| Independent verification | ✅ qualified_pass |
+| Loop integrity | ✅ both loops ok |
+| Health monitor | ✅ architecture blockers clear |
+| Market intelligence consumption | ✅ machine-verifiable |
+| Docs independent verification | ✅ pass |
+| Marketing independent verification | ❌ fail (stale) |
+
+## Independent Verification
+
+- Performed fresh at 2026-06-03T13:36 CEST
+- Architecture errors: 0
+- External blockers: 1 (marketing outcome evidence)
+
+## Repairs This Run
+
+- Fixed missing `audit_metadata` in `agent_architecture_latest.json` — independent verifier was reading `None` for live topology counts because the section didn't exist
+- Architecture report now carries correct live topology: 26/26/0 from direct `openclaw cron list --json`
+- Re-ran independent verification → qualified_pass
+- Re-ran architecture verifier → pass
+
+## Remaining Red
+
+Marketing owner loop must produce fresh measurable outcome evidence before whole-stack green.

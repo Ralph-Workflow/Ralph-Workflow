@@ -1,17 +1,44 @@
 {
-  "ts": "2026-06-03T13:00:14.660668",
+  "ts": "2026-06-03T13:45:25.506084",
   "jobs_checked": 26,
-  "issues_found": 1,
+  "issues_found": 3,
   "issues": [
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 1303.73,
+      "artifact_age_minutes": 1348.9,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime",
+      "category": "artifact_contract_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-03T13:37:25.564049+02:00\"\n}",
+      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime_escalation",
+      "category": "escalation_required",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-03T13:37:25.564049+02:00\"\n}",
+      "likely_cause": "Incident escalation level=owner: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=3",
+      "repeats_in_recent_history": 3,
+      "owner_domain": "architecture",
+      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
+      "escalation_level": "owner",
+      "blocked_by": []
     }
   ],
-  "repairs_attempted": []
+  "repairs_attempted": [
+    {
+      "type": "owner_loop_escalation",
+      "job": "marketing_independent_verification_escalation",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1780487119338:63\"\n}"
+    }
+  ]
 }

@@ -1,0 +1,31 @@
+{
+  "action": "distribution_architecture_repair",
+  "subtype": "cli_star_conversion",
+  "timestamp": "2026-06-03T14:04:00+02:00",
+  "slot": "measurement_hold_follow_through",
+  "summary": "Added 'ralph contribute' CLI command — the highest-leverage autonomous star conversion repair. Bridges the 1,300 PyPI downloads/month → 0 Codeberg star gap by giving every Ralph Workflow user a one-command path to star/fork the project.",
+  "changes": {
+    "new_file": "ralph-workflow/ralph/cli/commands/contribute.py",
+    "modified_file": "ralph-workflow/ralph/cli/main.py",
+    "modified_readme": "README.md (added ralph contribute row to demo table)"
+  },
+  "commit": "e468cf793",
+  "pushed_to": ["codeberg", "github"],
+  "command_signature": "ralph contribute [--source codeberg|github]",
+  "behavior": "Opens https://codeberg.org/RalphWorkflow/Ralph-Workflow in default browser. Safe webbrowser.open() with graceful fallback.",
+  "hold_window_context": {
+    "hold_active_until": "2026-06-05T06:00:00+02:00",
+    "hold_started": "2026-06-03T06:00:00+02:00",
+    "reentry_cron_scheduled": "2026-06-03T18:06:12+02:00",
+    "repairs_in_window": ["cli_star_conversion (this action)"],
+    "note": "active_loop_prompt_repair and post_hold_reentry_contract_repair exist only in archive from May 24-25 — not regenerated per cron rules"
+  },
+  "rationale": [
+    "star_conversion_agent.py has recommended this exact action across multiple runs",
+    "48 PyPI downloads/day with 0 star conversion is the core adoption bottleneck",
+    "All 7 external distribution lanes structurally blocked (Reddit IP, gh auth missing, human-gated, PyPI creds)",
+    "This is a concrete runtime/process repair with code changes — preferred over another prompt tweak",
+    "Every future Ralph Workflow user will see this command in --help output"
+  ],
+  "expected_impact": "Low per-invocation but high cumulative — every pip install/pyproject.toml user who runs ralph --help or reads the README sees the star path. Also referenceable in future distribution materials."
+}
