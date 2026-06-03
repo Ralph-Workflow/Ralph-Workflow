@@ -20646,3 +20646,93 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-positioned and the journey is coherent. Every promoted surface leads with the simple-core/composable-loop framing before any secondary detail. Proof pages are correctly subordinated. The user should not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (github-mirror)",
+      "reason": "Opens with tagline 'operating system for autonomous coding', identifies as orchestrator, uses simple-into-composable framing, comparison table avoids internal plumbing, who-it's-for gates audience correctly, points reader naturally to START_HERE."
+    },
+    {
+      "path": "START_HERE.md (github-mirror)",
+      "reason": "Reinforces positioning in the first two paragraphs, provides an honest spec-first first-run path, morning-after review guide is result-oriented not artifact-oriented, next-click links are explicitly scoped as optional."
+    },
+    {
+      "path": "docs/README.md (github-mirror)",
+      "reason": "Routes by user intent with clear section headers, includes a 'Keep proof secondary' section that properly subordinates evidence pages, promoted sub-pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) all lead with positioning copy before their substance."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Exemplary subordinate proof page \u2014 opens by stating it is supporting evidence not the main pitch, orders evaluation criteria as working behavior first then real checks then scope then logs/artifacts last, includes concrete weak-output heuristics."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned. README \u2192 START_HERE \u2192 docs/README forms a coherent journey that reinforces the core positioning at every step. Promoted next-click pages open with identical positioning framing and develop their topics without leaking internals.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md:1-7",
+      "reason": "Opens with the exact headline positioning ('operating system for autonomous coding') and describes the product as an AI agent orchestrator before any implementation detail."
+    },
+    {
+      "path": "README.md:15-17",
+      "reason": "'What it does' frames the simple-core \u2192 composable story correctly: 'takes the simple Ralph-loop idea... turns it into a composable loop framework.'"
+    },
+    {
+      "path": "README.md:29-37",
+      "reason": "Who-it's-for section precisely matches the rubric: ambitious well-specified work, explicit non-fit examples, no vague positioning."
+    },
+    {
+      "path": "docs/README.md:3-4",
+      "reason": "Docs map opens with the three-part positioning statement (simple Ralph-loop core \u2192 composable system \u2192 default strong enough to start with) before routing anywhere."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md:1-4",
+      "reason": "Every promoted secondary page opens with the same positioning formula \u2014 simple core, composition, strong default \u2014 instead of assuming the reader already knows it."
+    },
+    {
+      "path": "docs/reviewable-output.md:1-6",
+      "reason": "The most internally-facing page explicitly frames itself as supporting proof, not the main pitch, and uses result-first evaluation (working behavior \u2192 real checks \u2192 written scope \u2192 artifacts)."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
