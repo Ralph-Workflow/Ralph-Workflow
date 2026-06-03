@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-03T10:10:44
+Generated: 2026-06-03T11:08:38
 Chosen lane: **social_proof_bootstrap**
 
 ## Why this lane
