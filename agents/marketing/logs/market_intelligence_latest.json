@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-06-02T20:03:16.306151",
+  "generated_at": "2026-06-03T08:02:47.515546",
   "source": "competitor_analysis.py",
   "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
-  "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-02.md",
-  "monitoring_snapshot": "/home/mistlight/.openclaw/workspace/seo-reports/competitors/monitoring_2026-06-02.json",
+  "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-03.md",
+  "monitoring_snapshot": "/home/mistlight/.openclaw/workspace/seo-reports/competitors/monitoring_2026-06-03.json",
   "comparison_pages": [
     {
       "slug": "hermes-agent",
@@ -51,7 +51,7 @@
       "name": "Hermes Agent",
       "positioning": "Self-improving agent that learns from experience",
       "site_status": 200,
-      "github_stars": 177068,
+      "github_stars": 177762,
       "key_features_found": [
         "Persistent memory"
       ]
@@ -60,7 +60,7 @@
       "name": "Conductor OSS",
       "positioning": "Enterprise-grade workflow orchestration for AI agents",
       "site_status": 200,
-      "github_stars": 31879,
+      "github_stars": 31876,
       "key_features_found": [
         "Durable execution"
       ]
@@ -78,14 +78,14 @@
       "name": "Aider",
       "positioning": "Terminal-based AI pair programming in your git repo",
       "site_status": 200,
-      "github_stars": 45688,
+      "github_stars": 45711,
       "key_features_found": []
     },
     "continue": {
       "name": "Continue",
       "positioning": "The leading AI code assistant inside your IDE",
       "site_status": 200,
-      "github_stars": 33494,
+      "github_stars": 33504,
       "key_features_found": []
     },
     "cursor": {
