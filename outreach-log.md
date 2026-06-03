@@ -8276,3 +8276,14 @@ Removing `noindex` from the 8 vs pages and breaking the template pattern with un
 ### StackOverflow answer lane
 - **When:** 2026-06-03 03:15:12
 - **Note:** StackOverflow answer lane ran: found 8 questions, scored 8, drafted 0 answers, skipped 5 recent duplicate candidates; refreshed canonical handoff packet from the best existing draft for manual-ready follow-through. Top question: Autonomous mode / wrapper for Claude Code?.
+
+### 2026-06-03 (Wednesday) — Reddit monitoring (09:36 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-06-03_0936.md`
+- **Suspension status:** Day 3 of 7 (72h auto-suspension active). Active since May 31 11:19 CEST. **~140 hours stale.**
+- **DDG status:** Fully dead — 3/3 queries bot-detection. No flicker. Terminal trajectory confirmed (6→3→0 working queries across 3 consecutive days).
+- **Provider:** DDG 100% blocked on all queries. Reddit direct 403 (32nd consecutive day).
+- **Shortlist:** Empty — all threads evicted per age-eviction rules.
+- **Posting verdict:** No posting. Suspension holds.
+- **Escalation countdown:** ~1.8 days to June 4 11:19 CEST. Escalation notification will fire tomorrow.
+- **Competitor analysis:** Refreshed independently at 08:02 CEST — 8 competitors, no drift.
+- **Type:** **MONITOR / SUSPENSION_HELD**

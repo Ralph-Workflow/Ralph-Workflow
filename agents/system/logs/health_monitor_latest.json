@@ -1,14 +1,14 @@
 {
-  "ts": "2026-06-03T09:31:21.580296",
+  "ts": "2026-06-03T10:05:05.537562",
   "jobs_checked": 26,
-  "issues_found": 5,
+  "issues_found": 7,
   "issues": [
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 1094.84,
+      "artifact_age_minutes": 1128.54,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -30,11 +30,19 @@
     },
     {
       "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime",
+      "category": "artifact_contract_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-03T10:04:32.309108+02:00\"\n}",
+      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
+    },
+    {
+      "job_id": "__artifacts__",
       "name": "docs_agentic_review_escalation",
       "category": "escalation_required",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=391",
-      "repeats_in_recent_history": 391,
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=398",
+      "repeats_in_recent_history": 398,
       "owner_domain": "docs",
       "incident_key": "docs_agentic_review::loop_verification_fail",
       "escalation_level": "critical",
@@ -45,11 +53,23 @@
       "name": "docs_agentic_review_mustFix_tighten-the-start-here-opening-sentence-currentl_escalation",
       "category": "escalation_required",
       "last_error": "Tighten the START_HERE opening sentence \u2014 currently a 45+ word clause stack that sacrifices scanability for completeness",
-      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_tighten-the-start-here-opening-sentence-currentl:review_followup_required repeat_count=2",
-      "repeats_in_recent_history": 2,
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_tighten-the-start-here-opening-sentence-currentl:review_followup_required repeat_count=9",
+      "repeats_in_recent_history": 9,
       "owner_domain": "docs",
       "incident_key": "docs_agentic_review_mustFix_tighten-the-start-here-opening-sentence-currentl::review_followup_required",
-      "escalation_level": "owner",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime_escalation",
+      "category": "escalation_required",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-03T10:04:32.309108+02:00\"\n}",
+      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=1015",
+      "repeats_in_recent_history": 1015,
+      "owner_domain": "architecture",
+      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
+      "escalation_level": "critical",
       "blocked_by": []
     }
   ],
@@ -61,10 +81,10 @@
       "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"The docs system is well-aligned with the positioning document. README \\u2192 START_HERE \\u2192 docs/README forms a coherent journey that leads with product value, not interna"
     },
     {
-      "type": "immediate_review_followup_owner_action",
+      "type": "immediate_review_followup_owner_action_cooldown",
       "job": "docs_agentic_review_mustFix_tighten-the-start-here-opening-sentence-currentl",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-03T07:31:03.169491+00:00"
     },
     {
       "type": "rerun_independent_architecture_verification",
@@ -76,19 +96,31 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-03T09:31:07.261893+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-03T10:04:32.309108+02:00\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_agentic_review_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780473884499:44\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_tighten-the-start-here-opening-sentence-currentl_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780473890035:47\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780471875058:40\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     }
   ]
 }
