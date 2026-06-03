@@ -44,7 +44,7 @@ LOG_DIR = ROOT / "agents/marketing/logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 STATUS_PATH = LOG_DIR / "social_proof_bootstrap_latest.json"
-SITE_REPO = ROOT / "tmp/ralph-site-remote-check"
+SITE_REPO = ROOT / "Ralph-Site"  # corrected 2026-06-03: was stale tmp/ralph-site-remote-check clone
 
 CODEBERG_REPO = "RalphWorkflow/Ralph-Workflow"
 CODEBERG_API = f"https://codeberg.org/api/v1/repos/{CODEBERG_REPO}"
