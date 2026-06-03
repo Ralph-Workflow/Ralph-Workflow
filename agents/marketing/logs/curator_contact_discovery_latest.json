@@ -1,4 +1,74 @@
 {
-  "generated_at": "2026-05-24T09:54:15.172118",
-  "targets": []
+  "generated_at": "2026-06-03T12:34:18.842880",
+  "targets": [
+    {
+      "target": "vivy-yi/awesome-agent-orchestration",
+      "url": "https://github.com/vivy-yi/awesome-agent-orchestration",
+      "owner": "vivy-yi",
+      "repo": "awesome-agent-orchestration",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "status": "email_invalid_manual_handoff_remaining",
+      "channels": [
+        {
+          "type": "email",
+          "value": "developer@claude-ai-hub.com",
+          "label": "latest public commit email"
+        },
+        {
+          "type": "email",
+          "value": "Email-xiaoluopupu@gmail.com",
+          "label": "profile email"
+        },
+        {
+          "type": "email",
+          "value": "xiaoluopupu@gmail.com",
+          "label": "profile email"
+        },
+        {
+          "type": "website",
+          "value": "https://readme-typing-svg.demolab.com/?lines=AI+Engineer;LLM+Expert;Agent+Architect;Embodied+AI&font=Fira+Code&size=24&center=true&height=80&width=700&color=00D4AA&background=00000000",
+          "label": "profile website"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/vivy-yi/awesome-agent-orchestration/issues/new",
+          "label": "repo contribution path"
+        }
+      ],
+      "recommended_next_step": "email fallback can run now",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md"
+    },
+    {
+      "target": "nandhakt/awesome-ai-coding-resources",
+      "url": "https://github.com/nandhakt/awesome-ai-coding-resources",
+      "owner": "nandhakt",
+      "repo": "awesome-ai-coding-resources",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "status": "prepared",
+      "channels": [
+        {
+          "type": "email",
+          "value": "nandynocode@gmail.com",
+          "label": "latest public commit email"
+        },
+        {
+          "type": "x",
+          "value": "https://x.com/nandhakt",
+          "label": "GitHub-linked X/Twitter"
+        },
+        {
+          "type": "website",
+          "value": "https://aistartup.co/contact",
+          "label": "possible contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://aistartup.co",
+          "label": "profile website"
+        }
+      ],
+      "recommended_next_step": "email fallback can run now",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_nandhakt-awesome-ai-coding-resources.md"
+    }
+  ]
 }

@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-06-03T12:06:12.000000+02:00",
+  "run_type": "marketing-active-loop-principle8-compliace",
+  "chosen_action": {
+    "type": "seo_integrity_fix",
+    "channel": "owned_content",
+    "title": "Principle 8 compliance: add reciprocal cross-links from 3 related posts back to Claude Code #54393 postmortem"
+  },
+  "why_this_action": {
+    "summary": "The new Claude Code #54393 postmortem blog (deployed 10:18 CEST) cross-linked to 3 related posts, but NONE of those 3 had reciprocal links back. This is a Principle 8 violation that creates duplicate-content risk: Google sees two posts covering overlapping tool sets with zero internal links as thin content. All 7 external lanes blocked. Measurement hold active until June 5. Fixing live SEO integrity is the highest-leverage autonomous action available.",
+    "blocking_factors_avoided": [
+      "All 7 external distribution lanes structurally blocked (Reddit, HN, Lobsters, Dev.to, Apollo, PyPI, GitHub Discussions)",
+      "Measurement hold active until 2026-06-05",
+      "SO lane in cooldown + handoff packet already current",
+      "StackOverflow handoff packet already delivered for manual placement in current review window",
+      "Execution board says no truthful do-now packet",
+      "Hold window already contains active_loop_prompt_repair and post_hold_reentry_contract_repair"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": true,
+    "summary": "Added reciprocal cross-links with differentiated purpose statements to all 3 related posts (composer, reliability, verification). Committed to Ralph-Site (aa93413), pushed to git.sellogic.ai, auto-deployed as release 20260603103212. All 3 reciprocal links verified live on ralphworkflow.com. IndexNow notified for all 3 updated URLs.",
+    "files_changed": [
+      "content/blog/ai-agent-workflow-composer-composable-pipelines.md",
+      "content/blog/how-to-structure-autonomous-ai-agent-workflows-for-production-reliability.md",
+      "content/blog/verification-patterns-for-ai-generated-code.md"
+    ],
+    "commit": "aa934135de88fcfb6414cf9c759ea1df4bc8b040",
+    "deploy_release": "20260603103212",
+    "cross_links_added": {
+      "composer_post": "what happens when agents run overnight without a workflow composer",
+      "reliability_post": "absence of structured workflow contracts produced 12 distinct failure modes in a single overnight run",
+      "verification_post": "two of the 12 bugs were silent verification failures that these patterns are designed to catch"
+    },
+    "indexnow_status": 202
+  },
+  "verification": {
+    "live_crosslinks_verified": {
+      "ai-agent-workflow-composer-composable-pipelines": 1,
+      "how-to-structure-autonomous-ai-agent-workflows-for-production-reliability": 1,
+      "verification-patterns-for-ai-generated-code": 1
+    },
+    "forward_links_from_postmortem": [
+      "ai-agent-workflow-composer-composable-pipelines",
+      "how-to-structure-autonomous-ai-agent-workflows-for-production-reliability",
+      "verification-patterns-for-ai-generated-code"
+    ]
+  }
+}

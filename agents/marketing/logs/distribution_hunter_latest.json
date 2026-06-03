@@ -1,20 +1,21 @@
 {
-  "timestamp": "2026-06-03T06:06:09.078449",
+  "timestamp": "2026-06-03T12:34:18.842880",
   "repair_types_seen": [],
-  "selected_lane": "measurement_hold",
-  "selected_action_type": "measurement_hold_follow_through",
-  "execution_status": "executed",
+  "selected_lane": "curator_handoff_packet",
+  "selected_action_type": "curator_contact_discovery_execution",
+  "execution_status": "prepared",
   "live_external_action": false,
-  "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_060609_measurement_hold_follow_through.md",
-  "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
-  "expected_outcome": "Advance distribution via lane measurement_hold without defaulting back to monitoring-only work.",
+  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-03_curator_contact_discovery.md",
+  "summary": "Replaced stale curator handoff follow-through with real contact-channel discovery for the highest-priority prepared curator targets blocked on GitHub auth. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
+  "expected_outcome": "Turn prepared targets into executable curator/contact distribution paths instead of refreshing the queue again.",
   "measurement_window": "Review outcome movement within 7 days.",
   "fake_green_guard": "This run only counts as real progress when it produces a fresh execution artifact tied to a non-monitor lane. Prepared/verification artifacts stay visible but do not imply outcome movement on their own.",
   "decision": {
-    "lane": "measurement_hold",
-    "reason": "Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.",
+    "lane": "curator_handoff_packet",
+    "reason": "Prepared curator targets exist but still lack one canonical execution packet; consolidate the best unsent targets instead of resetting the lane again.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
+      "1 live external marketing action(s) already shipped in the last 6 hours.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
@@ -22,7 +23,6 @@
       "Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.",
       "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
       "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (AXME Code, WyeWorks, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
-      "The primary-repo-flat packet family is stuck in prepared-only packet churn across the current review window, so another packet refresh would be fake progress even if the exact target list drifted.",
       "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
       "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
@@ -42,17 +42,20 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-03_distribution_action_brief.md",
-    "short_review_window_release_at": null,
+    "short_review_window_release_at": "2026-06-03T18:06:12",
     "skip_directory_submissions": false,
     "skip_curator_outreach": false
   },
   "execution": {
-    "lane": "measurement_hold",
-    "action_type": "measurement_hold_follow_through",
-    "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_060609_measurement_hold_follow_through.md",
-    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
-    "targets_prepared": [],
+    "lane": "curator_handoff_packet",
+    "action_type": "curator_contact_discovery_execution",
+    "status": "prepared",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-03_curator_contact_discovery.md",
+    "summary": "Replaced stale curator handoff follow-through with real contact-channel discovery for the highest-priority prepared curator targets blocked on GitHub auth. Scheduled an automatic post-hold marketer rerun at the updated short-window release time.",
+    "targets_prepared": [
+      "vivy-yi/awesome-agent-orchestration",
+      "nandhakt/awesome-ai-coding-resources"
+    ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -60,6 +63,8 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "live_external_action": false,
-    "blocking_factors": []
+    "blocking_factors": [
+      "github_auth_missing_for_live_pr_submission"
+    ]
   }
 }

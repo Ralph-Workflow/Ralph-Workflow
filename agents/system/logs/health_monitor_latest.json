@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-03T12:03:01.979032",
+  "ts": "2026-06-03T13:00:14.660668",
   "jobs_checked": 26,
   "issues_found": 1,
   "issues": [
@@ -8,7 +8,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 1246.49,
+      "artifact_age_minutes": 1303.73,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     }

@@ -136,5 +136,97 @@
         "error": null
       }
     ]
+  },
+  {
+    "timestamp": "2026-06-03T10:14:07.162369+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 104,
+    "total_sitemap_urls": 104,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 4,
+        "total": 4,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-06-03T10:18:36.674163+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 104,
+    "total_sitemap_urls": 104,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 4,
+        "total": 4,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-06-03T10:31:20.728141+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 104,
+    "total_sitemap_urls": 104,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 4,
+        "total": 4,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  },
+  {
+    "timestamp": "2026-06-03T10:32:32.583626+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 104,
+    "total_sitemap_urls": 104,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 4,
+        "total": 4,
+        "status_code": 200,
+        "error": null
+      }
+    ]
   }
 ]

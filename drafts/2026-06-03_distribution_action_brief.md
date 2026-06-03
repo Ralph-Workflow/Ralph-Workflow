@@ -1,16 +1,16 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-03T12:05:49
-Chosen lane: **social_proof_bootstrap**
+Generated: 2026-06-03T13:05:12
+Chosen lane: **curator_handoff_packet**
 
 ## Why this lane
-- Measurement hold saturated (2 holds/24h). Circuit-breaking to social_proof_bootstrap (autonomous, ships real assets). Original lane: measurement_hold. Original reason: Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.
-- Hold-frequency gate: 2 holds/24h → social_proof_bootstrap circuit-break
+- Prepared curator targets exist but still lack one canonical execution packet; consolidate the best unsent targets instead of resetting the lane again.
 - Primary Codeberg adoption is flat in the current measurement window.
+- 1 live external marketing action(s) already shipped in the last 6 hours.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
 - 5 prepared curator targets still need a canonical execution handoff packet.
-- Manual-contact-only curator targets are still waiting in the live queue (vivy-yi/awesome-agent-orchestration), so the loop should advance contact discovery + execution instead of inventing new reset work.
+- Manual-contact-only curator targets are still waiting for execution (vivy-yi/awesome-agent-orchestration), so the loop should use the existing contact-discovery asset before inventing new reset work.
 - Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.
 - Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (AXME Code, WyeWorks, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.
 - GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.
@@ -29,6 +29,9 @@ Chosen lane: **social_proof_bootstrap**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 
-## Owned-content lane remains allowed
-- No distribution-lane override triggered yet
-- If the next measurement window is still flat, escalate away from Telegraph-first output
+## Immediate curator handoff work
+- Build one canonical packet from the highest-priority prepared curator targets that have not been sent yet
+- Include the comparison/backlink handoff packet too when prepared comparison targets are also waiting
+- Reuse the existing target-ready files instead of generating a new queue or another reset note
+- Include exact next actions, ready links, and Codeberg-primary wording so a human can execute quickly
+- Do not count another discovery/reset cycle as progress while prepared targets still await handoff
