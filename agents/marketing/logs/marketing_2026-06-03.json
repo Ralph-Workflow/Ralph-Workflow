@@ -78,5 +78,25 @@
     "lane": "measurement_hold",
     "reason": "Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.",
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-03_distribution_action_brief.md"
+  },
+  "actions": [
+    {
+      "timestamp": "2026-06-03T20:28:00",
+      "action_type": "conversion_surface_repair",
+      "description": "Fixed broken Docker Hub reference (ralphworkflow/ralph returns 404), replaced with docker compose up two-command path, added docker-compose.yml. Pushed to Codeberg + GitHub mirror (commit 808bb52e6). Also refreshed stale execution board (May 25 -> June 3).",
+      "live_external_action": true,
+      "commit": "808bb52e6",
+      "outcome_ready": true,
+      "expected_impact": "Docker install path was a dead end for every user who tried it. Now 2 commands from clone to running. Fixes the most visible no-Python install lane."
+    }
+  ],
+  "latest_marketing_activity": {
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03.json",
+    "type": "conversion_surface_repair",
+    "title": "Docker install path repair + execution board refresh",
+    "status": "executed",
+    "ok": true,
+    "live_external_action": true,
+    "outcome_ready": true
   }
 }

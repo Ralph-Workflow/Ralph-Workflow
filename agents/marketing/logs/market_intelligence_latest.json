@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-03T08:02:47.515546",
+  "generated_at": "2026-06-03T20:07:54.538007",
   "source": "competitor_analysis.py",
   "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
   "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-03.md",
@@ -51,7 +51,7 @@
       "name": "Hermes Agent",
       "positioning": "Self-improving agent that learns from experience",
       "site_status": 200,
-      "github_stars": 177762,
+      "github_stars": 178748,
       "key_features_found": [
         "Persistent memory"
       ]
@@ -60,7 +60,7 @@
       "name": "Conductor OSS",
       "positioning": "Enterprise-grade workflow orchestration for AI agents",
       "site_status": 200,
-      "github_stars": 31876,
+      "github_stars": 31875,
       "key_features_found": [
         "Durable execution"
       ]
@@ -78,14 +78,14 @@
       "name": "Aider",
       "positioning": "Terminal-based AI pair programming in your git repo",
       "site_status": 200,
-      "github_stars": 45711,
+      "github_stars": 45732,
       "key_features_found": []
     },
     "continue": {
       "name": "Continue",
       "positioning": "The leading AI code assistant inside your IDE",
       "site_status": 200,
-      "github_stars": 33504,
+      "github_stars": 33517,
       "key_features_found": []
     },
     "cursor": {
@@ -133,83 +133,7 @@
     "parallel AI coding agents",
     "AI agent checkpoint resume"
   ],
-  "discovered_candidates": [
-    {
-      "name": "OvernightAgent",
-      "github": "a20185/OvernightAgent",
-      "language": "Node/TypeScript",
-      "license": "MIT",
-      "category": "direct competitor",
-      "why": "Queue-based CLI for unattended overnight runs against claude/codex/opencode. Produces SUMMARY.md with verification results. Four-gate verify pipeline, 36 typed events, daemon mode.",
-      "differentiation": "Queue-based (throughput) vs RalphWorkflow's spec-driven loop (finish-state trust). Planning loop validates spec before execution. Composable loop framework. Reviewable finish state as primary output.",
-      "discovered": "2026-06-02 via DDG"
-    }
-  ],
-  "market_validation": [
-    {
-      "id": "claude-code-issue-54393",
-      "source": "github.com/anthropics/claude-code/issues/54393",
-      "what": "Real-world postmortem: 12 multi-agent coordination bugs surfaced across a single autonomous-overnight cycle. Failures include: usage limits mid-task requiring manual continue, recursive hooks with no escape, silent data gaps that auditor agents called 'all good', structural false confidence from multi-session audit overlap.",
-      "importance": "critical",
-      "why": "Every failure mode maps directly to bounded-task design, finish receipts, and clean re-entry points that Ralph Workflow provides. Months of audit results structurally false → fresh-session-per-phase model catches this. Agent ran out of per-session usage mid-task → bounded-task model prevents runaway. Recursive hook → explicit stop conditions.",
-      "discovered": "2026-06-02 via DDG",
-      "use_in_content": "Blog post: '12 Multi-Agent Bugs in One Night — What Ralph Workflow Gets Right'"
-    },
-    {
-      "id": "mast-research-uc-berkeley",
-      "source": "Cemri et al., MAST paper (arXiv:2503.13657), cited via futureagi.substack.com",
-      "what": "1,600+ annotated execution traces across 7 multi-agent frameworks. 14 failure modes in 3 categories. 41-86.7% multi-agent failure rate. Cohen's Kappa 0.88 agreement — most rigorous taxonomy of multi-agent failure available.",
-      "importance": "high",
-      "why": "Directly validates that multi-agent system failures are structural, not accidental. Ralph's bounded-task, single-agent-per-phase model avoids the 14 failure modes at the architecture level.",
-      "discovered": "2026-06-02 via DDG",
-      "use_in_content": "Cite MAST taxonomy in positioning content about why Ralph's architecture reduces failure surface"
-    },
-    {
-      "id": "claude-code-routines",
-      "source": "Anthropic, April 2026 research preview (via chatforest.com, claudeapi.com)",
-      "what": "Cloud-hosted automation on schedule/API/GitHub event triggers. Combined with Auto Mode (March 24 GA, 30-60 min unattended runs) moves Claude Code from interactive tool to always-on dev infrastructure.",
-      "importance": "high",
-      "why": "Biggest category shift seen in weeks. Anthropic building cloud-hosted unattended pipeline layer natively. Ralph's local-first, agent-agnostic positioning becomes more differentiated (not cloud-locked, not Anthropic-dependent) but category window is compressing fast.",
-      "discovered": "2026-06-02 via DDG",
-      "use_in_content": "Messaging emphasis: Ralph works with any agent CLI, keeps code on your machine, produces something you can actually inspect"
-    },
-    {
-      "id": "faros-10000-dev-survey",
-      "source": "Faros.ai 10,000-developer survey",
-      "what": "PR review time spikes 91% between month 3 and month 9 of AI code adoption. Structural coupling of AI-generated code increases over time.",
-      "importance": "high",
-      "why": "Directly validates Ralph Workflow bounded-scope, reviewable-finish thesis with real data. The more AI code you generate, the harder it gets to review — Ralph's plan→verify loop is designed for exactly this problem.",
-      "discovered": "2026-06-02 via DDG"
-    },
-    {
-      "id": "maintainer-merge-grounded-self-improvement",
-      "source": "Curve Labs, March 2026 (curvelabs.org)",
-      "what": "Research review on converting autonomous coding agent benchmark gains into maintainer-accepted production impact using merge-grounded evals, transcript checks, and emotionally legible collaboration behavior.",
-      "importance": "medium",
-      "why": "The 'merge-grounded' terminology converges with Ralph's 'would you merge it?' positioning. Useful vocabulary confirmation.",
-      "discovered": "2026-06-02 via DDG"
-    },
-    {
-      "id": "cloudflare-ai-code-review-at-scale",
-      "source": "blog.cloudflare.com/ai-code-review",
-      "what": "CI-native orchestration around OpenCode — 'smörgåsbord of AI agents' on every merge request.",
-      "importance": "medium",
-      "why": "Validates CI-native, orchestration-first approach converging with Ralph's completion loop + review stage. Differentiation: Ralph runs locally on your repo, not requiring Cloudflare infrastructure.",
-      "discovered": "2026-06-02 via DDG"
-    }
-  ],
-  "category_trends": {
-    "unattended_coding_agent": {
-      "status": "established",
-      "note": "No longer an emerging concept; it's an established tool category with competing implementations. Claude Code Auto Mode GA, OvernightAgent, kodo, Symphony, Claude Code Routines all shipping in this space. Differentiation window is shrinking.",
-      "last_updated": "2026-06-03"
-    },
-    "multi_agent_orchestration": {
-      "status": "standardizing",
-      "note": "Category vocabulary hardening: single vs multi-agent review, CI-native orchestration, cloud-hosted unattended pipelines. Ralph's vendor-neutral, local-first positioning becomes the differentiator as platforms absorb the feature surface.",
-      "last_updated": "2026-06-03"
-    }
-  },
+  "discovered_candidates": [],
   "reuse_contract": {
     "runtime_proven_consumers": [
       "agents/marketing/run.py",

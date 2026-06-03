@@ -20736,3 +20736,93 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Coherent, well-positioned docs system. README hooks with the right tagline and orchestrator framing, START_HERE delivers a concrete first-run path, docs/README routes deeply without internal leakage. Promoted pages stay in their lane with explicit 'proof secondary' governance. Minor consistency issues (dual README surfaces, boilerplate repetition) but no hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Unify repo-root README and ralph-workflow/README.md \u2014 the two surfaces give different quick-start experiences. The repo-root README scatters Docker/pipx/source build before the basic run flow, while the PyPI README has a cleaner flow with depth presets.",
+    "Vary the boilerplate opening on promoted docs pages \u2014 every page starts with 'Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core' verbatim.",
+    "Tighten the repo-root README quick start \u2014 Docker build-from-source instructions before the basic `ralph --init \u2192 PROMPT.md \u2192 ralph` flow interrupts the reader's momentum."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md (repo-root)",
+      "reason": "Opens with correct tagline, clear orchestrator positioning, strong comparison table, good/bad fit guidance with concrete examples, explicit engineering-practice dependency, correct Codeberg-primary framing."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Clear first-run path with task selection guidance, honest success criteria (not hype), Codeberg-primary boilerplate correct on every surface."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicit 'Keep proof secondary' section and breadcrumb that tells readers to visit README and START_HERE first. Self-governing information architecture."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Excellent practical guide centered on spec quality and honest evaluation. Strongly aligned with positioning \u2014 does not drift into artifact or plumbing language."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is healthy and positionally consistent. README \u2192 START_HERE \u2192 docs/README forms a coherent route. All surfaces use correct framing (AI agent orchestrator, composable loop framework, simple-at-center, powerful-in-composition). No internal leakage on top-level surfaces. Promoted next-click pages reinforce the same story. Copy is clean, clear, and shows no drift.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with 'operating system for autonomous coding' tagline, frames as AI agent orchestrator, preserves simple-core/composable-loop contrast, calls out audience fit/non-fit and engineering-practice dependency \u2014 all on one page. Codeberg-primary and GitHub-mirror are clear."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Positions correctly, shortest honest path, result-focused success definition, low link anxiety ('Next pages only if you need them'). Clean first-run guide."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Tells users to read README and START_HERE first, routes by user intent, explicitly sections 'Keep proof secondary'. Promoted pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) all use current positioning."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "'Simple at the center, stronger in composition, useful before customization' is exactly the right framing. Reinforces the core promise without introducing internal mechanics."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md",
+      "reason": "Strong end-to-end conversion guide: task selection criteria, real spec template with example, morning-after review framework, honest when-it-works/when-it-doesn't assessment."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

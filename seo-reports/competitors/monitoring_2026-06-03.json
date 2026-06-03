@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-06-03T08:02:47.358854",
+  "timestamp": "2026-06-03T20:07:54.398199",
   "competitors": {
     "hermes-agent": {
       "slug": "hermes-agent",
       "name": "Hermes Agent",
       "url": "https://hermes-agent.org",
-      "checked_at": "2026-06-03T08:02:34.237729",
+      "checked_at": "2026-06-03T20:07:37.851543",
       "site_status": 200,
       "title": "Hermes Agent \u2014 Open-Source AI Agent with Persistent Memory",
       "description": "Self-hosted AI agent that remembers your projects, builds skills automatically, and reaches you on Telegram, Discord &#38; more. MIT license. No tracking.",
@@ -15,14 +15,14 @@
         "Persistent memory"
       ],
       "blog_status": null,
-      "github_stars": 177762,
+      "github_stars": 178748,
       "changes": []
     },
     "conductor-oss": {
       "slug": "conductor-oss",
       "name": "Conductor OSS",
       "url": "https://conductor-oss.org",
-      "checked_at": "2026-06-03T08:02:34.987834",
+      "checked_at": "2026-06-03T20:07:38.956723",
       "site_status": 200,
       "title": "Conductor OSS Foundation",
       "description": "Conductor OSS Foundation Home Page",
@@ -32,7 +32,7 @@
         "Durable execution"
       ],
       "blog_status": null,
-      "github_stars": 31876,
+      "github_stars": 31875,
       "changes": [],
       "docs_status": 200,
       "docs_title": "Durable Execution for workflows and agents"
@@ -41,7 +41,7 @@
       "slug": "conductor-teams",
       "name": "Conductor (Teams)",
       "url": "https://conductross.com",
-      "checked_at": "2026-06-03T08:02:36.774823",
+      "checked_at": "2026-06-03T20:07:40.707549",
       "site_status": 200,
       "title": "Conductor OSS | Markdown-Native AI Agent Orchestrator",
       "description": "Conductor OSS is a markdown-native, local-first AI agent orchestrator for teams running coding agents in parallel with branch or worktree session modes, tmux, MCP, and webhooks.",
@@ -58,7 +58,7 @@
       "slug": "aider",
       "name": "Aider",
       "url": "https://aider.chat",
-      "checked_at": "2026-06-03T08:02:37.301878",
+      "checked_at": "2026-06-03T20:07:40.993002",
       "site_status": 200,
       "title": "Aider - AI Pair Programming in Your Terminal",
       "description": "Aider lets you pair program with LLMs to start\n                        a new project or build on your existing\n                        codebase.",
@@ -66,7 +66,7 @@
       "positioning": "Terminal-based AI pair programming in your git repo",
       "key_features_found": [],
       "blog_status": null,
-      "github_stars": 45711,
+      "github_stars": 45732,
       "changes": [],
       "docs_status": 200,
       "docs_title": "Aider Documentation | aider"
@@ -75,7 +75,7 @@
       "slug": "continue",
       "name": "Continue",
       "url": "https://continue.dev",
-      "checked_at": "2026-06-03T08:02:38.371726",
+      "checked_at": "2026-06-03T20:07:42.067924",
       "site_status": 200,
       "title": "Continue \u2022 Quality control for your software factory. | Continue",
       "description": "Source-controlled AI checks on every pull request. Standards as checks, enforced by AI, decided by humans.",
@@ -83,7 +83,7 @@
       "positioning": "The leading AI code assistant inside your IDE",
       "key_features_found": [],
       "blog_status": null,
-      "github_stars": 33504,
+      "github_stars": 33517,
       "changes": [],
       "docs_status": 200,
       "docs_title": "What is Continue? | Continue Docs"
@@ -92,7 +92,7 @@
       "slug": "cursor",
       "name": "Cursor",
       "url": "https://cursor.com",
-      "checked_at": "2026-06-03T08:02:40.008292",
+      "checked_at": "2026-06-03T20:07:44.280363",
       "site_status": 200,
       "title": "Cursor: The best coding agent",
       "description": "Built to make you extraordinarily productive, Cursor is the best coding agent.",
@@ -112,7 +112,7 @@
       "slug": "claude-code",
       "name": "Claude Code",
       "url": "https://claude.ai/code",
-      "checked_at": "2026-06-03T08:02:40.826253",
+      "checked_at": "2026-06-03T20:07:44.835358",
       "site_status": 0,
       "title": "",
       "description": "",
@@ -121,15 +121,13 @@
       "key_features_found": [],
       "blog_status": null,
       "github_stars": null,
-      "changes": [],
-      "docs_status": 200,
-      "docs_title": "Overview - Claude Code Docs"
+      "changes": []
     },
     "copilot": {
       "slug": "copilot",
       "name": "GitHub Copilot",
       "url": "https://github.com/features/copilot",
-      "checked_at": "2026-06-03T08:02:42.107361",
+      "checked_at": "2026-06-03T20:07:53.448936",
       "site_status": 200,
       "title": "GitHub Copilot \u00b7 Your AI pair programmer \u00b7 GitHub",
       "description": "GitHub Copilot works alongside you directly in your editor, suggesting whole lines or entire functions for you.",

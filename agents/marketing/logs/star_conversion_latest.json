@@ -36,9 +36,16 @@
       "downloads_month": 1300,
       "codeberg_stars": 12,
       "github_stars": 2
+    },
+    {
+      "at": "2026-06-03T20:18:11.259089",
+      "downloads_day": 48,
+      "downloads_month": 1300,
+      "codeberg_stars": 12,
+      "github_stars": 2
     }
   ],
-  "zero_star_samples": 5,
+  "zero_star_samples": 6,
   "chronic": false,
   "recommendation_level": "none",
   "emit_recommendation": false,
