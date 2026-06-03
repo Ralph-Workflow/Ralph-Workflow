@@ -20826,3 +20826,91 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Strongly aligned. README opens with canon positioning, START_HERE reinforces it with result-first evaluation, docs/README is self-aware about hierarchy. No internal plumbing or artifact-first framing on any top-level surface. The three product-framing pages share an identical opening paragraph (minor rep), and reviewable-output.md explicitly disclaims itself as secondary proof \u2014 exactly right.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Three product-framing docs pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md) share an identical opening paragraph \u2014 reading more than one is repetitive. Each should lead with a distinct angle."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md (root Codeberg)",
+      "reason": "Opens with 'operating system for autonomous coding', immediately frames as composable loop framework, explicitly says 'not a chat window or a prompt tool', demarcates audience fit/non-fit, includes engineering-practice requirements. No internal plumbing, no artifacts-first framing."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Leads with simple-core/complex-composition framing, gives result-first success criteria ('what the software does now and what checks ran'), routes to next pages only as optional. Exactly matches positioning doc structure."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Self-aware docs map that says 'use this page after README and START_HERE', routes by user need, includes a dedicated 'Keep proof secondary' section. This page tells other pages to do the right thing."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Opens by explicitly disclaiming itself as secondary proof \u2014 'not the main product pitch'. The one page that could have escaped into internal concepts is the one that best respects the boundary."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is healthy. Positioning holds across all surfaces. Journey is coherent from README \u2192 START_HERE \u2192 docs/README \u2192 next-click pages. No internal leakage, no stale framing, no confusion.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding', correctly frames as composable loop framework, comparison table differentiates cleanly, who-it's-for section targets ambitious work, engineering-practice dependency is honest, default-workflow-first framing throughout"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by user goal, includes explicit 'keep proof secondary' section, opens with correct positioning, does not lead with internals"
+    },
+    {
+      "path": "reviewable-output.md",
+      "reason": "Positions itself as secondary supporting proof, orders evidence as working-behavior \u2192 real-checks \u2192 scope \u2192 artifacts (correct per positioning doc), explicitly tells users to start with product story first"
+    },
+    {
+      "path": "first-task-guide.md",
+      "reason": "Opens with correct positioning, result-first evaluation language, spec-driven approach, honest fit/non-fit assessment"
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Frames as 'simple Ralph-loop core that composes into complex workflows', default-as-is-then-customize, evaluation guidance matches the rubric"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
