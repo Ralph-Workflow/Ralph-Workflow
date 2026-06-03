@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-06-03T11:04:46.039353+02:00
+- Checked: 2026-06-03T12:03:45.102388+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
 - Most urgent fix: Do not certify green until the external owner loop clears its live residue and independent signoff stays current.
@@ -67,7 +67,7 @@
 - Verdict: qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
 - Previous artifact verdict: qualified_pass
-- Previous artifact checked at: 2026-06-03T11:03:58.402702+02:00
+- Previous artifact checked at: 2026-06-03T12:03:44.869604+02:00
 
 ## Small gate passed
 
