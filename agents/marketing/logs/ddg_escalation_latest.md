@@ -1,5 +1,5 @@
 # DDG Search Provider — Escalation Notification
-Generated: 2026-06-04T07:30:02.035384+00:00
+Generated: 2026-06-04T09:30:02.375330+00:00
 
 ## Status
 - **DDG status**: degraded_http_202
@@ -8,7 +8,7 @@ Generated: 2026-06-04T07:30:02.035384+00:00
 - **Bot-blocked**: False
 - **Reddit query test**: FAIL
 - **Brave fallback**: degraded (0 results)
-- **Days since last usable retrieval**: 6 (since 2026-05-28)
+- **Days since last usable retrieval**: 7 (since 2026-05-28)
 
 ## ⚠️ ESCALATION DEADLINE: TODAY (June 4)
 
@@ -47,7 +47,7 @@ DDG has been completely unresponsive for 7 days. The suspension marker says:
 {
   "ddg": {
     "provider": "duckduckgo",
-    "timestamp": "2026-06-04T07:30:01.436347+00:00",
+    "timestamp": "2026-06-04T09:30:01.805076+00:00",
     "ok": false,
     "http_status": 202,
     "result_count": 0,
@@ -59,7 +59,7 @@ DDG has been completely unresponsive for 7 days. The suspension marker says:
   },
   "brave": {
     "provider": "brave",
-    "timestamp": "2026-06-04T07:30:01.782420+00:00",
+    "timestamp": "2026-06-04T09:30:02.176143+00:00",
     "ok": false,
     "http_status": 429,
     "result_count": 0

@@ -1,148 +1,190 @@
 {
-  "generated_at": "2026-06-04T08:09:30.600283",
-  "source": "competitor_analysis.py",
-  "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
-  "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-04.md",
-  "monitoring_snapshot": "/home/mistlight/.openclaw/workspace/seo-reports/competitors/monitoring_2026-06-04.json",
-  "comparison_pages": [
-    {
-      "slug": "hermes-agent",
-      "name": "Hermes Agent",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md"
+  "generated_at": "2026-06-04T08:38:00Z",
+  "source": "daily_marketing_research_cron",
+  "provider_status": {
+    "reddit_web": "BLOCKED (403 on both www.reddit.com and old.reddit.com)",
+    "reddit_api": "BLOCKED (403, requires registered user-agent/app credentials)",
+    "hn_algolia": "OK",
+    "web_search": "FAILED (DuckDuckGo bot-detection on all queries)",
+    "web_fetch_ralphworkflow_com": "OK",
+    "local_competitor_analysis": "OK (from market_intelligence_latest.json)"
+  },
+  "candidates_scanned": 30,
+  "shortlisted": 8,
+  "rejected": 22,
+  "scan_coverage": {
+    "hn_stories": 18,
+    "hn_comments": 12,
+    "reddit": 0,
+    "hacker_news_total_unique_discussions": 14
+  },
+  "ralph_hits": {
+    "show_hn_ralph_workflow": {
+      "points": 2,
+      "comments": 1,
+      "date": "2026-05-12",
+      "sentiment": "low engagement, no substantive feedback received"
     },
-    {
-      "slug": "conductor-oss",
-      "name": "Conductor OSS",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-oss.md"
+    "ml_ralph": {
+      "points": 2,
+      "date": "2026-01-27",
+      "note": "ML-Ralph adapted the Ralph loop for ML experimentation"
     },
-    {
-      "slug": "conductor-teams",
-      "name": "Conductor (Teams)",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md"
+    "ralphmad": {
+      "points": 2,
+      "date": "2026-03-03",
+      "note": "Claude Code plugin combining BMAD with Ralph Loop pattern"
     },
-    {
-      "slug": "aider",
-      "name": "Aider",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/aider.md"
-    },
-    {
-      "slug": "continue",
-      "name": "Continue",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md"
-    },
-    {
-      "slug": "cursor",
-      "name": "Cursor",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/cursor.md"
-    },
-    {
-      "slug": "claude-code",
-      "name": "Claude Code",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md"
-    },
-    {
-      "slug": "copilot",
-      "name": "GitHub Copilot",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md"
-    }
-  ],
-  "competitors": {
-    "hermes-agent": {
-      "name": "Hermes Agent",
-      "positioning": "Self-improving agent that learns from experience",
-      "site_status": 200,
-      "github_stars": 179603,
-      "key_features_found": [
-        "Persistent memory"
-      ]
-    },
-    "conductor-oss": {
-      "name": "Conductor OSS",
-      "positioning": "Enterprise-grade workflow orchestration for AI agents",
-      "site_status": 200,
-      "github_stars": 31876,
-      "key_features_found": [
-        "Durable execution"
-      ]
-    },
-    "conductor-teams": {
-      "name": "Conductor (Teams)",
-      "positioning": "Markdown-native local-first orchestration for coding teams",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Local-first"
-      ]
-    },
-    "aider": {
-      "name": "Aider",
-      "positioning": "Terminal-based AI pair programming in your git repo",
-      "site_status": 200,
-      "github_stars": 45745,
-      "key_features_found": []
-    },
-    "continue": {
-      "name": "Continue",
-      "positioning": "The leading AI code assistant inside your IDE",
-      "site_status": 200,
-      "github_stars": 33525,
-      "key_features_found": []
-    },
-    "cursor": {
-      "name": "Cursor",
-      "positioning": "The AI code editor built for pair programming with AI",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Composer",
-        "Context-aware"
-      ]
-    },
-    "claude-code": {
-      "name": "Claude Code",
-      "positioning": "Anthropic's official CLI for agentic coding",
-      "site_status": 0,
-      "github_stars": null,
-      "key_features_found": []
-    },
-    "copilot": {
-      "name": "GitHub Copilot",
-      "positioning": "Your AI pair programmer embedded in GitHub and your IDE",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Inline suggestions"
-      ]
+    "polycode": {
+      "points": 3,
+      "date": "2026-03-18",
+      "note": "Uses 'ralph' label to trigger autonomous workflows"
     }
   },
-  "ralph_core_truths": {
-    "what_is_it": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.",
-    "who_is_it_for": "Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session.",
-    "why_different": "It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.",
-    "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
-  },
-  "ralph_advantage_keywords": [
-    "unattended coding pipeline",
-    "multi-agent orchestration",
-    "Claude Code workflow",
-    "AI agent review loop",
-    "vendor-neutral AI coding",
-    "cost arbitrage AI coding",
-    "policy-defined agent workflow",
-    "TOML agent configuration",
-    "parallel AI coding agents",
-    "AI agent checkpoint resume"
+  "shortlisted_opportunities": [
+    {
+      "rank": 1,
+      "name": "OACP - Cross-agent messaging/filesystem protocol",
+      "type": "HN Show HN",
+      "url": "https://news.ycombinator.com/item?id=48283108",
+      "date": "2026-05-26",
+      "points": 14,
+      "relevance": "HIGH - Very recent. Author runs Claude Code/Codex/Cursor/Gemini fleet. Built filesystem-based cross-agent communication with review-loop state machine. Directly adjacent to Ralph's composable loop architecture. Author is the exact target user (multi-agent orchestrator seeking structured loop patterns).",
+      "action": "Comment on the thread. Position Ralph Workflow as solving the same problem at the orchestrator level: where OACP handles agent-to-agent file-based messaging, Ralph handles the full plan-build-verify loop structure with built-in handoffs. Ralph's checkpoints and resume are a parallel solution to their memory problem. Natural collaboration/acknowledgment opportunity.",
+      "sentiment": "Positive engagement on thread, 5 comments including author discussing setup complexity concerns"
+    },
+    {
+      "rank": 2,
+      "name": "Twill.ai - YC S25 Launch HN",
+      "type": "HN Launch",
+      "url": "https://news.ycombinator.com/item?id=47720418",
+      "date": "2026-04-10",
+      "points": 77,
+      "comments": 95,
+      "relevance": "HIGH - Direct competitor in 'unattended coding' space. Cloud sandbox approach vs Ralph's local-first. Same pain points (overnight runs, parallelization, trust). Architecture: cloud sandboxes running Claude Code/Codex per task. Ralph differentiator: local-first, free, no subscription. Twill charges $50/month.",
+      "action": "Content angle: 'Cloud vs local-first for unattended coding agents.' Write a comparison post/blog highlighting that Ralph does the same job for API cost only, no monthly subscription, no code leaving your machine. Useful as a landing page comparison section.",
+      "sentiment": "95 comments, active discussion. Users comparing to alternatives."
+    },
+    {
+      "rank": 3,
+      "name": "Optio - Orchestrate AI coding agents in K8s",
+      "type": "HN Show HN",
+      "url": "https://news.ycombinator.com/item?id=47520220",
+      "date": "2026-03-25",
+      "points": 88,
+      "comments": 59,
+      "relevance": "HIGH - Ticket-to-PR pipeline with CI feedback loop. Self-healing: auto-resume on CI failures/merge conflicts. Ralph overlaps heavily but Optio requires K8s (complex infra). Ralph's pipx install is much simpler. Both solve the 'loop until green' problem.",
+      "action": "Content idea: 'You don't need K8s to run unattended coding agents.' Compare Optio's K8s complexity vs Ralph's local-first simplicity. Highlight that both do plan-build-verify loops but one needs a cluster and the other runs on your laptop.",
+      "sentiment": "59 comments, strong interest in K8s-based approach. Some pushback on infra complexity."
+    },
+    {
+      "rank": 4,
+      "name": "Claude-relais - Plan/Build/Judge loop mixing Claude + Cursor",
+      "type": "HN Show HN",
+      "url": "https://github.com/clementrog/claude-relais",
+      "date": "2026-02-15",
+      "points": 1,
+      "relevance": "MEDIUM-HIGH - Direct conceptual overlap with Ralph's loop structure. Author uses PLAN -> BUILD -> JUDGE loop. Multi-model approach (Claude as orchestrator, Cursor for generation). Cost arbitrage ($40/month vs $500). Author explicitly asks for feedback on orchestration approach.",
+      "action": "Natural outreach target. Contact the author (crog via GitHub) and share Ralph Workflow as a reference architecture. Their loop structure maps directly to Ralph's phases. Could be a collaborator or ecosystem contributor.",
+      "sentiment": "Zero comments (missed opportunity). Author actively seeking feedback."
+    },
+    {
+      "rank": 5,
+      "name": "Tell HN: AI is bringing back waterfall",
+      "type": "HN Discussion",
+      "url": "https://news.ycombinator.com/item?id=47748747",
+      "date": "2026-04-13",
+      "points": 1,
+      "relevance": "MEDIUM - Author describes verbal specs + comprehensive E2E tests for fully autonomous agent delegation. 'Let it cook' philosophy aligns perfectly with Ralph's overnight-run value prop. Mentions 'close the loop on full autonomy with strong invariants'.",
+      "action": "Content seed for 'Why unattended coding agents need a spec phase.' The author's practice of dictating verbal specs and having them cleaned up into agent specs is exactly Ralph's planning loop. Quote-worthy material for blog posts.",
+      "sentiment": "Only 3 comments but thoughtful content. Author is doing exactly what Ralph is built for."
+    },
+    {
+      "rank": 6,
+      "name": "Plandex v2 - Open source AI coding agent",
+      "type": "HN Launch",
+      "url": "https://news.ycombinator.com/item?id=47758251",
+      "date": "2026-04-13",
+      "relevance": "MEDIUM - Open source AI coding agent with 2M token context, autonomous mode, diff review sandbox. Active competition but more in 'coding agent' space than 'orchestrator'. Key difference: Plandex is an agent + orchestrator combined; Ralph wraps existing agents.",
+      "action": "Watch for feature overlap. Plandex's 'full auto mode' with planning/context/implementation/debugging is similar to Ralph's loop but Plandex ships its own agent harness instead of wrapping Claude Code/Codex.",
+      "sentiment": "Strong launch, positive reception."
+    },
+    {
+      "rank": 7,
+      "name": "Repowise - Codebase intelligence for AI coding agents",
+      "type": "HN Show HN",
+      "url": "https://news.ycombinator.com/item?id=47666413",
+      "date": "2026-04-06",
+      "points": 1,
+      "relevance": "MEDIUM - MCP tools for codebase context (dependency graph, git intelligence, ADRs). Complements Ralph's planning loop by providing structured codebase context. 'pip install' delivery (same as Ralph).",
+      "action": "Integration opportunity. Repowise's MCP tools could feed Ralph's planning loop with better context. Ralph could suggest 'install repowise for better codebase-aware planning.' Non-competitive addon.",
+      "sentiment": "1 point, 0 comments. Undiscovered."
+    },
+    {
+      "rank": 8,
+      "name": "Lume 0.2 - macOS VMs with unattended setup for Claude Code",
+      "type": "HN Show HN",
+      "url": "https://news.ycombinator.com/item?id=46670181",
+      "date": "2026-01-18",
+      "points": 154,
+      "comments": 44,
+      "relevance": "MEDIUM - Infrastructure layer for Ralph. Lume provides macOS VMs for running Claude Code isolated. 'Running Claude Code in an isolated VM' is a documented use case. Ralph could recommend Lume for users who want sandbox isolation for unattended runs.",
+      "action": "Partnership/content angle. Ralph + Lume = fully isolated unattended coding pipeline. Blog post idea: 'Set up a self-healing unattended coding environment with Ralph Workflow and Lume VMs.'",
+      "sentiment": "Very positive (154 points, 44 comments). Strong community interest."
+    }
   ],
-  "discovered_candidates": [],
-  "reuse_contract": {
-    "runtime_proven_consumers": [
-      "agents/marketing/run.py",
-      "agents/marketing/reddit_monitor.py"
+  "market_patterns_and_trends": {
+    "emerging_patterns": [
+      "'Plan -> Build -> Verify/Judge' is becoming the canonical loop structure across the ecosystem. Claude-relais, Optio, Ralph, and OACP all converge on this pattern independently.",
+      "Cross-agent communication is a growing pain point. OACP addresses it at filesystem level; Ralph addresses it through composable loop structure with explicit phase handoffs.",
+      "Local-first vs cloud-first is a real architectural divide. Cloud approaches (Twill, Optio) get more HN attention. Local-first (Ralph, OACP) gets less but has stronger privacy/value propositions.",
+      "The 'overnight run' / 'let it cook' narrative is gaining traction as a key value prop for unattended coding agents."
     ],
-    "prompt_guided_consumers": [
-      "ralph-site-owner-loop",
-      "agent-architecture-watchdog"
+    "pain_points_repeated_across_community": [
+      "Claude Code token limits on large projects",
+      "Context rot mid-session (agent forgets architecture decisions)",
+      "No way to run multiple agent sessions in parallel on the same repo",
+      "Manual copy-paste between agent runtimes (Claude <-> Codex <-> Cursor)",
+      "No reliable way to have one agent review another's PR",
+      "Cloud solutions require complex infra setup (Docker, K8s)",
+      "Switching between providers without reconfiguring the entire workflow"
     ],
-    "purpose": "Shared market and competitor findings artifact for site updates, positioning checks, and marketing tactics."
+    "ralph_advantage_angles": [
+      "Only local-first unattended coding orchestrator that doesn't require a cloud subscription",
+      "Only tool that wraps existing agents (Claude Code/Codex/OpenCode) instead of shipping its own harness",
+      "Checkpoint/resume for interrupted runs is unique in the space",
+      "TOML policy-defined configuration is simpler than K8s, Docker, or YAML-heavy orchestrators",
+      "'pipx install' is far simpler than Optio's Helm charts or Twill's cloud setup",
+      "Vendor-neutral: swap providers without reconfiguring the workflow"
+    ]
+  },
+  "concrete_actions": {
+    "immediate_discussion_participation": [
+      "OACP thread (48283108) - Comment explaining Ralph's composable loop approach to cross-agent orchestration as complementary to their filesystem messaging protocol",
+      "Claude-relais GitHub (clementrog/claude-relais) - Open an issue sharing Ralph as reference architecture for plan-build-judge loops"
+    ],
+    "content_creation_priorities": [
+      "Blog post: '5 Patterns I See in the Clone Army of AI Coding Orchestrators' - synthesize the common loop pattern across Twill, Optio, Claude-relais, OACP, and Ralph. Position Ralph as the simplest, most composable implementation.",
+      "Blog post: 'Why I chose local-first over cloud for my unattended coding agent' - compare approaches with Twill and Optio. Emphasize cost (free vs $50/month), privacy (code doesn't leave machine), and simplicity (pipx install vs K8s).",
+      "Landing page addition: Add a 'vs cloud agents' comparison section showing Ralph's local-first advantage."
+    ],
+    "ecosystem_outreach": [
+      "Contact crog (claude-relais author) - share Ralph, offer collaboration",
+      "Contact haoranchg (OACP author) - your cross-agent messaging + Ralph's composable loop = natural collaboration",
+      "Engage in the Twill thread with a thoughtful comparison perspective"
+    ],
+    "reddit_recovery_needed": [
+      "Reddit access is completely blocked by both web and JSON endpoints (403). Need to investigate setting up proper OAuth app credentials at reddit.com/prefs/apps and using PRAW with proper user-agent headers.",
+      "Until resolved, Reddit-based sentiment monitoring is zero."
+    ]
+  },
+  "degraded_sources": {
+    "web_search_duckduckgo": "Bot-blocked. All 6 attempts returned 403. No web search available.",
+    "reddit_web": "403 from both www.reddit.com and old.reddit.com. Need API credentials or user-agent configuration.",
+    "reddit_api": "Also 403. Reddit blocks unauthenticated API access."
+  },
+  "healthy_sources": {
+    "hn_algolia": "Working well. 7 queries returned full data.",
+    "ralphworkflow_com": "Loading correctly. Landing page messaging is consistent (unattended, overnight runs, plan-build-verify, local-first, vendor-neutral)."
   }
 }
