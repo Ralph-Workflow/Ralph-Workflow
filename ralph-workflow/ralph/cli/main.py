@@ -104,7 +104,7 @@ def _get_cli_context() -> DisplayContext:
     return _make_display_context()
 
 
-_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset({"cleanup", "star"})
+_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset({"cleanup", "star", "contribute"})
 _QUICK_FLAGS: frozenset[str] = frozenset({"-Q", "--quick"})
 _THOROUGH_DEVELOPER_ITERS = 10
 
