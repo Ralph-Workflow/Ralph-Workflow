@@ -2421,29 +2421,56 @@ def main() -> int:
             print(f"[run.py] WARNING: could not advance audit repair state: {e}", flush=True)
 
     if distribution_lane.lane == "owned_content":
-        print("[run.py] Triggering content generation from SEO insights...", flush=True)
-        generation_result = subprocess.run(
-            [sys.executable, str(AGENTS_DIR / "generate_content.py")],
-            capture_output=True, text=True, timeout=60,
-        )
-        generation_stdout = (generation_result.stdout or "").strip()
-        generation_stderr = (generation_result.stderr or "").strip()
-        if generation_result.returncode == 0:
-            print(f"[run.py] Content generation stdout: {generation_stdout[:200]}", flush=True)
+        # CONTENT SATURATION GATE (audit #25, 2026-06-04):
+        # Check can_publish_now() BEFORE dispatching to content generation.
+        # If saturated (≥40 live posts), redirect to SEO retrofit lane instead
+        # of creating more blog posts that never get indexed.
+        from agents.marketing.owned_content_amplification import can_publish_now as check_saturation
+        can_pub, sat_reason = check_saturation()
+        if not can_pub:
+            print(f"[run.py] CONTENT SATURATION: {sat_reason} — redirecting to SEO retrofit", flush=True)
+            retrofit_result = subprocess.run(
+                [sys.executable, str(AGENTS_DIR / "seo_retrofit_lane.py")],
+                capture_output=True, text=True, timeout=300,
+            )
+            print(f"[run.py] SEO retrofit: {retrofit_result.stdout[:200] or retrofit_result.stderr[:200]}", flush=True)
+            # Set both results as skipped to reflect saturation redirect
+            generation_result = subprocess.CompletedProcess(
+                args=["generate_content.py"], returncode=0,
+                stdout=f"skipped: content saturation redirect ({sat_reason})", stderr=""
+            )
+            posting_result = subprocess.CompletedProcess(
+                args=["run_posting.py"], returncode=0,
+                stdout=f"skipped: content saturation redirect ({sat_reason})", stderr=""
+            )
+            generation_stdout = generation_result.stdout
+            generation_stderr = generation_result.stderr
+            posting_stdout = posting_result.stdout
+            posting_stderr = posting_result.stderr
         else:
-            print(f"[run.py] Content generation warning: {generation_stderr[:200]}", flush=True)
+            print("[run.py] Triggering content generation from SEO insights...", flush=True)
+            generation_result = subprocess.run(
+                [sys.executable, str(AGENTS_DIR / "generate_content.py")],
+                capture_output=True, text=True, timeout=60,
+            )
+            generation_stdout = (generation_result.stdout or "").strip()
+            generation_stderr = (generation_result.stderr or "").strip()
+            if generation_result.returncode == 0:
+                print(f"[run.py] Content generation stdout: {generation_stdout[:200]}", flush=True)
+            else:
+                print(f"[run.py] Content generation warning: {generation_stderr[:200]}", flush=True)
 
-        print("[run.py] Triggering posting step...", flush=True)
-        posting_result = subprocess.run(
-            [sys.executable, str(AGENTS_DIR / "run_posting.py")],
-            capture_output=True, text=True, timeout=120,
-        )
-        posting_stdout = (posting_result.stdout or "").strip()
-        posting_stderr = (posting_result.stderr or "").strip()
-        if posting_result.returncode == 0:
-            print(f"[run.py] Posting stdout: {posting_stdout[:200]}", flush=True)
-        else:
-            print(f"[run.py] Posting warning: {posting_stderr[:200]}", flush=True)
+            print("[run.py] Triggering posting step...", flush=True)
+            posting_result = subprocess.run(
+                [sys.executable, str(AGENTS_DIR / "run_posting.py")],
+                capture_output=True, text=True, timeout=120,
+            )
+            posting_stdout = (posting_result.stdout or "").strip()
+            posting_stderr = (posting_result.stderr or "").strip()
+            if posting_result.returncode == 0:
+                print(f"[run.py] Posting stdout: {posting_stdout[:200]}", flush=True)
+            else:
+                print(f"[run.py] Posting warning: {posting_stderr[:200]}", flush=True)
     else:
         generation_result = subprocess.CompletedProcess(args=["generate_content.py"], returncode=0, stdout=f"skipped: lane={distribution_lane.lane}", stderr="")
         generation_stdout = generation_result.stdout

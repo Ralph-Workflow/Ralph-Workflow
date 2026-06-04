@@ -429,6 +429,20 @@ def build_draft_content(topic: Topic, now: datetime) -> str:
 
 def generate_draft(now: Optional[datetime] = None) -> Optional[Path]:
     now = now or datetime.now()
+    # CONTENT SATURATION GATE (audit #25, 2026-06-04):
+    # Secondary enforcement point — if owned_content_amplification's can_publish_now()
+    # says we're saturated, refuse to generate drafts (redirect to SEO retrofit).
+    # This covers: (a) run.py already checks before dispatching, but this is defense-in-depth;
+    # (b) direct invocation without run.py; (c) active-loop LLM sessions bypassing run.py.
+    try:
+        from agents.marketing.owned_content_amplification import can_publish_now as check_sat
+        can_pub, sat_reason = check_sat()
+        if not can_pub:
+            print(f"[generate_content.py] CONTENT SATURATION: {sat_reason} — redirect to seo_retrofit_lane.py")
+            return None
+    except ImportError:
+        print("[generate_content.py] WARNING: could not import saturation gate, proceeding unguarded")
+
     # SEO-informed topic selection: prioritize gaps identified by run.py
     topic = TOPIC_ROTATION[now.weekday() % len(TOPIC_ROTATION)]
     insights = load_seo_insights()

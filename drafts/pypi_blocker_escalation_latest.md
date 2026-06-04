@@ -1,15 +1,15 @@
 # PyPI Blocker Escalation
-Generated: 2026-06-04T00:29:48.205903
+Generated: 2026-06-04T06:07:27.707810
 
-⚠️ **3-DAY ESCALATION**
+🚨 **URGENT 7-DAY ESCALATION**
 
 **Blocked action:** Publish v0.8.8 to PyPI (wheel + sdist built, twine-check PASSED)
-**Days without token:** 6
+**Days without token:** 7
 **Monthly downloads affected:** ~1,299 (seeing old README without Codeberg CTA)
 **What's needed:** Set `PYPI_TOKEN` environment variable to a valid PyPI API token
   with upload scope for the `ralph-workflow` package.
 
-PyPI v0.8.8 has been built and ready for 3 days but remains unpublished due to missing PYPI_TOKEN. 1,299 downloads/month see the old README with no Codeberg → star/watch/fork CTA path. Each download is a missed conversion opportunity.
+PyPI v0.8.8 has been built and ready for 7+ days. The missing PYPI_TOKEN is now the #1 structural blocker between the marketing system and real Codeberg adoption. 1,299 monthly downloads are landing on an outdated README without a primary-repo CTA. This should be the next human action, before any other manual lane work.
 
 ## How to fix (human action required)
 1. Go to https://pypi.org/manage/account/token/
@@ -22,7 +22,7 @@ PyPI v0.8.8 has been built and ready for 3 days but remains unpublished due to m
    Or run manually: `python3 /home/mistlight/.openclaw/workspace/agents/marketing/pypi_auto_unblocker.py`
 
 ## Token was last checked
-2026-06-04T00:29:48.205903
+2026-06-04T06:07:27.707810
 
 ## Codeberg impact
 - Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow

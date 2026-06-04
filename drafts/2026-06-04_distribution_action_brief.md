@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-04T06:06:37
+Generated: 2026-06-04T07:06:58
 Chosen lane: **curator_handoff_packet**
 
 ## Why this lane

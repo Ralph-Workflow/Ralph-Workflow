@@ -1,32 +1,31 @@
 {
-  "generated_at": "2026-06-03T05:00:01.838609+00:00",
+  "generated_at": "2026-06-04T05:00:01.214577+00:00",
   "agent": "conversion_surface_watchdog",
   "repair_target": "outcome_system_underpowered",
-  "total_posts": 45,
-  "avg_score": 10.2,
-  "below_threshold_count": 1,
-  "strong_posts_count": 44,
+  "total_posts": 47,
+  "avg_score": 10.3,
+  "below_threshold_count": 0,
+  "strong_posts_count": 47,
   "weak_posts_count": 0,
   "posts": [
     {
-      "slug": "ai-coding-agent-benchmarks-real-world",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-benchmarks-real-world.md",
-      "lines": 116,
+      "slug": "claude-code-multi-agent-overnight-postmortem",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md",
+      "lines": 72,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
         "pip_install": 0,
         "first_task_guide": 0,
-        "free_use_invite": 0,
+        "free_use_invite": 3,
         "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
         "MISSING: No pip/pipx install instruction",
-        "MISSING: No first-task guide link",
-        "WEAK: No free-use invite in final section (pick a task, try tonight, judge result)"
+        "MISSING: No first-task guide link"
       ],
-      "total_score": 5
+      "total_score": 8
     },
     {
       "slug": "ai-coding-agent-testing-strategy",
@@ -337,7 +336,7 @@
     {
       "slug": "how-to-structure-autonomous-ai-agent-workflows-for-production-reliability",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-structure-autonomous-ai-agent-workflows-for-production-reliability.md",
-      "lines": 160,
+      "lines": 161,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -348,14 +347,14 @@
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
       ],
       "total_score": 10
     },
     {
       "slug": "ralph-workflow-comparison-guide",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-comparison-guide.md",
-      "lines": 287,
+      "lines": 307,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -409,7 +408,7 @@
     {
       "slug": "ralph-workflow-vs-conductor-oss",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-conductor-oss.md",
-      "lines": 103,
+      "lines": 104,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -420,7 +419,7 @@
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
       ],
       "total_score": 10
     },
@@ -499,7 +498,25 @@
     {
       "slug": "ralph-workflow-vs-hermes-agent",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-hermes-agent.md",
-      "lines": 98,
+      "lines": 99,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
+      "slug": "ralph-workflow-vs-nightshift",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-nightshift.md",
+      "lines": 141,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -589,7 +606,7 @@
     {
       "slug": "the-overnight-coding-agent-pattern",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/the-overnight-coding-agent-pattern.md",
-      "lines": 180,
+      "lines": 181,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -600,14 +617,14 @@
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
       ],
       "total_score": 10
     },
     {
       "slug": "verification-patterns-for-ai-generated-code",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/verification-patterns-for-ai-generated-code.md",
-      "lines": 131,
+      "lines": 132,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -618,7 +635,7 @@
         "star_ask": 1
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
       ],
       "total_score": 10
     },
@@ -715,7 +732,23 @@
     {
       "slug": "ai-agent-workflow-composer-composable-pipelines",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-workflow-composer-composable-pipelines.md",
-      "lines": 140,
+      "lines": 141,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
+    },
+    {
+      "slug": "ai-coding-agent-benchmarks-real-world",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-benchmarks-real-world.md",
+      "lines": 128,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -809,13 +842,7 @@
       "total_score": 13
     }
   ],
-  "auto_fixes": [
-    {
-      "slug": "ai-coding-agent-benchmarks-real-world",
-      "before_score": 5,
-      "action": "added_standard_conversion_block"
-    }
-  ],
+  "auto_fixes": [],
   "unchanged": [],
   "measurement_window_days": 14,
   "success_metric": "Codeberg stars_delta_window > 0 within 14 days",

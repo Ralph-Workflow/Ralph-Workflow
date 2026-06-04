@@ -21654,3 +21654,88 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Public docs consistently follow the positioning framework across all surfaces: simple Ralph-loop core, composable orchestration, strong default workflow, use-as-is-first-extend-later. README \u2192 START_HERE \u2192 docs/README is coherent, no internal-leakage failures, and promoted next-click pages reinforce rather than fight the journey.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with the operating-system-for-autonomous-coding tagline, immediately frames as orchestrator not chat tool, comparison table avoids internal plumbing, engineering-practice dependency explicitly called out."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Self-positions after README+START_HERE, routes by user intent, includes explicit 'keep proof secondary' directive \u2014 the strongest IA win in the system."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Leads with 'supporting proof, not the main pitch', orders evidence by working-behavior-first/logs-last, and defines weak-output signals. A model of how to do a secondary/proof page."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Clean positioning opener, shortest honest first-run path, no internal plumbing, explicitly funnels to docs/README for next levels."
+    },
+    {
+      "path": "first-task-guide.md",
+      "reason": "Comprehensive without internal leakage; spec template, morning-after review protocol, honest-assesment section. All next-page links stay in the right journey."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is healthy and the positioning has been successfully applied across all surfaces. README \u2192 START_HERE \u2192 docs/README forms a coherent journey. Promoted next-click pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent, first-task-guide, reviewable-output) all reinforce the same story rather than fighting it. No internal-developer leakage on top-level surfaces. The result-first, spec-driven, unattended engineering framing is consistent throughout.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "The github-mirror docs/ pages share near-identical opening boilerplate ('Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core...') across 6+ files. Not a positioning failure but creates a paste-sense that weakens trust on close reading.",
+    "The github-mirror docs surface is a parallel maintenance burden \u2014 no drift detected now but the structural risk is real. A process note to regenerate mirror docs from Codeberg canonical source would prevent future issues."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with the tagline, simple-core/composable-loop contrast, clear fit/non-fit, clean comparison table \u2014 no internal plumbing, no artifact language, no transcript framing."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Correctly opens by positioning itself as 'supporting proof' and 'not the main product pitch', then lists working behavior > real checks > written scope > artifacts as evidence hierarchy. This is the positioning document's result-first framing executed correctly on a page that would be the most tempting place to leak internals."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clean docs switchboard with explicit 'Keep proof secondary' section. Routes users to product-framing pages before proof pages. Shows the information architecture is intentional and under control."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

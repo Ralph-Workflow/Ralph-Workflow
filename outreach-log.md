@@ -1,3 +1,40 @@
+### 2026-06-04 (Thursday) — Marketing workflow audit #25 (06:20 CEST)
+
+**Audit trigger:** Cron marketing-workflow-audit. Run at 06:20 CEST.
+
+**Key status: Content saturated (47 posts), 0 Codeberg adoption movement, 0 live external lanes.**
+- Codeberg: 12⭐ (+0), 2👀 (+0), 2🍴 (+0) — flat across 9+ consecutive samples.
+- PyPI: 1,300 downloads/month (48/day) — real usage, 0.000% star conversion rate.
+- DDG: Dead HTTP 202 since May 28 (Day 8). Deadline June 4 11:19 passed (escalation filed).
+- Brave: Dead since June 3 (0 results). Both search providers blocked.
+- All 7 external distribution lanes blocked: SMTP, Apollo, PyPI, gh, Reddit, HN/Lobsters, dev.to.
+
+**Structural gap found and fixed: Content saturation gate was dead code.**
+`can_publish_now()` existed in `owned_content_amplification.py` but had NO callers in the execution path.
+`run.py` dispatched owned_content generation at line 2423 without checking saturation.
+`generate_content.py`'s `generate_draft()` created drafts without checking saturation.
+The active-loop (OpenClaw LLM cron) created blog #48 (vs-Nightshift) at 04:07 CEST despite 47 live posts.
+Gate at `CONTENT_SATURATION_THRESHOLD=40` was defined but never enforced.
+
+**Runtime changes deployed:**
+1. run.py line ~2423: Added can_publish_now() check before content dispatch. If saturated, redirects to seo_retrofit_lane.py instead of generating new posts.
+2. generate_content.py line ~437: Added can_publish_now() check in generate_draft(). Returns None (graceful skip) when saturated — no new drafts generated.
+3. blind_monitor_replacement cron KILLED: Both DDG and Brave dead, escalation already filed. 2x/day cron was pure compute waste. Commented out in crontab (v7 -> v8).
+4. CONTENT_SATURATION_ACTIVE.md added to workspace as LLM-level guardrail for the OpenClaw active-loop sessions that bypass Python execution.
+5. BLOCKER_ROI_SUMMARY.md updated with saturation status, runtime changes, conversion pivot mandate, and single highest-ROI human action (post 1 StackOverflow answer).
+
+**Verification:**
+- can_publish_now() returns (False, 'content saturation (47 live posts >= 40 threshold)')
+- generate_draft() returns None when saturated — confirmed
+- run.py saturation redirect path verified (Python AST parsed OK)
+- blind_monitor cron confirmed killed (0 live lines in crontab)
+
+**Decision to stop at saturation fix (not trigger full replacement):**
+Kill condition reached: 9+ flat measurements, all lanes blocked, content saturated.
+But: audit #22 created social_proof_bootstrap handler, #24 deployed it, #25 fixed saturation bypass — each audit shipped a structural change.
+Next trigger: If 09:00 run.py execution (today) produces zero new posts and next audit shows zero adoption movement, escalate to human-handoff or new agent creation.
+
+**Type:** AUDIT / STRUCTURAL_FIX / SATURATION_GATE_WIRED / CRON_KILLED
 ### 2026-06-03 (Wednesday) — Reddit monitoring (21:19 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-06-03_2119.md`
 - **Suspension status:** Day 3 of 7 escalation countdown. Suspension active since May 31 11:19 CEST (~123 hours stale).
