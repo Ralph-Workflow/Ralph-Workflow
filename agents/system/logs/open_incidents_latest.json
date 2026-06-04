@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-06-04T20:23:10.936524+00:00",
+  "updated_at": "2026-06-04T21:04:18.909890+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-03T11:33:59.794473+00:00",
-      "repeat_count": 122,
+      "repeat_count": 130,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -485,7 +485,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-04T19:37:28.106391+00:00",
+      "last_seen": "2026-06-04T21:04:18.909844+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
@@ -496,7 +496,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-06-03T11:33:59.794511+00:00",
-      "repeat_count": 423,
+      "repeat_count": 432,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -513,7 +513,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-04T20:23:10.936508+00:00",
+      "last_seen": "2026-06-04T21:04:18.909862+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -701,7 +701,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-03T11:33:59.794540+00:00",
-      "repeat_count": 188,
+      "repeat_count": 197,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1516,8 +1516,8 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-04T20:19:35.595361+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (loop_integrity_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-04T22:13:47.942955+02:00\"\n}",
+      "last_seen": "2026-06-04T21:04:18.909873+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-04T22:25:43.329831+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
       "closed_at": "2026-06-04T20:06:32.309575+00:00"
@@ -1527,7 +1527,7 @@
       "name": "docs_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-03T12:09:26.273948+00:00",
-      "repeat_count": 52,
+      "repeat_count": 61,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1678,7 +1678,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-04T20:23:10.936505+00:00",
+      "last_seen": "2026-06-04T21:04:18.909856+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
@@ -1689,7 +1689,7 @@
       "name": "docs_verifier_stability",
       "category": "loop_verification_fail",
       "first_seen": "2026-06-03T12:09:26.273971+00:00",
-      "repeat_count": 43,
+      "repeat_count": 52,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1800,7 +1800,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-04T20:23:10.936512+00:00",
+      "last_seen": "2026-06-04T21:04:18.909868+00:00",
       "last_error": "latest docs verifier verdict is not pass: 'fail'",
       "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
@@ -3290,7 +3290,7 @@
       "name": "ralph-docs-supervisor-precheck",
       "category": "error_streak",
       "first_seen": "2026-06-04T18:35:13.194488+00:00",
-      "repeat_count": 38,
+      "repeat_count": 42,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -3393,7 +3393,7 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-04T20:23:10.936468+00:00",
+      "last_seen": "2026-06-04T20:34:46.748969+00:00",
       "last_error": "Error: ENOSPC: no space left on device, write",
       "likely_cause": "IMMEDIATE_FAIL: script crashing early - Error: ENOSPC: no space left on device, write",
       "path": null,
@@ -3626,13 +3626,13 @@
       "name": "competitor-analysis",
       "category": "live_error",
       "first_seen": "2026-06-04T18:35:13.194530+00:00",
-      "repeat_count": 38,
+      "repeat_count": 47,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
       "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-06-04T20:23:10.936499+00:00",
+      "last_seen": "2026-06-04T21:04:18.909806+00:00",
       "last_error": "Error: ENOSPC: no space left on device, write",
       "likely_cause": "IMMEDIATE_FAIL: script crashing early - Error: ENOSPC: no space left on device, write",
       "path": null

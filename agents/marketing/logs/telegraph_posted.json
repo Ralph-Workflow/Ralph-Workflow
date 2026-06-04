@@ -30,5 +30,12 @@
     "posted_at": "2026-06-04T19:47:50.085351+00:00",
     "type": "telegraph_original",
     "cta": "Codeberg primary + GitHub mirror + pipx install"
+  },
+  "claude-codex-collab-vs-ralph": {
+    "source": "drafts/marketing_execution_board_latest.md",
+    "url": "https://telegra.ph/Claude--Codex-Collab-vs-Ralph-Workflow--Subscription-Based-Multi-Agent-Coding-Compared-06-04",
+    "title": "Claude x Codex Collab vs Ralph Workflow",
+    "posted_at": "2026-06-04T20:54:01.709011+00:00",
+    "trigger": "market_intelligence find - Claude x Codex Collab (HN 47466967)"
   }
 }

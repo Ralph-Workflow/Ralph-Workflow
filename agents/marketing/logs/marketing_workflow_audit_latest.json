@@ -4,7 +4,7 @@
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
   "repeated_openings": [
-    "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+    "Which of the five made the most difference for your team? Worth thinking about explicitly \u2014 most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "adoption_metrics": [
     {
@@ -58,7 +58,7 @@
       "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
-      "PyPI has 1297 downloads/month (7/day) — real usage signal that repo metrics don't capture."
+      "PyPI has 1297 downloads/month (7/day) \u2014 real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [
       "primary_repo_flat"
@@ -77,7 +77,7 @@
     "Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface."
   ],
   "repetitive": [
-    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
+    "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly \u2014 most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
     "Recent live external action exists (compare_page_competitive_intel), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
@@ -85,8 +85,8 @@
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
   ],
   "should_change_now": [
-    "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 48 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
-    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
+    "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 48 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation \u2014 it has never produced a backlink.",
+    "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving."
   ],
   "dormant_risks": [
     "reddit_style_repetition_suspended_while_channel_blocked"
@@ -96,7 +96,7 @@
       "target_tactic": "content_distribution",
       "failure_type": "primary_repo_flat",
       "repair_kind": "tactic",
-      "action": "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 48 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
+      "action": "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 48 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation \u2014 it has never produced a backlink.",
       "kill_condition": "Still no Codeberg delta after 7 days of new approach",
       "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
       "priority": 1,
@@ -106,7 +106,7 @@
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
-      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
+      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving.",
       "kill_condition": "N/A (mirror, not primary)",
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
@@ -196,5 +196,24 @@
     "status": "skipped_unchanged",
     "reason": "material_fingerprint_unchanged_or_cooldown",
     "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:1|action:compare_page_competitive_intel:executed"
+  },
+  "execution_board_fixed": true,
+  "execution_board_verified_at": "2026-06-04T20:54:58.342186+00:00",
+  "fake_green_strikes": 4,
+  "fake_green_root_cause": "Audit verified symlink existence but not content date. Content was May 25 despite June 4 filename. Fix: grep date check.",
+  "action_16": {
+    "action": "Claude x Codex Collab vs Ralph Telegraph comparison post",
+    "url": "https://telegra.ph/Claude--Codex-Collab-vs-Ralph-Workflow--Subscription-Based-Multi-Agent-Coding-Compared-06-04",
+    "timestamp": "2026-06-04T20:54:58.342186+00:00",
+    "type": "content_distribution",
+    "platform": "telegraph",
+    "discovery": "web_search competitor find \u2014 Claude x Codex Collab (github.com/AlessioZazzarini/claude-codex-collab, HN 47466967)"
+  },
+  "updated_at": "2026-06-04T20:54:58.342186+00:00",
+  "metrics": {
+    "codeberg_stars": 12,
+    "codeberg_watchers": 2,
+    "codeberg_forks": 2,
+    "sampled_at": "2026-06-04T20:54:58.342186+00:00"
   }
 }
