@@ -6,6 +6,14 @@
       "source": "Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md",
       "posted_at": "2026-06-04T13:33:32.531248",
       "type": "blog_crosspost"
+    },
+    {
+      "url": "https://telegra.ph/Freestyle--Ralph-Workflow--The-Sandboxed-Autonomous-Coding-Pipeline-06-04",
+      "title": "Freestyle + Ralph Workflow \u2014 The Sandboxed Autonomous Coding Pipeline",
+      "source": "/home/mistlight/.openclaw/workspace/drafts/telegraph_freestyle_ralph_2026-06-04.md",
+      "posted_at": "2026-06-04T19:47:50.085351+00:00",
+      "type": "telegraph_original",
+      "cta": "Codeberg primary + GitHub mirror + pipx install"
     }
   ],
   "YC_Just_Bet_Big_on_Agentic_Dev_Tools": {
@@ -13,6 +21,14 @@
     "posted_at": "2026-06-04T19:18:40.069462+00:00",
     "title": "YC Just Bet Big on Agentic Dev Tools \u2014 Why the Anti-Cloud Play Wins",
     "source": "drafts/telegraph_yc_agentic_goldrush_2026-06-04.md",
+    "cta": "Codeberg primary + GitHub mirror + pipx install"
+  },
+  "Freestyle_Ralph_Integration": {
+    "url": "https://telegra.ph/Freestyle--Ralph-Workflow--The-Sandboxed-Autonomous-Coding-Pipeline-06-04",
+    "title": "Freestyle + Ralph Workflow \u2014 The Sandboxed Autonomous Coding Pipeline",
+    "source": "/home/mistlight/.openclaw/workspace/drafts/telegraph_freestyle_ralph_2026-06-04.md",
+    "posted_at": "2026-06-04T19:47:50.085351+00:00",
+    "type": "telegraph_original",
     "cta": "Codeberg primary + GitHub mirror + pipx install"
   }
 }

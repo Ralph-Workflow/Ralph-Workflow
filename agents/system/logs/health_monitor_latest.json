@@ -1,7 +1,7 @@
 {
-  "ts": "2026-06-04T21:10:27.143545",
+  "ts": "2026-06-04T22:06:36.856886",
   "jobs_checked": 21,
-  "issues_found": 13,
+  "issues_found": 9,
   "issues": [
     {
       "job_id": "ff783799-2d21-45f7-bb06-eed9c46b95a6",
@@ -12,28 +12,6 @@
       "last_error": "Error: ENOSPC: no space left on device, write",
       "timeout_seconds": 900,
       "last_duration_ms": 669,
-      "likely_cause": "IMMEDIATE_FAIL: script crashing early - Error: ENOSPC: no space left on device, write"
-    },
-    {
-      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
-      "name": "Push research findings to git repo",
-      "category": "live_error",
-      "consecutive_errors": 1,
-      "last_status": "error",
-      "last_error": "Error: ENOSPC: no space left on device, write",
-      "timeout_seconds": 3600,
-      "last_duration_ms": 987,
-      "likely_cause": "IMMEDIATE_FAIL: script crashing early - Error: ENOSPC: no space left on device, write"
-    },
-    {
-      "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
-      "name": "marketing-active-loop",
-      "category": "live_error",
-      "consecutive_errors": 1,
-      "last_status": "error",
-      "last_error": "Error: ENOSPC: no space left on device, write",
-      "timeout_seconds": 3600,
-      "last_duration_ms": 633,
       "likely_cause": "IMMEDIATE_FAIL: script crashing early - Error: ENOSPC: no space left on device, write"
     },
     {
@@ -60,7 +38,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 3233.93,
+      "artifact_age_minutes": 3290.11,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -79,34 +57,10 @@
       "name": "ralph-docs-supervisor-precheck_escalation",
       "category": "escalation_required",
       "last_error": "Error: ENOSPC: no space left on device, write",
-      "likely_cause": "Incident escalation level=critical: ralph-docs-supervisor-precheck:error_streak repeat_count=18",
-      "repeats_in_recent_history": 18,
+      "likely_cause": "Incident escalation level=critical: ralph-docs-supervisor-precheck:error_streak repeat_count=35",
+      "repeats_in_recent_history": 35,
       "owner_domain": "docs",
       "incident_key": "ralph-docs-supervisor-precheck::error_streak",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
-      "name": "Push research findings to git repo_escalation",
-      "category": "escalation_required",
-      "last_error": "Error: ENOSPC: no space left on device, write",
-      "likely_cause": "Incident escalation level=critical: Push research findings to git repo:live_error repeat_count=18",
-      "repeats_in_recent_history": 18,
-      "owner_domain": "site",
-      "incident_key": "Push research findings to git repo::live_error",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
-      "name": "marketing-active-loop_escalation",
-      "category": "escalation_required",
-      "last_error": "Error: ENOSPC: no space left on device, write",
-      "likely_cause": "Incident escalation level=critical: marketing-active-loop:live_error repeat_count=18",
-      "repeats_in_recent_history": 18,
-      "owner_domain": "marketing",
-      "incident_key": "marketing-active-loop::live_error",
       "escalation_level": "critical",
       "blocked_by": []
     },
@@ -115,8 +69,8 @@
       "name": "competitor-analysis_escalation",
       "category": "escalation_required",
       "last_error": "Error: ENOSPC: no space left on device, write",
-      "likely_cause": "Incident escalation level=critical: competitor-analysis:live_error repeat_count=18",
-      "repeats_in_recent_history": 18,
+      "likely_cause": "Incident escalation level=critical: competitor-analysis:live_error repeat_count=35",
+      "repeats_in_recent_history": 35,
       "owner_domain": null,
       "incident_key": "competitor-analysis::live_error",
       "escalation_level": "critical",
@@ -127,8 +81,8 @@
       "name": "docs_verifier_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=32",
-      "repeats_in_recent_history": 32,
+      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=49",
+      "repeats_in_recent_history": 49,
       "owner_domain": "docs",
       "incident_key": "docs_verifier::artifact_contract_fail",
       "escalation_level": "critical",
@@ -139,8 +93,8 @@
       "name": "docs_verifier_stability_escalation",
       "category": "escalation_required",
       "last_error": "latest docs verifier verdict is not pass: 'fail'",
-      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=23",
-      "repeats_in_recent_history": 23,
+      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=40",
+      "repeats_in_recent_history": 40,
       "owner_domain": "docs",
       "incident_key": "docs_verifier_stability::loop_verification_fail",
       "escalation_level": "critical",
@@ -152,7 +106,7 @@
       "type": "rerun_docs_verifier_for_stability",
       "job": "docs_verifier_stability",
       "ok": false,
-      "detail": "independent verifier failed signoff\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is well-aligned with the positioning doc. README \\u2192 START_HERE \\u2192 docs/README forms a coherent journey. No internal leakage, no stale framing, no "
+      "detail": "independent verifier failed signoff\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"The README \\u2192 START_HERE \\u2192 docs/README journey is coherent and reinforces the positioning. All promoted next-click pages amplify the same simple-core/composa"
     },
     {
       "type": "rerun_independent_architecture_verification",
@@ -164,49 +118,31 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-04T21:10:00.161443+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-04T22:06:23.702665+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "ralph-docs-supervisor-precheck_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780600203281:29\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "Push research findings to git repo_escalation",
-      "ok": true,
-      "detail": "owner=ralph-site-owner-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:a49ec2cc-8343-45bf-a52e-eff8b0975585:1780600206498:30\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "marketing-active-loop_escalation",
-      "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780600212382:31\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780603585705:61\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_verifier_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780600215385:32\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780603588092:62\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_verifier_stability_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780600218360:33\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780603590240:63\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780600220985:34\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780603592283:64\"\n}"
     }
   ]
 }
