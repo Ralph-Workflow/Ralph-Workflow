@@ -22191,3 +22191,87 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, well-aligned with positioning, and consistently reinforces the same story across all top-level surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with 'The operating system for autonomous coding'; immediately frames as AI agent orchestrator with simple-core/composable-loop language; clear who-it's-for / not-for; engineering-practice dependency spelled out; Codeberg primary and GitHub mirror correctly presented."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Tight first-run narrative that opens with the same core framing, emphasizes 'use as-is then customize,' gives honest task selection, judges success by working software and real checks, and routes to docs map next."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Explicitly positions itself after README+START_HERE; routes by user intent; includes 'Keep proof secondary' section that tells users to understand the product story before reading proof pages \u2014 directly implements the positioning guardrails."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-positioned, coherent, and rubric-compliant. No hard failures. The README \u2192 START_HERE \u2192 docs/README journey is deliberate and consistent. Promoted secondary pages reinforce rather than fight the primary story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Root README pipx install block (line 69-71) shows `ralph --init` but not `ralph --diagnose` as a separate command before `$EDITOR PROMPT.md`. The numbered steps below mention --diagnose, but the code block and prose steps are slightly mismatched."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with correct tagline, positions as 'AI agent orchestrator' and 'composable loop framework', comparison table avoids internal leakage, 'Who it's for' correctly scopes to ambitious work, engineering-practice requirements section is present, and Codeberg primary / GitHub mirror line is correct."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first-run path that leads with product value first, picks the right task, and judges by working software \u2014 not logs or artifacts. Consistently uses positioning language from the reference doc."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself as post-README/START_HERE route. Has a 'Keep proof secondary' section. Routes users by intent. The promoted secondary pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent, reviewable-output) all use correct positioning and reinforce the same story."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Excellent depth \u2014 task selection criteria, spec template with invariants, morning-after review framework, honest assessment of when it works and doesn't. All framed around the positioning document's guidance."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "Subpackage README has the most complete standalone positioning \u2014 includes 'A fast way to tell whether Ralph Workflow fits', 'What to expect from a run', and 'When it fits / doesn't fit' sections. All aligned with positioning doc."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

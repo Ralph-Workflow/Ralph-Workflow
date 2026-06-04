@@ -2261,6 +2261,37 @@ def main() -> int:
         except (json.JSONDecodeError, IndexError):
             pass
 
+    # --- Star conversion finding consumption gate (daily) ---
+    # star_conversion_agent writes findings to drafts/, but no downstream
+    # consumer reads them. Wire the finding back into the active loop so
+    # recommendations don't silently accumulate as write-only artifacts.
+    STAR_CONVERSION_FINDING = AGENTS_DIR / 'drafts' / 'star_conversion_finding.md'
+    if STAR_CONVERSION_FINDING.exists():
+        try:
+            finding_text = STAR_CONVERSION_FINDING.read_text(encoding='utf-8')
+            # Parse level from markdown
+            import re as _re
+            level_match = _re.search(r'\*\*Level\*\*:\s*(\w+)', finding_text)
+            suppressed_match = _re.search(r'\*\*suppressed_by_interval\*\*:\s*(\w+)', finding_text)
+            consumed_match = _re.search(r'\*\*consumed_at\*\*:\s*(.+)', finding_text)
+            level = level_match.group(1).upper() if level_match else 'NONE'
+            suppressed = suppressed_match.group(1).lower() == 'true' if suppressed_match else False
+            consumed = bool(consumed_match)
+            if level in ('STRENGTHEN', 'STRUCTURAL') and not consumed:
+                print(f'[run.py] ⚡ Star conversion finding active (level={level}) — checking recommendations', flush=True)
+                # Check if ralph star CLI exists
+                ralph_star_path = Path('repos/Ralph-Workflow/github-mirror/ralph-workflow/ralph/cli/commands/star.py')
+                if ralph_star_path.exists():
+                    print(f'[run.py] ✅ ralph star CLI exists', flush=True)
+                else:
+                    print(f'[run.py] ⚠️  ralph star CLI MISSING — highest-ROI conversion action not deployed', flush=True)
+                # Mark finding as consumed to prevent repeated warnings
+                consumed_line = f'\n**consumed_at**: {now.isoformat()}\n'
+                STAR_CONVERSION_FINDING.write_text(finding_text + consumed_line, encoding='utf-8')
+                print(f'[run.py] Star conversion finding marked consumed at {now.isoformat()}', flush=True)
+        except Exception as _e:
+            print(f'[run.py] ⚠️  Star conversion finding read error: {_e}', flush=True)
+
     # --- Measurement window watchdog (daily) ---
     watchdog_script = AGENTS_DIR / 'measurement_window_watchdog.py'
     if watchdog_script.exists():

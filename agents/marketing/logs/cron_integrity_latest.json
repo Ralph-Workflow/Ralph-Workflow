@@ -1,11 +1,16 @@
 {
-  "generated_at": "2026-06-04T06:15:01.766268+00:00",
+  "generated_at": "2026-06-04T10:34:45.027561+00:00",
   "live_total_lines": 18,
   "marketing_job_count": 14,
-  "golden_job_count": 15,
+  "golden_job_count": 18,
   "min_marketing_jobs": 8,
   "issues": [],
   "ok": true,
+  "dead_job_denylist": [
+    "blind_monitor_replacement.py",
+    "reddit_monitor.py"
+  ],
+  "zombie_jobs_detected": [],
   "crontab_snapshot": [
     "15 8 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/cron_integrity_test.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/cron_integrity_cron.log 2>&1",
     "45 8 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/stale_artifact_watchdog.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/stale_artifact_watchdog_cron.log 2>&1",

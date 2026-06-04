@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-04T06:37:08.791976",
+  "generated_at": "2026-06-04T13:40:54.607575",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -17,9 +17,9 @@
     },
     {
       "platform": "PyPI",
-      "downloads_month": 1300,
-      "downloads_week": 198,
-      "downloads_day": 48,
+      "downloads_month": 1297,
+      "downloads_week": 195,
+      "downloads_day": 7,
       "total_downloads": null,
       "version": "0.8.8",
       "html_url": "https://pypi.org/project/ralph-workflow/"
@@ -58,7 +58,7 @@
       "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
-      "PyPI has 1300 downloads/month (48/day) — real usage signal that repo metrics don't capture."
+      "PyPI has 1297 downloads/month (7/day) — real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [
       "primary_repo_flat"
@@ -80,12 +80,12 @@
     "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
-    "Recent live external action exists (seo_integrity_fix), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
+    "Recent live external action exists (compare_page_competitive_intel), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
   ],
   "should_change_now": [
-    "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 47 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
+    "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 48 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
     "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving."
   ],
   "dormant_risks": [
@@ -96,7 +96,7 @@
       "target_tactic": "content_distribution",
       "failure_type": "primary_repo_flat",
       "repair_kind": "tactic",
-      "action": "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 47 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
+      "action": "REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 48 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.",
       "kill_condition": "Still no Codeberg delta after 7 days of new approach",
       "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
       "priority": 1,
@@ -125,8 +125,8 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains seo_integrity_fix; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (seo_integrity_fix), so the system is still shipping output even though outcome movement is not visible yet."
+    "The most recent runtime activity was curator_contact_discovery_execution, but the latest meaningful external/replacement execution remains compare_page_competitive_intel; do not confuse follow-through with fresh outcome-bearing distribution.",
+    "The active loop did execute a live marketing action recently (compare_page_competitive_intel), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -159,9 +159,9 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-04_measurement_hold_execution.json",
-    "type": "measurement_hold_execution",
-    "title": "Distribution lane execution: measurement_hold",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-04_curator_handoff_packet_execution.json",
+    "type": "curator_contact_discovery_execution",
+    "title": "Distribution lane execution: curator_handoff_packet",
     "status": "prepared",
     "ok": true,
     "live_external_action": false,
@@ -170,9 +170,9 @@
     "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_120612_principle8_crosslink_fix.json",
-    "type": "seo_integrity_fix",
-    "title": "Principle 8 compliance: add reciprocal cross-links from 3 related posts back to Claude Code #54393 postmortem",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-04_065129_active_loop_aicom_compare.json",
+    "type": "compare_page_competitive_intel",
+    "title": "compare page competitive intel",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
@@ -181,7 +181,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-06-02T09:00:26.383183+02:00",
+    "generated_at": "2026-06-04T09:00:21.693417+02:00",
     "status": "not_launched",
     "measurement_pending": false,
     "summary": "No Apollo sequence launch log exists yet.",
@@ -195,6 +195,6 @@
   "shared_artifact_sync": {
     "status": "skipped_unchanged",
     "reason": "material_fingerprint_unchanged_or_cooldown",
-    "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:1|action:seo_integrity_fix:executed"
+    "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:1|action:compare_page_competitive_intel:executed"
   }
 }

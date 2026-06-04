@@ -1,99 +1,19 @@
 {
-  "ts": "2026-06-04T12:05:45.162335",
+  "ts": "2026-06-04T12:57:30.271833",
   "jobs_checked": 22,
-  "issues_found": 7,
+  "issues_found": 1,
   "issues": [
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 2688.75,
+      "artifact_age_minutes": 2740.95,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review",
-      "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Docs are well-aligned with positioning: clear README \u2192 START_HERE \u2192 docs/README journey, consistent \"operating system\" / \"composable loop framework\" framing, minimal internal leakage, honest engineering-practice section. The PyPI README is notably strong (fit/non-fit guide, Codeberg-as-primary framing)."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_github-mirror-readme-still-reads-more-like-a-co",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "GitHub-mirror README still reads more like a co-equal surface than a pure mirror \u2014 the 'GitHub is the mirror' guardrail appears at line 9 but could be more visually prominent (banner or callout at top)",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: GitHub-mirror README still reads more like a co-equal surface than a pure mirror \u2014 the 'GitHub is the mirror' guardrail appears at line 9 but could be more visually prominent (banner or callout at top)"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_reviewable-output-md-title-and-first-paragraph-s",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "reviewable-output.md title and first paragraph still risk sounding like the product is about reviewable output \u2014 the doc is correctly positioned as secondary, but the framing could be slightly sharper to avoid any impression that 'reviewable output' is the core pitch",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: reviewable-output.md title and first paragraph still risk sounding like the product is about reviewable output \u2014 the doc is correctly positioned as secondary, but the framing could be slightly sharper to avoid any impression that 'reviewable output' is the core pitch"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_json",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "last_error": "live_jobs_checked=22 expected 0; live_jobs_enabled=22 expected 0",
-      "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=['docs-stack-aggressive-10min-self-heal', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-measurement-hold-release', 'marketing-momentum-watchdog', 'marketing-reflection', 'marketing-workflow-audit-precheck', 'ralph-workflow-full-house-docs-audit', 'stackoverflow-post-cooldown-run-check']"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_escalation",
-      "category": "escalation_required",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=62",
-      "repeats_in_recent_history": 62,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review::loop_verification_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_json_escalation",
-      "category": "escalation_required",
-      "last_error": "live_jobs_checked=22 expected 0; live_jobs_enabled=22 expected 0",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=39",
-      "repeats_in_recent_history": 39,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_json::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
     }
   ],
   "repairs_attempted": [
-    {
-      "type": "rerun_docs_verifier",
-      "job": "docs_agentic_review",
-      "ok": true,
-      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"The doc system is well-aligned with the positioning doc. README \\u2192 START_HERE \\u2192 docs/README form a coherent funnel with no internal leakage. Every surface leads with"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_ralph-workflow-readme-md-line-51-recommends-lint",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780567465897:4\"\n}"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_root-readme-and-ralph-workflow-readme-tell-diver",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780567469254:6\"\n}"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_reviewable-output-md-is-well-positioned-as-secon",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780567472072:7\"\n}"
-    },
     {
       "type": "rerun_independent_architecture_verification",
       "job": "agent_architecture_verifier_runtime",
@@ -104,31 +24,7 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-04T12:04:35.226080+02:00\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780567478304:8\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_mustFix_ralph-workflow-readme-md-line-51-recommends-lint_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780567482334:9\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_mustFix_root-readme-and-ralph-workflow-readme-tell-diver_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780567487859:10\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_mustFix_reviewable-output-md-is-well-positioned-as-secon_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780567491169:11\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-04T12:57:18.372232+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",

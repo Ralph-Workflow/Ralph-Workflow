@@ -1208,6 +1208,18 @@
       "error": null,
       "draft_hash": "0db2121b905d77ba18f1f9f8167a479aee4aa250d3f4a03d4b1bb9cb6c9f4b30",
       "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-nightshift.md"
+    },
+    {
+      "date": "2026-06-04",
+      "draft": "why-local-first-beats-cloud-unattended-ai-coding.md",
+      "title": "Why Local-First Beats Cloud for Unattended AI Coding Agents",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/Why-Local-First-Beats-Cloud-for-Unattended-AI-Coding-Agents-06-04",
+      "error": null,
+      "draft_hash": "032ac858b7f96a97b5f2bc11514cc453c83b78b1e6c97b14c2189d429905d98b",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-local-first-beats-cloud-unattended-ai-coding.md"
     }
   ],
   "last_run": "2026-06-04T06:00:01.611680"

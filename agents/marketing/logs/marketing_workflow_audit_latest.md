@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-06-04T06:37:08.791976
+- Generated: 2026-06-04T13:40:54.607575
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -11,8 +11,8 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains seo_integrity_fix; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (seo_integrity_fix), so the system is still shipping output even though outcome movement is not visible yet.
+- The most recent runtime activity was curator_contact_discovery_execution, but the latest meaningful external/replacement execution remains compare_page_competitive_intel; do not confuse follow-through with fresh outcome-bearing distribution.
+- The active loop did execute a live marketing action recently (compare_page_competitive_intel), so the system is still shipping output even though outcome movement is not visible yet.
 
 ## What actually worked
 - No meaningful tactic produced a trustworthy win in this window.
@@ -25,12 +25,12 @@
 - Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.
 
 ## What is low-signal
-- Recent live external action exists (seo_integrity_fix), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Recent live external action exists (compare_page_competitive_intel), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 - Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template.
 
 ## What should change now
-- REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 47 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
+- REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 48 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
 - Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
 ## Observed risks
@@ -46,10 +46,10 @@
 - Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
 - GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
-- PyPI has 1300 downloads/month (48/day) — real usage signal that repo metrics don't capture.
+- PyPI has 1297 downloads/month (7/day) — real usage signal that repo metrics don't capture.
 
 ## Repair actions (execute in this run)
-- **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 47 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
+- **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 48 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
   - Repair state: pending_measurement
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
@@ -61,11 +61,11 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
 
 ## Latest executed marketing action
-- Type: seo_integrity_fix
-- Title: Principle 8 compliance: add reciprocal cross-links from 3 related posts back to Claude Code #54393 postmortem
+- Type: compare_page_competitive_intel
+- Title: compare page competitive intel
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_120612_principle8_crosslink_fix.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-04_065129_active_loop_aicom_compare.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.
