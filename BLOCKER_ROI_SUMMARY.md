@@ -103,12 +103,6 @@ Anthropic's built-in unattended mode for Claude Code went GA on April 16 2026. T
 ### Unattended orchestrator space has exploded
 6+ active projects in ~8 weeks since Auto Mode GA: Nightcrawler, kodo, oh-my-claudecode, Agentrooms, OvernightAgent, and others. Ralph Workflow remains the pioneer (Nightcrawler credits Ralph Loop explicitly) and the only cross-platform, vendor-neutral, full-loop framework in the space.
 
-### Star Conversion Gap (star_conversion_agent — 2026-06-03 02:28)
-- **Gap**: 1,329 PyPI downloads/month (5/day) → 12 Codeberg stars
-- **Conversion rate**: 0.00% across 9+ consecutive measurement samples
-- **Action**: star_conversion_agent.py monitoring daily (cron 08:30); runner.py periodic CTA fires at 20% of runs
-- **Next step**: Increase CTA frequency → 50% if gap persists 14+ days
-
 ### 5 structural repairs completed tonight (June 3, audit #21)
 1. **star_conversion_agent.py created** — bridges PyPI downloads → Codeberg stars gap; monitors CTA, emits strengthening recommendations when chronic
 2. **run.py hold-frequency circuit-breaker** — universal gate in main execution loop: measurement_hold lane fired >1 times/24h → redirects to social_proof_bootstrap (autonomous, ships real assets)
@@ -131,6 +125,13 @@ Anthropic's built-in unattended mode for Claude Code went GA on April 16 2026. T
 - **SEO:** 16/102 pages in search (up from 13), sitemap priority tags deployed, technical health clean
 - **Competitors:** Hermes 173K+ stars, Cursor dominates AI-editor category, Nightcrawler credits Ralph as pioneer
 - **Positioning:** `/compare` page is strong, clear differentiation ("operating system for autonomous coding")
+
+
+### Star Conversion Gap (star_conversion_agent — 2026-06-04 08:30)
+- **Gap**: 1297 PyPI downloads/month (7/day) → 12 Codeberg stars
+- **Conversion rate**: 0.00% across 7 consecutive measurement samples
+- **Action**: star_conversion_agent.py monitoring daily; runner.py periodic CTA fires at 50% of runs
+- **Next step**: Increase CTA frequency → 50% if gap persists 14+ days
 
 ## Contact
 

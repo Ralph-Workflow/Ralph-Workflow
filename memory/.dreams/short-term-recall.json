@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-03T23:59:37.243Z",
+  "updatedAt": "2026-06-04T06:11:47.237Z",
   "entries": {
     "memory:memory/2026-05-09.md:1:19": {
       "key": "memory:memory/2026-05-09.md:1:19",
@@ -205,13 +205,13 @@
       "endLine": 25,
       "source": "memory",
       "snippet": "- New durable architecture requirement from mistlight on 2026-05-21: competitor analysis, market positioning, Reddit/marketing learnings, and adjacent agent findings must work together as one coordinated system rather than isolated report loops. Use the agent-architecture-audit lens to push the stack toward a shared knowledge base with common findings artifacts, cross-agent-readable memory, and enforced reuse so agents write knowledge once and the rest of the system can consume and act on it consistently. # 2026-05-21 - Durable operating preference clarified further: for codebase-related work, especially complex tasks, OpenCode is an allowed and preferred path to use proactively rather than",
-      "recallCount": 12,
+      "recallCount": 13,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 12,
+      "totalScore": 13,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-27T06:54:21.019Z",
-      "lastRecalledAt": "2026-05-28T04:33:10.017Z",
+      "lastRecalledAt": "2026-06-04T05:56:18.817Z",
       "queryHashes": [
         "49ea06815931",
         "0e53ec8f1e9b",
@@ -224,11 +224,13 @@
         "9559ff052f5a",
         "7a593a9c95e7",
         "98c40255e006",
-        "45a1b03f5e39"
+        "45a1b03f5e39",
+        "00bfa4590025"
       ],
       "recallDays": [
         "2026-05-27",
-        "2026-05-28"
+        "2026-05-28",
+        "2026-06-04"
       ],
       "conceptTags": [
         "reddit/marketing",
@@ -248,13 +250,13 @@
       "endLine": 42,
       "source": "memory",
       "snippet": "- Architecture audit finding saved on 2026-05-21: several non-docs loops still present as `tracked_only` rather than full checker/runner/verifier contracts, especially the marketing stack. Treat any claimed self-improving loop without explicit remediation plus independent verification evidence as degraded until upgraded or explicitly reclassified as monitor-only. - Durable instruction reinforced on 2026-05-21: never wait for a follow-up prompt when a safe internal fix path exists; fix it immediately. - On 2026-05-21 I cleaned accidental duplicate entries out of `memory/2026-05-21.md`, upgraded the marketing loop and agent-architecture watchdog from ambiguous `tracked_only` entries into real",
-      "recallCount": 31,
+      "recallCount": 41,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 31,
+      "totalScore": 41,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-27T06:54:21.019Z",
-      "lastRecalledAt": "2026-06-03T23:59:37.243Z",
+      "lastRecalledAt": "2026-06-04T06:11:47.237Z",
       "queryHashes": [
         "49ea06815931",
         "0e53ec8f1e9b",
@@ -274,7 +276,10 @@
         "abbb1faf72fb",
         "1101c719aa15",
         "ab9887be5e36",
-        "c3cfef40fcb0"
+        "c3cfef40fcb0",
+        "8d0beeaea776",
+        "ff8906e5c207",
+        "00bfa4590025"
       ],
       "recallDays": [
         "2026-05-27",
@@ -301,13 +306,13 @@
       "endLine": 23,
       "source": "memory",
       "snippet": "- Architecture audit finding saved on 2026-05-21: several non-docs loops still present as `tracked_only` rather than full checker/runner/verifier contracts, especially the marketing stack. Treat any claimed self-improving loop without explicit remediation plus independent verification evidence as degraded until upgraded or explicitly reclassified as monitor-only. - Durable instruction reinforced on 2026-05-21: never wait for a follow-up prompt when a safe internal fix path exists; fix it immediately. - On 2026-05-21 I cleaned accidental duplicate entries out of `memory/2026-05-21.md`, upgraded the marketing loop and agent-architecture watchdog from ambiguous `tracked_only` entries into real",
-      "recallCount": 31,
+      "recallCount": 41,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 31,
+      "totalScore": 41,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-27T06:54:21.019Z",
-      "lastRecalledAt": "2026-06-03T23:59:37.243Z",
+      "lastRecalledAt": "2026-06-04T06:11:47.237Z",
       "queryHashes": [
         "49ea06815931",
         "0e53ec8f1e9b",
@@ -327,7 +332,10 @@
         "abbb1faf72fb",
         "1101c719aa15",
         "ab9887be5e36",
-        "c3cfef40fcb0"
+        "c3cfef40fcb0",
+        "8d0beeaea776",
+        "ff8906e5c207",
+        "00bfa4590025"
       ],
       "recallDays": [
         "2026-05-27",
@@ -354,13 +362,13 @@
       "endLine": 47,
       "source": "memory",
       "snippet": "- New durable architecture requirement from mistlight on 2026-05-21: competitor analysis, market positioning, Reddit/marketing learnings, and adjacent agent findings must work together as one coordinated system rather than isolated report loops. Use the agent-architecture-audit lens to push the stack toward a shared knowledge base with common findings artifacts, cross-agent-readable memory, and enforced reuse so agents write knowledge once and the rest of the system can consume and act on it consistently. - Full loop-process sweep on 2026-05-21: docs loop is independently green, architecture loop is independently green, system-health monitor is green with explicit artifact checks and split l",
-      "recallCount": 9,
+      "recallCount": 10,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 9,
+      "totalScore": 10,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-27T06:54:21.019Z",
-      "lastRecalledAt": "2026-05-28T21:24:23.497Z",
+      "lastRecalledAt": "2026-06-04T05:56:18.817Z",
       "queryHashes": [
         "49ea06815931",
         "4ddff36cbdf1",
@@ -370,11 +378,13 @@
         "73e51bdb3b3c",
         "9559ff052f5a",
         "7a593a9c95e7",
-        "d14fa9a6546e"
+        "d14fa9a6546e",
+        "00bfa4590025"
       ],
       "recallDays": [
         "2026-05-27",
-        "2026-05-28"
+        "2026-05-28",
+        "2026-06-04"
       ],
       "conceptTags": [
         "reddit/marketing",
@@ -394,13 +404,13 @@
       "endLine": 480,
       "source": "memory",
       "snippet": "- Critical correction on 2026-05-19: I claimed a docs-audit cron job had already been added, but with the tools available in that turn I had not actually configured any cron. Treat that as a false completion claim. Durable rule: do not claim scheduled enforcement exists unless I have verified the real scheduler state or created the schedule myself. - Durable docs-loop requirement: prompt/process files are not enough by themselves for recurring enforcement. A real scheduler-backed check (cron or equivalent) must exist and be verified before I say the loop is operational. - Real shared docs-quality loop added on 2026-05-19 for Ralph Workflow: repo-root `AGENTS.md` now forces docs-editing agent",
-      "recallCount": 7,
+      "recallCount": 8,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 7,
+      "totalScore": 8,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-27T06:54:21.019Z",
-      "lastRecalledAt": "2026-05-28T03:30:28.840Z",
+      "lastRecalledAt": "2026-06-04T05:56:18.817Z",
       "queryHashes": [
         "49ea06815931",
         "4ddff36cbdf1",
@@ -408,11 +418,13 @@
         "93929cf3a3b6",
         "6bb7d343318f",
         "73e51bdb3b3c",
-        "7a593a9c95e7"
+        "7a593a9c95e7",
+        "00bfa4590025"
       ],
       "recallDays": [
         "2026-05-27",
-        "2026-05-28"
+        "2026-05-28",
+        "2026-06-04"
       ],
       "conceptTags": [
         "docs-audit",
@@ -1125,20 +1137,21 @@
       "endLine": 36,
       "source": "memory",
       "snippet": "- On 2026-05-21 I cleaned accidental duplicate entries out of `memory/2026-05-21.md`, upgraded the marketing loop and agent-architecture watchdog from ambiguous `tracked_only` entries into real full checker/runner/verifier contracts, and explicitly reclassified the remaining non-self-improving loops as `owner_only` or `monitor_only` so the loop-integrity audit no longer hides contract ambiguity. # 2026-05-21 - Durable operating preference clarified further: for codebase-related work, especially complex tasks, OpenCode is an allowed and preferred path to use proactively rather than only after being asked again. This applies beyond Ralph-Site and should influence how I choose implementation p",
-      "recallCount": 18,
+      "recallCount": 24,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 18,
+      "totalScore": 24,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-28T03:08:12.436Z",
-      "lastRecalledAt": "2026-06-03T23:59:37.243Z",
+      "lastRecalledAt": "2026-06-04T06:11:47.237Z",
       "queryHashes": [
         "9559ff052f5a",
         "fb12f65aaeb1",
         "9df271af7390",
         "601e817611de",
         "ab9887be5e36",
-        "c3cfef40fcb0"
+        "c3cfef40fcb0",
+        "ff8906e5c207"
       ],
       "recallDays": [
         "2026-05-28",
@@ -1289,13 +1302,13 @@
       "endLine": 13,
       "source": "memory",
       "snippet": "- Architecture audit finding saved on 2026-05-21: several non-docs loops still present as `tracked_only` rather than full checker/runner/verifier contracts, especially the marketing stack. Treat any claimed self-improving loop without explicit remediation plus independent verification evidence as degraded until upgraded or explicitly reclassified as monitor-only. - Durable instruction reinforced on 2026-05-21: never wait for a follow-up prompt when a safe internal fix path exists; fix it immediately. - On 2026-05-21 I cleaned accidental duplicate entries out of `memory/2026-05-21.md`, upgraded the marketing loop and agent-architecture watchdog from ambiguous `tracked_only` entries into real",
-      "recallCount": 20,
+      "recallCount": 29,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 20,
+      "totalScore": 29,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-28T03:08:12.436Z",
-      "lastRecalledAt": "2026-06-03T23:59:37.243Z",
+      "lastRecalledAt": "2026-06-04T06:11:47.237Z",
       "queryHashes": [
         "9559ff052f5a",
         "fb12f65aaeb1",
@@ -1304,7 +1317,9 @@
         "abbb1faf72fb",
         "1101c719aa15",
         "ab9887be5e36",
-        "c3cfef40fcb0"
+        "c3cfef40fcb0",
+        "8d0beeaea776",
+        "ff8906e5c207"
       ],
       "recallDays": [
         "2026-05-28",
@@ -1733,13 +1748,13 @@
       "endLine": 33,
       "source": "memory",
       "snippet": "- Repaired the Reddit marketing loop on 2026-05-21 so newer learnings are runtime-enforced instead of living only in `REDDIT_LEARNINGS.md`: `reddit_autopost.py` now prioritizes review-tax / cleanup / bounded-run angles, hard-gates drafts toward site finish-state language, rejects default last-slot product mentions, and adds a one-paragraph draft option; `reddit_next_window_packet.py` now rejects stale cached “fresh bodies” that bypass those gates. - Architecture audit finding saved on 2026-05-21: several non-docs loops still present as `tracked_only` rather than full checker/runner/verifier contracts, especially the marketing stack. Treat any claimed self-improving loop without explicit reme",
-      "recallCount": 19,
+      "recallCount": 28,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 19,
+      "totalScore": 28,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-28T10:29:39.321Z",
-      "lastRecalledAt": "2026-06-03T23:59:37.243Z",
+      "lastRecalledAt": "2026-06-04T06:11:47.237Z",
       "queryHashes": [
         "fb12f65aaeb1",
         "9df271af7390",
@@ -1747,7 +1762,9 @@
         "abbb1faf72fb",
         "1101c719aa15",
         "ab9887be5e36",
-        "c3cfef40fcb0"
+        "c3cfef40fcb0",
+        "8d0beeaea776",
+        "ff8906e5c207"
       ],
       "recallDays": [
         "2026-05-28",
@@ -2728,6 +2745,68 @@
         "distributed",
         "published",
         "but"
+      ]
+    },
+    "memory:memory/2026-06-04.md:20:36": {
+      "key": "memory:memory/2026-06-04.md:20:36",
+      "path": "memory/2026-06-04.md",
+      "startLine": 20,
+      "endLine": 36,
+      "source": "memory",
+      "snippet": "- File on current HEAD is clean — the token was removed from run.py in a later commit ### Immediate Actions Taken 1. ✅ Removed partial redacted token from `memory/2026-05-09.md` 2. ✅ Created `.githooks/pre-commit-secret-scan` — catches 12+ token patterns 3. ✅ Installed on workspace repo (via git config core.hooksPath) 4. ✅ Installed on Ralph-Site repo (via git config core.hooksPath) 5. ✅ Hardened `.gitignore` — added blanket `*_token*` and `*.token` patterns 6. ✅ Committed prevention system (commit 2470979) 7. ✅ Added zero-tolerance security rule to AGENTS.md ### Prevention - **Pre-commit hook** blocks any commit containing GitHub PATs, OAuth tokens, OpenAI/Anthropic/API keys, AWS keys, Sl",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-04T05:05:39.663Z",
+      "lastRecalledAt": "2026-06-04T05:05:39.663Z",
+      "queryHashes": [
+        "b08367837038"
+      ],
+      "recallDays": [
+        "2026-06-04"
+      ],
+      "conceptTags": [
+        "openai",
+        "run.py",
+        "memory/2026-05-09.md",
+        "githooks/pre-commit-secret-scan",
+        "core.hookspath",
+        "ralph-site",
+        "zero-tolerance",
+        "agents.md"
+      ]
+    },
+    "memory:memory/2026-06-04.md:1:26": {
+      "key": "memory:memory/2026-06-04.md:1:26",
+      "path": "memory/2026-06-04.md",
+      "startLine": 1,
+      "endLine": 26,
+      "source": "memory",
+      "snippet": "## SECURITY INCIDENT: GitHub PAT leaked in commit history (2026-06-04 ~02:00 CEST) **Email received:** GitHub detected a Personal Access Token in commit content and auto-revoked it. ### Root Cause - **Commits on May 10-12, 2026** included a hardcoded GitHub PAT (`github_pat_11AEY3SZI0...`) in `agents/unblocker/run.py` (full token) and `memory/2026-05-09.md` (partially redacted). - **3 commits contained the token:** - `70aa742` (May 10) — memory file with partial redaction - `5a2babe` (May 12) — run.py with full plaintext token written in code - `6fb633a` (May 10) — run.py with full plaintext token in rename - **Sync cron** (sync_to_github.sh, deployed May 20 via e0801ee) pushed all",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-04T05:05:39.663Z",
+      "lastRecalledAt": "2026-06-04T05:05:39.663Z",
+      "queryHashes": [
+        "b08367837038"
+      ],
+      "recallDays": [
+        "2026-06-04"
+      ],
+      "conceptTags": [
+        "auto-revoked",
+        "10-12",
+        "github-pat-11aey3szi0",
+        "agents/unblocker/run.py",
+        "memory/2026-05-09.md",
+        "run.py",
+        "sync-to-github.sh",
+        "security"
       ]
     }
   }

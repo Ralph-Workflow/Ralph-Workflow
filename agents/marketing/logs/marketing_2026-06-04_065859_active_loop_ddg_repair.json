@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-06-04T08:55:00+02:00",
+  "type": "active_loop",
+  "action": "distribution_architecture_repair_ddg_resolved",
+  "title": "DDG blind period resolved — reddit monitor un-retired, discovery restored",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "repair_type": "distribution_architecture_repair",
+  "root_cause": "Library-layer failure, not provider-layer. duckduckgo_search lib returns HTTP 202, but raw html.duckduckgo.com endpoint works fine.",
+  "changes": {
+    "reddit_monitor_unretired": "reddit_monitor.py _REDDIT_RETIRED=True → False",
+    "suspension_marker_deleted": "reddit_monitor_suspension.json removed",
+    "blind_monitor_validated": "blind_monitor_replacement.py confirmed DDG HTML healthcheck path works",
+    "ddg_escalation_resolved": "Escalation artifact updated to RESOLVED status"
+  },
+  "verification": {
+    "ddg_html": "HTTP 200, 10 results, bot_blocked=false, Reddit query PASS",
+    "reddit_monitor": "69 threads scanned, 6 shortlisted, 8/11 queries OK (2 JSON API blocked)",
+    "top_opportunity": "r/AI_Agents: 'tried 12+ agentic AI workflow builders — these 5 actually work in production' (high direct-reply fit)",
+    "blind_period": "May 28 → June 4 08:55 CEST (resolved before 11:19 deadline)"
+  },
+  "downstream_blockers_remaining": {
+    "reddit_posting": "blocked — account u/Informal-Salt827 suspended since May 27 (banned_content)",
+    "pypi_token": "blocked",
+    "smtp": "blocked",
+    "gh_auth": "blocked"
+  },
+  "monitor_report": "reddit_monitor_2026-06-04_0855.md (69 scanned, 6 shortlisted)"
+}

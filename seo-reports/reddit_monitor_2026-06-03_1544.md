@@ -1,50 +1,115 @@
-# Reddit monitor — RalphWorkflow — 2026-06-03 15:44 Europe/Berlin (13:44 UTC)
+# Reddit monitor — RalphWorkflow — 2026-06-04 08:55 Europe/Berlin
 
-## Self-suspension status — Day 3 of 7 (active)
+## Snapshot
+- **Threads/posts scanned:** 69
+- **Shortlisted:** 6
+- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 63
+- **Query attempts:** 11
+- **Search diagnostics:** ok=8, reddit_ip_blocked=2, time_budget_exceeded=1
+- **Prior context reviewed first:** `agents/marketing/REDDIT_LEARNINGS.md`, `outreach-log.md`, `agents/marketing/logs/reddit_posts.jsonl`, `agents/marketing/logs/reddit_post_analysis.md`
+- **Messaging ground truth used:** <https://ralphworkflow.com>
+- **Search mode:** content-first across Reddit via broad query families; subreddit is a weak secondary hint only
 
-**Suspension marker:** `agents/marketing/logs/reddit_monitor_suspension.json` — active since May 31 11:19 CEST.
-**Last usable retrieval:** 2026-05-28 11:19 CEST — **~6.1 days stale (~146 hours).**
-**Suspension exceeded:** 72-hour auto-suspension rule ✓ — marker file written May 31.
+## Ground-truth message kept in scope
+- **no babysitting**
+- **start the job and close the laptop**
+- **finished code**
+- **tested code**
+- **ready to review**
+- **what changed / would you merge it?**
 
-## Provider status (13:44 UTC)
+## What I scanned
+Broad content-first search across Reddit around:
+- **production_failure**: AI agents failing in production reddit; what breaks first ai agents production reddit; workflow continuity ai agents reddit
+- **visible_finish_state**: what changed AI coding workflow reddit; merge or rerun coding agent reddit; finished code tested code ready to review reddit
+- **review_tax**: AI written code review delay PR agent reddit; review tax AI code review merge agent reddit; ready to review coding agent merge PR reddit
+- **broader_dev**: devops AI agents review reddit; programming AI coding workflow review reddit; experienceddevs AI code review trust reddit; automation AI agents production failure reddit; AgentsOfAI review tax AI code reddit
+- **trust_reliability**: reliable output AI coding tools reddit; trust codex claude workflow reddit; production AI agents failing workflow reddit
+- **approval_drag**: Claude Code approval reddit; approval loop coding agent reddit; blocked on you coding workflow reddit
+- **unattended**: unattended coding agent reddit; run overnight Claude Code reddit; coding agent babysitting reddit
+- **parallel_repo**: parallel Claude Code repo reddit; multiple coding agents repo reddit; merge safety coding agents reddit
+- **cleanup_archaeology**: checkpoint commits polluting git history reddit; reconstruct AI coding session reddit; AI generated code review archaeology reddit
+- **remote_supervision**: remote control mobile Claude Code reddit; reconnect session coding agent reddit; babysitting coding agent mobile reddit
 
-| Provider | Status | Since | Detail |
-|----------|--------|-------|--------|
-| DuckDuckGo web_search (Reddit queries) | 🔴 **Fully blocked** | May 28 | `site:reddit.com` → bot-detection. |
-| DuckDuckGo web_search (general queries) | 🔴 **Fully blocked this pass** | Jun 3 | Even broad non-Reddit queries now return bot-detection. Previous flicker pattern (Jun 1-2) gone. Consistent with IP-level blacklist ratcheting, not session caps. |
-| Reddit direct (web_fetch) | 🔴 **403 IP-blocked** | May 23 | Hetzner Helsinki IP — 32 consecutive days. |
-| ralphworkflow.com | ✅ Live | — | 200 OK. |
-| Codeberg repo | ✅ Live | — | 12⭐ confirmed. |
+## Best current discussion opportunities (reply-worthiness first, product-fit second)
+- Credible discussion opportunities and honest RalphWorkflow mention fits are tracked separately on purpose.
 
-## What changed from prior pass (2026-06-03 14:41 CEST)
+### 1) Reddit reddit.com › r/ai_agents › tried 12+ agentic ai workflow builders this year — these 5 actually work in production r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1tcptqt/tried_12_agentic_ai_workflow_builders_this_year>
+- Community: `r/AI_Agents`
+- Freshness: during this pass
+- Direct reply fit: **high**
+- Mention fit: **medium-low**
+- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
+- Best RalphWorkflow angle: **content-family match: production_failure**
+- Why it fits: content-first match from `production_failure` query family; query=`workflow continuity ai agents reddit`
 
-- **DDG fully dead — no flicker.** Both Reddit-specific and general queries returned bot-detection. The tightning trajectory has reached terminal. Previously: ~6 working queries (partial) → ~3 queries (tightening) → 0 queries (dead).
-- **Escalation deadline tomorrow** — June 4 11:19 CEST (~21.7 hours).
-- **No non-Reddit intelligence collected** — even broad queries are now blocked.
+### 2) Reddit reddit.com › r/ai_agents › how are you managing multiple coding agents in parallel without things getting messy? r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1st2gkt/how_are_you_managing_multiple_coding_agents_in>
+- Community: `r/AI_Agents`
+- Freshness: during this pass
+- Direct reply fit: **high**
+- Mention fit: **medium-low**
+- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
+- Best RalphWorkflow angle: **multiple coding agents, parallel**
+- Why it fits: content-first match from `visible_finish_state` query family; query=`merge or rerun coding agent reddit`
 
-## Shortlist
+### 3) Reddit reddit.com › r/ai_agents › what made an agent workflow finally feel trustworthy enough to keep using? r/AI_Agents
+- URL: <https://www.reddit.com/r/AI_Agents/comments/1ru0kjc/what_made_an_agent_workflow_finally_feel>
+- Community: `r/AI_Agents`
+- Freshness: during this pass
+- Direct reply fit: **high**
+- Mention fit: **medium-low**
+- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
+- Best RalphWorkflow angle: **trust**
+- Why it fits: content-first match from `production_failure` query family; query=`workflow continuity ai agents reddit`
 
-**Empty.** No Reddit retrieval possible. All prior threads evicted per age-eviction rules.
+### 4) Reddit reddit.com › r/claudeai › fully switched my entire coding workflow to ai driven development r/ClaudeAI
+- URL: <https://www.reddit.com/r/ClaudeAI/comments/1o90n6b/fully_switched_my_entire_coding_workflow_to_ai>
+- Community: `r/ClaudeAI`
+- Freshness: during this pass
+- Direct reply fit: **medium-high**
+- Mention fit: **medium-low**
+- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
+- Best RalphWorkflow angle: **content-family match: visible_finish_state**
+- Why it fits: content-first match from `visible_finish_state` query family; query=`what changed AI coding workflow reddit`
 
-## Posting verdict
+### 5) Reddit reddit.com › r/experienceddevs › how and why are companies using ai agents to review codes? How and why are companies using AI agents to review codes? : r/ExperiencedDevs
+- URL: <https://www.reddit.com/r/ExperiencedDevs/comments/1razy16/how_and_why_are_companies_using_ai_agents_to>
+- Community: `r/ExperiencedDevs`
+- Freshness: during this pass
+- Direct reply fit: **medium-high**
+- Mention fit: **medium-low**
+- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
+- Best RalphWorkflow angle: **content-family match: review_tax**
+- Why it fits: content-first match from `review_tax` query family; query=`review tax AI code review merge agent reddit`
 
-**No posting.** Suspension holds. All 7 distribution lanes blocked.
+### 6) Reddit reddit.com › r/chatgptcoding › we talk a lot about ai writing code… but who’s using it to review code? r/ChatGPTCoding
+- URL: <https://www.reddit.com/r/ChatGPTCoding/comments/1lg6tkl/we_talk_a_lot_about_ai_writing_code_but_whos>
+- Community: `r/ChatGPTCoding`
+- Freshness: during this pass
+- Direct reply fit: **medium**
+- Mention fit: **low**
+- Mention test: remove RalphWorkflow from the reply; if it still helps, keep it in discussion-only unless the finish-state angle stays native.
+- Best RalphWorkflow angle: **content-family match: review_tax**
+- Why it fits: content-first match from `review_tax` query family; query=`AI written code review delay PR agent reddit`
 
-## Escalation countdown
+## Strong current rejects
+- Rejected items are usually tactical setup threads, launch/showcase posts, already-used threads, or weak-fit mentions where the answer should stay thread-native with no product mention.
 
-**~21.7 hours to June 4 11:19 CEST.** This is the final pre-escalation pass. At the first pass after the deadline:
+## Search integrity notes
+- Query families are broad pain clusters, not subreddit buckets.
+- Community names are only a weak tie-breaker after content scoring; they are not the search boundary.
+- If providers challenge or under-return, that is a monitor fault and should not be treated as a clean “no opportunities” day.
 
-1. Write `agents/marketing/logs/reddit_monitor_escalation.md` with:
-   - 7+ days of total Reddit blindness
-   - DDG structurally incompatible with Reddit monitoring from Hetzner Helsinki IP
-   - Recommendation: remove reddit-monitor cron, replace with weekly non-Reddit market-intelligence scan
-   - Provider migration (Brave Search API, SerpAPI, or other) needed for Reddit recovery
-2. Notify mistlight with the escalation summary.
+## Today’s bottom line
+- **Yes**, I found **6** credible discussion opportunities through content-first Reddit search.
+- The search space is **not** bounded to a fixed subreddit list anymore; subreddit only affects tie-breaking after content scoring.
+- A thread can win even in a broader dev or AI community if the post itself matches the real workflow pain strongly enough.
+- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=2**), but other queries still returned usable results (**ok=8**). Treat this as partial coverage, not a total Reddit outage.
 
-## Self-improving lessons (this pass)
-
-1. **DDG is terminal for this environment.** Both Reddit-specific and general queries now blocked. The Jun 1-2 flicker was a brief session-cache artifact, not recovery. From this IP, DDG is unusable for any monitoring purpose.
-
-2. **The 7-day escalation path is correct.** The suspension marker (May 31), the fail-closed rules, and the escalation recommendation artifacts are all in place. Tomorrow's pass simply needs to execute.
-
-3. **Competitor analysis is the only working scan lane.** Today's 08:02 UTC refresh confirmed market intelligence is current. If the reddit-monitor cron is removed, competitor analysis on its own cadence should be retained.
+## Next self-improving adjustment
+- Keep expanding query families when new pain clusters appear; do not solve search coverage by hardcoding more subreddit names.
+- Keep ranking production-failure, review-tax, and visible-finish-state threads above remote-control or approval-UX threads for mention-fit.
+- Continue scoring on post/title/snippet content first, then use community only as a weak secondary hint.
+- Keep separating discussion-fit from mention-fit so the monitor can report strong research days without forcing weak brand mentions.
