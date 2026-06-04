@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-04T01:24:37.054017",
+  "timestamp": "2026-06-04T09:00:01.343240",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -14,9 +14,13 @@
       "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
-    "reasoning": "Handoff packet churn suppressor is active; suppressing primary_repo_flat_contact_handoff_packet that was regenerated as prepared-only without live delivery. Wait for fresh live delivery window before regenerating.",
+    "reasoning": "Directory confirmation has never produced a Codeberg backlink; no postable external lane is open and no unpublished guide remains. Hold for the next truthful execution window.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
+      "2 live external marketing action(s) already shipped in the last 6 hours.",
+      "If no new outcome lands first, this short-window congestion clears at 2026-06-04T10:38:45. Before then, another live outbound action would mostly blur measurement.",
+      "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
+      "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",

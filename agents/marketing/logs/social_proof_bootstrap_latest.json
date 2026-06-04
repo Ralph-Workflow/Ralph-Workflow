@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-06-04T01:06:27.407351",
+  "generated_at": "2026-06-04T07:00:01.365375+00:00",
   "agent": "social_proof_bootstrap",
   "dry_run": false,
   "audit_results": [
     {
       "surface": "codeberg_readme",
-      "timestamp": "2026-06-03T23:06:27.512962+00:00",
+      "timestamp": "2026-06-04T07:00:01.365402+00:00",
       "reachable": true,
       "cta_analysis": {
         "cta_types_found": [
@@ -44,7 +44,7 @@
     },
     {
       "surface": "docs_footer",
-      "timestamp": "2026-06-03T23:06:28.007143+00:00",
+      "timestamp": "2026-06-04T07:00:01.664885+00:00",
       "template_exists": true,
       "template_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/docs/sphinx_overrides/_themes/ralph-docs/page.html",
       "has_codeberg_cta": true,
@@ -58,7 +58,7 @@
     },
     {
       "surface": "pypi_page",
-      "timestamp": "2026-06-03T23:06:28.057220+00:00",
+      "timestamp": "2026-06-04T07:00:01.699358+00:00",
       "reachable": true,
       "cta_analysis": {
         "cta_types_found": [
@@ -94,7 +94,7 @@
     {
       "surface": "docs_footer",
       "url": "https://ralphworkflow.com/docs/",
-      "timestamp": "2026-06-03T23:06:28.085250+00:00",
+      "timestamp": "2026-06-04T07:00:02.018290+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
@@ -104,13 +104,13 @@
       "local_files_missing": [],
       "gaps": [],
       "has_fork_cta": true,
-      "page_size": 30118,
-      "title": "Ralph Workflow manual · Ralph Workflow Docs"
+      "page_size": 15941,
+      "title": "Ralph Workflow manual &#8212; Ralph Workflow"
     },
     {
       "surface": "blog_cta",
       "url": "https://ralphworkflow.com/blog/",
-      "timestamp": "2026-06-03T23:06:28.121373+00:00",
+      "timestamp": "2026-06-04T07:00:02.057330+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
@@ -123,13 +123,13 @@
       ],
       "gaps": [],
       "has_fork_cta": false,
-      "page_size": 97799,
+      "page_size": 99546,
       "title": "Blog — Ralph Workflow"
     },
     {
       "surface": "compare_page",
       "url": "https://ralphworkflow.com/compare",
-      "timestamp": "2026-06-03T23:06:28.303837+00:00",
+      "timestamp": "2026-06-04T07:00:02.163709+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
@@ -139,13 +139,13 @@
       "local_files_missing": [],
       "gaps": [],
       "has_fork_cta": true,
-      "page_size": 87777,
+      "page_size": 92745,
       "title": "Ralph Workflow compared to 17 autonomous coding tools — Ralph Workflow"
     },
     {
       "surface": "install_page",
       "url": "https://ralphworkflow.com/install",
-      "timestamp": "2026-06-03T23:06:28.470251+00:00",
+      "timestamp": "2026-06-04T07:00:02.199571+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
@@ -161,7 +161,7 @@
     {
       "surface": "start_page",
       "url": "https://ralphworkflow.com/start",
-      "timestamp": "2026-06-03T23:06:28.510326+00:00",
+      "timestamp": "2026-06-04T07:00:02.219062+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
@@ -177,7 +177,7 @@
     {
       "surface": "homepage",
       "url": "https://ralphworkflow.com/",
-      "timestamp": "2026-06-03T23:06:28.521552+00:00",
+      "timestamp": "2026-06-04T07:00:02.277771+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
@@ -194,7 +194,7 @@
     {
       "surface": "contact_page",
       "url": "https://ralphworkflow.com/contact",
-      "timestamp": "2026-06-03T23:06:28.620763+00:00",
+      "timestamp": "2026-06-04T07:00:02.294128+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
@@ -210,7 +210,7 @@
     {
       "surface": "privacy_page",
       "url": "https://ralphworkflow.com/privacy",
-      "timestamp": "2026-06-03T23:06:28.632247+00:00",
+      "timestamp": "2026-06-04T07:00:02.307227+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,
@@ -226,7 +226,7 @@
     {
       "surface": "terms_page",
       "url": "https://ralphworkflow.com/terms",
-      "timestamp": "2026-06-03T23:06:28.642733+00:00",
+      "timestamp": "2026-06-04T07:00:02.328666+00:00",
       "reachable": true,
       "has_codeberg_cta": true,
       "has_star_cta": true,

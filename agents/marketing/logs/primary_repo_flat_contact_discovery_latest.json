@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-03T07:00:09.186379+00:00",
+  "generated_at": "2026-06-04T07:00:22.616316+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -361,6 +361,11 @@
           "type": "website",
           "value": "https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix",
           "label": "feedback form"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/ggml-org/llama.cpp/issues/new",
+          "label": "GitHub issue"
         }
       ],
       "recommended_next_step": "public feedback-form contact path is now identified"
@@ -737,7 +742,12 @@
         },
         {
           "type": "github_issue",
-          "value": "https://github.com/anthropics/claude-code/issues/new",
+          "value": "https://github.com/ggerganov/whisper.cpp/issues/new",
+          "label": "GitHub issue"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/SYSTRAN/faster-whisper/issues/new",
           "label": "GitHub issue"
         },
         {

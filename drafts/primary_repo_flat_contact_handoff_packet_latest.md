@@ -1,5 +1,5 @@
 # Ralph Workflow Primary-Repo-Flat Publisher Contact Packet
-Generated: 2026-06-03T09:00:02
+Generated: 2026-06-04T09:00:01
 
 ## Why this exists now
 - Codeberg adoption is still flat in the active window.
@@ -21,6 +21,7 @@ Generated: 2026-06-03T09:00:02
 
 ## Angle to lead with
 - Lead with the no-babysitting / close-the-laptop problem, not generic autonomy hype.
+- Anchor the pitch on finished, tested code that is ready to review by morning.
 
 ## Execute these first
 ### 1. ctxt.dev / Signum

@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-06-04T09:00:01.343240",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "measurement_hold_follow_through",
+    "channel": "measurement_hold",
+    "title": "Distribution lane execution: measurement_hold",
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-04_090001_measurement_hold_follow_through.md"
+  },
+  "why_this_action": {
+    "summary": "Directory confirmation has never produced a Codeberg backlink; no postable external lane is open and no unpublished guide remains. Hold for the next truthful execution window.",
+    "supporting_reasons": [
+      "Primary Codeberg adoption is flat in the current measurement window.",
+      "2 live external marketing action(s) already shipped in the last 6 hours.",
+      "If no new outcome lands first, this short-window congestion clears at 2026-06-04T10:38:45. Before then, another live outbound action would mostly blur measurement.",
+      "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",
+      "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
+      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
+      "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
+      "5 prepared curator targets still need a canonical execution handoff packet.",
+      "Manual-contact-only curator targets are still waiting for execution (vivy-yi/awesome-agent-orchestration), so the loop should use the existing contact-discovery asset before inventing new reset work.",
+      "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
+      "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (AXME Code, WyeWorks, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
+      "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
+      "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
+      "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
+      "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
+      "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
+      "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
+      "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
+      "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
+      "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress."
+    ],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+    ],
+    "targets_prepared": [],
+    "hold_until": "2026-06-04T10:38:45"
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes. Re-surfaced the current StackOverflow handoff asset so the hold window still points at a concrete demand-capture move. Refreshed stale manual execution packets for the live prepared queues during the hold window.",
+    "targets_prepared": [],
+    "live_external_action": false,
+    "blocking_factors": []
+  },
+  "verification": {
+    "truth_artifact_fingerprints": {
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/primary_repo_flat_contact_discovery_latest.json": "853d886ca3f2c90c4a18900908285c091280cb8d",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_outreach_queue_latest.json": "8003aea369d6c06c0617cfd5092fd90f22a5b746",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/comparison_backlink_queue_latest.json": "a473af51eb7c760b93ed821f3187440089518a6f",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_contact_discovery_latest.json": "27239c7e71d90bfd2a4a447d2f1f9876c68651fd",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/stackoverflow_answer_lane_latest.json": "bd473d3aed0c69a81477b72c42a8ad98066124bb",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/apollo_sequence_status_latest.json": "06f99bd876a86707f29337580fa48574525582cd",
+      "/home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_contact_handoff_packet_latest.md": "ff25cb3eb5a0182f0c13d12b896684a4669304de",
+      "/home/mistlight/.openclaw/workspace/drafts/curator_handoff_packet_latest.md": "9636a41eb4effc2e6b7aac9ed5203caa9790fb50",
+      "/home/mistlight/.openclaw/workspace/drafts/curator_contact_handoff_packet_latest.md": "9e42504cb169117609ffe7f8690d269b4e71ab40",
+      "/home/mistlight/.openclaw/workspace/drafts/comparison_backlink_handoff_packet_latest.md": "bb52d20876bbecc55c767795e330e1a7436b996e",
+      "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md": "8fa9fedf3fbf4348b1b42cfeba9f902a69b4cdcf"
+    }
+  },
+  "review_window": {
+    "scheduled_run_at": "2026-06-04T10:38:45"
+  }
+}

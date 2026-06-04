@@ -1,11 +1,14 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-04T08:14:27
-Chosen lane: **curator_handoff_packet**
+Generated: 2026-06-04T09:06:30
+Chosen lane: **measurement_hold**
 
 ## Why this lane
-- Prepared curator targets exist but still lack one canonical execution packet; consolidate the best unsent targets instead of resetting the lane again.
+- Directory confirmation has never produced a Codeberg backlink; no postable external lane is open and no unpublished guide remains. Hold for the next truthful execution window.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 1 live external marketing action(s) already shipped in the last 6 hours.
+- 2 live external marketing action(s) already shipped in the last 6 hours.
+- If no new outcome lands first, this short-window congestion clears at 2026-06-04T10:38:45. Before then, another live outbound action would mostly blur measurement.
+- Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.
+- Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 25 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
@@ -29,9 +32,8 @@ Chosen lane: **curator_handoff_packet**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 
-## Immediate curator handoff work
-- Build one canonical packet from the highest-priority prepared curator targets that have not been sent yet
-- Include the comparison/backlink handoff packet too when prepared comparison targets are also waiting
-- Reuse the existing target-ready files instead of generating a new queue or another reset note
-- Include exact next actions, ready links, and Codeberg-primary wording so a human can execute quickly
-- Do not count another discovery/reset cycle as progress while prepared targets still await handoff
+## Immediate measurement-hold work
+- Do not ship another fresh outreach/reset action in this short review window
+- Reuse current live actions, approval windows, and handoff packets as the active queue of truth
+- Spend the next slot on follow-through evidence or a genuinely different executable lane only after one of the current windows ages or resolves
+- Treat another reset packet right now as fake progress unless a new external constraint changes the lane map

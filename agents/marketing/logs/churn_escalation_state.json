@@ -9,6 +9,11 @@
       "level": 1,
       "timestamp": "2026-06-04T04:40:12.799787",
       "reason": "churn ratio danger (distribution=0, churn=3)"
+    },
+    {
+      "level": 1,
+      "timestamp": "2026-06-04T09:04:11.941628",
+      "reason": "churn ratio danger (distribution=0, churn=5)"
     }
   ],
   "paused_crons": [

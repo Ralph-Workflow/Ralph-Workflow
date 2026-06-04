@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-06-04T09:04:11.938024",
+  "dry_run": false,
+  "counts": {
+    "total": 9,
+    "measurement_hold": 4,
+    "non_distribution_execution": 1,
+    "distribution": 0,
+    "other": 4
+  },
+  "rate_exceeded": false,
+  "violations": [],
+  "churn_ratio_danger": true,
+  "action": "strike_1_soft_flag",
+  "details": "recorded strike 1: churn ratio danger (distribution=0, churn=5)",
+  "strike_count": 3
+}

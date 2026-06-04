@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-02T09:18:06.397241+00:00",
+  "generated_at": "2026-06-04T07:00:21.738951+00:00",
   "status": "fail",
-  "total_files_with_repo_links": 510,
+  "total_files_with_repo_links": 520,
   "high_severity_count": 1,
   "medium_severity_count": 11,
   "high_severity_findings": [
@@ -362,9 +362,33 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-02_orchestration_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-02_primary_repo_flat_contact_handoff_packet.md",
       "codeberg_links": 20,
       "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-03_primary_repo_flat_contact_handoff_packet.md",
+      "codeberg_links": 20,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-03_unattended_agent_draft.md",
+      "codeberg_links": 2,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -1506,6 +1530,14 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/awesome_list_pr_ready_2026-06-04.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlink_execution_latest.md",
       "codeberg_links": 2,
       "github_links": 0,
@@ -2165,6 +2197,22 @@
       "path": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-28_autonomous-mode-wrapper-for-claude-code.md",
       "codeberg_links": 2,
       "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-06-02_autonomous-mode-wrapper-for-claude-code.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md",
+      "codeberg_links": 2,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -3698,6 +3746,14 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-03_134500_cli_star_conversion.json",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
       "codeberg_links": 4,
       "github_links": 2,
@@ -3867,8 +3923,16 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-workflow-composer-composable-pipelines.md",
-      "codeberg_links": 2,
-      "github_links": 0,
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-benchmarks-real-world.md",
+      "codeberg_links": 4,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -3891,8 +3955,8 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-workflow-automation-loop-structure.md",
-      "codeberg_links": 2,
-      "github_links": 2,
+      "codeberg_links": 4,
+      "github_links": 4,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -3923,8 +3987,8 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-automation-unattended-sessions.md",
-      "codeberg_links": 2,
-      "github_links": 2,
+      "codeberg_links": 4,
+      "github_links": 4,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -3933,6 +3997,14 @@
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-autonomous-mode-wrapper.md",
       "codeberg_links": 5,
       "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md",
+      "codeberg_links": 2,
+      "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -3947,8 +4019,8 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/debugging-failed-overnight-ai-coding-run.md",
-      "codeberg_links": 4,
-      "github_links": 0,
+      "codeberg_links": 6,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -4106,6 +4178,14 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-nightshift.md",
+      "codeberg_links": 2,
+      "github_links": 3,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/real-task-walkthrough-overnight-refactoring.md",
       "codeberg_links": 2,
       "github_links": 2,
@@ -4155,8 +4235,8 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/unattended-coding-agent-what-done-actually-means.md",
-      "codeberg_links": 2,
-      "github_links": 2,
+      "codeberg_links": 4,
+      "github_links": 4,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
