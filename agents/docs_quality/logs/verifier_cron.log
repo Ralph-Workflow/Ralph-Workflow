@@ -21448,3 +21448,56 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean and well-internalized. README \u2192 START_HERE \u2192 docs map routes coherently. Every surface correctly leads with product story (orchestrator, composable loop, strong default), avoids internal leakage, uses the right framing (Ralph Workflow, not generic Ralph), and defers proof to secondary pages. The positioning doc has been fully absorbed.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with correct tagline and positioning, leads with product story not internals, clean comparison table, explicit 'not for' fit section, engineering-practice requirements section, correct Codeberg primary / GitHub mirror framing"
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Correct positioning opening, task selection guidance focused on user outcome, no internal plumbing language, routes to docs map appropriately"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicit 'Keep proof secondary' directive, routes by user question/goal, product framing pages promoted before proof pages, positions proof as supporting not primary"
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Explicit disclaimer that it is supporting proof not main product pitch, evidence ordering matches positioning doc's result-first hierarchy"
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Clean practical guidance focused on user first-run success, no internal plumbing as value proposition, correct tone and audience fit"
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "'Simple at the center, stronger in composition, useful before customization' \u2014 directly echoes positioning doc's core framing"
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "PyPI surface maintains same positioning, correct mirror framing, clear who-it's-for, no internal leakage"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

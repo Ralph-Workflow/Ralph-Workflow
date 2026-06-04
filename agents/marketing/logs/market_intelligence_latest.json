@@ -133,7 +133,37 @@
     "parallel AI coding agents",
     "AI agent checkpoint resume"
   ],
-  "discovered_candidates": [],
+  "discovered_candidates": [
+    {
+      "name": "aicom (alexar76)",
+      "url": "https://github.com/alexar76/aicom",
+      "type": "multi-agent-pipeline",
+      "description": "61K Python LOC, 12 specialized agents, 5 quality gates, MIT license. Self-hosted pipeline that takes a plain-language idea through analyst, PM, architect, design critic, developer, QA, security, DevOps, and marketing agents. 11 pipeline states, 34 valid transitions, 6+ LLM providers with auto-failover. FastAPI + Next.js + Docker Compose.",
+      "discovered": "2026-06-04T02:34:00Z",
+      "source": "web_search (DDG via OpenClaw provider, replacing broken Python DDG lib)",
+      "ralph_relationship": "Direct multi-agent pipeline competitor. Different philosophy: aicom is full-stack app generator (Bolt.new/Lovable competitor), Ralph is coding-task orchestrator. Both are MIT/AGPL, both self-hosted, both multi-agent, both have quality/verification gates."
+    },
+    {
+      "name": "prommer.net directory",
+      "url": "https://prommer.net/en/tech/guides/always-on-ai-coding-agents/",
+      "type": "directory-article",
+      "description": "German/English tech guide covering always-on AI coding agents. Lists OpenClaw, Hermes Agent, Devin, Codex, Claude Code Channels, Cursor Background Agents, Copilot Coding Agent, and Jules. Ralph Workflow not included.",
+      "discovered": "2026-06-04T02:35:00Z",
+      "source": "web_search (DDG via OpenClaw provider)",
+      "ralph_relationship": "Directory gap. Article focuses on message-driven and cloud async agents. Ralph fits the always-on autonomous/orchestrator category that sits between these paradigms. Human-gated outreach for inclusion.",
+      "action": "post-hold outreach (after June 5)"
+    },
+    {
+      "name": "Zijian-Ni/awesome-ai-agents-2026",
+      "url": "https://github.com/Zijian-Ni/awesome-ai-agents-2026",
+      "type": "awesome-list",
+      "description": "Curated directory of AI models, agent frameworks, tools, protocols, and resources for 2026. Covers foundation models, multimodal AI, agent protocols (MCP/A2A), coding agents, computer use, generative AI.",
+      "discovered": "2026-06-04T02:35:00Z",
+      "source": "web_search (DDG via OpenClaw provider)",
+      "ralph_relationship": "Potential awesome-list PR target. Smaller and newer than bradAGI list. Post-hold evaluation.",
+      "action": "evaluate post-hold (after June 5)"
+    }
+  ],
   "directory_gaps": {
     "generated_at": "2026-06-04T00:30:00+02:00",
     "source": "marketing-active-loop competitor gap sweep",
@@ -143,14 +173,19 @@
         "name": "awesome-cli-coding-agents (bradAGI)",
         "what": "Canonical 2026 curated directory of 80+ CLI coding agents, harnesses, and orchestrators. Last updated 2026-06-01. 1.5k+ stars.",
         "ralph_included": false,
-        "ralph_peer_entries": ["Bernstein (540⭐)", "kodo (106⭐)", "Galley (10⭐)", "sage (3⭐)"],
+        "ralph_peer_entries": [
+          "Bernstein (540\u2b50)",
+          "kodo (106\u2b50)",
+          "Galley (10\u2b50)",
+          "sage (3\u2b50)"
+        ],
         "note": "Other 'ralph' entries are unrelated projects (ralph-orchestrator 2.9k, ralph-tui 2.3k, wreckit 128).",
-        "action": "PR prepared — blocked on gh auth login. Asset: drafts/awesome_list_pr_ready_2026-06-04.md",
+        "action": "PR prepared \u2014 blocked on gh auth login. Asset: drafts/awesome_list_pr_ready_2026-06-04.md",
         "priority": "critical"
       },
       {
         "url": "https://amux.io/blog/best-multi-agent-orchestrators-2026/",
-        "name": "amux.io — Best Multi-Agent Coding Orchestrators in 2026",
+        "name": "amux.io \u2014 Best Multi-Agent Coding Orchestrators in 2026",
         "what": "Comprehensive comparison of 9 multi-agent orchestrators: Claude Squad, Conductor, Kilo Code, Agent Teams, Codex, Devin, Goose, dmux, amux. Evaluates parallel capacity, git isolation, self-healing, dashboard, task board, mobile, unattended operation, cost.",
         "ralph_included": false,
         "relevant_gap": "Ralph Workflow would score well on: unattended operation (full support), git isolation (worktrees), self-healing (checkpoint/resume), cost (free + MIT). Would be the only vendor-neutral, spec-driven entry that composes existing agents on local hardware.",
@@ -159,21 +194,33 @@
       },
       {
         "url": "https://augmentcode.com/blog/ai-coding-orchestrators-comparison",
-        "name": "augmentcode.com — AI Coding Orchestrators Comparison 2026",
+        "name": "augmentcode.com \u2014 AI Coding Orchestrators Comparison 2026",
         "what": "Reviews 9 orchestrators: Composio AO, Emdash, Baton, Conductor family, Bernstein, Claude Squad, Crystal/Nimbalyst, Vibe Kanban, Agent Kanban.",
         "ralph_included": false,
-        "relevant_gap": "Bernstein (540⭐) is the closest peer already listed — deterministic orchestrator, spawns parallel agents, verifies with tests, auto-commits. Ralph Workflow has stronger multi-phase loop + checkpoint/resume + vendor-neutral architecture.",
+        "relevant_gap": "Bernstein (540\u2b50) is the closest peer already listed \u2014 deterministic orchestrator, spawns parallel agents, verifies with tests, auto-commits. Ralph Workflow has stronger multi-phase loop + checkpoint/resume + vendor-neutral architecture.",
         "action": "Contact augmentcode for inclusion. Post-hold (after June 5).",
         "priority": "high"
+      },
+      {
+        "url": "https://github.com/Zijian-Ni/awesome-ai-agents-2026",
+        "name": "Zijian-Ni/awesome-ai-agents-2026",
+        "what": "Curated 2026 directory of AI agents, frameworks, tools, protocols. Covers MCP, A2A, coding agents, computer use.",
+        "ralph_included": "unknown",
+        "ralph_peer_entries": [
+          "unknown \u2014 needs evaluation"
+        ],
+        "action": "Evaluate for PR/submission post-hold (after June 5).",
+        "priority": "medium"
       }
     ],
     "category_positioning": {
-      "orchestrators_autonomous_loops": "Ralph Workflow sits at 12⭐ in a section where peers range 540⭐ (Bernstein) to 3⭐ (sage). The section is growing fast — kodo (106⭐) was recently added. Ralph's differentiated positioning: vendor-neutral multi-phase unattended loop vs single-model orchestrators (Symphony=Codex-only, kodo=Claude-Code-Max-only).",
+      "orchestrators_autonomous_loops": "Ralph Workflow sits at 12\u2b50 in a section where peers range 540\u2b50 (Bernstein) to 3\u2b50 (sage). The section is growing fast \u2014 kodo (106\u2b50) was recently added. Ralph's differentiated positioning: vendor-neutral multi-phase unattended loop vs single-model orchestrators (Symphony=Codex-only, kodo=Claude-Code-Max-only).",
       "total_addressable_listings": 3,
       "submitted": 0,
       "ready_to_submit": 1,
       "blocked_on_human_auth": 2
-    }
+    },
+    "total_addressable_listings": 4
   },
   "reuse_contract": {
     "runtime_proven_consumers": [
