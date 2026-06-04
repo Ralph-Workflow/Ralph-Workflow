@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-04T06:10:10.456472",
+  "timestamp": "2026-06-04T07:10:14.297406",
   "metrics": [
     {
       "platform": "Codeberg",
@@ -11,9 +11,9 @@
     },
     {
       "platform": "PyPI",
-      "downloads_month": 1300,
-      "downloads_week": 198,
-      "downloads_day": 48,
+      "downloads_month": 1297,
+      "downloads_week": 195,
+      "downloads_day": 7,
       "total_downloads": null,
       "version": "0.8.8",
       "html_url": "https://pypi.org/project/ralph-workflow/"
@@ -69,7 +69,7 @@
       "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
-      "PyPI has 1300 downloads/month (48/day) — real usage signal that repo metrics don't capture."
+      "PyPI has 1297 downloads/month (7/day) — real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [
       "primary_repo_flat"

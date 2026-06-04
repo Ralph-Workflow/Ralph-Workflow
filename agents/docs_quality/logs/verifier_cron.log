@@ -21739,3 +21739,100 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with the positioning. README leads with the orchestrator story, START_HERE delivers the shortest honest first run, docs/README routes by user question. No hard failures on internal leakage, positioning drift, or journey coherence. Promoted next-click pages reinforce the same framing rather than fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Package README (ralph-workflow/README.md) blends install, quick-start, fit, and privacy into one page without the clean narrative hierarchy the repo-root README has \u2014 no positioning failure, but the page structure is busier than it needs to be.",
+    "The repo-root README and package README diverge significantly in content and audience framing (marketing-first vs feature-first). Not a bug but worth deciding whether that gap is intentional and maintained."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with the operating-system tagline and the orchestrator pitch, not internal plumbing. Simple-core \u2192 composition \u2192 default-workflow \u2192 extension framing matches the positioning order exactly. 'Ambitious, well-specified work' explicitly scopes the audience. Engineering-practice dependency section preserves honest framing."
+    },
+    {
+      "path": "START_HERE.md (mirror)",
+      "reason": "Delivers the shortest honest first run without artifact or review-bundle language. Leads with task selection, outcome judgment, and result-first evaluation. Codeberg-primary framing present."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly tells users to read README and START_HERE first. Routes by question type. Contains 'Keep proof secondary' section that actively prevents the user from being routed into internal or artifact-heavy pages too early."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md",
+      "reason": "Reinforces the spec-centric engineering-practice dependency. No hype, no internal leakage. Consistent opening paragraph matches the positioning reference."
+    },
+    {
+      "path": "docs/unattended-coding-agent.md",
+      "reason": "Frames unattended use around accountability, not magic. Consistent opening paragraph. Explicitly says 'It is not promising magic independence from engineering discipline.'"
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Positions itself as supporting proof, not the main pitch. 'Use this page after you already understand the workflow.' Leads with working behavior and real checks, not logs or transcripts."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is strongly aligned with positioning. README\u2192START_HERE\u2192docs/README forms a coherent journey. Every promoted next-click page opens with the same core positioning sentence and reinforces composable-loop/simple-core/strong-default framing. No internal leakage in top-level surfaces. The user should not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (root)",
+      "reason": "Leads with 'operating system for autonomous coding', positions as orchestrator not chat tool, uses 'composable loop framework' language from positioning, gives non-fit signals early, points to START_HERE for first-run guidance"
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with Ralph-loop-core + composable + strong-default positioning, provides concrete good/bad task guidance, defines success by result/checks not internal artifacts"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicit 'Keep proof secondary' section routes users to product story first. Routes by user intent. Does not fight the main story"
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Self-frames as supporting proof not main pitch. First line is positioning sentence. Evidence order: working behavior \u2192 real checks \u2192 written scope \u2192 supporting artifacts"
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Opens with positioning. Frames core problem (single-session limits) then shows how simple core composes. Directly says 'simple at the center, stronger in composition, useful before customization'"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
