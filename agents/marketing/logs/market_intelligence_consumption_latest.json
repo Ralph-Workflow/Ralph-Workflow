@@ -56,5 +56,17 @@
       "competitor_count": 8,
       "comparison_page_count": 8
     }
-  }
+  },
+  "consumed": [
+    {
+      "opportunity_id": "freestyle-yc-p26",
+      "opportunity_title": "Freestyle (YC P26) \u2014 sandboxes for coding agents",
+      "action_taken": "Added Freestyle as #19 to compare page (ralphworkflow.com/compare)",
+      "action_type": "content_permanent_surface",
+      "url": "https://ralphworkflow.com/compare#freestyle",
+      "deployed_at": "2026-06-04T21:33:14.468772+00:00",
+      "deploy_revision": "b7bfab4",
+      "rationale": "Freestyle is complementary not competitive \u2014 it provides sandboxes, Ralph orchestrates the loop inside them. Captures search intent from Freestyle's 322 HN point launch. Permanent SEO surface that positions Ralph as the orchestrator for sandboxed coding agents."
+    }
+  ]
 }
