@@ -48,7 +48,7 @@ A good first run looks like:
 
 New to autonomous coding? The 4-step guide walks you through picking a task, writing a short spec, running Ralph Workflow, and judging the result honestly — all in one page. Prefer a deeper narrative? [Read the blog version →](https://ralphworkflow.com/blog/your-first-overnight-task-start-here-guide)
 
-Start with tasks that are easy to verify: add tests to an existing module, fix known lint failures, refactor one narrow subsystem, or update documentation backed by existing code.
+Start with a bounded, verifiable task — the kind of work you would actually merge. A good first run is 2–6 hours, has a clear boundary, and a concrete correctness check. Small tweaks and narrow chores are not what Ralph Workflow is built for.
 
 ## Install
 

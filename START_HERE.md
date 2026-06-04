@@ -4,7 +4,7 @@
 > Inspect and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
 Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
-It runs the coding agents you already use on your own machine, turns that simple loop structure into a stronger composable workflow for substantial, well-specified software engineering work, and gives you a strong default workflow before you customize anything.
+It runs the coding agents you already use, on your own machine. The simple Ralph loop composes into complex workflows and ships with a strong default workflow for substantial, well-specified software engineering. Use the default as-is, then customize when you're ready.
 
 This page gives the shortest honest first run.
 Start with one real, well-specified backlog task and judge the outcome by what the software does now and what checks ran.
