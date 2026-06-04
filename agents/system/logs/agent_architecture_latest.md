@@ -1,45 +1,44 @@
-# Agent Architecture Watchdog Report
+# Agent Architecture Audit
 
-**Checked:** 2026-06-04T14:52+02:00  
-**Verdict:** `external_risk`  
-**Independent verification:** qualified_pass
+- **Checked:** 2026-06-04T16:04 UTC+2
+- **Overall health:** high_risk
+- **Primary failure mode:** Marketing independent verification stale (~2928 min, threshold 240 min), verdict `fail`. Architecture-owned runtime gates are all green.
+- **Most urgent fix:** Marketing owner loop must produce fresh primary-repo adoption evidence and rerun independent verification.
 
-## Executive Summary
+## Live topology
 
-Architecture-owned gates are all green. The only remaining blocker for whole-stack green is external: marketing independent verification is ~47.7h stale with verdict=fail. Fresh primary-repo adoption evidence remains measurement-pending. Additionally, self-repair audit reports 2 HIGH findings requiring routing.
+- **Live Gateway jobs:** 21 total / 21 enabled / 0 disabled / 3 running / 3 last-error
+- **Running:** system-health-monitor, codeberg-github-mirror-sync, agent-architecture-watchdog
+- **Last-error:** backlink-tracker (gateway restart), blocked-channel-recovery (gateway restart), internal-linking-watchdog (Matrix delivery target missing)
 
-## Live Topology
+## Severity-ranked findings
 
-- 22 total, 22 enabled, 0 disabled
-- 3 running: ralph-docs-supervisor-precheck, marketing-measurement-hold-release, agent-architecture-watchdog (this run)
-- 3 transient errors (all external domains, consecutiveErrors=1): backlink-tracker (gateway restart interrupt), blocked-channel-recovery, internal-linking-watchdog
-- 18 persisted disabled history entries in jobs.json (12x duplicate at-job artifacts + 6 stale); none live
+1. **High** — Marketing independent verification stale at ~2928 min, verdict `fail`. Sole whole-stack blocker.
+2. **High** — `pypi-auto-unblocker` has no self-improvement mandate / not in registry.
+3. **High** — `internal-linking-watchdog` has no self-improvement mandate + Matrix delivery config error.
+4. **Medium** — Self-improvement registry covers only 2 of 21 live loops.
+5. **Medium** — Live topology is clean: 21/0/3. Architecture checker/verifier/independent-verify all pass.
+6. **Low** — Docs quality independently verified pass on all criteria.
 
-## Checker → Verifier → Independent Gate
+## Repaired this run
 
-| Gate | Result |
-|------|--------|
-| checker (agent_architecture_checker.py) | AGENT_ARCHITECTURE_OK |
-| verifier (agent_architecture_verifier.py) | ok:true, errors:[] |
-| independent verification (agent_architecture_independent_verify.py) | qualified_pass |
+- **Refreshed live topology** — Fresh `openclaw cron list --json`: 21 enabled, 0 disabled, 3 running, 3 last-error. Zero live disabled jobs confirmed.
+- **Revalidated checker/verifier/independent-verify pipeline** — checker=AGENT_ARCHITECTURE_OK, verifier=ok (0 errors), independent verify=qualified_pass.
+- **No local repairs possible for marketing staleness** — external-owner-lane. Blocker localized correctly to marketing owner loop.
 
-## Repairs This Run
+## Still red
 
-None needed. Prior-run repairs (checker-schema gap, verifier allowed-set extension) hold. All pipeline gates pass fresh.
+- Marketing independent verification is `fail`, age ~2928 min (threshold 240 min).
+- Whole-stack certification cannot go green until marketing produces fresh evidence.
 
-## Still Red
+## Independent verification
 
-- Marketing independent verification: fail, ~47.7h stale (artifact: marketing_loop_independent_verification.json)
-- Self-repair audit: 2 HIGH findings across 22 audited loops
-- 3 transient external-domain errors: each consecutiveErrors=1, not escalating
+- **Status:** performed — `agent_architecture_independent_verify.py` → qualified_pass
+- **Errors:** stale external-owner evidence (marketing_loop_independent_verification.json, age 2928 min, verdict fail)
+- Architecture-owned runtime gates are fully green. Blocker localization is correct.
 
-## Independent Verification Status
+## Small gate passed
 
-Performed and passing (qualified_pass). All architecture-owned claims verified. External marketing blocker and self-repair HIGH findings classified as watchpoints.
-
-## Next
-
-1. Marketing owner loop produces fresh measurable outcome evidence (marketing-measurement-hold-release at-job currently running)
-2. Rerun marketing independent verification
-3. Route self-repair audit's 2 HIGH findings to appropriate owner loops
-4. Architecture watchdog re-runs full cycle after marketing green
+- `agent_architecture_checker.py` → `AGENT_ARCHITECTURE_OK`
+- `agent_architecture_verifier.py` → `ok` (0 errors)
+- `agent_architecture_independent_verify.py` → `qualified_pass`
