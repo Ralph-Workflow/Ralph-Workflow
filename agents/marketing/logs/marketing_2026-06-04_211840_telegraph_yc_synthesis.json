@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-06-04T19:18:40.069462+00:00",
+  "action": "telegraph_market_intelligence_synthesis",
+  "title": "YC Just Bet Big on Agentic Dev Tools \u2014 Why the Anti-Cloud Play Wins",
+  "url": "https://telegra.ph/YC-Just-Bet-Big-on-Agentic-Dev-Tools--Why-the-Anti-Cloud-Play-Wins-06-04",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": true,
+  "source": "market_intelligence_latest.json (2026-06-04T14:58:00Z)",
+  "cta": "Codeberg primary + GitHub mirror + pipx install",
+  "expected_outcome": "SEO traffic from 'agentic dev tools', 'YC agentic coding', 'Freestyle alternative' intent clusters",
+  "measurement_window": "14 days via GSC",
+  "kill_condition": "No Codeberg delta within 14 days"
+}

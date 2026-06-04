@@ -7,5 +7,12 @@
       "posted_at": "2026-06-04T13:33:32.531248",
       "type": "blog_crosspost"
     }
-  ]
+  ],
+  "YC_Just_Bet_Big_on_Agentic_Dev_Tools": {
+    "url": "https://telegra.ph/YC-Just-Bet-Big-on-Agentic-Dev-Tools--Why-the-Anti-Cloud-Play-Wins-06-04",
+    "posted_at": "2026-06-04T19:18:40.069462+00:00",
+    "title": "YC Just Bet Big on Agentic Dev Tools \u2014 Why the Anti-Cloud Play Wins",
+    "source": "drafts/telegraph_yc_agentic_goldrush_2026-06-04.md",
+    "cta": "Codeberg primary + GitHub mirror + pipx install"
+  }
 }
