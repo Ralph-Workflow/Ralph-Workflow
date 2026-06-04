@@ -22634,3 +22634,85 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is healthy and coherent. Positioning is consistent, the README \u2192 START_HERE \u2192 docs/README journey works as one route, promoted next-click pages reinforce rather than fight the product story, and the hierarchy is self-aware (explicitly keeping proof secondary). The user should not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly tells readers to start with README+START_HERE before this page, routes by user intent, and includes a 'Keep proof secondary' section that self-polices the hierarchy mandated by the positioning document."
+    },
+    {
+      "path": "ralph-workflow/docs/sphinx/index.rst (referenced but all promoted docs pages)",
+      "reason": "Every promoted docs page (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md, first-task-guide.md) opens with the same positioning boilerplate \u2014 simple Ralph-loop core, composable workflow, strong default, ambitious work \u2014 so which page a user lands on, the story is consistent."
+    },
+    {
+      "path": "README.md",
+      "reason": "Opens with the canonical tagline, immediately frames as an orchestrator (not a chat), includes the comparison table that leads with 'runnable tested software' over diffs, and routes to START_HERE with a clear next step."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is coherent, positioning-aligned, and self-reinforcing across the README \u2192 START_HERE \u2192 docs/README journey. No internal leakage on primary surfaces, promoted pages reinforce rather than fight the core story, and the docs discipline (explicit secondary/proof labeling, consistent simple-core framing, clear audience fit/non-fit) is strong enough that the instruction should not need repeating.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding' tagline, defines itself as a composable loop framework, comparison table frames orchestration vs chat-window, explicitly calls out fit/non-fit, links to START_HERE for first-run path."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself as the page after README and START_HERE, and includes a 'Keep proof secondary' section that tells readers to consume proof pages only after the product story \u2014 this is the docs system policing itself against positioning drift."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "Extends the same positioning for the PyPI surface with additional pragmatic content (fit/non-fit, what to expect, before your first run) that reinforces rather than contradicts the core story."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Opens with the positioning line and explicitly self-describes as 'supporting proof ... not the main product pitch' \u2014 proves the docs hierarchy is understood and enforced."
+    },
+    {
+      "path": "START_HERE.md (all variants)",
+      "reason": "Leads with Codeberg-primary framing, defines the simple loop core, gives the shortest honest first run, and routes to docs/README for further navigation. The journey README \u2192 START_HERE \u2192 docs/README is intact."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
