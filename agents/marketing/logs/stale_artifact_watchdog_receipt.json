@@ -1,9 +1,9 @@
 {
-  "repaired_at": "2026-06-04T16:06:52",
+  "repaired_at": "2026-06-04T18:05:25",
   "board_repaired": true,
   "lane_repaired": true,
   "recurrence_count": 5,
-  "board_content_sha256": "a536a8e5d78d5d19393295c5a1a7356562831597db146ce7660ec6df88c32a51",
+  "board_content_sha256": "763cd676a5e62ba8591ddafbb85f638754d24a2a9687e6b4471fca29c1eba6c3",
   "lane_content_sha256": "1814f205bacba5c8845bb985a20c135dd2e8d7c819a314034401ca4c17bff7fa",
   "hardened": true,
   "note": "6th-recurrence fix: receipt updated on write to break infinite reversion loop"

@@ -22593,3 +22593,44 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is cleanly aligned. README \u2192 START_HERE \u2192 docs/README is a coherent progressive route. Promoted next-click pages reinforce rather than fight the positioning. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with operating-system-for-autonomous-coding tagline, Ralph-loop-to-composable-framework story, default-workflow-first framing, Codeberg primary note, and engineering-practice dependency \u2014 all on-positioning. No artifact/transcript/merge-decision leakage."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with Ralph-loop core, composable framing, strong-default messaging. Result-first evaluation criteria. No internal plumbing or process-receipt language."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly says 'Keep proof secondary' and routes users to product-framing pages before any proof/proof-adjacent pages. Clear information hierarchy with audience-aware route selection."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Opens by calling itself 'supporting proof, not the main product pitch' \u2014 precisely the positioning needed. Evidence ordering (working behavior \u2192 checks \u2192 scope \u2192 supporting artifacts) matches the result-first evaluation standard."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-04T16:58:38.165019",
+  "ts": "2026-06-04T17:46:09.606535",
   "jobs_checked": 21,
   "issues_found": 1,
   "issues": [
@@ -8,7 +8,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 2982.09,
+      "artifact_age_minutes": 3029.6,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     }
@@ -24,13 +24,13 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-04T16:58:27.237602+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-04T17:45:43.650118+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780585109727:23\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780587954508:26\"\n}"
     }
   ]
 }
