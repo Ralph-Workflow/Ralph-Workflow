@@ -1184,7 +1184,19 @@
       "error": null,
       "draft_hash": "0e177985d2794f20fa14097721a32cdc3dc78c7f5df8f8a2cd17f65938040c52",
       "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-benchmarks-real-world.md"
+    },
+    {
+      "date": "2026-06-04",
+      "draft": "claude-code-multi-agent-overnight-postmortem.md",
+      "title": "12 Multi-Agent Bugs in One Night \u2014 What the Claude Code #54393 Postmortem Teaches Us About Autonomous Coding Architecture",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/12-Multi-Agent-Bugs-in-One-Night--What-the-Claude-Code-54393-Postmortem-Teaches-Us-About-Autonomous-Coding-Architecture-06-04",
+      "error": null,
+      "draft_hash": "9d2db27d276e9522060199c8493c1efa24b4929e1974f4156ef49e1081dad7fc",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md"
     }
   ],
-  "last_run": "2026-06-03T08:02:13.448893"
+  "last_run": "2026-06-04T02:37:58.361793"
 }

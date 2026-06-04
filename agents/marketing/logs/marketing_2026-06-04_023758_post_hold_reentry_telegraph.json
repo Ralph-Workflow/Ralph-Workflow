@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-06-04T02:38:13.104434+02:00",
+  "run_type": "post_hold_distribution_reentry",
+  "hold_cleared_at": "2026-06-04T02:24:37+02:00",
+  "executed_at": "2026-06-04T02:38:13.104434+02:00",
+  "lane": "telegraph_crosspost",
+  "action_type": "blog_crosspost_execution",
+  "reason": "Only truthful autonomous external lane remaining. SaaSHub already verified Codeberg-primary. SO/curator/comparison/Apollo/SMTP all blocked on human credentials. DDG+Brave both dead. Reddit suspended. Telegraph had 1 pending cross-post from June 3 blog \u2014 executed now instead of waiting for 06:00 cron.",
+  "actions": [
+    {
+      "action": "crosspost_blog_to_telegraph",
+      "title": "12 Multi-Agent Bugs in One Night \u2014 What the Claude Code #54393 Postmortem Teaches Us About Autonomous Coding Architecture",
+      "url": "https://telegra.ph/12-Multi-Agent-Bugs-in-One-Night--What-the-Claude-Code-54393-Postmortem-Teaches-Us-About-Autonomous-Coding-Architecture-06-04",
+      "source": "Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md",
+      "cta_footer": "Codeberg-primary + GitHub-mirror CTA footer included by run_posting.py",
+      "status": "live"
+    }
+  ],
+  "lane_state_after": {
+    "telegraph_queue": 0,
+    "external_lanes_blocked": [
+      "smtp",
+      "apollo",
+      "pypi_token",
+      "gh_auth",
+      "reddit_suspended",
+      "hn_lobsters",
+      "devto"
+    ],
+    "search_providers": {
+      "ddg": "http_202_since_may28",
+      "brave": "http_200_zero_results"
+    },
+    "autonomous_lanes_exhausted": true
+  },
+  "concrete_repairs_in_this_run": [
+    "telegraph_crosspost_shipped_3h_before_cron \u2014 converted idle hold slot into live distribution"
+  ]
+}
