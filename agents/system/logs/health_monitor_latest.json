@@ -1,106 +1,17 @@
 {
-  "ts": "2026-06-04T03:04:34.968908",
+  "ts": "2026-06-04T03:46:01.344592",
   "jobs_checked": 21,
-  "issues_found": 4,
+  "issues_found": 1,
   "issues": [
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 2148.06,
+      "artifact_age_minutes": 2189.48,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review",
-      "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Docs system is coherent and aligned with positioning. The README \u2192 START_HERE \u2192 docs/README journey flows naturally, each page knows its role, and promoted next-click pages reinforce the same product story instead of fighting it. No hard failures triggered."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_ralph-workflow-readme-md-pypi-start-with-tasks-t",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "ralph-workflow/README.md (PyPI) \u2014 'Start with tasks that are easy to verify: add tests to an existing module, fix known lint failures, refactor one narrow subsystem' contradicts the positioning bar against 'small tweaks, narrow chores.' This is the only surface that drifts. Should frame first-run proof tasks as 'a bounded slice of real work' rather than suggesting the tool is for narrow chores.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: ralph-workflow/README.md (PyPI) \u2014 'Start with tasks that are easy to verify: add tests to an existing module, fix known lint failures, refactor one narrow subsystem' contradicts the positioning bar against 'small tweaks, narrow chores.' This is the only surface that drifts. Should frame first-run proof tasks as 'a bounded slice of real work' rather than suggesting the tool is for narrow chores."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_escalation",
-      "category": "escalation_required",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=35",
-      "repeats_in_recent_history": 35,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review::loop_verification_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
     }
   ],
-  "repairs_attempted": [
-    {
-      "type": "rerun_docs_verifier",
-      "job": "docs_agentic_review",
-      "ok": true,
-      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is coherent and aligned with positioning. The README \\u2192 START_HERE \\u2192 docs/README journey flows naturally, each page knows its role, and promoted next-cli"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_two-readmes-workspace-root-package-root-diverge",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_docs-reviewable-output-md-exists-as-a-secondary",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
-    },
-    {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-04T03:04:10.554556+02:00\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780535053768:57\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_mustFix_two-readmes-workspace-root-package-root-diverge_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_mustFix_docs-reviewable-output-md-exists-as-a-secondary_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780535068029:58\"\n}"
-    }
-  ]
+  "repairs_attempted": []
 }

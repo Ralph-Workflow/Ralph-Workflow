@@ -1,8 +1,8 @@
 # Self-Repair / Self-Improvement Audit
-- Checked: 2026-06-03T22:17:04.590654+02:00
-- Loops audited: 25
-- Loops with self-repair: 23
-- Loops with self-improve: 23
+- Checked: 2026-06-04T03:36:00.671144+02:00
+- Loops audited: 21
+- Loops with self-repair: 19
+- Loops with self-improve: 19
 - Loops missing self-repair: 0
 - Loops missing self-improve: 2
 
