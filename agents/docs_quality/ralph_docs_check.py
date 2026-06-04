@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable
 import json
 
-PRIMARY_REPO = Path('/home/mistlight/RalphWithReviewer')
+PRIMARY_REPO = Path('/home/mistlight/Ralph-Workflow')
 MIRROR_REPO = Path('/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror')
 WORKSPACE = Path('/home/mistlight/.openclaw/workspace')
 POSITIONING = WORKSPACE / 'agents' / 'marketing' / 'RALPH_WORKFLOW_POSITIONING.md'

@@ -1,5 +1,32 @@
 # Reddit Learnings
 
+## New ecosystem findings — 2026-06-03 (21:19 CEST)
+
+### Category convergence observed
+The workflow-over-agent narrative is hardening independently across the ecosystem:
+- **ParaGenie/claude-codex-handoff** — three-phase planner→implementer→reviewer skill for Claude Code/Codex handoff. Same core thesis (don't let same model grade its own homework), single-task scenario vs. Ralph's repo-scale orchestration.
+- **ant3869/AgenticWorkflow** — "portable operating model for AI-assisted software delivery" with workflow contracts.
+- **Mergepath (Nathan Payne)** — agent approval enforcement with instruction files, GitHub rules, automated cross-agent review. "AI coding agents will skip code review if you let them."
+- **CodeBolt** — human-in-the-loop review and merge for multi-agent code changes.
+- **Claude+Codex blog ecosystem** — at least 5 blog posts covering handoff patterns in the last week.
+
+### What this means for RalphWorkflow positioning
+The category language is converging fast. RalphWorkflow's differentiation needs to sharpen: others do single-task handoff patterns + GitHub-rule enforcement. Ralph does repo-scale overnight runs with bounded autonomy, worktree isolation, and finish-state trust guarantees. The distinction should be: **handoff pattern vs. unattended operating system.**
+
+### DDG flicker observed
+First usable Reddit-specific web_search results in ~7 days (2 of 4 query families succeeded). Pattern consistent with first-query-cap session limits — not sustained recovery. Suspension holds until 2+ consecutive passes clear.
+
+### Escalation deadline tomorrow
+June 4 ~11:19 CEST is the 7-day mark since suspension trigger. If DDG hasn't sustained recovery, notify mistlight about provider migration (Brave Search API, SerpAPI, etc.).
+
+New competitors to track: ParaGenie/claude-codex-handoff (†), ant3869/AgenticWorkflow (†).
+
+---
+
+# Reddit Learnings
+
+(original content below)
+
 Use this as required context before drafting, recommending, or posting anything on Reddit for RalphWorkflow.
 
 ## What worked
@@ -750,12 +777,12 @@ Rule: no opening from this list may appear in more than one subreddit in the sam
 - When the 72-hour self-suspension threshold triggers, the monitor should write a single suspension marker file and stop executing until either (a) a search provider health-check passes, or (b) the human explicitly re-enables the monitor.
 - The suspension marker should include the last-usable-retrieval timestamp, the suspension trigger time, and the conditions for re-enabling.
 
-## New lessons — 2026-06-01 (19:15 CEST)
+## New lessons — 2026-06-01 (19:15 CEST) — 2026-06-03 (21:19 CEST) — Updated ecosystem context
 
 ### What changed
-- **DDG showed first flicker of life in ~4 days.** A single broad non-Reddit query returned real results after 4+ days of total collapse. Subsequent 7+ queries returned bot-detection. Pattern looks like a session-scoped rate-limit rather than uniform provider behavior.
-- **Still insufficient for re-enable.** One working query out of 8+ attempts does not constitute stable recovery. Re-enable requires 2+ consecutive passes with reliable coverage.
-- **Reddit direct still 403-blocked.** 29 days on Hetzner Helsinki IP. No change.
+- **DDG showed first flicker of life in ~4 days (June 1), then again June 3.** Two single-working-query events across 7 days. Pattern is consistent with first-query-cap session rate-limiting, not recovery. Still insufficient for re-enable —requires 2+ consecutive passes with reliable coverage.
+- **Category convergence observed (June 3).** Three new adjacent projects surfaced: ParaGenie/claude-codex-handoff (three-phase Cursor+Codex), ant3869/AgenticWorkflow (portable operating model), Mergepath (agent approval enforcement). The workflow-over-agent narrative is hardening independently.
+- **Reddit direct still 403-blocked.** 31 days on Hetzner Helsinki IP. No change.
 
 ### What worked (or held)
 - The suspension correctly held despite the partial recovery signal. One working query is not enough to re-open Reddit monitoring.

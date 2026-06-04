@@ -16,7 +16,7 @@ POSITIONING = WORKSPACE / 'agents' / 'marketing' / 'RALPH_WORKFLOW_POSITIONING.m
 REPORT = WORKSPACE / 'agents' / 'docs_quality' / 'ralph_agentic_latest.md'
 JSON_REPORT = WORKSPACE / 'agents' / 'docs_quality' / 'ralph_agentic_latest.json'
 
-PRIMARY_REPO = Path('/home/mistlight/RalphWithReviewer')
+PRIMARY_REPO = Path('/home/mistlight/Ralph-Workflow')
 MIRROR_REPO = WORKSPACE / 'repos' / 'Ralph-Workflow' / 'github-mirror'
 
 SURFACES = [

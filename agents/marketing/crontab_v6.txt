@@ -1,0 +1,39 @@
+# Ralph Workflow marketing cron jobs — v6 (2026-06-03 06:20 CEST, audit #22)
+# Run order: integrity(08:15) → star_conversion(08:30) → watchdog(08:45) → blocker_truth(08:50) → run.py(09:00) + social_proof_bootstrap(09:00)
+# All times in server local time (Europe/Berlin = CEST/CET)
+# 14 jobs total. Apollo: TERMINATED. Reddit: SUSPENDED.
+# v6 CHANGES:
+#   - social_proof_bootstrap → daily Mon-Sat (was only Saturday). Circuit-breaker
+#     redirect (hold-frequency > 2/24h) now actually executes via new executor handler.
+#   - star CTA 20%→50% in ralph/pipeline/runner.py (hash % 2 instead of % 5).
+#   - REMOVED duplicate stale_artifact_watchdog (14:30) — consolidated to once daily.
+#   - REMOVED repo_conversion_optimizer (superseded by daily social_proof_bootstrap).
+
+# === CRITICAL: Crontab integrity guard (before any marketing job runs) ===
+15 8 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/cron_integrity_test.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/cron_integrity_cron.log 2>&1
+# === SELF-HEALING (always first) ===
+45 8 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/stale_artifact_watchdog.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/stale_artifact_watchdog_cron.log 2>&1
+50 8 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/blocker_truth_check.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/blocker_truth_cron.log 2>&1
+# === CORE LOOP ===
+45 0 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/outcome_capability_runner.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_capability_cron.log 2>&1
+0 9 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_cron.log 2>&1
+# === STAR CONVERSION (bridges PyPI downloads → Codeberg stars gap) ===
+30 8 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/star_conversion_agent.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/star_conversion_cron.log 2>&1
+# === CONVERSION (primary metric lane) ===
+0 7 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/conversion_surface_watchdog.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/conversion_surface_watchdog_cron.log 2>&1
+30 7 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/backlink_stagnation_watchdog.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/backlink_stagnation_cron.log 2>&1
+# social_proof_bootstrap: daily Mon-Sat (skip Sunday to avoid run.py race). Circuit-breaker redirect target.
+0 9 * * 1-6 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/social_proof_bootstrap.py --force >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/social_proof_bootstrap_cron.log 2>&1
+# === CONTENT DISTRIBUTION ===
+0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1
+15 3 * * 3,7 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/stackoverflow_answer_lane.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/stackoverflow_answer_cron.log 2>&1
+# === SEO ===
+0 5 * * 1,4 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/bing_indexnow_ping.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/indexnow_ping_cron.log 2>&1
+30 5 * * 6 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/indexation_health_check.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/indexation_health_cron.log 2>&1
+0 10 * * 6 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/seo_retrofit_lane.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/seo_retrofit_cron.log 2>&1
+# === MAINTENANCE ===
+0 4 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/log_janitor.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/log_janitor_cron.log 2>&1
+# === INFRA ===
+37 */12 * * * /home/mistlight/git-sync.sh
+1,31 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_runner.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/watchdog_cron.log 2>&1
+6,36 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/verifier_cron.log 2>&1

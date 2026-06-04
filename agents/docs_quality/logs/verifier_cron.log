@@ -21186,3 +21186,93 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README forms a coherent journey. All promoted secondary pages reinforce the same story. Internal mechanical language is properly deferred to deeper pages. No hard failures detected.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "PyPI README has an interruptive 'Real-task walkthrough \u2192' link mid-install section at ralph-workflow/README.md:95 that breaks flow",
+    "Minor: monorepo README and PyPI README have diverged slightly (name etymology, 'What to expect from a run' are PyPI-only); could merge improvements back to keep single source",
+    "Minor: GitHub mirror START_HERE.md routes to './docs/first-task-guide.md' while monorepo README routes to 'ralphworkflow.com' URLs \u2014 cross-referencing path inconsistency could confuse users browsing the mirror"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md (Codeberg)",
+      "reason": "Opens with 'operating system for autonomous coding' tagline, immediately identifies as agent orchestrator, explains simple Ralph-loop core \u2192 composable framework \u2192 strong default, has fit/non-fit section, comparison table differentiates without plumbing language, routes to START_HERE and docs map. Fully aligned with all 8 positioning guardrails."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Leads with positioning sentence, acknowledges mirror status upfront, provides honest first-run path with task selection guidance, judges success by software output and checks (not transcript/diff). Routes to docs/README map."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly says 'use this page after README and START_HERE' \u2014 clean hierarchy. Provides clear route choices. Includes 'Keep proof secondary' section. Routes to supporting pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md) that all open with the same positioning sentence."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Explicitly self-identifies as 'supporting proof, not the main product pitch' and tells users to 'start with the product story and operator route first.' This is the exact behavior the positioning doc demands for secondary evidence pages."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Strong conversion page with excellent task selection criteria, spec template with invariant section, honest assessment of fit/non-fit, and the 'would I merge this' review heuristic. Routes back to START_HERE and primary repo."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean, coherent, and positioning-aligned. The README \u2192 START_HERE \u2192 docs/README journey works end-to-end with consistent framing. The 'keep proof secondary' section in docs/README is strong information architecture that explicitly prevents the positioning failures the rubric warns about. Every promoted next-click page opens with the same core framing and reinforces the product story instead of fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (Codeberg root, line 15)",
+      "reason": "'composable loop framework' + 'not a chat window or prompt tool' is the exact simple-core/powerful-composition contrast the positioning doc requires."
+    },
+    {
+      "path": "docs/README.md (line 48)",
+      "reason": "'Keep proof secondary' section explicitly routes evaluators to the product story before proof pages, preventing the exact positioning drift the rubric flags as a hard failure."
+    },
+    {
+      "path": "reviewable-output.md (line 6)",
+      "reason": "Opens by saying 'This page is supporting proof... not the main product pitch' \u2014 correctly positions itself as secondary instead of leading docs with output-review framing."
+    },
+    {
+      "path": "START_HERE.md (line 7)",
+      "reason": "Opens with 'simple Ralph-loop core... composes into complex workflows... strong default workflow' \u2014 directly echoes all three required frames in one sentence."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

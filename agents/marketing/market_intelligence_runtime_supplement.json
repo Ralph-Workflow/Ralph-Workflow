@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-06-02T20:15:00",
+  "source": "web_search sweep (DDG)",
+  "note": "Competitor intelligence gathered during hold window \u2014 fills DDG blind gap for post-hold reentry",
+  "competitors": {
+    "nightcrawler": {
+      "repo": "github.com/thebasedcapital/nightcrawler",
+      "description": "Autonomous overnight agent loop for Claude Code. Decomposes multi-hour missions into bounded 30-60 minute episodes with structured handoffs, supervised by macOS launchd.",
+      "positioning": "runs while you sleep \u2014 write a mission file, start the orchestrator, wake up to a completion report",
+      "platforms": "macOS only (Windows fork exists at TretiqHiks/nightcrawler-windows)",
+      "similarity_to_ralph": "high \u2014 same overnight autonomous coding use case",
+      "differentiation": "Ralph works cross-platform, uses stronger file-based state, plan\u2192execute\u2192verify\u2192review loop structure"
+    },
+    "kodo": {
+      "repo": "github.com/ikamensh/kodo",
+      "description": "Autonomous multi-agent coding orchestrator. Directs Claude Code agents through work cycles with independent verification. Supports Claude Code, Cursor, Codex, Gemini.",
+      "positioning": "builds for you while you sleep \u2014 multi-agent system with orchestrator, workers, architect, and testers",
+      "similarity_to_ralph": "very high \u2014 multi-agent orchestrator with verification gates, overnight autonomous coding",
+      "differentiation": "Ralph is simpler (single loop, compose what you need), free/open-source, cross-platform"
+    }
+  },
+  "market_signals": {
+    "claude_code_auto_mode": {
+      "announced": "March 2026",
+      "description": "Anthropic introduced auto mode enabling multi-step workflows with reduced manual intervention. Classifiers automate permission decisions (93% approval rate baseline).",
+      "ralph_relevance": "auto mode validates the autonomous coding market but is limited to a single Claude Code session \u2014 Ralphs outer loop structure adds persist/spec/verify gates that a single session cannot provide",
+      "sources": [
+        "infoq.com",
+        "anthropic.com/engineering/claude-code-auto-mode"
+      ]
+    },
+    "autonomous_coding_trend": {
+      "observation": "Multiple independent orchestrator projects emerging (Nightcrawler, Kodo, Ralph) \u2014 autonomous coding workflow is a category forming in real-time",
+      "ralph_position": "First-mover opportunity exists. Nightcrawler (macOS only) and Kodo (new, ~same time as Ralph) are the primary visible competitors."
+    }
+  },
+  "action_items": [
+    "Both Nightcrawler and Kodo are new (2026) \u2014 Ralph has similar timing, needs to move fast on discoverability",
+    "Ralphs cross-platform story + simple composable loop are strong differentiators against macOS-only Nightcrawler and complex-multi-agent Kodo",
+    "Consider adding comparison page targeting \"kodo vs ralph\" and \"nightcrawler vs ralph\" search traffic"
+  ]
+}

@@ -6300,6 +6300,59 @@ def _write_action_log(execution: LaneExecution, now: datetime) -> Path:
     return path
 
 
+def _execute_social_proof_bootstrap(now: datetime, decision: LaneDecision) -> LaneExecution:
+    """Execute social_proof_bootstrap — the designated circuit-breaker lane.
+
+    This handler was documented as committed on 2026-06-03 06:20 CEST but did
+    not exist in the file (Fake green audit #22). Added 2026-06-04 00:43 UTC.
+    """
+    blocking_factors: list[str] = []
+    try:
+        from agents.marketing.social_proof_bootstrap import run as spb_run
+        result: dict[str, Any] = spb_run(dry_run=False, force=True, now=now)
+        actions_taken = result.get('actions_taken', [])
+        gaps = result.get('gaps', [])
+        ok = result.get('ok', True)
+        reason = result.get('reason', 'completed')
+        actions_count = len(actions_taken)
+        gaps_count = len(gaps)
+        if not ok:
+            blocking_factors.append(f'social_proof_bootstrap returned ok=False: {reason}')
+        if actions_taken:
+            actions_desc = ', '.join(str(a) for a in actions_taken[:5])
+            if actions_count > 5:
+                actions_desc += f' and {actions_count - 5} more'
+            summary = f'social_proof_bootstrap: {actions_count} action(s) taken ({actions_desc}). {gaps_count} gap(s) found.'
+        else:
+            summary = f'social_proof_bootstrap: no actions taken ({reason}). {gaps_count} gap(s) found.'
+        return LaneExecution(
+            lane=decision.lane,
+            action_type='social_proof_bootstrap_execution',
+            status='executed' if ok else 'partial',
+            artifact_path=str(LOG_DIR / f'social_proof_bootstrap_{now.strftime("%Y-%m-%d_%H%M%S")}.json'),
+            summary=summary,
+            targets_prepared=actions_count,
+            shared_findings_used=decision.shared_findings_used,
+            live_external_action=actions_count > 0,
+            blocking_factors=blocking_factors,
+        )
+    except ImportError as e:
+        blocking_factors.append(f'social_proof_bootstrap module not importable: {e}')
+    except Exception as e:
+        blocking_factors.append(f'social_proof_bootstrap failed: {e}')
+    return LaneExecution(
+        lane=decision.lane,
+        action_type='social_proof_bootstrap_error',
+        status='failed',
+        artifact_path=None,
+        summary=f'social_proof_bootstrap execution failed: {"; ".join(blocking_factors)}',
+        targets_prepared=0,
+        shared_findings_used=decision.shared_findings_used,
+        live_external_action=False,
+        blocking_factors=blocking_factors,
+    )
+
+
 def _execute_owned_content(now: datetime) -> LaneExecution:
     posted = load_posted()
 
@@ -7610,6 +7663,8 @@ def execute_distribution_lane(decision: LaneDecision, now: datetime | None = Non
             live_external_action=False,
             blocking_factors=[],
         )
+    elif decision.lane == 'social_proof_bootstrap':
+        execution = _execute_social_proof_bootstrap(now, decision)
     elif decision.lane == 'owned_content':
         execution = _execute_owned_content(now)
         execution = LaneExecution(

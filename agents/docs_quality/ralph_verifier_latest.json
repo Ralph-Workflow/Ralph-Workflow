@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-29T10:07:05.459150+00:00",
+  "checked_at": "2026-06-04T00:06:32.055682+00:00",
   "verdict": "pass",
   "status": "independently verified pass",
   "ok": true,
@@ -19,14 +19,14 @@
     "escalationRequired": false,
     "currentIncidentId": null,
     "consecutiveVerifierFailures": 0,
-    "totalVerifierFailures": 67,
-    "lastFailureAtUtc": "2026-05-29T08:48:59.000915+00:00",
+    "totalVerifierFailures": 71,
+    "lastFailureAtUtc": "2026-06-03T16:46:10.732949+00:00",
     "lastFailureReason": "candidate pass reached but independent stop approval is still missing: signoff fingerprint does not match current docs state",
-    "lastFailureDocsStateFingerprint": "909617ed2f3a76e6",
-    "lastHealthyAtUtc": "2026-05-29T10:07:05.458993+00:00",
-    "lastHealthyDocsStateFingerprint": "af4eacd0e6b425ca",
-    "lastIndependentStopApprovedAtUtc": "2026-05-29T08:55:00.000000+00:00",
-    "lastIndependentStopApprovedFingerprint": "909617ed2f3a76e6",
+    "lastFailureDocsStateFingerprint": "774f46125467ef71",
+    "lastHealthyAtUtc": "2026-06-04T00:06:32.023141+00:00",
+    "lastHealthyDocsStateFingerprint": "774f46125467ef71",
+    "lastIndependentStopApprovedAtUtc": "2026-06-03T16:46:10.758238+00:00",
+    "lastIndependentStopApprovedFingerprint": "774f46125467ef71",
     "lastIndependentStopApprovedBy": "ralph-independent-stop-approver (isolated subagent)"
   }
 }

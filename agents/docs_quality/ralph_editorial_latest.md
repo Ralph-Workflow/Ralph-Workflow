@@ -7,7 +7,7 @@ Status: DOCS_EDITORIAL_OK
 - Canonical positioning: `/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md`
 - Product surfaces audited: 11
 - Proof surfaces audited: 1
-- Public docs swept: 158
+- Public docs swept: 160
 
 ## Issue counts by type
 

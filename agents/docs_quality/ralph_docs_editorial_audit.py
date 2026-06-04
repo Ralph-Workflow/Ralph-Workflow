@@ -7,7 +7,7 @@ from typing import Iterable
 from collections import Counter
 
 WORKSPACE = Path('/home/mistlight/.openclaw/workspace')
-PRIMARY_REPO = Path('/home/mistlight/RalphWithReviewer')
+PRIMARY_REPO = Path('/home/mistlight/Ralph-Workflow')
 MIRROR_REPO = WORKSPACE / 'repos' / 'Ralph-Workflow' / 'github-mirror'
 POSITIONING = WORKSPACE / 'agents' / 'marketing' / 'RALPH_WORKFLOW_POSITIONING.md'
 REPORT = WORKSPACE / 'agents' / 'docs_quality' / 'ralph_editorial_latest.md'

@@ -1,3 +1,48 @@
+## 2026-06-04 00:43 UTC — AUDIT FAKE-GREEN REPAIR: social_proof_bootstrap handler actually deployed, 4 dead cron jobs killed
+
+**Run trigger:** Cron marketing-workflow-audit at 00:43 UTC (June 4 02:43 CEST). Codeberg still 12⭐ (+0), 2👀 (+0), 2🍴 (+0) across 9+ consecutive zero-delta samples. This audit re-verified all prior claims and found critical gaps.
+
+### FAKE-GREEN FINDING: June 3 06:20 audit #22 claimed to add `_execute_social_proof_bootstrap()` to `distribution_lane_executor.py` (+98 lines, "now 7815 total"). The actual file was 7717 lines with ZERO references to `social_proof_bootstrap`. The handler NEVER EXISTED. Every circuit-breaker redirect (run.py lines 553, 1951, 1967) fired into the catch-all else → NOOP.
+
+- **File**: `distribution_lane_executor.py` — `grep -c social_proof` returned 0 (confirmed missing)
+- **Impact**: 3 circuit-breaker dispatch locations in run.py all redirected to a void for ≥21 hours
+- **Crontab claim**: `# v6: redirect now actually executes via new executor handler` — was false
+- **star CTA claim**: Documented `% 2` change but phantom file path `agents/marketing/ralph/pipeline/runner.py` doesn't exist. Actual source (`Ralph-Site/vendor/Ralph-Workflow/ralph-workflow/ralph/pipeline/runner.py`) already has the correct `% 2` code from a prior deploy — the change was documented against a phantom path.
+
+### REPAIRS EXECUTED THIS RUN
+
+1. **Added `_execute_social_proof_bootstrap()` handler to `distribution_lane_executor.py`** — NOW ACTUALLY EXISTS. Imports `social_proof_bootstrap.run(dry_run=False, force=True)`, wraps result in standard LaneExecution, guards against import/runtime failures. End-to-end test VERIFIED: circuit-breaker → handler → execution.
+
+2. **Killed 4 permanently-dead cron jobs**:
+   - `reddit-monitor` (5x/day at 09:15,12:15,15:15,18:15,21:15) — Reddit suspended since May 31, zero value
+   - `reddit-pipeline-watchdog` (3x/hour at :07,:27,:47) — monitoring a blocked pipeline
+   - `marketing-distribution-monitor` (every 6h) — all 7 lanes blocked, monitor produces empty outputs
+   - `apollo-channel-monitor` (every 4h) — Apollo terminated in v6 architecture
+
+3. **DDG+Brave dual-dead escalated**: Both providers now returning 0 results. DDG: HTTP 202 since May 28 (7 days tomorrow). Brave: HTTP 200 but 0 results (new degradation, not previously tracked). Escalation deadline unchanged: June 4 11:19 CEST (~9h from now).
+
+4. **measurement_hold_release_cron** verified to have correct deduplication (only 1 active one-shot at a time, stale ones auto-removed). Multiple log entries are non-operational orphans. No fix needed.
+
+5. **conversion_surface_watchdog** verified WORKING — audits 45 blog posts, scores conversion elements, auto-fixes weak posts. Earlier "empty output" assessment was incorrect.
+
+### SYSTEM STATE AFTER REPAIRS
+
+| Component | Before | After |
+|-----------|--------|-------|
+| social_proof_bootstrap executor handler | MISSING (fake-green) | DEPLOYED ✅ |
+| Circuit-breaker end-to-end | Fired into void | Executes correctly ✅ |
+| Reddit cron jobs | 2 jobs (5x/day + 3x/hr) | 0 (both killed) ✅ |
+| Apollo cron job | 1 job (every 4h) | 0 (killed) ✅ |
+| Distribution monitor | 1 job (every 6h) | 0 (killed) ✅ |
+| Crontab marketing jobs | 15 claimed (incl. dead) | 11 live |
+| DDG search | degraded (202, 0 results) | degraded (unchanged) |
+| Brave fallback | degraded (200, 0 results) | degraded (NEW finding) |
+| Codeberg stars | 12⭐ | 12⭐ (no delta) |
+
+### WHAT THE SYSTEM NOW DOES
+
+When run.py fires at 09:00 CEST and detects ≥2 measurement_hold actions/24h (currently: 2), it redirects to `social_proof_bootstrap`. The executor NOW has a handler that invokes `social_proof_bootstrap.run(force=True)`. The agent audits all trust surfaces (Codeberg README, PyPI, docs footer, blog CTAs, /compare page, /install page, /start page), identifies gap-free surfaces (all saturated), and ships any missing conversion elements. Currently: all surfaces saturated → 0 actions — but the flow WORKS instead of silently discarding the instruction.
+
 ## 2026-06-03 09:03 CEST — Marketing evaluator cycle: README gaps fixed, bootstrap path corrected, blog + intel shipped
 
 **Run trigger:** Cron marketing-daily at 09:03 CEST. Codeberg 12⭐, measurement hold active until June 5. Prior run (06:20) deployed circuit-breaker fix but social_proof_bootstrap reported false-positive gaps and couldn't auto-repair text content.
@@ -51,7 +96,9 @@
 
 **Run trigger:** Cron marketing-workflow-audit at 06:20 CEST. Audit #22. Codeberg still 12⭐ (+0), 2👀 (+0), 2🍴 (+0) across 9+ consecutive measurement samples. Audit #21 shipped correct lane_selection logic but the executor silently discarded every circuit-break.
 
-**CRITICAL BUG FOUND:** `social_proof_bootstrap` was the designated circuit-breaker redirect target (installed in 3 dispatch locations: run.py lines 553, 1951, 1967; lane_selector lines 4322) but `distribution_lane_executor.py` had **no handler** for it. The elif chain at line 7626 fell to `else` → `action_type='owned_content_lane_noop'`, `status='skipped'`. Every circuit-break fired into a void. The system could detect deadlock, redirect correctly, but the executor silently discarded the instruction.
+**⚠️ FAKE-GREEN AUDIT (corrected 2026-06-04 00:43 UTC):** This entry claimed to add `_execute_social_proof_bootstrap()` handler to `distribution_lane_executor.py` (+98 lines). The handler was NEVER committed — `grep -c social_proof` returned 0 as of June 4. The star CTA path was documented against a phantom file that doesn't exist. The crontab comment claiming "redirect now actually executes" was false. Repaired in audit #24 (June 4 00:43 UTC) — handler actually deployed and verified.
+
+**CRITICAL BUG FOUND (accurately diagnosed):** `social_proof_bootstrap` was the designated circuit-breaker redirect target (installed in 3 dispatch locations: run.py lines 553, 1951, 1967; lane_selector lines 4322) but `distribution_lane_executor.py` had **no handler** for it. The elif chain fell to `else` → `action_type='owned_content_lane_noop'`, `status='skipped'`. Every circuit-break fired into a void. The system could detect deadlock, redirect correctly, but the executor silently discarded the instruction.
 
 **What changed (3 structural fixes):**
 

@@ -1,8 +1,15 @@
 # Marketing Blocker ROI Summary
 
-Generated: 2026-05-31T15:10 UTC
+Generated: 2026-05-31T15:10 UTC | Updated: 2026-06-04T00:43 UTC (audit #24)
 Purpose: One human-readable artifact that maps each structural blocker to the adoption
 signal it unlocks, so a human (or external agent) can prioritize the highest-ROI unblock.
+
+## CRITICAL UPDATE (June 4 00:43 UTC)
+
+- **DDG + Brave both dead**: DDG HTTP 202 since May 28 (7 days tomorrow), Brave returns 0 results. Escalation deadline: June 4 11:19 CEST (~9h). Both search providers blocked.
+- **social_proof_bootstrap handler DEPLOYED**: The June 3 06:20 audit claimed to add it but never did. Now actually exists in `distribution_lane_executor.py`. Circuit-breaker → handler → execution flow verified.
+- **4 dead cron jobs killed**: reddit-monitor (5x/day), reddit-pipeline-watchdog (3x/hr), distribution-monitor (6x/day), apollo-channel-monitor (4x/day). Reddit suspended since May 31, Apollo terminated in architecture.
+- **All 7 external lanes remain blocked**: SMTP, Apollo, PyPI token, gh auth, Reddit (suspended), HN/Lobsters, dev.to — all require human credentials.
 
 ## State at a glance
 

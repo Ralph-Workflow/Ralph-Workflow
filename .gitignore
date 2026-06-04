@@ -8,9 +8,12 @@ __pycache__/
 
 # Secrets / tokens / credentials
 *_token*.json
+*_token*
 *_service_account*.json
 *_client_secrets*.json
 *_code_verifier*.txt
+*.token
+.tele*_token*
 accounts/*_creds.json
 agents/marketing/reddit_account.json
 

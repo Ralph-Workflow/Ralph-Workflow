@@ -10,8 +10,8 @@ WORKSPACE = Path('/home/mistlight/.openclaw/workspace')
 STATE_PATH = WORKSPACE / 'agents' / 'docs_quality' / 'ralph_process_state.json'
 SIGNOFF_PATH = WORKSPACE / 'agents' / 'docs_quality' / 'ralph_independent_stop_approval.json'
 DOC_STATE_PATHS = [
-    Path('/home/mistlight/RalphWithReviewer/README.md'),
-    Path('/home/mistlight/RalphWithReviewer/ralph-workflow/README.md'),
+    Path('/home/mistlight/Ralph-Workflow/README.md'),
+    Path('/home/mistlight/Ralph-Workflow/ralph-workflow/README.md'),
     WORKSPACE / 'repos' / 'Ralph-Workflow' / 'github-mirror' / 'README.md',
     WORKSPACE / 'repos' / 'Ralph-Workflow' / 'github-mirror' / 'START_HERE.md',
     WORKSPACE / 'repos' / 'Ralph-Workflow' / 'github-mirror' / 'docs',
