@@ -18,6 +18,20 @@ MEASUREMENT_HOLD_ACTION_TYPES = {
     'measurement_hold_churn_guard_repair',
 }
 MEASUREMENT_HOLD_COOLDOWN_MINUTES = 60
+# 2026-06-04: Added a hard maximum cap to prevent indefinite hold deadlocks.
+# When all distribution lanes are structurally blocked (Reddit suspended, DDG/Brave
+# dead, Apollo Cloudflare-blocked, GitHub auth unavailable), explicit hold-until
+# sources could chain holds for days with zero marketing activity. The hard cap
+# forces a break into owned_content or blocker escalation after this duration.
+# Measured from hold_started_at, not from the resolved hold_until.
+MEASUREMENT_HOLD_HARD_MAX_HOURS = 24
+# Hold-exhaustion circuit breaker: if consecutive measurement_hold actions in this
+# window hit the threshold with zero live external actions, break out of the hold.
+HOLD_EXHAUSTION_CONSECUTIVE_THRESHOLD = 2
+# 2026-06-01: Reduced from 3→2. At 3, the system was deadlocking too long
+# while all lanes were structurally blocked. At 2, circuit-breaks faster
+# into owned_content or blocker escalation.
+HOLD_EXHAUSTION_WINDOW_HOURS = 24
 LIVE_EXTERNAL_STATUSES = {
     'executed',
     'sent',
@@ -148,9 +162,16 @@ def _resolve_hold_until(
             if checkpoint_at is not None and checkpoint_at > hold_started_at:
                 explicit_candidates.append(checkpoint_at)
 
-    if explicit_candidates:
-        return max(explicit_candidates)
-    return default_hold_until
+    resolved = max(explicit_candidates) if explicit_candidates else default_hold_until
+    # ── Hard cap: never let a measurement hold exceed the hard max duration ──
+    # This prevents the deadlock we saw May 28–June 4: all lanes blocked, hold
+    # chaining through explicit candidates (short_review_window_release_at) that
+    # never actually cleared because no external action could ship through the
+    # blocked lanes.
+    hard_max = hold_started_at + timedelta(hours=MEASUREMENT_HOLD_HARD_MAX_HOURS)
+    if resolved > hard_max:
+        return hard_max
+    return resolved
 
 
 def latest_measurement_hold_window(now: datetime, log_dir: Path) -> dict[str, Any] | None:
@@ -242,11 +263,7 @@ def latest_measurement_hold_window(now: datetime, log_dir: Path) -> dict[str, An
 # The circuit-breaker forces a break to the safest autonomous lane (owned_content)
 # to ensure at least one real action ships before the next hold check.
 
-HOLD_EXHAUSTION_CONSECUTIVE_THRESHOLD = 2
-# 2026-06-01: Reduced from 3→2. At 3, the system was deadlocking too long
-# while all lanes were structurally blocked. At 2, circuit-breaks faster
-# into owned_content or blocker escalation.
-HOLD_EXHAUSTION_WINDOW_HOURS = 24
+
 
 
 def hold_exhausted(now: datetime, log_dir: Path) -> bool:
