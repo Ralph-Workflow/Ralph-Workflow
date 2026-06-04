@@ -1,12 +1,28 @@
 {
-  "lane": "distribution_architecture_guard_pause",
-  "reason": "pause duplicate guard churn until the fingerprint changes",
+  "lane": "distribution_architecture_repair",
+  "reason": "auto-repaired by stale_artifact_watchdog \u2014 guard_pause was May 25",
   "reasons": [],
   "owned_content_posts_last_36h": 0,
   "unsubmitted_directory_channels": [],
-  "shared_findings_used": [],
-  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_distribution_action_brief.md",
-  "short_review_window_release_at": "2026-06-04T02:24:37",
-  "skip_directory_submissions": false,
-  "skip_curator_outreach": false
+  "shared_findings_used": [
+    "blocker_truth_latest.json"
+  ],
+  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-04_marketing_execution_board.md",
+  "short_review_window_release_at": null,
+  "skip_directory_submissions": true,
+  "skip_curator_outreach": true,
+  "generated_at": "2026-06-04T08:45:01.738970+02:00",
+  "active_blockers": [
+    "env:gh_auth",
+    "env:smtp",
+    "env:pypi_token"
+  ],
+  "live_lanes_autonomous": [
+    "telegraph_cross_post",
+    "stackoverflow_drafts",
+    "indexnow_pings",
+    "indexation_health"
+  ],
+  "blog_count": 46,
+  "content_saturation_active": true
 }

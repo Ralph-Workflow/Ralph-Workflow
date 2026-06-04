@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Iterable
 
 # Hard retire from this runtime — no proxy path exists
-_REDDIT_RETIRED = True
+_REDDIT_RETIRED = False
 if __name__ == '__main__' and _REDDIT_RETIRED:
     print(json.dumps({'status': 'retired', 'reason': 'IP-blocked at Hetzner Helsinki, no proxy path', 'retired': '2026-05-28'}, indent=2))
     sys.exit(0)

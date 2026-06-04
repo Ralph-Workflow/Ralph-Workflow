@@ -1,6 +1,6 @@
 {
   "first_sample_at": "2026-06-03T02:56:34.383056",
-  "chronic_started_at": null,
+  "chronic_started_at": "2026-06-04T08:30:01.947686",
   "samples": [
     {
       "at": "2026-06-03T02:56:34.383056",
@@ -43,15 +43,22 @@
       "downloads_month": 1300,
       "codeberg_stars": 12,
       "github_stars": 2
+    },
+    {
+      "at": "2026-06-04T08:30:01.947686",
+      "downloads_day": 7,
+      "downloads_month": 1297,
+      "codeberg_stars": 12,
+      "github_stars": 2
     }
   ],
-  "zero_star_samples": 6,
-  "chronic": false,
-  "recommendation_level": "none",
-  "emit_recommendation": false,
-  "last_recommendation_at": null,
-  "recommendation_count": 0,
-  "downloads_day": 48,
-  "downloads_month": 1300,
+  "zero_star_samples": 7,
+  "chronic": true,
+  "recommendation_level": "strengthen",
+  "emit_recommendation": true,
+  "last_recommendation_at": "2026-06-04T08:30:01.947686",
+  "recommendation_count": 1,
+  "downloads_day": 7,
+  "downloads_month": 1297,
   "codeberg_stars": 12
 }

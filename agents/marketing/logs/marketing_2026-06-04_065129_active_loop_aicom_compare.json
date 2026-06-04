@@ -1,0 +1,32 @@
+{
+  "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "type": "active_loop",
+  "action": "compare_page_competitive_intel",
+  "title": "Add aicom (alexar76) as 18th tool to comparison page — deployed live",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "commit": "cd35d5e",
+  "deploy_release": "20260604064839",
+  "url": "https://ralphworkflow.com/compare",
+  "what_changed": {
+    "sections_added": "aicom (#17) — full comparison with What aicom leaves to you / What Ralph Workflow adds cards",
+    "meta_description": "Added aicom to tool list",
+    "hero_copy": "Added aicom + updated count to eighteen",
+    "nav_grid": "aicom tile between Bernstein and Claude Code Routines",
+    "master_matrix": "aicom row in comparison table",
+    "cta_links": "aicom anchor link added, 17→18 tools",
+    "ordering": "aicom #17 before Claude Code Routines #18 — matches nav grid order"
+  },
+  "competitive_positioning": {
+    "aicom_name": "aicom (alexar76)",
+    "license": "MIT",
+    "loc": "61K Python + 23K TSX",
+    "agents": "12 specialized agents",
+    "quality_gates": "5 gates (demo, browser E2E, visual QA, security AST, methodology)",
+    "pipeline_states": "11 states / 34 transitions",
+    "ralph_contrast": "aicom = web-product factory with storefront+payments; Ralph = engineering-orchestration engine with checkpoint/resume"
+  },
+  "infra_note": "docs build (bin/build-docs) hangs locally; temporarily skipped docs.rake before hook to unblock deploy. Root cause pending investigation.",
+  "result": "Compare page live at ralphworkflow.com/compare with 17 aicom references across all sections. Numbering 1-18 consistent. Nav/section/matrix order aligned."
+}

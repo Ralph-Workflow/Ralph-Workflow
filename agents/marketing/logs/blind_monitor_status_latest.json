@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-06-03T22:30:01.813904+00:00",
+  "generated_at": "2026-06-04T06:53:26.263029+00:00",
   "agent": "blind_monitor_replacement",
   "dry_run": false,
   "ddg": {
-    "ok": false,
-    "health": "degraded_http_202",
-    "result_count": 0,
+    "ok": true,
+    "health": "healthy",
+    "result_count": 10,
     "bot_blocked": false,
-    "reddit_ok": false
+    "reddit_ok": true
   },
   "brave": {
     "ok": false,
@@ -15,5 +15,5 @@
   },
   "escalation_artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/ddg_escalation_latest.md",
   "discovery_channels": 0,
-  "recommendation": "Both DDG and Brave are blocked. No search-based discovery is possible from this environment. All distribution must use curated targets, owned surfaces, and manual handoff packets. Escalate to human for provider migration."
+  "recommendation": "DDG is responding \u2014 Reddit monitor can be re-enabled. Delete the suspension marker."
 }
