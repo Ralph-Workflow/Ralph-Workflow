@@ -721,6 +721,7 @@ def main(
 app.callback(invoke_without_command=True)(main)
 app.command()(cleanup)
 app.command(name="contribute")(contribute)
+app.command(name="star")(contribute)
 
 
 def smoke_interactive_claude() -> None:
