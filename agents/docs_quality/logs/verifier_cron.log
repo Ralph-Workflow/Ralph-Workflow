@@ -21501,3 +21501,156 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system has clearly internalized the positioning. README \u2192 START_HERE \u2192 docs/README journey is coherent. Promoted next-click pages reinforce rather than fight the core story. No hard failure triggers on top-level surfaces. The 'Keep proof secondary' section in docs/README is a meta-awareness signal that the positioning has been absorbed at the IA level.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "No hard failures. Consider making GitHub mirror content sync genuinely mirror the primary to avoid drift confusion (process concern, not docs-quality concern)."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md:3",
+      "reason": "Leads with 'operating system for autonomous coding' \u2014 correct top-level framing."
+    },
+    {
+      "path": "README.md:15",
+      "reason": "'takes the simple Ralph-loop idea... turns it into a composable loop framework' \u2014 exact positioning doc language."
+    },
+    {
+      "path": "README.md:17",
+      "reason": "'This is not a chat window or a prompt tool' \u2014 clear differentiation; orch vs chat."
+    },
+    {
+      "path": "README.md:29-37",
+      "reason": "'Who it's for' section scoped to ambitious, well-specified work with explicit non-fit."
+    },
+    {
+      "path": "README.md:121-129",
+      "reason": "Engineering-practice dependencies called out honestly; no magical guarantees."
+    },
+    {
+      "path": "START_HERE.md:7",
+      "reason": "Opens with same core framing: simple loop composes into complex workflows, strong default, use as-is then customize."
+    },
+    {
+      "path": "docs/README.md:46-49",
+      "reason": "'Keep proof secondary' \u2014 meta-aware IA that actively demotes proof pages after product story."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md:3-4",
+      "reason": "Promoted next-click page reinforces same core positioning before getting specific."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md:3-4",
+      "reason": "Same consistent opening framing; routes back to START_HERE and first-task-guide."
+    },
+    {
+      "path": "docs/reviewable-output.md:5-6",
+      "reason": "Correctly positioned as supporting proof, not main pitch; buried from top-level surfaces."
+    },
+    {
+      "path": "docs/first-task-guide.md:3",
+      "reason": "Same opening framing; practical spec template; honest when-it-works/when-it-does-not section."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README forms a coherent journey with correct framing. Promoted next-click pages reinforce the same story with consistent opening language. No internal leakage at top levels. Loop is healthy.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with tagline, clear 'what it is' paragraph, correct audience fit/non-fit, feature comparison without internal plumbing language, strong default workflow emphasis, engineering-practice requirements section"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Self-aware 'Keep proof secondary' section that explicitly warns against leading with proof pages; routes users by intent; all linked framing pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) open with consistent positioning language"
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Correct opening framing, result-first success criteria ('what the software does now and what checks ran'), self-contained first-run guidance with appropriate deferral to deeper pages"
+    },
+    {
+      "path": "first-task-guide.md",
+      "reason": "Opens with correct positioning, emphasizes spec quality over prompt quality, 'Would I merge this?' review standard aligns with result-first evaluation, honest assessment of when it works/doesn't"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README forms a clean journey. Promoted next-click pages reinforce the same story rather than fighting it. Internal leakage is well-contained; artifact/review/plumbing language stays in explicitly secondary pages. Copy is clean and confident. No hard failures detected.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'the operating system for autonomous coding', positions as composable loop framework, clearly scopes audience to ambitious well-specified work, calls out engineering-practice dependency honestly."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Concrete first-run path with task selection guidance. Result-first success definition. Codeberg-primary framing upfront. Clean handoff to docs/README."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself as post-README/START_HERE. Route-based navigation matches user questions. 'Keep proof secondary' section is a direct meta-instruction that enforces the desired hierarchy."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Explicitly frames itself as supporting proof, not the main pitch. Evidence ordering (working behavior \u2192 checks \u2192 scope \u2192 artifacts) perfectly matches the positioning's result-first mandate."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

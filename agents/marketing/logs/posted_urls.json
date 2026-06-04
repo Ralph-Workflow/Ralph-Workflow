@@ -1196,7 +1196,19 @@
       "error": null,
       "draft_hash": "9d2db27d276e9522060199c8493c1efa24b4929e1974f4156ef49e1081dad7fc",
       "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md"
+    },
+    {
+      "date": "2026-06-04",
+      "draft": "ralph-workflow-vs-nightshift.md",
+      "title": "Ralph Workflow vs Nightshift: Single-Agent Hardening Loop vs Multi-Agent Autonomous Pipeline",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/Ralph-Workflow-vs-Nightshift-Single-Agent-Hardening-Loop-vs-Multi-Agent-Autonomous-Pipeline-06-04",
+      "error": null,
+      "draft_hash": "0db2121b905d77ba18f1f9f8167a479aee4aa250d3f4a03d4b1bb9cb6c9f4b30",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-nightshift.md"
     }
   ],
-  "last_run": "2026-06-04T02:37:58.361793"
+  "last_run": "2026-06-04T06:00:01.611680"
 }
