@@ -1220,7 +1220,31 @@
       "error": null,
       "draft_hash": "032ac858b7f96a97b5f2bc11514cc453c83b78b1e6c97b14c2189d429905d98b",
       "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-local-first-beats-cloud-unattended-ai-coding.md"
+    },
+    {
+      "date": "2026-06-05",
+      "draft": "agentic-devtool-goldrush-yc-2026.md",
+      "title": "The Agentic Devtool Goldrush: YC Just Bet Big on AI Coding Infrastructure \u2014 Here Is Why Ralph Is Different",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/The-Agentic-Devtool-Goldrush-YC-Just-Bet-Big-on-AI-Coding-Infrastructure--Here-Is-Why-Ralph-Is-Different-06-05",
+      "error": null,
+      "draft_hash": "2ea569c99adb41bd5112ec8b780df291377f8acf21db4ffa9f64454d57274fa6",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/agentic-devtool-goldrush-yc-2026.md"
+    },
+    {
+      "date": "2026-06-05",
+      "draft": "why-5-projects-reinvented-same-loop-pattern.md",
+      "title": "Why 5 Open-Source Projects Independently Reinvented the Same Loop Pattern \u2014 and What It Tells Us About Agentic Coding",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "crossposted_blog",
+      "url": "https://telegra.ph/Why-5-Open-Source-Projects-Independently-Reinvented-the-Same-Loop-Pattern--and-What-It-Tells-Us-About-Agentic-Coding-06-05",
+      "error": null,
+      "draft_hash": "c046e95f6879fb0a8d7bcb218a43452cdf5658526101c354d23b083b414c8089",
+      "source_path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-5-projects-reinvented-same-loop-pattern.md"
     }
   ],
-  "last_run": "2026-06-04T06:00:01.611680"
+  "last_run": "2026-06-05T06:00:01.384499"
 }
