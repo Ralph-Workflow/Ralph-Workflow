@@ -1,33 +1,27 @@
 {
-  "checked_at": "2026-06-04T08:45:01.755705+02:00",
+  "checked_at": "2026-06-05T08:45:02.039976+02:00",
   "execution_board": {
     "artifact": "marketing_execution_board",
     "status": "stale",
     "issues": [
-      "Content date 2026-05-25 is 10d old \u2014 STALE",
-      "Stale marker: May 25 review window",
-      "Stale marker: May 29 apollo review",
-      "Stale marker: old PyPI blocker text"
+      "Stale marker: May 29 apollo review"
     ],
-    "target": "/home/mistlight/.openclaw/workspace/drafts/2026-06-04_marketing_execution_board.md",
-    "content_date": "2026-05-25",
-    "content_age_days": 10
+    "target": "/home/mistlight/.openclaw/workspace/drafts/2026-06-05_marketing_execution_board.md",
+    "content_date": "2026-06-05",
+    "content_age_days": 0
   },
   "distribution_lane_state": {
     "artifact": "distribution_lane_state",
-    "status": "stale",
-    "issues": [
-      "Lane is 'distribution_architecture_guard_pause' \u2014 STALE (May 25 origin)"
-    ],
-    "file_mtime": "2026-06-04T08:14:28.676081",
-    "file_age_hours": 0.5,
-    "lane": "distribution_architecture_guard_pause"
+    "status": "ok",
+    "issues": [],
+    "file_mtime": "2026-06-05T08:27:18.740504",
+    "file_age_hours": 0.3,
+    "lane": "telegraph_blog_crosspost"
   },
   "repairs_made": [
-    "Regenerated execution board \u2192 /home/mistlight/.openclaw/workspace/drafts/2026-06-04_marketing_execution_board.md (was: 2026-05-25)",
-    "Regenerated distribution lane state (was: distribution_architecture_guard_pause)"
+    "Regenerated execution board \u2192 /home/mistlight/.openclaw/workspace/drafts/2026-06-05_marketing_execution_board.md (was: 2026-06-05)"
   ],
   "board_repaired": true,
-  "lane_repaired": true,
+  "lane_repaired": false,
   "all_ok": false
 }

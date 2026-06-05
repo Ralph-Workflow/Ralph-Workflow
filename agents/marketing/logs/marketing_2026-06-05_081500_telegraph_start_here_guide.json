@@ -1,0 +1,25 @@
+{
+  "action": "telegraph_crosspost_start_here_guide",
+  "type": "telegraph_crosspost",
+  "title": "Your First Overnight Task with Ralph Workflow: A Start-Here Guide",
+  "url": "https://telegra.ph/Your-First-Overnight-Task-with-Ralph-Workflow-A-Start-Here-Guide-06-05",
+  "source": "Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md",
+  "timestamp": "2026-06-05T08:15:00+02:00",
+  "funnel_target": "conversion_interest_to_free_use",
+  "adoption_funnel_priority": 1,
+  "expected_outcome": "Clearer free-use path for Telegraph readers — answers 'what task to choose first' with concrete spec template and evaluation criteria",
+  "measurement_window_hours": 168,
+  "kill_condition": "No Codeberg delta within 14 days",
+  "process_repairs_in_same_run": [
+    "Fixed parse_front_matter() Hugo-style front matter delimiter (---...------) in run_posting.py",
+    "Fixed build_telegraph_nodes() backtick-stripping in <pre> blocks (caused PAGE_SAVE_FAILED)"
+  ],
+  "notes": "Previous partial-post (Untitled-06-05-20) exists with raw front matter due to bug — defective artifact not linked",
+  "cta": "Codeberg primary + GitHub mirror + pipx install",
+  "seo_clusters": [
+    "first overnight task AI coding",
+    "start here guide autonomous coding",
+    "how to start with AI coding agent",
+    "AI coding agent first task guide"
+  ]
+}

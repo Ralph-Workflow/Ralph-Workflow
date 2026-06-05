@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-04T08:50:02",
+  "generated_at": "2026-06-05T08:50:01",
   "checks": {
     "pypi_api": {
       "status": "live",
@@ -13,11 +13,11 @@
     },
     "stackexchange_api": {
       "status": "live",
-      "quota_remaining": 298,
+      "quota_remaining": 299,
       "quota_max": 300,
-      "quota_pct": 99.3,
+      "quota_pct": 99.7,
       "blocker": false,
-      "note": "StackExchange API: 298/300 remaining"
+      "note": "StackExchange API: 299/300 remaining"
     },
     "codeberg_repo": {
       "status": "live",
@@ -37,10 +37,10 @@
     },
     "blog_sitemap": {
       "status": "live",
-      "total_urls": 105,
-      "blog_urls": 48,
+      "total_urls": 108,
+      "blog_urls": 51,
       "blocker": false,
-      "note": "Sitemap: 105 URLs, 48 blog posts"
+      "note": "Sitemap: 108 URLs, 51 blog posts"
     },
     "environment": {
       "gh_auth": {

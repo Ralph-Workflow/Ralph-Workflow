@@ -70,6 +70,19 @@
         "what to automate with AI coding",
         "AI coding task evaluation framework"
       ]
+    },
+    {
+      "url": "https://telegra.ph/Your-First-Overnight-Task-with-Ralph-Workflow-A-Start-Here-Guide-06-05",
+      "title": "Your First Overnight Task with Ralph Workflow: A Start-Here Guide",
+      "source": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md",
+      "posted_at": "2026-06-05T06:25:16+00:00",
+      "type": "blog_crosspost",
+      "cta": "Codeberg primary + GitHub mirror + pipx install",
+      "seo_clusters": [
+        "first overnight task AI coding",
+        "start here guide autonomous coding",
+        "how to start with AI coding agent"
+      ]
     }
   ]
 }

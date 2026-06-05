@@ -62,6 +62,12 @@ def parse_front_matter(content: str) -> tuple[dict, str]:
         return {}, content
     marker = "\n---\n"
     end = content.find(marker, 4)
+    # Hugo-style front matter uses ---...------ delimiters
+    if end == -1:
+        hugo_marker = "\n------\n"
+        end = content.find(hugo_marker, 4)
+        if end != -1:
+            marker = hugo_marker
     if end == -1:
         return {}, content
     raw = content[4:end].strip().splitlines()
@@ -251,7 +257,10 @@ def build_telegraph_nodes(body: str, source_path: str | None = None) -> list[dic
                 i += 1
             if i < len(lines):
                 i += 1
-            paragraphs.append({'tag': 'pre', 'children': ['\n'.join(code_lines).rstrip()]})
+            code_text = '\n'.join(code_lines).rstrip()
+            # Strip backticks: Telegraph API rejects backticks inside <pre> blocks
+            code_text = code_text.replace('\u0060', '')
+            paragraphs.append({'tag': 'pre', 'children': [code_text]})
             continue
 
         if stripped.startswith('# '):

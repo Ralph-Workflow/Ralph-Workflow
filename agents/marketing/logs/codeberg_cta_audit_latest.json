@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-06-04T07:00:21.738951+00:00",
+  "generated_at": "2026-06-05T07:00:43.837366+00:00",
   "status": "fail",
-  "total_files_with_repo_links": 520,
-  "high_severity_count": 1,
+  "total_files_with_repo_links": 530,
+  "high_severity_count": 2,
   "medium_severity_count": 11,
   "high_severity_findings": [
     {
@@ -12,6 +12,14 @@
       "finding_type": "github_only",
       "detail": "File links GitHub 2 times but never links Codeberg.",
       "severity": "high"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/curator_contact_handoff_packet_latest.md",
+      "finding_type": "known_surface_missing_codeberg",
+      "detail": "Known public surface missing Codeberg link. GitHub links: 0.",
+      "severity": "high",
+      "codeberg_links": 0,
+      "github_links": 0
     }
   ],
   "medium_severity_findings": [
@@ -389,6 +397,14 @@
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-03_unattended_agent_draft.md",
       "codeberg_links": 2,
       "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-04_primary_repo_flat_contact_handoff_packet.md",
+      "codeberg_links": 20,
+      "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -1610,14 +1626,6 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/curator_contact_handoff_packet_latest.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_1-ai-for-developers-awesome-ai-coding-tools.md",
       "codeberg_links": 6,
       "github_links": 0,
@@ -2226,6 +2234,30 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/star_conversion_finding.md",
+      "codeberg_links": 2,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/telegraph_freestyle_ralph_2026-06-04.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/telegraph_yc_agentic_goldrush_2026-06-04.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/docs/README.md",
       "codeberg_links": 2,
       "github_links": 2,
@@ -2373,6 +2405,22 @@
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/content_piece_2026-05-28.md",
       "codeberg_links": 4,
       "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/drafts/star_conversion_finding.md",
+      "codeberg_links": 4,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/github_mirror_readme.md",
+      "codeberg_links": 6,
+      "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -3754,6 +3802,14 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-04.json",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
       "codeberg_links": 4,
       "github_links": 2,
@@ -3883,6 +3939,14 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/pypi_readme_deploy/README.pypi.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/agentic-devtool-goldrush-yc-2026.md",
       "codeberg_links": 2,
       "github_links": 2,
       "finding_type": "ok",
@@ -4258,12 +4322,36 @@
       "severity": "none"
     },
     {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-5-projects-reinvented-same-loop-pattern.md",
+      "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-local-first-beats-cloud-unattended-ai-coding.md",
+      "codeberg_links": 4,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/your-first-overnight-task-start-here-guide.md",
       "codeberg_links": 6,
       "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/curator_contact_handoff_packet_latest.md",
+      "finding_type": "known_surface_missing_codeberg",
+      "detail": "Known public surface missing Codeberg link. GitHub links: 0.",
+      "severity": "high",
+      "codeberg_links": 0,
+      "github_links": 0
     }
   ]
 }

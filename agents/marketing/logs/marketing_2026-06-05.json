@@ -1,0 +1,543 @@
+{
+  "timestamp": "2026-06-05T09:00:01.200184",
+  "weekly_mode": false,
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "robots": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "sitemap": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    }
+  },
+  "totals": {
+    "posts_last_30d": 103,
+    "views_last_30d": 3298
+  },
+  "content_summary": {
+    "conversion-asset": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "philosophy": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "seo-guide": {
+      "posts": 1,
+      "views": 133,
+      "avg_views": 133.0
+    },
+    "technical": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "unknown": {
+      "posts": 98,
+      "views": 3165,
+      "avg_views": 32.3
+    },
+    "usecase": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    }
+  },
+  "decisions": [
+    {
+      "priority": "high",
+      "action": "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
+      "reason": "Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)",
+      "repair": "Replace stale owned-content-first repair. Hold homepage/owned-content volume at maintenance, push Codeberg-first conversion assets and third-party proof, and use only posting channels with current runtime proof instead of assuming a single default publication surface.",
+      "is_failing_signal": true
+    },
+    {
+      "priority": "medium",
+      "action": "Keep publishing seo-guide content.",
+      "reason": "Best avg views: 133.0 \u2014 lean into what's working."
+    },
+    {
+      "priority": "medium",
+      "action": "Shift one future slot away from usecase toward seo-guide.",
+      "reason": "seo-guide outperforms usecase on avg views."
+    },
+    {
+      "priority": "high",
+      "action": "Build backlinks \u2014 submit to directories and pursue guest post opportunities.",
+      "reason": "Zero backlinks detected. Link acquisition is the highest-leverage SEO activity right now."
+    },
+    {
+      "priority": "medium",
+      "action": "Build backlinks: submit to directories, guest post, earn citations",
+      "reason": "Identified by daily SEO analysis as a top priority."
+    },
+    {
+      "priority": "medium",
+      "action": "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
+      "reason": "Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes."
+    },
+    {
+      "priority": "medium",
+      "action": "Ship comparison-led backlink outreach packets whenever the curator queue is already full.",
+      "reason": "A follow-through note is not enough when the queue is saturated; the loop needs a fresh executable distribution asset tied to existing comparison pages."
+    }
+  ],
+  "blocked_channels": {
+    "dev.to": "Needs API key or OAuth",
+    "twitter": "Login/session blocked",
+    "reddit": "ARCHITECTURALLY RETIRED 2026-05-28 \u2014 IP-blocked at Hetzner Helsinki, Tor also blocked, no proxy path. All Reddit scripts exit immediately. Active channel: GitHub Discussions.",
+    "hackernews": "Needs account",
+    "lobsters": "Needs invite/account",
+    "producthunt": "Protected flow / manual launch required"
+  },
+  "seo": {
+    "score": "90/100 (A)",
+    "ranked_keywords": 0,
+    "backlinks_approx": 0,
+    "domain_rating": null,
+    "trends": {
+      "rank_delta": 0.0,
+      "backlinks_delta": 0.0,
+      "domain_rating": null,
+      "prev_avg_ranks": 0.0,
+      "prev_avg_bl": 0.0
+    },
+    "priority_actions": [
+      "Build backlinks: submit to directories, guest post, earn citations"
+    ],
+    "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-06-05.md",
+    "seo_daily_error": "",
+    "sitemap_urls": 0,
+    "competitor_analysis": {
+      "report_path": null,
+      "competitor_count": 0,
+      "competitors": {},
+      "comparison_pages": 0,
+      "comparison_pages_list": [],
+      "shared_artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json"
+    }
+  },
+  "adoption": {
+    "timestamp": "2026-06-05T08:12:06.774972",
+    "metrics": [
+      {
+        "platform": "Codeberg",
+        "stars": 12,
+        "watchers": 2,
+        "forks": 2,
+        "open_issues": 4,
+        "html_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+      },
+      {
+        "platform": "PyPI",
+        "downloads_month": 1294,
+        "downloads_week": 197,
+        "downloads_day": 2,
+        "total_downloads": null,
+        "version": "0.8.8",
+        "html_url": "https://pypi.org/project/ralph-workflow/"
+      },
+      {
+        "platform": "GitHub",
+        "stars": 2,
+        "watchers": 2,
+        "forks": 0,
+        "open_issues": 0,
+        "html_url": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+      }
+    ],
+    "deltas": {
+      "Codeberg": {
+        "stars_delta": 0,
+        "watchers_delta": 0,
+        "forks_delta": 0
+      },
+      "PyPI": {
+        "stars_delta": 0,
+        "watchers_delta": 0,
+        "forks_delta": 0
+      },
+      "GitHub": {
+        "stars_delta": 0,
+        "watchers_delta": 0,
+        "forks_delta": 0
+      }
+    },
+    "recent_window": {
+      "Codeberg": {
+        "samples": 9,
+        "stars_delta_window": 0,
+        "watchers_delta_window": 0,
+        "forks_delta_window": 0
+      },
+      "PyPI": {
+        "samples": 9,
+        "stars_delta_window": 0,
+        "watchers_delta_window": 0,
+        "forks_delta_window": 0
+      },
+      "GitHub": {
+        "samples": 9,
+        "stars_delta_window": 0,
+        "watchers_delta_window": 0,
+        "forks_delta_window": 0
+      }
+    },
+    "evaluation": {
+      "findings": [
+        "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
+        "GitHub mirror adoption is also flat across the recent measurement window.",
+        "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
+        "PyPI has 1294 downloads/month (2/day) \u2014 real usage signal that repo metrics don't capture."
+      ],
+      "failing_signals": [
+        "primary_repo_flat"
+      ],
+      "next_focus": [
+        "Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta."
+      ]
+    }
+  },
+  "market_intelligence": {
+    "generated_at": "2026-06-05T08:39:00+02:00",
+    "source": "marketing-research-daily cron",
+    "search_provider_status": "DEGRADED",
+    "search_provider_notes": "DuckDuckGo blocked after ~4 queries. Reddit 403 on both web_fetch and old.reddit.com. HN Algolia API worked. Report based on first-wave DDG results + HN Algolia API + direct web_fetch on HN items. Reddit coverage is limited to search snippet data only.",
+    "coverage_report": {
+      "candidates_scanned": 25,
+      "shortlisted": 8,
+      "rejected": 17,
+      "sources": {
+        "hacker_news": 15,
+        "reddit_search_snippets": 10,
+        "other": 0
+      }
+    },
+    "landing_page_check": {
+      "url": "https://ralphworkflow.com",
+      "status": 200,
+      "key_messaging": "Autonomous coding workflow. Unattended coding agent. Spec-driven AI agent. Anti-cloud play vs YC P26 competitors. Three-phase loop: plan -> build -> verify."
+    },
+    "competitor_landscape": {
+      "yc_p26_wave": [
+        {
+          "name": "Freestyle (YC P26)",
+          "hn_post": "Launch HN: Freestyle \u2013 Sandboxes for Coding Agents",
+          "hn_url": "https://news.ycombinator.com/item?id=47663147",
+          "score": 322,
+          "comments": 158,
+          "date": "2026-04-06",
+          "positioning": "Cloud sandboxes with VM fork/resume for coding agents. Run full Debian VMs in 500ms.",
+          "pricing": "Unknown (likewise cloud infra model)",
+          "ralph_differentiation": "Cloud-only, closed-source. Ralph is local-first, open-source, Codeberg-primary."
+        },
+        {
+          "name": "Twill.ai (YC S25)",
+          "hn_post": "Launch HN: Twill.ai \u2013 Delegate to cloud agents, get back PRs",
+          "hn_url": "https://news.ycombinator.com/item?id=47720418",
+          "score": 77,
+          "comments": 95,
+          "date": "2026-04-10",
+          "positioning": "Cloud coding agents. Run Claude Code/Codex in isolated sandboxes. Slack/GitHub/Linear integration. Unattended runs (run before bed, wake up to PRs).",
+          "pricing": "$50/month for 50 credits. Free tier: 10 credits.",
+          "ralph_differentiation": "Most direct competitor in messaging ('unattended runs'). Cloud-only, subscription-gated. Ralph is free, open-source, local-first."
+        },
+        {
+          "name": "Hyper (YC P26)",
+          "hn_post": "Launch HN: Hyper (YC P26) \u2013 Company brain to power agentic development",
+          "hn_url": "https://news.ycombinator.com/item?id=48387095",
+          "score": 77,
+          "comments": 76,
+          "date": "2026-06-03",
+          "positioning": "Shared company knowledge graph that plugs into Claude Code, Cowork, Codex, Cursor.",
+          "pricing": "3-day free trial, then subscription",
+          "ralph_differentiation": "Context/memory layer, not a workflow orchestrator. Cloud-only. Ralph's spec-driven approach handles context differently."
+        },
+        {
+          "name": "Superset (YC P26)",
+          "hn_post": "Not found on HN Algolia",
+          "score": null,
+          "positioning": "Web IDE for managing multiple coding agents (mentioned on ralphworkflow.com landing page)"
+        }
+      ],
+      "open_source_tools": [
+        {
+          "name": "Mission Control",
+          "hn_post": "Show HN: Mission Control \u2013 Open-source task management for AI agents",
+          "hn_url": "https://news.ycombinator.com/item?id=47165602",
+          "score": 45,
+          "comments": 21,
+          "date": "2026-02-26",
+          "positioning": "Open-source task management app with autonomous daemon for Claude Code. Local-first, JSON files.",
+          "ralph_relevance": "Complementary rather than competitive. Task management layer vs workflow orchestrator."
+        },
+        {
+          "name": "ChatML",
+          "hn_post": "Show HN: ChatML - Run Claude Code Parallel Sessions in a Desktop app",
+          "hn_url": "https://news.ycombinator.com/item?id=47303711",
+          "score": 6,
+          "comments": 12,
+          "date": "2026-03-09",
+          "positioning": "Desktop app runs multiple Claude Code sessions in parallel via git worktrees. macOS-focused. Open-source.",
+          "ralph_relevance": "Same problem space (parallel agents), different approach (UI wrapper vs loop framework). ChatML built product itself via 750+ parallel agent PRs."
+        },
+        {
+          "name": "Paseo",
+          "hn_post": "Show HN: Paseo \u2013 Open-source coding agent interface (desktop, mobile, CLI)",
+          "hn_url": "https://news.ycombinator.com/item?id=47530027",
+          "score": 14,
+          "comments": 0,
+          "date": "2026-03-26",
+          "positioning": "Multi-platform interface for Claude Code, Codex, OpenCode. AGPL-3.0. Daemon + clients over WebSocket.",
+          "ralph_relevance": "Interface layer, not orchestrator. CLI aspect gets close."
+        },
+        {
+          "name": "Orcha",
+          "hn_post": "Show HN: We had 20 Claude terminals open, so we built Orcha",
+          "hn_url": "https://news.ycombinator.com/item?id=46928003",
+          "score": 1,
+          "comments": 2,
+          "date": "2026-02-07",
+          "positioning": "Orchestration layer for AI coding agents. Dashboard, visual workflow builder, 100% local.",
+          "ralph_relevance": "Closest open-source competitor. '100% local' positioning aligns with Ralph. Visual workflow builder differentiates."
+        },
+        {
+          "name": "Claude Code Agent Farm",
+          "hn_url": "https://github.com/Dicklesworthstone/claude_code_agent_farm",
+          "positioning": "Run 20+ Claude Code agents simultaneously with lock-based coordination. Tmux-based.",
+          "ralph_relevance": "Parallel agent execution, different architecture (tmux + JSON configs)."
+        }
+      ],
+      "closed_source_tools": [
+        {
+          "name": "Runner",
+          "hn_post": "Show HN: Runner \u2013 the anti-vibe coding agent",
+          "hn_url": "https://news.ycombinator.com/item?id=45214955",
+          "score": 22,
+          "comments": 10,
+          "date": "2025-09-11",
+          "positioning": "Purpose-built for 'plan and review' workflow. Task-based. Mac-only. BYOK beta.",
+          "ralph_relevance": "Strong overlap in philosophy (structured, plan-first, review-gated). Runner is closed-source Mac-only; Ralph is open-source, cross-platform."
+        }
+      ]
+    },
+    "key_reddit_threads": {
+      "coverage_degraded": true,
+      "note": "Reddit returned 403 on all fetch attempts. Only search snippet data available.",
+      "found_threads": [
+        {
+          "url": "https://www.reddit.com/r/vibecoding/comments/1pihn0c/",
+          "title": "Antigravity + Claude Code + Gemini 3 Pro = Incredible",
+          "snippet": "User building automated biz using Antigravity + Claude Code + Gemini 3 Pro for orchestrating",
+          "opportunity": "Multi-LLM orchestration use case. Ralph's vendor-neutral loop positioning could fit."
+        },
+        {
+          "url": "https://www.reddit.com/r/ClaudeCode/comments/1m7cb64/",
+          "title": "Anyone else using Claude Code across multiple PCs?",
+          "snippet": "User asks about syncing Claude Code context across machines. Finding it clunky.",
+          "opportunity": "Cross-device Claude Code pain point. Ralph's local-first but works with shared repos."
+        },
+        {
+          "url": "https://www.reddit.com/r/ClaudeAI/comments/1pnmg9b/",
+          "title": "Integrating BMAD-METHOD into our AI agent provisioning workflow",
+          "snippet": "Structured agile development method for Claude Code, Cursor, Windsurf, VS Code.",
+          "opportunity": "Structured development method user is looking for structured workflows - Ralph's loop model directly maps."
+        }
+      ]
+    },
+    "trending_discussions_hacker_news": {
+      "signal_threads": [
+        "Agentic coding workflows for complex features and large codebases? (Ask HN, Oct 2025, 3 pts)",
+        "Show HN: Claude Code Agent Farm (Jul 2025, 4 pts)",
+        "Show HN: Droidctx \u2013 generate Markdown docs from your prod infra for coding agents (Mar 2026, 2 pts)",
+        "Launch HN: Freestyle \u2013 Sandboxes for Coding Agents (Apr 2026, 322 pts, 158 comments)",
+        "Launch HN: Twill.ai \u2013 Delegate to cloud agents, get back PRs (Apr 2026, 77 pts, 95 comments)",
+        "Launch HN: Hyper \u2013 Company brain for agentic development (Jun 2026, 77 pts, 76 comments)"
+      ],
+      "topical_theme": "The single biggest theme: everyone is building a piece of the 'manage AI agents' puzzle, but no one is doing a local-first, open-source composable loop framework. The YC batch is all cloud, all subscription."
+    },
+    "opportunity_analysis": {
+      "content_ideas": [
+        {
+          "title": "Ralph Workflow vs Twill: Two ways to run unattended coding agents",
+          "angle": "Direct comparison. Local-first free open-source vs cloud $50/month. Honest trade-offs.",
+          "target_venue": "HN Show/Ask, r/ClaudeCode, dev.to"
+        },
+        {
+          "title": "The anti-cloud play in AI coding agents: why local-first matters",
+          "angle": "Expand the landing page messaging into a full blog post. YC P26 batch is all cloud - make the case for local-first.",
+          "target_venue": "Ralph Workflow blog, HN, dev.to"
+        },
+        {
+          "title": "Why your AI agents need a loop framework, not a dashboard",
+          "angle": "Contrast dashboard/UI approaches (ChatML, Paseo) with Ralph's composable loop architecture. Plan->build->verify isn't just a metaphor, it's the architecture.",
+          "target_venue": "HN, dev.to, HackerNoon"
+        }
+      ],
+      "comment_reply_opportunities": [
+        {
+          "target": "Hyper HN thread (id=48387095)",
+          "note": "Hyper launched only 2 days ago. Thread still fresh. Could comment on the relationship between context memory (Hyper) and structured workflow (Ralph). Natural differentiation.",
+          "action": "Research first, then comment connecting context layer + workflow orchestration"
+        },
+        {
+          "target": "Twill HN thread (id=47720418)",
+          "note": "95 comments, older thread but Twill's core message overlaps with Ralph. 'Unattended runs, PRs by morning' is same messaging frame.",
+          "action": "Could write a comparison piece rather than commenting directly in old thread"
+        }
+      ],
+      "non_spam_promotional_angles": [
+        "Position Ralph as the open-source answer to the 'YC P26 is all cloud' problem",
+        "Write a technical blog post: 'How we built an unattended coding agent orchestrator for <$1/run' with actual cost breakdowns",
+        "Create a 1-page comparison: Ralph Workflow vs 6 cloud competitors (feature grid, pricing, local vs cloud)"
+      ]
+    },
+    "ralph_messaging_ground_truth": {
+      "headline": "Autonomous coding workflow \u2014 Ralph Workflow",
+      "tagline": "Free and open-source composable loop framework for real software engineering.",
+      "key_phrases": [
+        "unattended coding agent",
+        "spec-driven AI agent",
+        "Claude Code unattended",
+        "AI coding workflow automation",
+        "AI agent workflow composer"
+      ],
+      "anti_positioning": "YC is betting big on agentic devtools. Ralph is the anti-cloud play.",
+      "competitors_called_out": [
+        "Freestyle",
+        "Twill",
+        "Superset",
+        "Hyper"
+      ]
+    },
+    "search_coverage_warning": "DUCKDUCKGO BLOCKED MID-RESEARCH. REDDIT 403 ON ALL FETCHES. Report based on partial DDG results + HN Algolia API. Reddit threads found via search snippets and old HN references. Full Reddit sentiment analysis not possible this cycle. Web_fetch for Reddit remains blocked - needs alternate approach (e.g., PRAW if configured, or RSS feeds).",
+    "next_actions": [
+      "Consider writing 'Ralph Workflow vs the YC Cloud Stack' comparison post",
+      "Target the 'Ask HN: agentic coding for large codebases' thread with Ralph if still open",
+      "Set up PRAW for proper Reddit monitoring (creds in TOOLS.md need Reddit API keys registered)",
+      "Monitor Hyper HN thread for further discussion (only 2 days old)",
+      "Explore the BMAD-METHOD Reddit thread for structured workflow synergies"
+    ],
+    "daily_summary": "The AI coding agent tooling space is accelerating fast. YC P26 alone shipped Freestyle (sandboxes), Hyper (company memory), and Superset (web IDE). Twill (S25) is the most direct competitive threat to Ralph's messaging: same 'unattended runs, PRs by morning' angle but cloud-only at $50/month. The open-source alternatives (Mission Control, ChatML, Paseo, Orcha) are more UI/dashboard focused than workflow framework. Ralph's composable loop architecture and local-first positioning is genuinely differentiated in both the open-source and cloud camps. Main risk: Twill and YC tools are getting HN traction with similar messaging. Main opportunity: write loud about the 'anti-cloud' angle that no one else is claiming."
+  },
+  "distribution_lane": {
+    "lane": "curator_due_followup",
+    "reason": "At least one curator outreach review window is now due, so the highest-leverage move is a concrete follow-up packet instead of another reset or measurement hold.",
+    "reasons": [
+      "Primary Codeberg adoption is flat in the current measurement window.",
+      "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
+      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
+      "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "15 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
+      "5 prepared curator targets still need a canonical execution handoff packet.",
+      "Curator follow-ups are now due for 5 target(s) (filipecalegario/awesome-vibe-coding, QAInsights/awesome-ai-tools, 0xWelt/Awesome-Vibe-Coding), so the loop should not hide behind another measurement hold when real follow-through is ready.",
+      "Manual-contact-only curator targets are still waiting for execution (vivy-yi/awesome-agent-orchestration), so the loop should use the existing contact-discovery asset before inventing new reset work.",
+      "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
+      "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (AXME Code, WyeWorks, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
+      "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
+      "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
+      "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
+      "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
+      "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
+      "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
+      "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress."
+    ],
+    "owned_content_posts_last_36h": 0,
+    "unsubmitted_directory_channels": [],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+    ],
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-05_distribution_action_brief.md",
+    "short_review_window_release_at": null,
+    "skip_directory_submissions": false,
+    "skip_curator_outreach": false
+  },
+  "distribution_execution": {
+    "lane": "curator_due_followup",
+    "action_type": "curator_due_followup_packet_execution",
+    "status": "prepared",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-05_curator_due_followup_packet.md",
+    "summary": "Prepared a concrete follow-up packet for overdue curator outreach targets.",
+    "targets_prepared": [
+      "filipecalegario/awesome-vibe-coding",
+      "QAInsights/awesome-ai-tools",
+      "0xWelt/Awesome-Vibe-Coding",
+      "taskade/awesome-vibe-coding",
+      "Agent-Analytics/awesome-multi-agent-orchestrators"
+    ],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+    ],
+    "live_external_action": false,
+    "blocking_factors": []
+  },
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-05_090001_curator_due_followup_packet_execution.json",
+  "post_hold_release_schedule": {},
+  "post_execution_distribution_lane": {
+    "lane": "curator_due_followup",
+    "reason": "At least one curator outreach review window is now due, so the highest-leverage move is a concrete follow-up packet instead of another reset or measurement hold.",
+    "reasons": [
+      "Primary Codeberg adoption is flat in the current measurement window.",
+      "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
+      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
+      "5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "15 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
+      "5 prepared curator targets still need a canonical execution handoff packet.",
+      "Curator follow-ups are now due for 5 target(s) (filipecalegario/awesome-vibe-coding, QAInsights/awesome-ai-tools, 0xWelt/Awesome-Vibe-Coding), so the loop should not hide behind another measurement hold when real follow-through is ready.",
+      "Manual-contact-only curator targets are still waiting for execution (vivy-yi/awesome-agent-orchestration), so the loop should use the existing contact-discovery asset before inventing new reset work.",
+      "Some remaining publisher targets only expose non-runtime-executable channels (ctxt.dev / Signum, TLDL, ComputingForGeeks), so they should not keep this lane looking actionable until a sendable path exists.",
+      "Primary-repo-flat repair already surfaced fresh developer-native publishers with public contact paths (AXME Code, WyeWorks, Bollwerk / Werkstatt), so the loop should package that Codeberg-first outreach instead of ending at measurement hold.",
+      "The comparison/backlink queue is already fully prepared, but GitHub auth is blocked here, so that lane is manual-only follow-through rather than fresh live outbound work.",
+      "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
+      "Backlink status already shows 3 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
+      "A current directory secondary-surface repair packet already exists for a live page that still misroutes or obscures Codeberg repo intent, so the loop should reuse that asset instead of calling the board empty.",
+      "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
+      "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
+      "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress."
+    ],
+    "owned_content_posts_last_36h": 0,
+    "unsubmitted_directory_channels": [],
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+    ],
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-05_distribution_action_brief.md",
+    "short_review_window_release_at": null,
+    "skip_directory_submissions": false,
+    "skip_curator_outreach": false
+  },
+  "reused_existing_distribution_execution": false,
+  "failure_signals": [
+    "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption."
+  ],
+  "marketing_status": "failing",
+  "content_generation": {
+    "returncode": 0,
+    "stdout": "skipped: lane=curator_due_followup",
+    "stderr": ""
+  },
+  "posting": {
+    "returncode": 0,
+    "stdout": "skipped: lane=curator_due_followup",
+    "stderr": ""
+  }
+}

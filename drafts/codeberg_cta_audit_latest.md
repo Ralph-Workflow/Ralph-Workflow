@@ -1,9 +1,9 @@
 # Codeberg CTA Audit Report
-Generated: 2026-06-04T07:00:21.738951+00:00
+Generated: 2026-06-05T07:00:43.837366+00:00
 
 ## Summary: FAIL
-- Files with repo links: 520
-- High severity issues: 1
+- Files with repo links: 530
+- High severity issues: 2
 - Medium severity issues: 11
 
 ## Rule in force
@@ -13,6 +13,7 @@ Generated: 2026-06-04T07:00:21.738951+00:00
 
 ## ⚠️ High-Severity: Missing Codeberg Links
 - **/home/mistlight/.openclaw/workspace/drafts/2026-05-29_pypi_publishing_handoff.md**: File links GitHub 2 times but never links Codeberg.
+- **/home/mistlight/.openclaw/workspace/drafts/curator_contact_handoff_packet_latest.md**: Known public surface missing Codeberg link. GitHub links: 0.
 
 ## Medium-Severity: Ordering or Missing Surface
 - **/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_are-vs-code-copilot-agent-debug-log-token-counts-t.md**: GitHub link appears before Codeberg link. Codeberg: 2, GitHub: 2.

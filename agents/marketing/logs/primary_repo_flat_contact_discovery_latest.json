@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-04T07:00:22.616316+00:00",
+  "generated_at": "2026-06-05T07:00:44.761678+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -364,7 +364,7 @@
         },
         {
           "type": "github_issue",
-          "value": "https://github.com/ggml-org/llama.cpp/issues/new",
+          "value": "https://github.com/wlejon/brosoundml/issues/new",
           "label": "GitHub issue"
         }
       ],
@@ -739,16 +739,6 @@
           "type": "email",
           "value": "support@codersera.com",
           "label": "email"
-        },
-        {
-          "type": "github_issue",
-          "value": "https://github.com/ggerganov/whisper.cpp/issues/new",
-          "label": "GitHub issue"
-        },
-        {
-          "type": "github_issue",
-          "value": "https://github.com/SYSTRAN/faster-whisper/issues/new",
-          "label": "GitHub issue"
         },
         {
           "type": "x",

@@ -1,148 +1,211 @@
 {
-  "generated_at": "2026-06-05T08:03:16.128117",
-  "source": "competitor_analysis.py",
-  "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
-  "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-05.md",
-  "monitoring_snapshot": "/home/mistlight/.openclaw/workspace/seo-reports/competitors/monitoring_2026-06-05.json",
-  "comparison_pages": [
-    {
-      "slug": "hermes-agent",
-      "name": "Hermes Agent",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md"
-    },
-    {
-      "slug": "conductor-oss",
-      "name": "Conductor OSS",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-oss.md"
-    },
-    {
-      "slug": "conductor-teams",
-      "name": "Conductor (Teams)",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md"
-    },
-    {
-      "slug": "aider",
-      "name": "Aider",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/aider.md"
-    },
-    {
-      "slug": "continue",
-      "name": "Continue",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md"
-    },
-    {
-      "slug": "cursor",
-      "name": "Cursor",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/cursor.md"
-    },
-    {
-      "slug": "claude-code",
-      "name": "Claude Code",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md"
-    },
-    {
-      "slug": "copilot",
-      "name": "GitHub Copilot",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md"
-    }
-  ],
-  "competitors": {
-    "hermes-agent": {
-      "name": "Hermes Agent",
-      "positioning": "Self-improving agent that learns from experience",
-      "site_status": 200,
-      "github_stars": 181388,
-      "key_features_found": [
-        "Persistent memory"
-      ]
-    },
-    "conductor-oss": {
-      "name": "Conductor OSS",
-      "positioning": "Enterprise-grade workflow orchestration for AI agents",
-      "site_status": 200,
-      "github_stars": 31884,
-      "key_features_found": [
-        "Durable execution"
-      ]
-    },
-    "conductor-teams": {
-      "name": "Conductor (Teams)",
-      "positioning": "Markdown-native local-first orchestration for coding teams",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Local-first"
-      ]
-    },
-    "aider": {
-      "name": "Aider",
-      "positioning": "Terminal-based AI pair programming in your git repo",
-      "site_status": 200,
-      "github_stars": 45777,
-      "key_features_found": []
-    },
-    "continue": {
-      "name": "Continue",
-      "positioning": "The leading AI code assistant inside your IDE",
-      "site_status": 200,
-      "github_stars": 33540,
-      "key_features_found": []
-    },
-    "cursor": {
-      "name": "Cursor",
-      "positioning": "The AI code editor built for pair programming with AI",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Composer",
-        "Context-aware"
-      ]
-    },
-    "claude-code": {
-      "name": "Claude Code",
-      "positioning": "Anthropic's official CLI for agentic coding",
-      "site_status": 0,
-      "github_stars": null,
-      "key_features_found": []
-    },
-    "copilot": {
-      "name": "GitHub Copilot",
-      "positioning": "Your AI pair programmer embedded in GitHub and your IDE",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Inline suggestions"
-      ]
+  "generated_at": "2026-06-05T08:39:00+02:00",
+  "source": "marketing-research-daily cron",
+  "search_provider_status": "DEGRADED",
+  "search_provider_notes": "DuckDuckGo blocked after ~4 queries. Reddit 403 on both web_fetch and old.reddit.com. HN Algolia API worked. Report based on first-wave DDG results + HN Algolia API + direct web_fetch on HN items. Reddit coverage is limited to search snippet data only.",
+  "coverage_report": {
+    "candidates_scanned": 25,
+    "shortlisted": 8,
+    "rejected": 17,
+    "sources": {
+      "hacker_news": 15,
+      "reddit_search_snippets": 10,
+      "other": 0
     }
   },
-  "ralph_core_truths": {
-    "what_is_it": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.",
-    "who_is_it_for": "Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session.",
-    "why_different": "It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.",
-    "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
+  "landing_page_check": {
+    "url": "https://ralphworkflow.com",
+    "status": 200,
+    "key_messaging": "Autonomous coding workflow. Unattended coding agent. Spec-driven AI agent. Anti-cloud play vs YC P26 competitors. Three-phase loop: plan -> build -> verify."
   },
-  "ralph_advantage_keywords": [
-    "unattended coding pipeline",
-    "multi-agent orchestration",
-    "Claude Code workflow",
-    "AI agent review loop",
-    "vendor-neutral AI coding",
-    "cost arbitrage AI coding",
-    "policy-defined agent workflow",
-    "TOML agent configuration",
-    "parallel AI coding agents",
-    "AI agent checkpoint resume"
+  "competitor_landscape": {
+    "yc_p26_wave": [
+      {
+        "name": "Freestyle (YC P26)",
+        "hn_post": "Launch HN: Freestyle – Sandboxes for Coding Agents",
+        "hn_url": "https://news.ycombinator.com/item?id=47663147",
+        "score": 322,
+        "comments": 158,
+        "date": "2026-04-06",
+        "positioning": "Cloud sandboxes with VM fork/resume for coding agents. Run full Debian VMs in 500ms.",
+        "pricing": "Unknown (likewise cloud infra model)",
+        "ralph_differentiation": "Cloud-only, closed-source. Ralph is local-first, open-source, Codeberg-primary."
+      },
+      {
+        "name": "Twill.ai (YC S25)",
+        "hn_post": "Launch HN: Twill.ai – Delegate to cloud agents, get back PRs",
+        "hn_url": "https://news.ycombinator.com/item?id=47720418",
+        "score": 77,
+        "comments": 95,
+        "date": "2026-04-10",
+        "positioning": "Cloud coding agents. Run Claude Code/Codex in isolated sandboxes. Slack/GitHub/Linear integration. Unattended runs (run before bed, wake up to PRs).",
+        "pricing": "$50/month for 50 credits. Free tier: 10 credits.",
+        "ralph_differentiation": "Most direct competitor in messaging ('unattended runs'). Cloud-only, subscription-gated. Ralph is free, open-source, local-first."
+      },
+      {
+        "name": "Hyper (YC P26)",
+        "hn_post": "Launch HN: Hyper (YC P26) – Company brain to power agentic development",
+        "hn_url": "https://news.ycombinator.com/item?id=48387095",
+        "score": 77,
+        "comments": 76,
+        "date": "2026-06-03",
+        "positioning": "Shared company knowledge graph that plugs into Claude Code, Cowork, Codex, Cursor.",
+        "pricing": "3-day free trial, then subscription",
+        "ralph_differentiation": "Context/memory layer, not a workflow orchestrator. Cloud-only. Ralph's spec-driven approach handles context differently."
+      },
+      {
+        "name": "Superset (YC P26)",
+        "hn_post": "Not found on HN Algolia",
+        "score": null,
+        "positioning": "Web IDE for managing multiple coding agents (mentioned on ralphworkflow.com landing page)"
+      }
+    ],
+    "open_source_tools": [
+      {
+        "name": "Mission Control",
+        "hn_post": "Show HN: Mission Control – Open-source task management for AI agents",
+        "hn_url": "https://news.ycombinator.com/item?id=47165602",
+        "score": 45,
+        "comments": 21,
+        "date": "2026-02-26",
+        "positioning": "Open-source task management app with autonomous daemon for Claude Code. Local-first, JSON files.",
+        "ralph_relevance": "Complementary rather than competitive. Task management layer vs workflow orchestrator."
+      },
+      {
+        "name": "ChatML",
+        "hn_post": "Show HN: ChatML - Run Claude Code Parallel Sessions in a Desktop app",
+        "hn_url": "https://news.ycombinator.com/item?id=47303711",
+        "score": 6,
+        "comments": 12,
+        "date": "2026-03-09",
+        "positioning": "Desktop app runs multiple Claude Code sessions in parallel via git worktrees. macOS-focused. Open-source.",
+        "ralph_relevance": "Same problem space (parallel agents), different approach (UI wrapper vs loop framework). ChatML built product itself via 750+ parallel agent PRs."
+      },
+      {
+        "name": "Paseo",
+        "hn_post": "Show HN: Paseo – Open-source coding agent interface (desktop, mobile, CLI)",
+        "hn_url": "https://news.ycombinator.com/item?id=47530027",
+        "score": 14,
+        "comments": 0,
+        "date": "2026-03-26",
+        "positioning": "Multi-platform interface for Claude Code, Codex, OpenCode. AGPL-3.0. Daemon + clients over WebSocket.",
+        "ralph_relevance": "Interface layer, not orchestrator. CLI aspect gets close."
+      },
+      {
+        "name": "Orcha",
+        "hn_post": "Show HN: We had 20 Claude terminals open, so we built Orcha",
+        "hn_url": "https://news.ycombinator.com/item?id=46928003",
+        "score": 1,
+        "comments": 2,
+        "date": "2026-02-07",
+        "positioning": "Orchestration layer for AI coding agents. Dashboard, visual workflow builder, 100% local.",
+        "ralph_relevance": "Closest open-source competitor. '100% local' positioning aligns with Ralph. Visual workflow builder differentiates."
+      },
+      {
+        "name": "Claude Code Agent Farm",
+        "hn_url": "https://github.com/Dicklesworthstone/claude_code_agent_farm",
+        "positioning": "Run 20+ Claude Code agents simultaneously with lock-based coordination. Tmux-based.",
+        "ralph_relevance": "Parallel agent execution, different architecture (tmux + JSON configs)."
+      }
+    ],
+    "closed_source_tools": [
+      {
+        "name": "Runner",
+        "hn_post": "Show HN: Runner – the anti-vibe coding agent",
+        "hn_url": "https://news.ycombinator.com/item?id=45214955",
+        "score": 22,
+        "comments": 10,
+        "date": "2025-09-11",
+        "positioning": "Purpose-built for 'plan and review' workflow. Task-based. Mac-only. BYOK beta.",
+        "ralph_relevance": "Strong overlap in philosophy (structured, plan-first, review-gated). Runner is closed-source Mac-only; Ralph is open-source, cross-platform."
+      }
+    ]
+  },
+  "key_reddit_threads": {
+    "coverage_degraded": true,
+    "note": "Reddit returned 403 on all fetch attempts. Only search snippet data available.",
+    "found_threads": [
+      {
+        "url": "https://www.reddit.com/r/vibecoding/comments/1pihn0c/",
+        "title": "Antigravity + Claude Code + Gemini 3 Pro = Incredible",
+        "snippet": "User building automated biz using Antigravity + Claude Code + Gemini 3 Pro for orchestrating",
+        "opportunity": "Multi-LLM orchestration use case. Ralph's vendor-neutral loop positioning could fit."
+      },
+      {
+        "url": "https://www.reddit.com/r/ClaudeCode/comments/1m7cb64/",
+        "title": "Anyone else using Claude Code across multiple PCs?",
+        "snippet": "User asks about syncing Claude Code context across machines. Finding it clunky.",
+        "opportunity": "Cross-device Claude Code pain point. Ralph's local-first but works with shared repos."
+      },
+      {
+        "url": "https://www.reddit.com/r/ClaudeAI/comments/1pnmg9b/",
+        "title": "Integrating BMAD-METHOD into our AI agent provisioning workflow",
+        "snippet": "Structured agile development method for Claude Code, Cursor, Windsurf, VS Code.",
+        "opportunity": "Structured development method user is looking for structured workflows - Ralph's loop model directly maps."
+      }
+    ]
+  },
+  "trending_discussions_hacker_news": {
+    "signal_threads": [
+      "Agentic coding workflows for complex features and large codebases? (Ask HN, Oct 2025, 3 pts)",
+      "Show HN: Claude Code Agent Farm (Jul 2025, 4 pts)",
+      "Show HN: Droidctx – generate Markdown docs from your prod infra for coding agents (Mar 2026, 2 pts)",
+      "Launch HN: Freestyle – Sandboxes for Coding Agents (Apr 2026, 322 pts, 158 comments)",
+      "Launch HN: Twill.ai – Delegate to cloud agents, get back PRs (Apr 2026, 77 pts, 95 comments)",
+      "Launch HN: Hyper – Company brain for agentic development (Jun 2026, 77 pts, 76 comments)"
+    ],
+    "topical_theme": "The single biggest theme: everyone is building a piece of the 'manage AI agents' puzzle, but no one is doing a local-first, open-source composable loop framework. The YC batch is all cloud, all subscription."
+  },
+  "opportunity_analysis": {
+    "content_ideas": [
+      {
+        "title": "Ralph Workflow vs Twill: Two ways to run unattended coding agents",
+        "angle": "Direct comparison. Local-first free open-source vs cloud $50/month. Honest trade-offs.",
+        "target_venue": "HN Show/Ask, r/ClaudeCode, dev.to"
+      },
+      {
+        "title": "The anti-cloud play in AI coding agents: why local-first matters",
+        "angle": "Expand the landing page messaging into a full blog post. YC P26 batch is all cloud - make the case for local-first.",
+        "target_venue": "Ralph Workflow blog, HN, dev.to"
+      },
+      {
+        "title": "Why your AI agents need a loop framework, not a dashboard",
+        "angle": "Contrast dashboard/UI approaches (ChatML, Paseo) with Ralph's composable loop architecture. Plan->build->verify isn't just a metaphor, it's the architecture.",
+        "target_venue": "HN, dev.to, HackerNoon"
+      }
+    ],
+    "comment_reply_opportunities": [
+      {
+        "target": "Hyper HN thread (id=48387095)",
+        "note": "Hyper launched only 2 days ago. Thread still fresh. Could comment on the relationship between context memory (Hyper) and structured workflow (Ralph). Natural differentiation.",
+        "action": "Research first, then comment connecting context layer + workflow orchestration"
+      },
+      {
+        "target": "Twill HN thread (id=47720418)",
+        "note": "95 comments, older thread but Twill's core message overlaps with Ralph. 'Unattended runs, PRs by morning' is same messaging frame.",
+        "action": "Could write a comparison piece rather than commenting directly in old thread"
+      }
+    ],
+    "non_spam_promotional_angles": [
+      "Position Ralph as the open-source answer to the 'YC P26 is all cloud' problem",
+      "Write a technical blog post: 'How we built an unattended coding agent orchestrator for <$1/run' with actual cost breakdowns",
+      "Create a 1-page comparison: Ralph Workflow vs 6 cloud competitors (feature grid, pricing, local vs cloud)"
+    ]
+  },
+  "ralph_messaging_ground_truth": {
+    "headline": "Autonomous coding workflow — Ralph Workflow",
+    "tagline": "Free and open-source composable loop framework for real software engineering.",
+    "key_phrases": ["unattended coding agent", "spec-driven AI agent", "Claude Code unattended", "AI coding workflow automation", "AI agent workflow composer"],
+    "anti_positioning": "YC is betting big on agentic devtools. Ralph is the anti-cloud play.",
+    "competitors_called_out": ["Freestyle", "Twill", "Superset", "Hyper"]
+  },
+  "search_coverage_warning": "DUCKDUCKGO BLOCKED MID-RESEARCH. REDDIT 403 ON ALL FETCHES. Report based on partial DDG results + HN Algolia API. Reddit threads found via search snippets and old HN references. Full Reddit sentiment analysis not possible this cycle. Web_fetch for Reddit remains blocked - needs alternate approach (e.g., PRAW if configured, or RSS feeds).",
+  "next_actions": [
+    "Consider writing 'Ralph Workflow vs the YC Cloud Stack' comparison post",
+    "Target the 'Ask HN: agentic coding for large codebases' thread with Ralph if still open",
+    "Set up PRAW for proper Reddit monitoring (creds in TOOLS.md need Reddit API keys registered)",
+    "Monitor Hyper HN thread for further discussion (only 2 days old)",
+    "Explore the BMAD-METHOD Reddit thread for structured workflow synergies"
   ],
-  "discovered_candidates": [],
-  "reuse_contract": {
-    "runtime_proven_consumers": [
-      "agents/marketing/run.py",
-      "agents/marketing/reddit_monitor.py"
-    ],
-    "prompt_guided_consumers": [
-      "ralph-site-owner-loop",
-      "agent-architecture-watchdog"
-    ],
-    "purpose": "Shared market and competitor findings artifact for site updates, positioning checks, and marketing tactics."
-  }
+  "daily_summary": "The AI coding agent tooling space is accelerating fast. YC P26 alone shipped Freestyle (sandboxes), Hyper (company memory), and Superset (web IDE). Twill (S25) is the most direct competitive threat to Ralph's messaging: same 'unattended runs, PRs by morning' angle but cloud-only at $50/month. The open-source alternatives (Mission Control, ChatML, Paseo, Orcha) are more UI/dashboard focused than workflow framework. Ralph's composable loop architecture and local-first positioning is genuinely differentiated in both the open-source and cloud camps. Main risk: Twill and YC tools are getting HN traction with similar messaging. Main opportunity: write loud about the 'anti-cloud' angle that no one else is claiming."
 }
