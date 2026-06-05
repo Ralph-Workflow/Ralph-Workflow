@@ -1,16 +1,12 @@
-# Agent Architecture Verifier
+# Agent Architecture Independent Verification
 
-- Checked: 2026-06-05T18:04:46+02:00
-- Status: **ok=true, 0 errors**
-- Independent verification: qualified_pass (2026-06-05T18:04:16+02:00)
-- Checker: AGENT_ARCHITECTURE_OK
-- Loop integrity: clean (both loops ok)
-- Cron topology: 19/19/0/0/0, all status=ok, 0 consecutiveErrors
-- Verifier contract: passing — independent verification is fresh relative to loop_integrity_latest.json
+- Checked: 2026-06-05T19:04:17.815610
+- Status: independently verified pass
+- Independent artifact: `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`
+- Independent check time: 2026-06-05T19:03:37.937560+02:00
+- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
+- Qualified external blockers: stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json, /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json, marketing independent verification is not pass: 'fail'
 
-## External blockers (not architecture-owned)
+## Verification result
 
-- Marketing independent verification: fail (2026-06-02, 74.8h stale)
-- Marketing workflow audit confirms bottleneck=distribution_and_message_to_primary_repo_conversion
-
-## Status: independently verified pass
+- Independent verification artifact is present, fresh, and passed.

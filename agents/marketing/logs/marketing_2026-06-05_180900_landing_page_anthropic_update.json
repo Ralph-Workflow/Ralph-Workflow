@@ -1,0 +1,33 @@
+{
+  "run": "2026-06-05T18:09:00+02:00",
+  "action": "landing_page_update",
+  "type": "conversion_surface_improvement",
+  "summary": "Added Anthropic competitive positioning to home page market landscape section",
+  "details": {
+    "file_changed": "app/views/pages/home.html.erb",
+    "commit": "72b3b6b350126ca8bd95247d376245f0b9c058ae",
+    "deploy": "release 20260605162458, verified live",
+    "change": "Added 'And it's not just startups' bridge paragraph linking Anthropic's 3-feature cloud push (Dynamic Workflows, Routines, Auto Mode) to the existing YC P26 anti-cloud narrative. Links to the ralph-workflow-vs-anthropic-dynamic-workflows comparison blog post deployed earlier today."
+  },
+  "rationale": "All 7 external distribution lanes remain fully blocked. The home page is the site's highest-traffic conversion surface. Anthropic's 3 cloud-only features in 6 weeks is the most significant competitive entry since YC P26, and the landing page had no mention of it. Adding it strengthens the anti-cloud positioning that is Ralph's core differentiator.",
+  "verification": {
+    "puma_restart": "ok",
+    "release_runtime_fidelity": "ok",
+    "live_public_surface": "ok",
+    "indexnow_notify": "110 urls submitted, ok",
+    "content_live": "confirmed 'And it's not just startups' and link href present on ralphworkflow.com"
+  },
+  "autonomous": true,
+  "genuinely_new": true,
+  "blocked_lanes_checked": [
+    "Reddit (suspended 9+ days)",
+    "Dev.to (no credentials)",
+    "HN (no account)",
+    "Apollo (no IMAP access verified)",
+    "SMTP (no credentials)",
+    "PyPI (blocked on credentials)",
+    "GitHub issues/PRs (no auth)",
+    "Stoneforge listing (no GitHub auth for issues, no Discord)",
+    "StackOverflow (cooldown)"
+  ]
+}

@@ -1,72 +1,79 @@
-# Agent Architecture Audit
+# Agent Architecture Audit Report
 
-- Checked: 2026-06-05T18:04:40+02:00
-- Overall health: **high_risk**
-- Primary failure mode: External — marketing independent verification fails closed (2026-06-02, 74.8h stale). Architecture-owned gates all green.
-- Most urgent fix: Marketing owner loop must produce fresh measurable primary-repo adoption evidence.
+**Checked:** 2026-06-05 19:03 CEST (17:03 UTC)
+**Verdict:** `qualified_pass` — architecture-owned gates green; marketing external evidence red
+**Schema:** ecc.agent-architecture-audit.report.v1
 
-## Live topology
+## Executive Summary
 
-- Gateway jobs: 19 total / 19 enabled / 0 disabled / 0 running / 0 errors
-- All 19 jobs: status=ok, consecutiveErrors=0
-- Full job list: system-health-monitor, codeberg-github-mirror-sync, ralph-docs-supervisor-precheck, pypi-auto-unblocker, marketing-active-loop, Push research findings to git repo, repo-adoption-tracker, agent-architecture-watchdog, competitor-analysis, ralph-site-owner-loop, marketing-churn-watchdog, marketing-outcome-capability-runner, ralph-workflow-docs-verifier-supervisor, content-generator, content-poster, marketing-workflow-audit, marketing-research-daily, marketing-daily, backlink-tracker
-- No disabled or errored jobs.
+Architecture chain fully coherent: checker, verifier, independent verification, and loop integrity all pass fresh. Stable run — no new drift or repairs needed since prior pass. Sole remaining blocker is external marketing outcome evidence — ~75.8h stale, verdict `fail`, primary-repo adoption flat at 12 Codeberg stars.
 
-## Severity-ranked findings
+## Runtime Topology (Live)
 
-1. **High — Marketing externally red (74.8h stale)**
-   - Independent verification: fail (2026-06-02). Health monitor: artifact age 74.8h vs max 4h.
-   - Codeberg adoption: 12 stars, 0 delta across measurement window.
-   - PyPI: 1,294 downloads/month — real usage signal repo metrics don't capture.
-   - Marketing workflow audit confirms bottleneck=distribution_and_message_to_primary_repo_conversion, repair_window_status=measurement_pending.
-   - Fix: marketing owner loop produces fresh measurable adoption evidence, reruns independent verification.
+| Metric | Value |
+|--------|-------|
+| Total jobs | 19 |
+| Enabled | 19 |
+| Disabled | 0 |
+| Running | 2 (system-health-monitor, codeberg-github-mirror-sync) |
+| Errored | 0 |
 
-2. **High — "pypi-auto-unblocker" missing self-improvement mandate**
-   - Present in live topology (status=ok, 0 errors). No self-improvement mandate.
-   - Will repeat same tactics if outcomes are flat. Needs self_improvement_mandate + registry entry.
+All 19 jobs have `consecutiveErrors=0`.
 
-3. **Medium — Live topology clean and coherent**
-   - 19/19/0/0/0 (total/enabled/disabled/running/errors). All status=ok, 0 consecutiveErrors. No drift.
+## Chain Results
 
-4. **Medium — Architecture verifier chain fully green (fresh run)**
-   - Checker: AGENT_ARCHITECTURE_OK. Verifier: ok=true, 0 errors. Independent verify: qualified_pass=true.
-   - Loop integrity: clean (both loops ok). Health monitor: external-localizing correctly.
-   - Shared market-intelligence consumption verified (4 runtime consumers loaded, producer fresh 2026-06-05).
+| Check | Status | Exit |
+|-------|--------|------|
+| agent_architecture_checker.py | `AGENT_ARCHITECTURE_OK` | 0 |
+| agent_architecture_verifier.py | `ok=true, 0 errors` | 0 |
+| agent_architecture_independent_verify.py | `ok=true, qualified_pass=true` | 0 |
+| loop_integrity_audit.py | both loops ok | 0 |
 
-5. **Low — 17 live loops not in self_improvement_loops.json**
-   - Only ralph-docs-watchdog and agent-architecture-watchdog registered.
-   - Fix: onboard all loops or document classification decisions.
+## Findings
 
-6. **Low — Persisted disabled jobs are history only**
-   - Zero live disabled jobs. History entries not conflated with runtime.
+### 🔴 HIGH — Marketing independent verification red (~75.8h stale)
+- Artifact: 2026-06-02, verdict: `fail`
+- Primary repo flat: 12 Codeberg stars, 0 delta
+- Bottleneck: `distribution_and_message_to_primary_repo_conversion`
+- Fix: Marketing owner loop produces fresh measurable outcome evidence
 
-7. **Resolved — "internal-linking-watchdog" removed from live topology**
-   - Previously flagged. No longer in live cron. Self-resolved by removal.
+### 🔴 HIGH — pypi-auto-unblocker lacks self-improvement mandate
+- No self-improvement contract; cannot self-correct flat outcomes
+- Fix: Add mandate or reclassify as monitor-only
 
-## Repaired this run
+### 🟡 MEDIUM — Live topology coherent
+- 19/19/0/2/0, all clean, all consecutiveErrors=0
 
-- **refreshed_live_topology** — Live cron snapshot: 19/19/0/0/0. All jobs ok, 0 errors. Clean.
-- **reverified_architecture_chain** — Fresh checker (AGENT_ARCHITECTURE_OK), verifier (ok=true, 0 errors), independent verify (qualified_pass), loop integrity (clean). All architecture gates pass.
-- **repaired_verifier_staleness** — Verifier previously rejected independent verification as stale. This run: fresh independent verification + loop integrity brought verifier to ok=true, 0 errors.
+### 🟡 MEDIUM — Verifier chain fully green
+- Fresh checker/verifier/independent/loop-integrity all pass
 
-## Still red
+### 🟢 LOW — 17 loops unregistered in self_improvement_loops.json
+- Only 2 of 19 loops have registry entries
+- Fix: Onboard or document classification decisions
 
-- Marketing independent verification: FAIL (2026-06-02, 74.8h old). Codeberg-primary adoption flat (12 stars, 0 delta).
-- pypi-auto-unblocker: missing self-improvement mandate.
-- 17 unregistered loops in self_improvement_loops.json.
-- Whole-stack green certification blocked by external marketing evidence.
+### 🟢 RESOLVED — internal-linking-watchdog
+- Removed from live topology
 
-## Independent verification
+## Repairs Applied This Run
 
-- Verdict: qualified_pass
-- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Architecture chain independently confirmed: checker ok, verifier ok, cron topology clean, loop integrity green, health monitor external-localizing, market-intelligence reuse verified.
-- External blockers: marketing independent verification stale (fail, 2026-06-02).
+None — architecture chain stable, no new repairs required.
 
-## Small gate passed
+## Independent Verification
 
-Architecture-owned verification chain independently confirmed: checker AGENT_ARCHITECTURE_OK, verifier ok=true (0 errors), independent verify qualified_pass, cron topology 19/19/0/0/0, loop integrity clean, health monitor external-localizing. Verifier staleness from previous run repaired — fresh independent verification + loop integrity resolved the staleness rejection. Only red items are external (marketing independent verification stale, 74.8h) and architecture-side self-improvement gaps (pypi-auto-unblocker mandate missing, 17 unregistered loops). internal-linking-watchdog resolved by removal.
+- **Status:** performed
+- **Verdict:** `qualified_pass`
+- **External errors only:** marketing evidence ~75.8h stale, verdict `fail`
 
-## Self-improvement registry gap
+## What Still Needs Independent Verification
 
-Only 2 of 19 live loops registered (ralph-docs-watchdog, agent-architecture-watchdog). Registry must expand to all live loops or each unregistered loop needs documented classification as monitor-only.
+1. Fresh marketing independent pass with measurable primary-repo movement
+2. pypi-auto-unblocker self-improvement mandate onboarding
+
+## Notes
+
+- Architecture green ≠ whole stack green
+- 0 disabled jobs in live topology; persisted history separated
+- PyPI 1,294 downloads/month is real usage not captured by repo star count
+- 17 of 19 loops unregistered in self_improvement_loops.json
+- Marketing workflow audit current but marketing IV is ~75.8h stale
+- Stable run: chain unchanged from prior pass ~18 min ago
