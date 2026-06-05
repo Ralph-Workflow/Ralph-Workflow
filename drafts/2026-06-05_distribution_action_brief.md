@@ -1,13 +1,10 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-05T03:17:01
+Generated: 2026-06-05T04:10:32
 Chosen lane: **curator_due_followup**
 
 ## Why this lane
 - At least one curator outreach review window is now due, so the highest-leverage move is a concrete follow-up packet instead of another reset or measurement hold.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 2 live external marketing action(s) already shipped in the last 6 hours.
-- If no new outcome lands first, this short-window congestion clears at 2026-06-05T03:18:40. Before then, another live outbound action would mostly blur measurement.
-- Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 5 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.

@@ -55,5 +55,21 @@
     "title": "Claude x Codex Collab vs Ralph Workflow",
     "posted_at": "2026-06-04T20:54:01.709011+00:00",
     "trigger": "market_intelligence find - Claude x Codex Collab (HN 47466967)"
-  }
+  },
+  "2026-06-05": [
+    {
+      "url": "https://telegra.ph/Good-vs-Bad-Unattended-AI-Coding-Tasks-How-to-Know-Before-You-Start-06-05",
+      "title": "Good vs Bad Unattended AI Coding Tasks: How to Know Before You Start",
+      "source": "Ralph-Site/content/blog/good-vs-bad-unattended-coding-task-ai-agent.md",
+      "posted_at": "2026-06-05T02:07:19.521275+00:00",
+      "type": "blog_crosspost",
+      "cta": "Codeberg primary + GitHub mirror + pipx install",
+      "seo_clusters": [
+        "good vs bad AI coding tasks",
+        "unattended coding task selection",
+        "what to automate with AI coding",
+        "AI coding task evaluation framework"
+      ]
+    }
+  ]
 }

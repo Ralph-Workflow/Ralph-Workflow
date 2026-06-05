@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-05T01:12:41.904563+00:00",
+  "updated_at": "2026-06-05T02:00:12.458019+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
@@ -560,7 +560,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-06-03T11:33:59.794511+00:00",
-      "repeat_count": 475,
+      "repeat_count": 483,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -577,7 +577,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-05T01:12:41.904550+00:00",
+      "last_seen": "2026-06-05T02:00:12.458005+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -765,7 +765,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-03T11:33:59.794540+00:00",
-      "repeat_count": 218,
+      "repeat_count": 219,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1696,15 +1696,23 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-05T03:12:06.906695+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=217"
+        },
+        {
+          "at": "2026-06-05T01:45:16.880387+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780623916836:78\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-05T03:29:40.318412+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=219"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-05T01:12:41.904553+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-05T03:12:33.125607+02:00\"\n}",
+      "last_seen": "2026-06-05T01:45:12.401108+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-05T03:29:40.318412+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-06-05T01:12:37.027589+00:00"
+      "closed_at": "2026-06-05T01:45:16.880410+00:00"
     },
     "docs_verifier::artifact_contract_fail": {
       "key": "docs_verifier::artifact_contract_fail",
@@ -3842,16 +3850,17 @@
       "name": "competitor-analysis",
       "category": "live_error",
       "first_seen": "2026-06-04T18:35:13.194530+00:00",
-      "repeat_count": 90,
+      "repeat_count": 92,
       "owner_domain": null,
       "escalation_level": "critical",
       "owner_actions": [],
-      "status": "open",
+      "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-05T01:12:41.904535+00:00",
+      "last_seen": "2026-06-05T01:32:14.012436+00:00",
       "last_error": "Error: ENOSPC: no space left on device, write",
       "likely_cause": "IMMEDIATE_FAIL: script crashing early - Error: ENOSPC: no space left on device, write",
-      "path": null
+      "path": null,
+      "closed_at": "2026-06-05T01:45:12.401130+00:00"
     },
     "docs_agentic_review_mustFix_main-readme-line-87-ralph-workflow-is-compared-t::review_followup_required": {
       "key": "docs_agentic_review_mustFix_main-readme-line-87-ralph-workflow-is-compared-t::review_followup_required",
