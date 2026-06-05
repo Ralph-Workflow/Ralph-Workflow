@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-05T03:32:44.765817",
+  "generated_at": "2026-06-05T08:03:16.128117",
   "source": "competitor_analysis.py",
   "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
   "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-05.md",
@@ -51,7 +51,7 @@
       "name": "Hermes Agent",
       "positioning": "Self-improving agent that learns from experience",
       "site_status": 200,
-      "github_stars": 181038,
+      "github_stars": 181388,
       "key_features_found": [
         "Persistent memory"
       ]
@@ -60,7 +60,7 @@
       "name": "Conductor OSS",
       "positioning": "Enterprise-grade workflow orchestration for AI agents",
       "site_status": 200,
-      "github_stars": 31881,
+      "github_stars": 31884,
       "key_features_found": [
         "Durable execution"
       ]
@@ -78,14 +78,14 @@
       "name": "Aider",
       "positioning": "Terminal-based AI pair programming in your git repo",
       "site_status": 200,
-      "github_stars": 45772,
+      "github_stars": 45777,
       "key_features_found": []
     },
     "continue": {
       "name": "Continue",
       "positioning": "The leading AI code assistant inside your IDE",
       "site_status": 200,
-      "github_stars": 33538,
+      "github_stars": 33540,
       "key_features_found": []
     },
     "cursor": {
