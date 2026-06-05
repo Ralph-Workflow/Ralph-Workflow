@@ -1,7 +1,7 @@
 {
-  "ts": "2026-06-05T02:03:02.489009",
+  "ts": "2026-06-05T03:12:41.906146",
   "jobs_checked": 21,
-  "issues_found": 4,
+  "issues_found": 7,
   "issues": [
     {
       "job_id": "fef7edfb-2339-432b-bf35-e2694e90ed27",
@@ -16,37 +16,90 @@
     },
     {
       "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier",
+      "category": "artifact_contract_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+      "required_text": "Status: independently verified pass",
+      "likely_cause": "Verifier artifact exists but does not show required pass contract"
+    },
+    {
+      "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 3526.53,
+      "artifact_age_minutes": 3596.19,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
     {
-      "job_id": "fef7edfb-2339-432b-bf35-e2694e90ed27",
-      "name": "competitor-analysis_escalation",
-      "category": "escalation_required",
-      "last_error": "Error: ENOSPC: no space left on device, write",
-      "likely_cause": "Incident escalation level=critical: competitor-analysis:live_error repeat_count=71",
-      "repeats_in_recent_history": 71,
-      "owner_domain": null,
-      "incident_key": "competitor-analysis::live_error",
-      "escalation_level": "critical",
-      "blocked_by": []
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime",
+      "category": "artifact_contract_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-05T03:12:33.125607+02:00\"\n}",
+      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
     },
     {
       "job_id": "fef7edfb-2339-432b-bf35-e2694e90ed27",
       "name": "competitor-analysis_escalation",
       "category": "escalation_required",
       "last_error": "Error: ENOSPC: no space left on device, write",
-      "likely_cause": "Incident escalation level=critical: competitor-analysis:live_error repeat_count=72",
-      "repeats_in_recent_history": 72,
+      "likely_cause": "Incident escalation level=critical: competitor-analysis:live_error repeat_count=90",
+      "repeats_in_recent_history": 90,
       "owner_domain": null,
       "incident_key": "competitor-analysis::live_error",
       "escalation_level": "critical",
       "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_escalation",
+      "category": "escalation_required",
+      "last_error": "",
+      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=142",
+      "repeats_in_recent_history": 142,
+      "owner_domain": "architecture",
+      "incident_key": "agent_architecture_verifier::artifact_contract_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime_escalation",
+      "category": "escalation_required",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-05T03:12:33.125607+02:00\"\n}",
+      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=218",
+      "repeats_in_recent_history": 218,
+      "owner_domain": "architecture",
+      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
     }
   ],
-  "repairs_attempted": []
+  "repairs_attempted": [
+    {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": false,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": false,
+      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-05T03:12:33.125607+02:00\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    }
+  ]
 }
