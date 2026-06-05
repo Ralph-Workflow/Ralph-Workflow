@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-06-05T14:46:07.592857+02:00
+- Checked: 2026-06-05T15:45:55.107672+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
 - Most urgent fix: Do not certify green until the external owner loop clears its live residue and independent signoff stays current.
