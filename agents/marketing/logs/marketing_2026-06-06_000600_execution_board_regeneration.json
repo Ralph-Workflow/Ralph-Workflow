@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-06-06T00:06:00+02:00",
+  "run_type": "marketing_active_loop_cron",
+  "action": "execution_board_regeneration",
+  "status": "executed",
+  "live_external_action": false,
+  "outcome_ready": true,
+  "summary": "Regenerated stale execution board (was May 25 content with expired review windows). Board now reflects truthful current state: flat adoption, all 7 lanes credential-blocked, Reddit handoff bridge measurement-pending, content saturation gate active, clear kill list for what should NOT run.",
+  "pre_run_snapshot": {
+    "execution_board_age_days": 12,
+    "execution_board_review_windows": "all expired (May 25-29)",
+    "adoption": "Codeberg 12★ (flat 5+ weeks), GitHub 2★, PyPI 1,294/mo",
+    "content_posts": 52,
+    "blocked_lanes": 7
+  },
+  "post_run_changes": {
+    "execution_board": "regenerated with current state (2026-06-06T00:06 CEST)",
+    "stale_review_windows": "removed",
+    "kill_list": "added (blog gen, HN/Lobsters preflight, directory submissions, Apollo, StackOverflow regeneration, Reddit research-only monitor, new audit reports)",
+    "structural_changes_documented": "Reddit handoff bridge, Anthropic comparison post, YC P26 landscape section, ralph star CLI",
+    "measurement_pending_documented": "handoff bridge (7-day window), star CLI (ongoing), Anthropic post SEO (7-14 day window)"
+  },
+  "why_this_action": "Execution board was 12 days stale. Evaluator run #5 claimed to regenerate it but file content was unchanged May 25 data. Stale board with expired review windows causes wrong decisions in every subsequent marketing run. Board regeneration is a prerequisite for truthful marketing execution.",
+  "next_best_autonomous_action": "If no human action on Reddit handoff within 24h of deployment (Jun 6 21:28 CEST), re-run Reddit monitor + regenerate handoff with fresh opportunities. Otherwise, improve repo/site conversion surfaces or analyze GSC for keyword opportunities.",
+  "site_health_verified": {
+    "homepage": 200,
+    "start_page": 200,
+    "codeberg_repo": 200
+  },
+  "adoption_check": {
+    "codeberg_stars": 12,
+    "github_stars": 2,
+    "pypi_monthly": 1294,
+    "delta": "flat"
+  }
+}
