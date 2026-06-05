@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-05T15:46:15.252990+02:00",
+  "checked_at": "2026-06-05T17:18:22.356918+02:00",
   "verdict": "qualified_pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
@@ -41,7 +41,7 @@
     {
       "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
       "status": "verified",
-      "details": "recent_failures=36, consecutive_passes_since_last_fail=69"
+      "details": "recent_failures=36, consecutive_passes_since_last_fail=74"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",

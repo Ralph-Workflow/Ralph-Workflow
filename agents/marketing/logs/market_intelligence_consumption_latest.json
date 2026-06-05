@@ -1,6 +1,6 @@
 {
   "schema_version": "market-intelligence-consumption.v1",
-  "updated_at": "2026-06-05T14:05:18.910367+00:00",
+  "updated_at": "2026-06-05T15:21:05.615594+00:00",
   "shared_artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
   "runtime_proven_consumers": [
     "agents/marketing/reddit_monitor.py",
@@ -38,10 +38,10 @@
     },
     "agents/marketing/distribution_lane_executor.py": {
       "consumer": "agents/marketing/distribution_lane_executor.py",
-      "recorded_at": "2026-06-05T14:05:18.910234+00:00",
+      "recorded_at": "2026-06-05T15:21:05.615456+00:00",
       "required": false,
       "status": "loaded",
-      "artifact_generated_at": "2026-06-05T08:39:00+02:00",
+      "artifact_generated_at": "2026-06-05T16:30:00+02:00",
       "summary_report": null,
       "competitor_count": 0,
       "comparison_page_count": 0
