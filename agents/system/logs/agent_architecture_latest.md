@@ -1,33 +1,36 @@
 # Agent Architecture Watchdog Report
 
-**Checked at:** 2026-06-04 22:22 CEST (20:22 UTC)  
-**Verdict:** Architecture-owned gates are **green**. External blockers remain.  
-**Overall health:** external_risk
+**Checked at:** 2026-06-05 01:51 CEST (23:51 UTC)
+**Verdict:** Architecture-owned gates are **coherent**. Whole-stack certification blocked by external owner-loop residue.
+**Overall health:** high_risk (external)
 
 ---
 
-## Independent Verification
+## Architecture Gates
 
-- **Status:** performed, qualified_pass
-- **Checker:** AGENT_ARCHITECTURE_OK
-- **Verifier:** ok (no errors)
-- **Independent verify:** qualified_pass
-- **Small gate:** passed
+| Gate | Status | Detail |
+|------|--------|--------|
+| Checker | AGENT_ARCHITECTURE_OK | pass |
+| Independent Verify | fail | 9/9 architecture claims verified; 3 external blockers remain |
+| Verifier | fail | independent not pass + health-monitor non-architecture issues |
+| Loop Integrity | ok | agent-architecture-watchdog=ok |
 
 ---
 
 ## What Changed This Run
 
-### Resolved: ENOSPC
-- Disk now at **40%** (250GB free). Last run's #1 blocker is gone.
-- All previously ENOSPC-blocked jobs (ralph-docs-supervisor-precheck, competitor-analysis, marketing-churn-watchdog) can now run.
+### Repaired
+- **Refreshed live topology** — 21 jobs, 21 enabled, 0 disabled, 12 running, 3 last-error
+- **Relocalized runtime drift** — stale topology mismatch removed as architecture-owned blocker
+- **Revalidated shared findings consumption** — market-intelligence consumers still machine-verifiable
+- **Ran independent verification fresh** — against 01:51 audit; all architecture claims verified
+- **Ran verifier post-independent-verification** — stale-predates error resolved
+- **Confirmed docs verifier resolved** — now independently verified pass (was fail/28 consecutive failures in prior run)
 
-### Resolved: Cron Topology Cleanup
-- Cron topology cleaned from 40 persisted (19 disabled) down to **21 clean jobs, all enabled, 0 errors**.
-
-### Maintained: Architecture Gates
-- Checker, independent verify, and verifier all pass with fresh artifacts.
-- Loop integrity confirms agent-architecture-watchdog status=ok.
+### Live Topology
+- 21 jobs, 21 enabled, 0 disabled in live cron
+- 0 running, 3 last-error: competitor-analysis (stale ENOSPC, disk 40%), blocked-channel-recovery (gateway restart interruption), internal-linking-watchdog (delivery config error)
+- Disk: 436G total, 165G used, 250G free (40%)
 
 ---
 
@@ -35,30 +38,25 @@
 
 | Blocker | Owner | Status |
 |---------|-------|--------|
-| Marketing independent verification | marketing | fail, ~3290 min stale (max 240) |
-| Docs verifier | docs | fail, 28 consecutive failures, independent stop missing |
+| Marketing independent verification | marketing | fail, primary-repo adoption measurement-pending |
+| Health monitor non-architecture issues | system | timeout_risk on system-health-monitor |
+| Competitor-analysis last-error | marketing | stale ENOSPC (disk is fine now) |
 
 ---
 
-## Live Topology
+## Independent Verification
 
-- **21** jobs, **21** enabled, **0** disabled
-- **0** running, **0** last-error
-- Disk: 436G total, 165G used, 250G available (40%)
-
----
-
-## Repairs Applied This Run
-
-1. Ran `agent_architecture_independent_verify.py` → fresh qualified_pass
-2. Ran `agent_architecture_verifier.py` → ok, no errors
-3. Refreshed live cron topology snapshot
-4. Confirmed ENOSPC resolution via direct disk inspection
-5. Revalidated shared market-intelligence consumption
+- **Performed:** yes (2026-06-05 01:52 CEST)
+- **Verdict:** fail
+- **Architecture claims verified:** 9/9
+- **External blockers:** 3 (marketing outcome evidence, health-monitor timeout, stale ENOSPC)
+- **Small gate passed:** `python3 agents/system/agent_architecture_audit.py`
 
 ---
 
 ## Fix Plan
 
 1. Marketing owner loop: produce measurable primary-repo outcome evidence, rerun independent verification
-2. Docs owner loop: resolve independent-stop-signoff fingerprint mismatch, produce pass artifact
+2. Health monitor: resolve system-health-monitor timeout risk
+3. Competitor-analysis: next run should clear stale ENOSPC error automatically (disk is 40% free)
+4. Internal-linking-watchdog: fix Matrix delivery config (missing target)

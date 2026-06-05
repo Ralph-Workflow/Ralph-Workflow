@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-06-04T23:47:36.614520+00:00",
+  "action": "telegraph_blog_crosspost",
+  "blog_source": "Ralph-Site/content/blog/how-to-run-claude-code-unattended.md",
+  "telegraph_url": "https://telegra.ph/How-to-Run-Claude-Code-Unattended--And-Actually-Trust-the-Result-06-04",
+  "telegraph_title": "How to Run Claude Code Unattended \u2014 And Actually Trust the Result",
+  "status": "success",
+  "cta": "Codeberg primary + GitHub mirror + pipx install + first-task guide"
+}

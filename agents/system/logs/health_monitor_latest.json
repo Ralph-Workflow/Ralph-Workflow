@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-04T23:58:27.471318",
+  "ts": "2026-06-05T02:03:02.489009",
   "jobs_checked": 21,
   "issues_found": 4,
   "issues": [
@@ -19,7 +19,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 3401.95,
+      "artifact_age_minutes": 3526.53,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -28,8 +28,8 @@
       "name": "competitor-analysis_escalation",
       "category": "escalation_required",
       "last_error": "Error: ENOSPC: no space left on device, write",
-      "likely_cause": "Incident escalation level=critical: competitor-analysis:live_error repeat_count=60",
-      "repeats_in_recent_history": 60,
+      "likely_cause": "Incident escalation level=critical: competitor-analysis:live_error repeat_count=71",
+      "repeats_in_recent_history": 71,
       "owner_domain": null,
       "incident_key": "competitor-analysis::live_error",
       "escalation_level": "critical",
@@ -40,8 +40,8 @@
       "name": "competitor-analysis_escalation",
       "category": "escalation_required",
       "last_error": "Error: ENOSPC: no space left on device, write",
-      "likely_cause": "Incident escalation level=critical: competitor-analysis:live_error repeat_count=61",
-      "repeats_in_recent_history": 61,
+      "likely_cause": "Incident escalation level=critical: competitor-analysis:live_error repeat_count=72",
+      "repeats_in_recent_history": 72,
       "owner_domain": null,
       "incident_key": "competitor-analysis::live_error",
       "escalation_level": "critical",

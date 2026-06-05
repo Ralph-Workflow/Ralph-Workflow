@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-06-04T23:49:02.215548+00:00",
+  "chosen_lane": "telegraph_blog_crosspost",
+  "original_lane_recommendation": "curator_due_followup",
+  "override_reason": "curator_due_followup requires GitHub auth or email (both blocked). telegraph_blog_crosspost is autonomously executable and captures high-intent search traffic for 'Claude Code unattended' \u2014 directly overlapping with Ralph's target audience.",
+  "action": {
+    "type": "telegraph_blog_crosspost",
+    "blog": "Ralph-Site/content/blog/how-to-run-claude-code-unattended.md",
+    "title": "How to Run Claude Code Unattended \u2014 And Actually Trust the Result",
+    "url": "https://telegra.ph/How-to-Run-Claude-Code-Unattended--And-Actually-Trust-the-Result-06-04",
+    "status": "success",
+    "live_external_action": true,
+    "expected_outcome": "Incremental SEO traffic from 'Claude Code unattended' intent cluster; Codeberg delta within 14 days",
+    "measurement_window": "14 days",
+    "kill_condition": "No Codeberg delta after 14 days"
+  },
+  "skipped_lanes": [
+    "curator_due_followup (requires GitHub auth)",
+    "stackoverflow_demand_capture (handoff packet already current, regenerating = fake progress)",
+    "saashub_directory_repair (manual contact only, not autonomously executable)",
+    "landing_page_update (already deployed: subscription angle at 60cca0b)"
+  ],
+  "execution_board_fixes": [
+    "Fixed false claim: 'Telegraph: 0 already posted' \u2192 actual June 4 count is 4 originals + 1 cross-post",
+    "Identified recording gap: 'Why Local-First Beats Cloud' cross-post live at HTTP 200 but missing from telegraph_posted.json"
+  ]
+}
