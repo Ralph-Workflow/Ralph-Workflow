@@ -1,241 +1,148 @@
 {
-  "generated_at": "2026-06-05T16:30:00+02:00",
-  "source": "marketing-research-daily cron (afternoon pass)",
-  "search_provider_status": "DEGRADED",
-  "search_provider_notes": "DuckDuckGo fully blocked after initial queries. Reddit 403 on all direct fetch attempts. HN Algolia API fully functional. Blog posts and dev.to accessible via web_fetch. Report based on HN Algolia API, blog/web_fetch sources, and search snippet data. Reddit coverage is limited to search snippet data only.",
-  "coverage_report": {
-    "candidates_scanned": 25,
-    "shortlisted": 8,
-    "rejected": 17,
-    "sources": {
-      "hacker_news_algolia": 8,
-      "blog_web_fetch": 8,
-      "reddit_search_snippets": 6,
-      "other": 3
-    }
-  },
-  "landing_page_check": {
-    "url": "https://ralphworkflow.com",
-    "status": 200,
-    "timestamp": "2026-06-05T16:30:00+02:00",
-    "key_messaging": "Autonomous coding workflow. Unattended coding agent. Spec-driven AI agent. Anti-cloud play vs YC P26 competitors. Three-phase loop: plan -> build -> verify. Free, open-source, local-first. Codeberg-primary.",
-    "unchanged_since_morning": true
-  },
-  "biggest_story": {
-    "title": "Claude Code Dynamic Workflows",
-    "hn_url": "https://news.ycombinator.com/item?id=48311705",
-    "score": 199,
-    "comments": 135,
-    "date": "2026-05-28",
-    "follow_up": "A harness for every task: dynamic workflows in Claude Code (Jun 2, 2 pts)",
-    "significance": "Anthropic launched native multi-agent orchestration inside Claude Code. Bun ported from Zig to Rust (750K lines) in 11 days using parallel agents. HN sentiment: mixed. Skeptics call it 'tokenmaxxing disguised as product' and worry about trust/verification. Supporters say the plan-first approach works with strong spec engineering. Directly validates Ralph's orchestrated loop philosophy, but Anthropic's managed cloud execution competes with Ralph's local-first approach."
-  },
-  "shortlisted_items": [
+  "generated_at": "2026-06-05T20:02:57.760782",
+  "source": "competitor_analysis.py",
+  "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
+  "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-05.md",
+  "monitoring_snapshot": "/home/mistlight/.openclaw/workspace/seo-reports/competitors/monitoring_2026-06-05.json",
+  "comparison_pages": [
     {
-      "rank": 1,
-      "title": "Claude Code Dynamic Workflows",
-      "url": "https://news.ycombinator.com/item?id=48311705",
-      "source": "HN",
-      "signal": "CRITICAL",
-      "summary": "Anthropic's native multi-agent orchestration. 199 pts, 135 comments. Bun rewrite: 750K lines Rust in 11 days. HN commenters split on value proposition — some see tokenmaxxing, others see genuine capability leap. Ralph differentiation: Anthropic's version is cloud-managed, proprietary. Ralph is local-first, open-source. The 'plan-first' philosophy HN supporters advocate for matches Ralph's loop architecture exactly. This validates Ralph's existence but also raises the bar.",
-      "actionable": "Write a blog post: 'Claude Code Dynamic Workflows vs Ralph: same philosophy, opposite deployment model.' Emphasize Ralph's open-source local-first advantage, especially for teams that can't or won't send code to Anthropic cloud."
+      "slug": "hermes-agent",
+      "name": "Hermes Agent",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md"
     },
     {
-      "rank": 2,
-      "title": "Launch HN: Hyper — Company brain for agentic development",
-      "url": "https://news.ycombinator.com/item?id=48387095",
-      "source": "HN",
-      "signal": "HIGH",
-      "summary": "77 pts, 76 comments. Still active (Jun 3 launch). Context/memory layer for coding agents. HN comments show real criticism: integration reliability issues, security posture concerns. One HN commenter (regulatory background) absolutely eviscerates their security claims. Ralph's local-first approach is the natural counter-position.",
-      "actionable": "Comment on the Hyper HN thread if still possible. Position Ralph as the local-first complement (context + orchestration) vs Hyper's cloud-only approach. The security criticism thread is a natural entry point for Ralph's local-first value prop."
+      "slug": "conductor-oss",
+      "name": "Conductor OSS",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-oss.md"
     },
     {
-      "rank": 3,
-      "title": "Claude Code Routines — full analysis on ChatForest and dev.to",
-      "url": "https://chatforest.com/reviews/claude-code-routines-auto-mode-autonomous-developer-automation-2026/",
-      "source": "Blog",
-      "signal": "HIGH",
-      "summary": "Deep analysis of Anthropic's Routines (April 2026) and Auto Mode (March 2026). Routines package a prompt + repos + connectors into cloud-hosted automation jobs. Scheduled, API-triggered, or GitHub-event-driven. 'Claude Code stops when you stop' → Routines fix that. This is Anthropic directly entering the 'unattended coding' space that Ralph owns. But their version is cloud-only, requires Claude Team plan, expensive.",
-      "actionable": "Ralph's messaging around 'free, open-source, local-first unattended runs' is the perfect counterpoint. Write a comparison piece. Also note: Routines aren't a loop framework — they're one-shot cloud jobs. Ralph's loop architecture handles plan-build-verify cycles."
+      "slug": "conductor-teams",
+      "name": "Conductor (Teams)",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md"
     },
     {
-      "rank": 4,
-      "title": "Show HN: Agent Orchestrator — local-first Rust control plane",
-      "url": "https://news.ycombinator.com/item?id=47562440",
-      "source": "HN",
-      "signal": "MEDIUM",
-      "summary": "15 pts. Local-first Rust control plane for long-running agent workflows: YAML resources, SQLite-backed task state, structured logs, guardrails around shell-based agents. 'Harness Engineering' framing (from OpenAI). Directly adjacent to Ralph's space. Started as a solution to verification bottlenecks with AI agents.",
-      "actionable": "Worth watching — similar philosophy to Ralph (local-first, structured, verification-gated). Different implementation (Rust control plane vs composable loop framework). Not a direct threat yet but could become one. Monitor for growth."
+      "slug": "aider",
+      "name": "Aider",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/aider.md"
     },
     {
-      "rank": 5,
-      "title": "Show HN: Agents CLI — run any coding agent on your subscription",
-      "url": "https://news.ycombinator.com/item?id=48346958",
-      "source": "HN",
-      "signal": "MEDIUM",
-      "summary": "6 pts. Phoenix Labs open-sourced their internal meta-harness. MIT license. Acts as a toolchain/CLI shim for Claude Code, Codex, Antigravity/Gemini, Cursor/Grok. Focuses on credential rotation, shared ~/.agents repos, multi-layer dot-agents system. 'MacOS works best, Linux works.'",
-      "actionable": "Relevant as another meta-tool in the coding agent space. Less directly competitive (more about credential/resource management than workflow orchestration). Could be complementary — Ralph's loop could use agents-cli as a runner."
+      "slug": "continue",
+      "name": "Continue",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md"
     },
     {
-      "rank": 6,
-      "title": "Show HN: Mission Control — Open-source task management for AI agents",
-      "url": "https://news.ycombinator.com/item?id=47165602",
-      "source": "HN",
-      "signal": "MEDIUM",
-      "summary": "45 pts, 21 comments. Next.js task management app for delegating to AI agents. Local-first (JSON files). Autonomous daemon polls queue and spawns Claude Code sessions. Five built-in agent roles. Already listed in morning report as 'complementary.' Now confirmed as lower overlap than first thought — more task queue UI than orchestrator.",
-      "actionable": "Low priority for competitive response. More complementary than competitive. Could mention in a roundup of 'tools in the AI coding workflow space.'"
+      "slug": "cursor",
+      "name": "Cursor",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/cursor.md"
     },
     {
-      "rank": 7,
-      "title": "Stoneforge — Open Source AI Coding Agents list (missing Ralph)",
-      "url": "https://stoneforge.ai/blog/open-source-ai-coding-agents/",
-      "source": "Web",
-      "signal": "HIGH",
-      "summary": "Comprehensive roundup of open-source AI coding agents as of March 2026. Lists OpenCode (95K stars), Cline (59K), OpenHands (68K), Aider (30K), Continue (31K), Goose (15K), Plandex (11K), Void (15K). Also includes their own Stoneforge orchestration layer. Ralph Workflow is NOT listed. Stoneforge's orchestration layer is a direct competitor — it dispatches tasks to Claude Code, Codex CLI, and OpenCode in parallel, uses git worktrees.",
-      "actionable": "URGENT: Ralph Workflow should be submitted to or listed on this resource. Stoneforge's own product is an orchestrator — they may not list competitors. Worth investigating if they accept listing requests. Also worth noting: Ralph is the ONLY open-source loop-framework orchestrator in this space."
+      "slug": "claude-code",
+      "name": "Claude Code",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md"
     },
     {
-      "rank": 8,
-      "title": "Reddit: BMAD-METHOD integration in AI agent provisioning workflow",
-      "url": "https://www.reddit.com/r/ClaudeAI/comments/1pnmg9b/",
-      "source": "Reddit (snippet)",
-      "signal": "MEDIUM",
-      "summary": "User integrating a structured agile development method into Claude Code, Cursor, Windsurf, VS Code. Calls it 'battle-tested workflows with specialized agents.' Directly validates that developers WANT structured workflow methods. Ralph's loop model maps exactly to this need.",
-      "actionable": "Engage in this thread if accessible. Ralph's spec-driven loop approach is a natural fit for BMAD-method users. Could write a 'Ralph Workflow for structured development methods' blog post."
+      "slug": "copilot",
+      "name": "GitHub Copilot",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md"
     }
   ],
-  "key_observations": {
-    "anthropic_moves_into_ralph_space": "Anthropic shipped THREE features in ~6 weeks that directly overlap with Ralph's value prop: Auto Mode (reducing human approval), Routines (unattended cloud jobs), and Dynamic Workflows (parallel agent orchestration). All cloud-only. All subscription-gated. This validates the problem space completely but also means Ralph faces an existential positioning challenge: 'Why not just use Claude Code built-in features?' The answer: local-first, open-source, loop-architecture, cross-provider, free.",
-    "stoneforge_is_a_new_competitive_threat": "Stoneforge's orchestration layer wasn't in the morning report. It orchestrates Claude Code, Codex CLI, and OpenCode in parallel using git worktrees. MIT license. This is the closest thing to a direct competitor in the open-source orchestration space. Ralph differentiates with composable loop architecture (plan-build-verify) vs Stoneforge's Director/Worker role-based model.",
-    "hyper_hn_thread_still_active": "Hyper launched Jun 3 and still getting comments (76). Security criticism thread is strong — reg-commenter called out their 'security posturing' vs actual security posture. This is directly relevant to Ralph's local-first value prop.",
-    "reddit_coverage_fully_degraded": "No Reddit direct fetches possible this cycle either. PRAW setup (mentioned in morning TOOLS.md notes) would solve this permanently. Getting increasingly important as Reddit discussions about coding agent workflows accelerate.",
-    "claude_code_routines_are_getting_tutorial_coverage": "Multiple blog posts (dev.to, aitrovex, claudeapi.com, ChatForest) published about Routines since April launch. This is the educational content wave. Ralph should be riding this wave with comparison/positioning content.",
-    "no_ralph_workflow_in_oss_lists": "The stoneforge open-source agents list (current as of March 2026) doesn't include Ralph. Neither do other lists found. Ralph needs inclusion in directories, comparison charts, and resource lists.",
-    "coding_agent_workflow_standards_converging": "The youngju.dev article (May 14) documents convergence around CLAUDE.md, AGENTS.md, Skills, Subagents, MCP as universal standards. Ralph works naturally within this ecosystem but needs to be referenced in ecosystem documentation."
-  },
-  "content_ideas": [
-    {
-      "title": "Claude Code Dynamic Workflows vs Ralph: Same Loop, Different Deployment",
-      "angle": "Deep-dive comparison. Anthropic's Dynamic Workflows validate Ralph's loop architecture. But Ralph is open-source, local-first, and provider-agnostic. Honest trade-offs: Anthropic's managed cloud vs Ralph's self-hosted flexibility.",
-      "target_venues": ["HN (as blog post)", "dev.to", "Reddit r/ClaudeCode", "Ralph blog"],
-      "urgency": "HIGH — Dynamic Workflows coverage is still fresh (May 28, ongoing HN discussion)"
+  "competitors": {
+    "hermes-agent": {
+      "name": "Hermes Agent",
+      "positioning": "Self-improving agent that learns from experience",
+      "site_status": 200,
+      "github_stars": 182666,
+      "key_features_found": [
+        "Persistent memory"
+      ]
     },
-    {
-      "title": "Why Anthropic Routines Prove the Case for Unattended Coding — and Why Local-First Still Wins",
-      "angle": "Routines launched April 2026. By June there are full tutorials. Position Ralph as the local-first open-source answer. Cost comparison: Claude Team plan ($) vs Ralph (free, pay only API costs).",
-      "target_venues": ["dev.to", "HN", "Ralph blog"],
-      "urgency": "MEDIUM — Routines coverage is building but not urgent"
+    "conductor-oss": {
+      "name": "Conductor OSS",
+      "positioning": "Enterprise-grade workflow orchestration for AI agents",
+      "site_status": 200,
+      "github_stars": 31891,
+      "key_features_found": [
+        "Durable execution"
+      ]
     },
-    {
-      "title": "Ralph Workflow vs Stoneforge: Two Open-Source Agent Orchestrators",
-      "angle": "Direct comparison. Stoneforge does Director/Worker role-based git worktree parallel dispatch. Ralph does composable loop framework. Different philosophies, same goal. Honest comparison attracts users evaluating both.",
-      "target_venues": ["HN", "dev.to", "Ralph blog", "r/ClaudeAI"],
-      "urgency": "MEDIUM — Stoneforge is less known but growing"
+    "conductor-teams": {
+      "name": "Conductor (Teams)",
+      "positioning": "Markdown-native local-first orchestration for coding teams",
+      "site_status": 200,
+      "github_stars": null,
+      "key_features_found": [
+        "Local-first"
+      ]
     },
-    {
-      "title": "The Open-Source AI Coding Agent Ecosystem in 2026 (Where Ralph Fits)",
-      "angle": "Map the current landscape: 15+ open-source agents/tools (OpenCode, Cline, Aider, etc.) + orchestration layers (Ralph, Stoneforge, Orcha). Help developers navigate choices. Natural way to position Ralph.",
-      "target_venues": ["HN", "dev.to", "Ralph blog"],
-      "urgency": "HIGH — stoneforge just published a similar list that excludes Ralph. Ralph needs its own authoritative list."
-    }
-  ],
-  "reply_opportunities": [
-    {
-      "target": "Hyper HN thread (id=48387095)",
-      "note": "Still active (Jun 3, 76 comments). Security criticism is the entry point. Ralph could comment on the value of local-first for teams that can't cloud-ify their context. But be careful: Hyper solves a different problem (context memory vs workflow orchestration). Best angle: connective — 'context layer + workflow orchestrator = full stack.'",
-      "action": "Read full thread, write thoughtful comment about context/workflow separation, mention Ralph only as implementation example if naturally relevant.",
-      "status": "not_done_yet"
+    "aider": {
+      "name": "Aider",
+      "positioning": "Terminal-based AI pair programming in your git repo",
+      "site_status": 200,
+      "github_stars": 45811,
+      "key_features_found": []
     },
-    {
-      "target": "Reddit: BMAD-METHOD thread",
-      "note": "Developer integrating structured workflow methods. Ralph's loop architecture is a natural fit.",
-      "action": "If Reddit access restored, consider engaging with how Ralph's plan-build-verify loop aligns with structured dev methods.",
-      "status": "blocked_reddit_403"
+    "continue": {
+      "name": "Continue",
+      "positioning": "The leading AI code assistant inside your IDE",
+      "site_status": 200,
+      "github_stars": 33550,
+      "key_features_found": []
     },
-    {
-      "target": "Reddit: Multi-Agent Editorial Team for Novel Writing",
-      "note": "Interesting but not Ralph's core use case (literary, not engineering). Low priority.",
-      "action": "Skip.",
-      "status": "low_priority"
-    }
-  ],
-  "competitor_tracking": {
-    "hyper": {
-      "hn_thread_active": true,
-      "launch_date": "2026-06-03",
-      "hn_comments": 76,
-      "hn_score": 77,
-      "security_concerns_raised": true,
-      "ralph_differentiation": "Local-first workflow orchestration vs cloud company brain. Different problems but adjacent audience."
+    "cursor": {
+      "name": "Cursor",
+      "positioning": "The AI code editor built for pair programming with AI",
+      "site_status": 200,
+      "github_stars": null,
+      "key_features_found": [
+        "Composer",
+        "Context-aware"
+      ]
     },
-    "stoneforge": {
-      "new_this_cycle": true,
-      "type": "Open-source agent orchestration (MIT)",
-      "approach": "Director/Worker role-based dispatch using git worktrees",
-      "supported_agents": ["Claude Code", "Codex CLI", "OpenCode"],
-      "ralph_differentiation": "Composable loop architecture vs Director/Worker roles. Ralph's plan-build-verify cycle is more opinionated/structured."
+    "claude-code": {
+      "name": "Claude Code",
+      "positioning": "Anthropic's official CLI for agentic coding",
+      "site_status": 0,
+      "github_stars": null,
+      "key_features_found": []
     },
-    "anthropic_claude_code": {
-      "dynamic_workflows": "Launched May 28. Parallel agent execution. 199 pts, 135 comments.",
-      "routines": "Launched April 2026. Cloud-hosted scheduled/triggered jobs.",
-      "auto_mode": "March 2026. Reduced approval friction classifier.",
-      "collective_impact": "Anthropic is building the features Ralph was built to provide — but cloud-only and subscription-gated. This validates the space and creates marketing opportunity."
-    },
-    "agents_cli": {
-      "type": "Meta-harness / CLI shim",
-      "github": "github.com/phnx-labs/agents-cli",
-      "license": "MIT",
-      "positioning": "Run any coding agent on subscription, not API costs",
-      "ralph_overlap": "Low — credential/resource management layer, not workflow orchestrator"
-    },
-    "agent_orchestrator_c9r": {
-      "type": "Local-first Rust control plane",
-      "github": "github.com/c9r-io/orchestrator",
-      "license": "MIT",
-      "positioning": "Harness Engineering control plane for long-running agent workflows",
-      "ralph_overlap": "HIGH — same philosophical space (local-first, structured, verification-gated). Different implementation."
+    "copilot": {
+      "name": "GitHub Copilot",
+      "positioning": "Your AI pair programmer embedded in GitHub and your IDE",
+      "site_status": 200,
+      "github_stars": null,
+      "key_features_found": [
+        "Inline suggestions"
+      ]
     }
   },
-  "ralph_messaging_ground_truth": {
-    "headline": "Autonomous coding workflow — Ralph Workflow",
-    "tagline": "Free and open-source composable loop framework for real software engineering.",
-    "key_phrases": ["unattended coding agent", "spec-driven AI agent", "Claude Code unattended", "AI coding workflow automation", "AI agent workflow composer"],
-    "anti_positioning": "YC is betting big on agentic devtools. Ralph is the anti-cloud play.",
-    "competitors_called_out_on_landing_page": ["Freestyle", "Twill", "Superset", "Hyper"],
-    "missing_from_landing_page": ["Stoneforge", "Anthropic Dynamic Workflows", "Agent Orchestrator", "Agents CLI"]
+  "ralph_core_truths": {
+    "what_is_it": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.",
+    "who_is_it_for": "Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session.",
+    "why_different": "It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.",
+    "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
-  "search_coverage_warning": "DUCKDUCKGO FULLY BLOCKED. REDDIT 403 ON ALL FETCHES. Report based on HN Algolia API + web_fetch on blog posts/dev.to + search snippet data. Reddit threads found via search snippets only. Full Reddit sentiment analysis not possible. Full web coverage constricted. Use PRAW (creds in TOOLS.md) once Reddit API keys are registered.",
-  "recommended_actions": [
-    {
-      "action": "Publish 'Ralph Workflow vs the Claude Code Ecosystem' comparison post",
-      "urgency": "THIS WEEK",
-      "rationale": "Anthropic's Dynamic Workflows (May 28) + Routines (Apr) + Auto Mode (Mar) create a three-front entry into Ralph's space. Need to establish the counter-position quickly while HN discussion is still warm."
-    },
-    {
-      "action": "Get Ralph listed on stoneforge.ai and other open-source agent directories",
-      "urgency": "THIS WEEK",
-      "rationale": "Stoneforge published 'Complete Open Source AI Coding Agents' list excluding Ralph. Make a listing request. Also check other directories (scriptbyai.com resource list, GitHub awesome lists)."
-    },
-    {
-      "action": "Engage on Hyper HN thread",
-      "urgency": "WITHIN DAYS",
-      "rationale": "Thread still active (76 comments, Jun 3 launch). Security concerns create natural opening. Position Ralph as complementary local-first layer, not competitor."
-    },
-    {
-      "action": "Set up PRAW with registered Reddit API keys",
-      "urgency": "HIGH",
-      "rationale": "Third cycle where Reddit is inaccessible. The PRAW credentials in TOOLS.md need actual API keys filled in. This would unlock Reddit monitoring permanently."
-    },
-    {
-      "action": "Write 'The Open-Source AI Coding Agent Toolkit: 15+ Tools Mapped'",
-      "urgency": "HIGH",
-      "rationale": "Stoneforge's list is getting traffic and excludes Ralph. Ralph needs its own authoritative map of the space that naturally includes itself. SEO opportunity."
-    },
-    {
-      "action": "Consider adding Anthropic Dynamic Workflows and Stoneforge to landing page comparison",
-      "urgency": "MEDIUM",
-      "rationale": "Landing page currently only calls out YC batch startups. Anthropic's native capabilities and Stoneforge's orchestration are more direct competitive points worth acknowledging."
-    }
+  "ralph_advantage_keywords": [
+    "unattended coding pipeline",
+    "multi-agent orchestration",
+    "Claude Code workflow",
+    "AI agent review loop",
+    "vendor-neutral AI coding",
+    "cost arbitrage AI coding",
+    "policy-defined agent workflow",
+    "TOML agent configuration",
+    "parallel AI coding agents",
+    "AI agent checkpoint resume"
   ],
-  "daily_summary": "The story of this afternoon pass is Anthropic's accelerating entry into Ralph's space. Dynamic Workflows (May 28, 199 pts) validates Ralph's multi-agent orchestration philosophy but from Anthropic's cloud. Routines (April) validate the 'unattended runs' value prop. Auto Mode (March) validates the 'reduce human friction' angle. Simultaneously, Stoneforge emerged as a new direct open-source competitor (MIT-licensed agent orchestrator using git worktrees). The Hyper HN thread is still active with meaningful security criticism that Ralph's local-first approach answers directly. DuckDuckGo and Reddit remain blocked, constricting coverage. The most urgent action items: publish Ralph-vs-Claude-Code comparison content, get Ralph listed in OSS directories, and set up PRAW for Reddit monitoring."
+  "discovered_candidates": [],
+  "reuse_contract": {
+    "runtime_proven_consumers": [
+      "agents/marketing/run.py",
+      "agents/marketing/reddit_monitor.py"
+    ],
+    "prompt_guided_consumers": [
+      "ralph-site-owner-loop",
+      "agent-architecture-watchdog"
+    ],
+    "purpose": "Shared market and competitor findings artifact for site updates, positioning checks, and marketing tactics."
+  }
 }
