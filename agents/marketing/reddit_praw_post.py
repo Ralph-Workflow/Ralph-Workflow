@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""ARCHITECTURALLY RETIRED 2026-05-28."""
-import json as _json
-import sys as _sys
-
-if __name__ == '__main__':
-    print(_json.dumps({'status': 'retired', 'reason': 'Reddit pipeline architecturally retired 2026-05-28'}))
-    _sys.exit(0)
-
-"""
-reddit_praw_post.py — PRAW-based Reddit posting for RalphWorkflow
+"""PRAW-based Reddit posting for RalphWorkflow.
 
 Uses Reddit's official API (PRAW) instead of headless Playwright.
 Avoids platform-level headless detection.
 
 Credentials: read from TOOLS.md under ### Reddit API (PRAW)
+
+Architecturally retired 2026-05-28 — posting pipeline suspended.
+Importable for credential checking; exits on direct execution.
 """
 from __future__ import annotations
+
+import json as _json
+import sys as _sys
+
+if __name__ == '__main__':
+    print(_json.dumps({'status': 'retired', 'reason': 'Reddit pipeline architecturally retired 2026-05-28. PRAW module importable for credential checks.'}))
+    _sys.exit(0)
 
 import re
 import sys
