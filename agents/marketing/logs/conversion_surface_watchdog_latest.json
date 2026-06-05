@@ -1,13 +1,51 @@
 {
-  "generated_at": "2026-06-04T05:00:01.214577+00:00",
+  "generated_at": "2026-06-05T05:00:01.373694+00:00",
   "agent": "conversion_surface_watchdog",
   "repair_target": "outcome_system_underpowered",
-  "total_posts": 47,
-  "avg_score": 10.3,
-  "below_threshold_count": 0,
-  "strong_posts_count": 47,
-  "weak_posts_count": 0,
+  "total_posts": 50,
+  "avg_score": 10.0,
+  "below_threshold_count": 2,
+  "strong_posts_count": 48,
+  "weak_posts_count": 1,
   "posts": [
+    {
+      "slug": "why-5-projects-reinvented-same-loop-pattern",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-5-projects-reinvented-same-loop-pattern.md",
+      "lines": 100,
+      "scores": {
+        "codeberg_link": 0,
+        "codeberg_primary": 0,
+        "pip_install": 2,
+        "first_task_guide": 0,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": 0,
+        "star_ask": 0
+      },
+      "findings": [
+        "MISSING: No Codeberg repo link",
+        "MISSING: No first-task guide link"
+      ],
+      "total_score": 4
+    },
+    {
+      "slug": "agentic-devtool-goldrush-yc-2026",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/agentic-devtool-goldrush-yc-2026.md",
+      "lines": 109,
+      "scores": {
+        "codeberg_link": 0,
+        "codeberg_primary": 0,
+        "pip_install": 2,
+        "first_task_guide": 0,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 0
+      },
+      "findings": [
+        "MISSING: No Codeberg repo link",
+        "MISSING: No first-task guide link"
+      ],
+      "total_score": 5
+    },
     {
       "slug": "claude-code-multi-agent-overnight-postmortem",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md",
@@ -24,6 +62,25 @@
       "findings": [
         "MISSING: No pip/pipx install instruction",
         "MISSING: No first-task guide link"
+      ],
+      "total_score": 8
+    },
+    {
+      "slug": "why-local-first-beats-cloud-unattended-ai-coding",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-local-first-beats-cloud-unattended-ai-coding.md",
+      "lines": 103,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 0,
+        "free_use_invite": 1,
+        "ends_with_crosslinks": 0,
+        "star_ask": 0
+      },
+      "findings": [
+        "MISSING: No first-task guide link",
+        "THIN: Only one free-use signal in final section"
       ],
       "total_score": 8
     },
@@ -842,7 +899,18 @@
       "total_score": 13
     }
   ],
-  "auto_fixes": [],
+  "auto_fixes": [
+    {
+      "slug": "why-5-projects-reinvented-same-loop-pattern",
+      "before_score": 4,
+      "action": "added_standard_conversion_block"
+    },
+    {
+      "slug": "agentic-devtool-goldrush-yc-2026",
+      "before_score": 5,
+      "action": "added_standard_conversion_block"
+    }
+  ],
   "unchanged": [],
   "measurement_window_days": 14,
   "success_metric": "Codeberg stars_delta_window > 0 within 14 days",

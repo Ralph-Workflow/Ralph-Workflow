@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-05T01:31:49.101973",
+  "generated_at": "2026-06-05T06:20:09.373432",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -17,9 +17,9 @@
     },
     {
       "platform": "PyPI",
-      "downloads_month": 1297,
-      "downloads_week": 195,
-      "downloads_day": 7,
+      "downloads_month": 1294,
+      "downloads_week": 197,
+      "downloads_day": 2,
       "total_downloads": null,
       "version": "0.8.8",
       "html_url": "https://pypi.org/project/ralph-workflow/"
@@ -58,7 +58,7 @@
       "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
-      "PyPI has 1297 downloads/month (7/day) — real usage signal that repo metrics don't capture."
+      "PyPI has 1294 downloads/month (2/day) — real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [
       "primary_repo_flat"
@@ -126,8 +126,7 @@
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
     "The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains telegraph_ralph_ecosystem_synthesis; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (telegraph_ralph_ecosystem_synthesis), so the system is still shipping output even though outcome movement is not visible yet.",
-    "A fresh outcome-capability runtime is now logged (social_proof_bootstrap), so the system-design repair should be treated as shipped even though repo adoption has not moved yet."
+    "The active loop did execute a live marketing action recently (telegraph_ralph_ecosystem_synthesis), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",

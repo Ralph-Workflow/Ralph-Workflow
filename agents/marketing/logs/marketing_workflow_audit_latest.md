@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-06-05T01:31:49.101973
+- Generated: 2026-06-05T06:20:09.373432
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -13,7 +13,6 @@
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains telegraph_ralph_ecosystem_synthesis; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (telegraph_ralph_ecosystem_synthesis), so the system is still shipping output even though outcome movement is not visible yet.
-- A fresh outcome-capability runtime is now logged (social_proof_bootstrap), so the system-design repair should be treated as shipped even though repo adoption has not moved yet.
 
 ## What actually worked
 - No meaningful tactic produced a trustworthy win in this window.
@@ -47,7 +46,7 @@
 - Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
 - GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
-- PyPI has 1297 downloads/month (7/day) — real usage signal that repo metrics don't capture.
+- PyPI has 1294 downloads/month (2/day) — real usage signal that repo metrics don't capture.
 
 ## Repair actions (execute in this run)
 - **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 50 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.

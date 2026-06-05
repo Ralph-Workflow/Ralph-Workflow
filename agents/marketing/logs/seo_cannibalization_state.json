@@ -1,0 +1,20 @@
+{
+  "first_run": "2026-06-05T04:27:01.263028+00:00",
+  "history": [
+    {
+      "timestamp": "2026-06-05T04:27:01.263028+00:00",
+      "status": "ok",
+      "summary": "CB wins:0 GH wins:0 neither:3 errors:0"
+    },
+    {
+      "timestamp": "2026-06-05T04:28:14.276867+00:00",
+      "status": "ok",
+      "summary": "GitHub README is mirror notice \u2014 Codeberg has unique canonical content",
+      "readme_chars": 830,
+      "mirror_marker": true,
+      "full_content": false,
+      "mirror_template_exists": true
+    }
+  ],
+  "last_run": "2026-06-05T04:28:14.276867+00:00"
+}

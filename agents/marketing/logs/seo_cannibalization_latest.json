@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-06-05T04:28:14.276867+00:00",
+  "watchdog": "seo_cannibalization",
+  "status": "ok",
+  "summary": "GitHub README is mirror notice \u2014 Codeberg has unique canonical content",
+  "github_readme": {
+    "url": "https://raw.githubusercontent.com/Ralph-Workflow/Ralph-Workflow/main/README.md",
+    "status": "HTTP 200",
+    "is_mirror_notice": true,
+    "has_full_content": false,
+    "has_mirror_marker": true,
+    "chars": 830
+  },
+  "mirror_template_exists": true,
+  "fix_deployed": "audit_33_github_mirror_readme",
+  "fix_date": "2026-06-05",
+  "fix_mechanism": "sync_to_github.sh post-sync hook overwrites GitHub README after each Codeberg\u2192GitHub push",
+  "history": [
+    {
+      "timestamp": "2026-06-05T04:27:01.263028+00:00",
+      "status": "ok",
+      "summary": "CB wins:0 GH wins:0 neither:3 errors:0"
+    },
+    {
+      "timestamp": "2026-06-05T04:28:14.276867+00:00",
+      "status": "ok",
+      "summary": "GitHub README is mirror notice \u2014 Codeberg has unique canonical content",
+      "readme_chars": 830,
+      "mirror_marker": true,
+      "full_content": false,
+      "mirror_template_exists": true
+    }
+  ]
+}
