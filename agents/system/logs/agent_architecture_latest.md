@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-06-05T19:46:22.840922+02:00
+- Checked: 2026-06-05T20:46:17.410335+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
 - Most urgent fix: Do not certify green until the external owner loop clears its live residue and independent signoff stays current.
@@ -34,14 +34,6 @@
    - Recommended fix: Keep separating persisted disabled history from live runtime topology in every audit.
 
 5. **High — Loop "pypi-auto-unblocker" has NO self-improvement mandate**
-   - Mechanism: Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.
-   - Recommended fix: Add a self_improvement_mandate section to the loop script that:
-  1. Detects when outcomes are flat for N consecutive runs
-  2. Triggers a redesign pass: new agents, prompt rewrites, cron changes, or path retirement
-  3. Registers the loop in the self_improvement_loops.json registry with checker/runner/verifier
-  4. Requires independent third-party signoff before marking the loop healthy again
-
-6. **High — Loop "internal-linking-watchdog" has NO self-improvement mandate**
    - Mechanism: Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.
    - Recommended fix: Add a self_improvement_mandate section to the loop script that:
   1. Detects when outcomes are flat for N consecutive runs
