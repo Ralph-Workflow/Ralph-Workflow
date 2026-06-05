@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-06-05T12:04:00+02:00",
+  "run_id": "marketing-active-loop-hyper-comparison-and-cron-repair",
+  "actions_taken": [
+    {
+      "type": "blog_comparison_post",
+      "target": "Hyper (YC P26)",
+      "status": "published_and_crossposted",
+      "details": "Wrote Ralph Workflow vs Hyper comparison blog post, committed be30f4a to Ralph-Site, cross-posted to Telegraph. Captures fresh HN launch search intent (June 3, 77 pts, 76 comments)."
+    },
+    {
+      "type": "cron_frequency_reduction",
+      "target": "marketing-active-loop",
+      "from": "0 */4 * * *",
+      "to": "0 */6 * * *",
+      "status": "applied",
+      "reason": "Evaluator recommendation pending for 2+ runs. Expensive model (deepseek-v4-pro) burning credits on mostly 'still blocked' reports."
+    },
+    {
+      "type": "cron_frequency_reduction",
+      "target": "marketing-churn-watchdog",
+      "from": "0 */4 * * *",
+      "to": "0 */8 * * *",
+      "status": "applied",
+      "reason": "Evaluator recommendation pending for 2+ runs. Produces mostly 'still flat' reports with zero actionable output while all distribution lanes are blocked."
+    }
+  ],
+  "evaluator_recommendation_status": {
+    "cron_frequency_reduction": "IMPLEMENTED (was pending for 2+ runs)",
+    "pending_items": []
+  },
+  "blocker_status_unchanged": [
+    "Reddit 403 suspended (day 9+)",
+    "Dev.to API key missing",
+    "HN account missing",
+    "Apollo Cloudflare-blocked",
+    "SMTP credentials missing",
+    "PyPI token missing",
+    "GitHub auth blocked"
+  ],
+  "adoption_snapshot": {
+    "codeberg_stars": 12,
+    "github_stars": 2,
+    "pypi_downloads_month": 1294
+  }
+}

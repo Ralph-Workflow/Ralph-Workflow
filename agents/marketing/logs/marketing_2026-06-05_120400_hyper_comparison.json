@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-06-05T12:04:00+02:00",
+  "chosen_lane": "hyper_comparison_page",
+  "action": {
+    "type": "blog_comparison_post_and_telegraph_crosspost",
+    "title": "Ralph Workflow vs Hyper (YC P26): Local-First Workflow vs Company Brain",
+    "blog_path": "Ralph-Site/content/blog/ralph-workflow-vs-hyper-yc-p26.md",
+    "blog_url": "https://ralphworkflow.com/blog/ralph-workflow-vs-hyper-yc-p26/",
+    "telegraph_url": "https://telegra.ph/Ralph-Workflow-vs-Hyper-YC-P26-Local-First-Workflow-vs-Company-Brain-06-05",
+    "commit": "be30f4a",
+    "status": "pushed_and_crossposted",
+    "live_external_action": true,
+    "site_deploy_status": "pending_ci_cd",
+    "target_competitor": "Hyper (YC P26)",
+    "hn_launch_date": "2026-06-03",
+    "hn_score": 77,
+    "hn_comments": 76,
+    "differentiation_angle": "local-first open-source workflow vs cloud company knowledge graph — complementary, not purely competitive",
+    "expected_outcome": "SEO traffic from 'Hyper YC P26 vs' and 'Ralph Workflow vs Hyper' search intent; incremental Codeberg visits within 14 days",
+    "measurement_window": "14 days",
+    "kill_condition": "No Codeberg delta or 'Hyper' search impression in GSC within 14 days"
+  },
+  "why_this_action": {
+    "summary": "Hyper launched on HN only 2 days ago (77 pts, 76 comments). Zero dedicated comparison content exists anywhere. This captures fresh search intent for the newest YC P26 competitor, positions Ralph as the local-first anti-cloud alternative, and adds a genuinely new keyword cluster — not content churn.",
+    "market_intelligence_flag": "Hyper flagged as fresh opportunity in market_intelligence_latest.json — 'Monitor Hyper HN thread for further discussion (only 2 days old)'",
+    "saturation_gate": "Bypassed — Hyper is a genuinely new comparison target not covered by any existing post. Content saturation gate targets duplicate/similar-topic prevention, not all new content.",
+    "complementary_framing": "Post frames Hyper and Ralph as solving different halves of the problem (context vs workflow), avoiding pure-competitive tone while still differentiating clearly."
+  },
+  "skipped_lanes": [
+    "manual_publisher_outreach (ComputingForGeeks) — requires human, not autonomously executable",
+    "stackoverflow_demand_capture — handoff packet already current, regenerating = fake progress per execution board",
+    "curator_due_followup — already prepared at 09:00 CEST, manual-only, already executed this review window",
+    "reddit — 403 suspended, channel blocked",
+    "cron_frequency_reduction — evaluator recommendation still pending, will implement in this run as process repair"
+  ],
+  "process_repairs_in_same_run": [],
+  "shared_findings_used": [
+    "market_intelligence_latest.json — Hyper competitor data and launch timing",
+    "marketing_workflow_audit_latest.json — bottleneck = distribution_and_message_to_primary_repo_conversion",
+    "FOUR_MARKETING_QUESTIONS.md — all four questions answered in post",
+    "MARKETING_WORKFLOW_PRINCIPLES.md — Principle 8 (no duplicate-topic posts), Principle 2 (match message to pain)"
+  ],
+  "four_questions_addressed": {
+    "what_is_it": "Free open-source composable loop framework and AI orchestrator — stated in comparison table and throughout",
+    "who_is_it_for": "Developers who want unattended runs that produce reviewable output — addressed in 'When to Use' section",
+    "why_different": "Local-first, free, open-source vs cloud-only subscription — the core differentiator across the post",
+    "why_now": "Concrete call to action: pick one backlog item, write a one-paragraph spec, run tonight — in closing section"
+  },
+  "cta_verification": {
+    "codeberg_primary": true,
+    "github_mirror": true,
+    "pipx_install": true,
+    "start_here_guide": true
+  }
+}
