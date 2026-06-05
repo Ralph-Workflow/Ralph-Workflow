@@ -2511,6 +2511,25 @@ def main() -> int:
         posting_stderr = posting_result.stderr
         print(f"[run.py] Skipping owned-content generation/posting; using {distribution_lane.lane} lane.", flush=True)
 
+    # REDDIT HANDOFF BRIDGE (audit #27, 2026-06-05):
+    # Regenerate handoff if reddit monitor is fresher than existing handoff.
+    # This keeps ready-to-paste replies current after each monitor pass.
+    HANDOFF_PATH = DRAFTS_DIR / "REDDIT_HANDOFF.md"
+    MONITOR_HEALTHY_PATH = ROOT / "seo-reports" / "reddit_monitor_latest_healthy.md"
+    if MONITOR_HEALTHY_PATH.exists():
+        monitor_mtime_ms = MONITOR_HEALTHY_PATH.stat().st_mtime
+        handoff_mtime_ms = HANDOFF_PATH.stat().st_mtime if HANDOFF_PATH.exists() else 0
+        if monitor_mtime_ms > handoff_mtime_ms:
+            bridge_result = subprocess.run(
+                [sys.executable, str(AGENTS_DIR / "reddit_handoff_bridge.py")],
+                capture_output=True, text=True, timeout=60,
+            )
+            print(f"[run.py] Reddit handoff bridge: {bridge_result.stdout[:300] or bridge_result.stderr[:300]}", flush=True)
+        else:
+            print("[run.py] Reddit handoff bridge: up to date (monitor not fresher)", flush=True)
+    else:
+        print("[run.py] Reddit handoff bridge: no monitor found, skipping", flush=True)
+
     # Build payload
     payload = {
         "timestamp": now.isoformat(),

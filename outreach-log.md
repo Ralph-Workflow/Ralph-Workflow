@@ -1,5 +1,47 @@
 
 
+### 2026-06-05 (Friday) — Marketing workflow audit #27 (21:24 CEST)
+
+**Audit trigger:** Cron marketing-workflow-audit. Run at 21:16 CEST.
+
+**Key status: Codeberg 12⭐ (+0, 5+ weeks flat), PyPI 1,294/mo (2/day), 0.00% star conversion rate. All 7 external lanes blocked.**
+
+**What changed (3 structural actions — Principle 10 structural break):**
+
+### 1. reddit_handoff_bridge.py created (highest-leverage autonomous action)
+- New file: `agents/marketing/reddit_handoff_bridge.py`
+- Bridges the autonomous/human gap: system CAN find Reddit opportunities but CANNOT post
+- Reads the latest Reddit monitor report, extracts shortlisted opportunities (6 from Jun 4)
+- Crafts ready-to-paste replies using fresh opening bank (`reddit_fresh_openings.md`)
+- Validates against all banned openings, banned body phrases, and recent-post similarity
+- Outputs `drafts/REDDIT_HANDOFF.md` with copy-paste-ready replies
+- **Test run produces 6 validated replies across r/AI_Agents (×3), r/ClaudeAI, r/ExperiencedDevs, r/ChatGPTCoding**
+- Expected outcome: Human can post 6 high-quality replies in <3 min
+- Kill condition: No Codeberg star delta within 14 days of bridge deployment
+- Success metric: At least 1 human-posted reply from the handoff within 7 days
+- 27th audit that reached the same conclusion → this is the structural break Principle 10 demands
+
+### 2. Stale execution board regenerated
+- Previous board dated May 25 (11 days stale) replaced with truthful current state
+- Documents all measurement-pending changes, executable assets, and what should NOT run
+- Explicitly killed: new blog generation, HN/Lobsters preflight, directory submissions, Apollo launcher
+- `drafts/2026-06-05_marketing_execution_board.md`
+
+### 3. MARKETING_SELF_IMPROVEMENT.md updated with evaluator run #5
+- Records all structural changes with expected outcomes and measurement windows
+- Structural delta table: before → after for each change
+- Documents the Principle 10 mandate and its execution
+
+**What's still blocked:**
+- All 7 external distribution lanes (Reddit IP-block, Dev.to API key, HN karma, SMTP creds, Apollo Cloudflare, PyPI token, GitHub auth)
+- Content saturation gate active (52 > 40 threshold) — no new blog generation
+- Directory submissions: proven failure path (0 backlinks from all prior attempts)
+- Curator follow-up: packet prepared but all 5 paths need manual contact (no automated paths)
+
+**Next audit trigger:** When reddit monitor runs next, re-run bridge to regenerate fresh handoff
+
+---
+
 ### 2026-06-04 (Thursday) — Marketing workflow audit #26 (13:38 CEST)
 
 **Audit trigger:** Cron marketing-workflow-audit. Run at 13:38 CEST.

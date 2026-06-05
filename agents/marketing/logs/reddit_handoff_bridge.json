@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-06-05T19:28:45.877030+00:00",
+  "status": "success",
+  "monitor_found": true,
+  "opportunities_found": 7,
+  "replies_crafted": 6,
+  "handoff_written": true,
+  "error": null,
+  "monitor_path": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest_healthy.md",
+  "output_path": "/home/mistlight/.openclaw/workspace/drafts/REDDIT_HANDOFF.md"
+}
