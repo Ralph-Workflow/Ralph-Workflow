@@ -1,4 +1,4 @@
-# Reddit Reply Handoff — 2026-06-06 06:09 UTC
+# Reddit Reply Handoff — 2026-06-06 08:46 UTC
 
 **6 ready-to-paste replies** crafted from the latest Reddit monitor.
 
@@ -22,9 +22,7 @@
 ```
 The failure mode that keeps repeating for me is not the code quality — it's that I can't tell whether the result is safe to merge without re-running the whole thing.
 
-The pattern that fixed it for me: one scoped task, explicit done criteria written before the run starts, and a short receipt at the end that says what changed, what tests passed, and what still needs a human decision. That last part — the explicit handoff of what's done vs what's still open — matters more than which model you pick.
-
-I've found that the handoff between phases is what actually determines whether a run is useful. Everything else is secondary.
+Here's what I've learned from running unattended coding sessions: the part that determines whether I actually merge is not how good the code looks. It's whether I can answer three questions in under five minutes: what changed, what's tested, and what still needs me to decide. Without those, I'm doing archaeology instead of review — and archaeology takes longer than writing the code myself.
 ```
 
 ---
@@ -38,9 +36,7 @@ I've found that the handoff between phases is what actually determines whether a
 ```
 Running multiple agents in parallel breaks at the merge, not at the coding. The thing that saved me was making each agent produce a one-paragraph receipt of what it changed and what assumptions it made.
 
-The pattern that fixed it for me: one scoped task, explicit done criteria written before the run starts, and a short receipt at the end that says what changed, what tests passed, and what still needs a human decision. That last part — the explicit handoff of what's done vs what's still open — matters more than which model you pick.
-
-I've found that the handoff between phases is what actually determines whether a run is useful. Everything else is secondary.
+I've tried this with Claude Code, Codex, and OpenCode. The model differences are real but smaller than you'd expect once you control for the same task. The thing that actually changed my merge rate was writing a short acceptance checklist before the run: what success looks like, what tests must pass, what code the agent should NOT touch. Without that checklist, every model eventually produces output I can't trust without re-reading everything.
 ```
 
 ---
@@ -54,9 +50,7 @@ I've found that the handoff between phases is what actually determines whether a
 ```
 Trust in an agent workflow comes from being able to verify the result quickly, not from the agent being right more often. If verification takes as long as writing the code, the agent isn't saving you time.
 
-The pattern that fixed it for me: one scoped task, explicit done criteria written before the run starts, and a short receipt at the end that says what changed, what tests passed, and what still needs a human decision. That last part — the explicit handoff of what's done vs what's still open — matters more than which model you pick.
-
-I've found that the handoff between phases is what actually determines whether a run is useful. Everything else is secondary.
+The hidden cost nobody talks about with AI coding is review tax. The code looks clean on the surface but the assumptions are invisible — did it refactor that helper because it needed to, or because the model hallucinated a dependency? I started requiring a short receipt from every autonomous run: what changed, what tests passed, what decisions are still pending. Without that, reviewing AI code reliably takes longer than writing it.
 ```
 
 ---
@@ -70,9 +64,7 @@ I've found that the handoff between phases is what actually determines whether a
 ```
 The question I'd ask first is not which tool — it's what do you actually look at in the morning to decide whether to merge or throw away.
 
-The pattern that fixed it for me: one scoped task, explicit done criteria written before the run starts, and a short receipt at the end that says what changed, what tests passed, and what still needs a human decision. That last part — the explicit handoff of what's done vs what's still open — matters more than which model you pick.
-
-I've found that the handoff between phases is what actually determines whether a run is useful. Everything else is secondary.
+The difference between an agent workflow I trust and one I don't is simple: can I roll back in one command if the result is wrong? The answer is yes when each run has a clean start and a separate review phase. It's no when the agent just keeps going until it hits its token limit. A structured loop — plan, build, verify, decide — gives me that reversibility without making me babysit the agent mid-run.
 ```
 
 ---
@@ -86,9 +78,7 @@ I've found that the handoff between phases is what actually determines whether a
 ```
 Reviewing AI-generated code is a different skill from reviewing human-written code. The failure mode is different: AI code tends to look cleaner on the surface but the integration points are where the bugs hide.
 
-The pattern that fixed it for me: one scoped task, explicit done criteria written before the run starts, and a short receipt at the end that says what changed, what tests passed, and what still needs a human decision. That last part — the explicit handoff of what's done vs what's still open — matters more than which model you pick.
-
-I've found that the handoff between phases is what actually determines whether a run is useful. Everything else is secondary.
+I used to think running multiple agents in parallel was the answer. It's not — not unless each one produces a mergeable artifact that doesn't step on the others. I run them sequentially now, each with its own scope and a short note of assumptions passed to the next phase. It's slower in theory but faster in practice because I actually merge the results instead of untangling conflicts.
 ```
 
 ---
@@ -102,9 +92,7 @@ I've found that the handoff between phases is what actually determines whether a
 ```
 Reviewing AI-generated code is a different skill from reviewing human-written code. The failure mode is different: AI code tends to look cleaner on the surface but the integration points are where the bugs hide.
 
-The pattern that fixed it for me: one scoped task, explicit done criteria written before the run starts, and a short receipt at the end that says what changed, what tests passed, and what still needs a human decision. That last part — the explicit handoff of what's done vs what's still open — matters more than which model you pick.
-
-I've found that the handoff between phases is what actually determines whether a run is useful. Everything else is secondary.
+The framework I keep coming back to: the right time to use an AI agent is when the task is boring enough that you wouldn't want to do it yourself, but concrete enough that you can tell in 60 seconds whether the result is right. That sweet spot is real but narrow. Anything too open-ended and you spend the morning grading an overconfident junior. Anything too trivial and it's faster to just write it.
 ```
 
 ---

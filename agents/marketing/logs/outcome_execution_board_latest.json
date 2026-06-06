@@ -11,14 +11,14 @@
   "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md",
   "execution_board_targets": [],
   "execution_board_fingerprint": "d5963ac4688248f350e3fb025856f069b222a42c",
-  "short_review_window_release_at": "2026-06-04T14:51:29",
+  "short_review_window_release_at": "2026-06-06T12:06:00",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
   "measurement_window": "Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.",
   "summary": "Reused existing distribution-architecture guard artifact.",
   "next_truthful_checkpoint": {
-    "at": "2026-06-04T14:51:29",
-    "source": "short_review_window_release",
-    "reason": "Current short review window clears."
+    "at": "2026-06-05T00:00:00",
+    "source": "curator_review_due",
+    "reason": "Curator reply/review window matures for 1. ai-for-developers/awesome-ai-coding-tools."
   },
   "structural_capability": {
     "name": "execution_board_follow_through_runner",

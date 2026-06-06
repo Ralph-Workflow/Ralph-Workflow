@@ -10,8 +10,8 @@
 - Artifact: `/tmp/guard-pause.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
 - Measurement window: Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.
-- Next truthful checkpoint: `2026-06-04T14:51:29` (short_review_window_release)
-- Checkpoint reason: Current short review window clears.
+- Next truthful checkpoint: `2026-06-05T00:00:00` (curator_review_due)
+- Checkpoint reason: Curator reply/review window matures for 1. ai-for-developers/awesome-ai-coding-tools.
 
 ## Structural capability added
 - Dedicated execution-board runtime that re-checks the consolidated do-now asset list before every system-design follow-through pass.

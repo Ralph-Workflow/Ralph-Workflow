@@ -1,148 +1,179 @@
 {
-  "generated_at": "2026-06-06T08:03:23.365657",
-  "source": "competitor_analysis.py",
-  "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
-  "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-06.md",
-  "monitoring_snapshot": "/home/mistlight/.openclaw/workspace/seo-reports/competitors/monitoring_2026-06-06.json",
-  "comparison_pages": [
-    {
-      "slug": "hermes-agent",
-      "name": "Hermes Agent",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md"
-    },
-    {
-      "slug": "conductor-oss",
-      "name": "Conductor OSS",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-oss.md"
-    },
-    {
-      "slug": "conductor-teams",
-      "name": "Conductor (Teams)",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md"
-    },
-    {
-      "slug": "aider",
-      "name": "Aider",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/aider.md"
-    },
-    {
-      "slug": "continue",
-      "name": "Continue",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md"
-    },
-    {
-      "slug": "cursor",
-      "name": "Cursor",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/cursor.md"
-    },
-    {
-      "slug": "claude-code",
-      "name": "Claude Code",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md"
-    },
-    {
-      "slug": "copilot",
-      "name": "GitHub Copilot",
-      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md"
-    }
-  ],
-  "competitors": {
-    "hermes-agent": {
-      "name": "Hermes Agent",
-      "positioning": "Self-improving agent that learns from experience",
-      "site_status": 200,
-      "github_stars": 183574,
-      "key_features_found": [
-        "Persistent memory"
-      ]
-    },
-    "conductor-oss": {
-      "name": "Conductor OSS",
-      "positioning": "Enterprise-grade workflow orchestration for AI agents",
-      "site_status": 200,
-      "github_stars": 31893,
-      "key_features_found": [
-        "Durable execution"
-      ]
-    },
-    "conductor-teams": {
-      "name": "Conductor (Teams)",
-      "positioning": "Markdown-native local-first orchestration for coding teams",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Local-first"
-      ]
-    },
-    "aider": {
-      "name": "Aider",
-      "positioning": "Terminal-based AI pair programming in your git repo",
-      "site_status": 200,
-      "github_stars": 45821,
-      "key_features_found": []
-    },
-    "continue": {
-      "name": "Continue",
-      "positioning": "The leading AI code assistant inside your IDE",
-      "site_status": 200,
-      "github_stars": 33557,
-      "key_features_found": []
-    },
-    "cursor": {
-      "name": "Cursor",
-      "positioning": "The AI code editor built for pair programming with AI",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Composer",
-        "Context-aware"
-      ]
-    },
-    "claude-code": {
-      "name": "Claude Code",
-      "positioning": "Anthropic's official CLI for agentic coding",
-      "site_status": 0,
-      "github_stars": null,
-      "key_features_found": []
-    },
-    "copilot": {
-      "name": "GitHub Copilot",
-      "positioning": "Your AI pair programmer embedded in GitHub and your IDE",
-      "site_status": 200,
-      "github_stars": null,
-      "key_features_found": [
-        "Inline suggestions"
-      ]
+  "generated_at": "2026-06-06T06:39:00Z",
+  "source": "daily_marketing_research_cron",
+  "scan_summary": {
+    "total_candidates_scanned": 32,
+    "shortlisted": 10,
+    "rejected": 22,
+    "coverage_status": {
+      "reddit_direct": "BLOCKED (403 from www and old.reddit.com)",
+      "duckduckgo_search": "DEGRADED (bot detection challenges)",
+      "hacker_news_algolia": "WORKING",
+      "web_fetch_ralph_site": "WORKING"
     }
   },
-  "ralph_core_truths": {
-    "what_is_it": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.",
-    "who_is_it_for": "Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session.",
-    "why_different": "It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.",
-    "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
+  "walph_workflow_hn_post": {
+    "title": "Show HN: Ralph Workflow - Simple Agent-Agnostic AI Orchestrator based on Ralph.",
+    "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "posted": "2026-05-12",
+    "points": 2,
+    "comments": 0,
+    "note": "Low engagement. Needs follow-up."
   },
-  "ralph_advantage_keywords": [
-    "unattended coding pipeline",
-    "multi-agent orchestration",
-    "Claude Code workflow",
-    "AI agent review loop",
-    "vendor-neutral AI coding",
-    "cost arbitrage AI coding",
-    "policy-defined agent workflow",
-    "TOML agent configuration",
-    "parallel AI coding agents",
-    "AI agent checkpoint resume"
+  "shortlisted_opportunities": [
+    {
+      "rank": 1,
+      "name": "CCW (Claude Code Workflow) by sermakarevich",
+      "relevance": "HIGH - Direct competitor. Workflow generator for Claude Code using SDD approach. Show HN 2026-05-28.",
+      "url": "https://github.com/sermakarevich/ccw",
+      "ralph_angle": "Spec-driven development workflow - directly comparable to Ralph's loop-based spec-driven approach. Discusses multi-step task orchestration with clear handoffs.",
+      "action": "Write comparison page: Ralph Workflow vs CCW. Highlight that CCW is Claude-Code-specific while Ralph is agent-agnostic."
+    },
+    {
+      "rank": 2,
+      "name": "BetterClaw",
+      "relevance": "HIGH - Mentions OpenClaw explicitly, workflow tooling in same space. Show HN 2026-05-01.",
+      "url": "https://github.com/jfan22/BetterClaw",
+      "ralph_angle": "Paragraph→graph workflow compiler for gating agent tools. Asks 'what other agent runtimes beyond Claude Code + Cowork + OpenClaw?'",
+      "action": "Comment on BetterClaw thread suggesting Ralph Workflow as an additional runtime. Write blog post: 'Why BetterClaw + Ralph Workflow is a powerful combination for agent safety.'"
+    },
+    {
+      "rank": 3,
+      "name": "Stoneforge",
+      "relevance": "HIGH - Direct orchestrator competitor. Open-source parallel AI coding agent orchestration. Show HN 2026-03-05.",
+      "url": "https://stoneforge.ai",
+      "ralph_angle": "Director agent / worktree isolation pattern is different from Ralph's loop-based approach. Stoneforge is opinionated about agent architecture; Ralph is not.",
+      "action": "Write comparison: Ralph Workflow vs Stoneforge - loop-based vs task-queue-based orchestration. Emphasize Ralph's simplicity advantage."
+    },
+    {
+      "rank": 4,
+      "name": "PocketOS Database Deletion Incident (April 25)",
+      "relevance": "HIGH - Agent deleted production database via Cursor/Claude. Major safety discussion driving demand for guardrails.",
+      "url": "https://news.ycombinator.com/item?id=47911524",
+      "ralph_angle": "Ralph's review-loop architecture is already designed to catch destructive actions before they execute. Ralph's verification step naturally provides the safety layer that BetterClaw and others are building externally.",
+      "action": "Write blog post: 'How loop-based agent orchestration prevents the next PocketOS incident.' Emphasize disciplined review as a built-in safety pattern."
+    },
+    {
+      "rank": 5,
+      "name": "Corral",
+      "relevance": "MEDIUM-HIGH - Open-source orchestration layer for AI coding agents. pip install agent-corral. Show HN 2026-03-06.",
+      "url": "https://github.com/cdknorow/corral",
+      "ralph_angle": "Parallel git worktrees + tmux. Dashboard for tracking agents. Different approach from Ralph's sequential loop structure.",
+      "action": "Add to competition monitoring list."
+    },
+    {
+      "rank": 6,
+      "name": "Forge",
+      "relevance": "MEDIUM - Deterministic orchestrator - tests as hard gates. Show HN 2026-02-19.",
+      "url": "https://github.com/lanathlor/Forge",
+      "ralph_angle": "Similar philosophy - deterministic agent orchestration with verification gates. Provider-agnostic like Ralph.",
+      "action": "Write lightweight comparison. Could use Forge's 'code decides if it ships' language as inspiration."
+    },
+    {
+      "rank": 7,
+      "name": "Resumable Sub-agents in Claude Code v2.0.60",
+      "relevance": "MEDIUM - Important ecosystem development. Resumable sub-agents reduce need for external orchestration at the basic level.",
+      "ralph_angle": "Claude Code is absorbing some orchestration features internally. Framing: Ralph provides the multi-agent orchestration layer that Claude Code doesn't."
+    },
+    {
+      "rank": 8,
+      "name": "Autonomous Research Swarm (Planner/Worker/Judge)",
+      "relevance": "MEDIUM - Inspired by Cursor's scaling-agents blog post. Repo-as-shared-memory approach.",
+      "ralph_angle": "Planner/Worker/Judge pattern is similar to Ralph's Plan/Build/Verify loops. Cite as validation of loop-based architecture."
+    },
+    {
+      "rank": 9,
+      "name": "Claude Code Workflow generator (CCW) - SDD plugins",
+      "relevance": "MEDIUM - Shows demand for spec-driven workflow tooling. Also an SDD approach.",
+      "ralph_angle": "Second SDD workflow tool found. The spec-driven approach is being validated by multiple independent builders."
+    },
+    {
+      "rank": 10,
+      "name": "AgentClick - Human-in-loop review for AI coding agents",
+      "relevance": "LOWER but notable - Human-in-the-loop review UI for AI coding agents.",
+      "url": "https://github.com/agentlayer-io/AgentClick",
+      "ralph_angle": "Complementary tool. Could integrate Ralph's review output into AgentClick's review UI."
+    }
   ],
-  "discovered_candidates": [],
-  "reuse_contract": {
-    "runtime_proven_consumers": [
-      "agents/marketing/run.py",
-      "agents/marketing/reddit_monitor.py"
+  "rejected_candidates": [
+    "Pitaya (orchestrator, old - Aug 2025)",
+    "Diraigent (self-hosted orchestration, low engagement)",
+    "Ctxbin (agent handoff CLI, narrow tool)",
+    "Mesa (multi-agent code review, competing but different tier)",
+    "AgentPort (agent security gateway, adjacent)",
+    "Shellfirm (safety guardrails, low engagement)",
+    "Yaw (terminal built around AI CLI, not an orchestrator)",
+    "Autofix Bot (DeepSource, code review only)",
+    "Claude × Codex Collab (two agents, very specific)",
+    "ML-Ralph (different domain - ML experiments)",
+    "Pickle Rick port (Ralph Wiggum technique, old - Feb 2026)",
+    "BMAD-METHOD integration (advertorial, not an orchestrator)",
+    "Ask HN agent safety (user support thread, not actionable)",
+    "Claude Code to automate work (general Q&A thread)",
+    "Scalable agentic workflow frameworks (old thread)",
+    "Multi AI agent orchestration frameworks x2 (old threads)",
+    "How I code 10x faster x3 (general LLM comparison threads)",
+    "Integrating BMAD-METHOD (marketing post)",
+    "Content pipeline with Claude Code (different use case)",
+    "Best coding practices unattended bots (UiPath, irrelevant)",
+    "Super confused agent frameworks (old, low value)"
+  ],
+  "competitive_landscape_update": {
+    "new_entrants_since_last_scan": [
+      "CCW - Claude Code Workflow (May 2026)",
+      "BetterClaw (May 2026)"
     ],
-    "prompt_guided_consumers": [
-      "ralph-site-owner-loop",
-      "agent-architecture-watchdog"
+    "existing_competitors_confirmed": [
+      "Stoneforge - parallel orchestration, worktrees, Director/Worker/Steward pattern",
+      "Corral - parallel orchestration, tmux, dashboard",
+      "Conductor OSS - enterprise orchestration, durable execution",
+      "Conductor Teams - local-first markdown-native orchestrator",
+      "Forge - deterministic test-gate orchestrator"
     ],
-    "purpose": "Shared market and competitor findings artifact for site updates, positioning checks, and marketing tactics."
-  }
+    "category_observation": "The AI coding agent orchestration space is rapidly heating up. At least 6+ open-source orchestrator tools launched in the last 6 months. This validates the category but increases competition for developer mindshare."
+  },
+  "sentiment_insights": {
+    "pain_points": [
+      "Context window degradation on long runs",
+      "Agent task overlap / merge conflicts",
+      "Manual multi-terminal management",
+      "Agent safety / production database deletion fears",
+      "Determinism and repeatability",
+      "Cost management across models",
+      "Lack of structured handoffs between agents"
+    ],
+    "ralph_fit_signals": [
+      "Loop-based architecture directly addresses context-window degradation (clear restart points)",
+      "Verification loop addresses the safety concern highlighted by PocketOS incident",
+      "Composable loop structure maps to the Planner/Worker/Judge pattern being validated by Cursor et al.",
+      "Spec-driven approach aligns with the SDD trend (multiple tools adopting this)"
+    ]
+  },
+  "content_opportunities": [
+    {
+      "topic": "Agent Safety Through Loop Architecture - Why Ralph Workflow's built-in review prevents disasters",
+      "format": "Blog post + HN Show HN update",
+      "urgency": "HIGH - Current events (PocketOS incident) make this timely"
+    },
+    {
+      "topic": "Ralph Workflow vs Stoneforge / Corral / Forge - Loop-based vs Task-queue-based orchestration",
+      "format": "Comparison pages (already have the structure)",
+      "urgency": "MEDIUM - Helps positioning as category matures"
+    },
+    {
+      "topic": "Spec-Driven Development with Ralph Workflow - Tapping into the SDD trend",
+      "format": "Blog post + r/ClaudeAI post",
+      "urgency": "HIGH - CCW shows active demand"
+    },
+    {
+      "topic": "Powering Your AI Coding Workflow: BetterClaw + Ralph Workflow",
+      "format": "Integration guide / blog post",
+      "urgency": "MEDIUM - Good SEO play on agent tooling"
+    }
+  ],
+  "reddit_reply_opportunities": {
+    "available": false,
+    "reason": "Reddit direct fetch is blocked (403). No recent content could be inspected for reply opportunities."
+  },
+  "search_provider_degradation_note": "DuckDuckGo search is currently returning bot-detection challenges. Reddit direct fetches are blocked entirely (403/block). HN Algolia API worked well and provided most of today's data."
 }

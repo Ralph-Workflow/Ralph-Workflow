@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-06-05T21:26:07.700620
+- Generated: 2026-06-06T08:47:42.249849
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -9,63 +9,53 @@
 - Owned content and outreach exist, but repo/public adoption signals are still low.
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
-- GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was curator_due_followup_packet_execution, but the latest meaningful external/replacement execution remains telegraph_ralph_ecosystem_synthesis; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (telegraph_ralph_ecosystem_synthesis), so the system is still shipping output even though outcome movement is not visible yet.
+- The active loop did execute a live marketing action recently (delta_capture_and_process_repair), so the system is still shipping output even though outcome movement is not visible yet.
 
 ## What actually worked
 - No meaningful tactic produced a trustworthy win in this window.
 
 ## What did not work
 - Primary-repo adoption did not move: Codeberg stars/watchers/forks stayed flat across the recent window.
-- Mirror adoption did not move either: GitHub stayed flat, so activity is not converting on either repo surface.
 
 ## What is repetitive
 - Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.
 
 ## What is low-signal
-- Recent live external action exists (telegraph_ralph_ecosystem_synthesis), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Recent live external action exists (delta_capture_and_process_repair), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 - Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template.
 
 ## What should change now
 - REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 52 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
-- Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
 
 ## Observed risks
 - Repetition risk in outreach opening: "Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
 - Failing tactic detected: primary_repo_flat_window
-- Failing tactic detected: mirror_repo_flat_window
 - Dormant risk parked for now: reddit_style_repetition_suspended_while_channel_blocked
 
 ## Outcome evaluation
 - Codeberg: samples=9, stars +0, watchers +0, forks +0
 - PyPI: samples=9, stars +0, watchers +0, forks +0
-- GitHub: samples=9, stars +0, watchers +0, forks +0
+- GitHub: samples=9, stars +1, watchers +0, forks +0
 - Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
-- GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
-- PyPI has 1294 downloads/month (2/day) — real usage signal that repo metrics don't capture.
+- PyPI has 1303 downloads/month (36/day) — real usage signal that repo metrics don't capture.
 
 ## Repair actions (execute in this run)
 - **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 52 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
   - Repair state: pending_measurement
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
-- **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
-  - Repair state: pending_measurement
-  - Kill condition: N/A (mirror, not primary)
-  - Success metric: GitHub mirror shows any adoption delta
 - No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
-- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
+- Measurement-pending reasons: primary_repo_flat
 
 ## Latest executed marketing action
-- Type: telegraph_ralph_ecosystem_synthesis
-- Title: telegraph ralph ecosystem synthesis
+- Type: delta_capture_and_process_repair
+- Title: delta capture and process repair
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-04_212700_telegraph_ralph_ecosystem.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-06_060600_active_loop.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

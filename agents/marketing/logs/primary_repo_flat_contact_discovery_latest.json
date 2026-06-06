@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-05T07:00:44.761678+00:00",
+  "generated_at": "2026-06-06T07:00:23.800452+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -136,6 +136,11 @@
           "type": "email",
           "value": "sales@bollwerk.ai",
           "label": "email"
+        },
+        {
+          "type": "website",
+          "value": "https://bollwerk.ai/book-a-demo",
+          "label": "contact page"
         },
         {
           "type": "website",
@@ -361,11 +366,6 @@
           "type": "website",
           "value": "https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix",
           "label": "feedback form"
-        },
-        {
-          "type": "github_issue",
-          "value": "https://github.com/wlejon/brosoundml/issues/new",
-          "label": "GitHub issue"
         }
       ],
       "recommended_next_step": "public feedback-form contact path is now identified"

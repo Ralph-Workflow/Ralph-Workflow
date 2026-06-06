@@ -1,0 +1,20 @@
+{
+  "provider": "DuckDuckGo (web_search)",
+  "first_failure_date": "2026-05-28",
+  "escalation_deadline": "2026-06-04T11:19:00+02:00",
+  "escalation_deadline_passed": true,
+  "days_since_first_failure": 10,
+  "current_status": "DEAD — bot-detection challenge on all queries",
+  "last_tested": "2026-06-06T07:00:00Z",
+  "last_test_result": "2/2 queries returned bot-detection challenge",
+  "previous_pattern": "session-scoped rate-limit (~6 queries then collapse), now total collapse",
+  "days_since_last_usable_results": 10,
+  "brave_status": "DEAD — 0 results since 2026-06-03",
+  "reddit_direct_status": "403 IP-blocked (30+ days)",
+  "impact": "Reddit monitor fully blind, market intelligence degraded, competitor tracking online-only",
+  "migration_recommendation": "Brave Search API (free tier: 2,000 queries/month) or SerpAPI",
+  "migration_blocked_by": "No API key available in environment — requires human action",
+  "escalation_filed_in_run": "evaluator_run_7 (2026-06-06 09:00 CEST)",
+  "tracking_file_created": "2026-06-06T07:00:00Z",
+  "note": "This file was MISSING from the system prior to evaluator run #7. The escalation deadline (June 4) passed without a tracking artifact."
+}

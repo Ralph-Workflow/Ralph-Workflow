@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-06-05T07:00:44+00:00
+Generated: 2026-06-06T07:00:23+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -58,6 +58,7 @@ Generated: 2026-06-05T07:00:44+00:00
 - Suggested subject: RalphWorkflow as an adjacent workflow-system reference for Werkstatt readers
 - Discovered channels:
   - email: sales@bollwerk.ai
+  - contact page: https://bollwerk.ai/book-a-demo
   - website: https://bollwerk.ai
   - support page: https://bollwerk.ai/assets/preload-helper-ckwbz45p.js
   - GitHub issue: https://github.com/Bollwerkio/werkstatt/issues/new
@@ -127,7 +128,6 @@ Generated: 2026-06-05T07:00:44+00:00
 - Discovered channels:
   - website: https://aisaying.net
   - feedback form: https://aisaying.net/knowledge/article/ai-coding-tools-comparison-matrix
-  - GitHub issue: https://github.com/wlejon/brosoundml/issues/new
 
 ### 10. Toolradar
 - Hook: Best AI Coding Tools in 2026

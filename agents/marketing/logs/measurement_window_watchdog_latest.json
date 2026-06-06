@@ -1,15 +1,26 @@
 {
-  "generated_at": "2026-06-05T07:00:44.690326",
-  "past_due_count": 0,
+  "generated_at": "2026-06-06T07:00:23.722195",
+  "past_due_count": 1,
   "kill_count": 0,
   "escalate_count": 0,
   "rewrite_count": 0,
-  "wait_count": 0,
+  "wait_count": 1,
   "stuck_repair_count": 0,
   "kill_list": [],
   "escalate_list": [],
   "rewrite_list": [],
-  "wait_list": [],
+  "wait_list": [
+    {
+      "action_type": "",
+      "lane": "",
+      "launched_at": "2026-06-04T11:07:52.204275",
+      "review_due_date": "2026-06-04T14:51:29",
+      "days_past_due": 1,
+      "artifact_path": "",
+      "recommendation": "wait",
+      "log_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-04_110752_measurement_hold_release_cron.json"
+    }
+  ],
   "stuck_repairs": [],
   "apollo_blocked": false,
   "total_active_windows": 1
