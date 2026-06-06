@@ -1,9 +1,30 @@
 # RalphWorkflow Marketing — Ready-to-Post Actions
-Generated: 2026-06-06 12:15 CEST
+Generated: 2026-06-06 12:15 CEST | Updated: 2026-06-06 16:49 CEST (evaluator run #9)
 
-## ⚡ You can post real marketing content in under 5 minutes
+## ⚡ You can post real marketing content in under 6 minutes
 
 All content below is validated, non-promotional, and ready to paste. No research needed. Just open the links and paste.
+
+---
+
+## 🆕 HN: 1 reply (estimated: 30 seconds) — HIGHEST PRIORITY
+
+### Why this first:
+- The Ask HN thread is from yesterday (June 5) and fading fast — **24-48 hour window to post**
+- HN is Ralph's exact target audience (developers, engineering leaders)
+- The thread's #1 complaint (context management) maps directly to Ralph's loop architecture
+- SDDW author (sermakarevich) was already commenting in this thread — ecosystem relevance is real-time
+- Every SDD tool mentioned is Claude-Code-specific — Ralph's agent-agnosticism is the unfilled gap
+
+### 30-second instructions:
+1. Log into Hacker News
+2. Open: https://news.ycombinator.com/item?id=48413629
+3. Copy the reply from `drafts/HN_HANDOFF.md`
+4. Paste as a top-level comment (reply to the OP), submit.
+
+**Full reply text:** See `drafts/HN_HANDOFF.md`
+**Success metric:** ≥1 upvote or reply within 48 hours
+**Kill condition:** Zero engagement within 7 days
 
 ---
 
@@ -45,9 +66,10 @@ All content below is validated, non-promotional, and ready to paste. No research
 
 ---
 
-## TOTAL: 7 posts, <5 minutes
-- 6 Reddit replies (3 min)
-- 1 StackOverflow answer (1 min)
+## TOTAL: 8 posts, <6 minutes
+- 1 HN reply (30 sec) — HIGHEST PRIORITY (time-sensitive, fading window)
+- 6 Reddit replies (3 min) — deadline June 12
+- 1 StackOverflow answer (1 min) — cron may auto-post tomorrow (Jun 7 03:15 CEST)
 - All content validated against banned phrases, ban list, and repetition detection
 - Zero promotional tone — every reply answers the thread question natively
 - Codeberg links where natural, GitHub mirror as secondary
@@ -56,10 +78,13 @@ All content below is validated, non-promotional, and ready to paste. No research
 - Breaks the 5+ week Codeberg adoption flatline
 - Gives the marketing system real measurement data (clicks, views, engagement)
 - Proves the handoff bridge pattern works → system can scale it
-- Unblocks the "credential ceiling" for Reddit without API keys
+- Unblocks the "credential ceiling" for Reddit/HN without API keys
+- The HN reply in particular has the highest expected ROI — HN is Ralph's exact audience
 
 ## What happens if you post NONE
-- 6 more days of the measurement window pass with no delta
+- The Ask HN thread window closes (24-48h remaining)
+- 6 more days of the Reddit measurement window pass with no delta
 - System continues to find the credential ceiling with no autonomous path through
 - Reddit handoff bridge kill condition fires June 19 → structural change without proof it failed
 - StackOverflow lane remains a pure draft generator (0 of 15 drafts posted ever)
+- The SDD positioning gap (strongest competitive angle in weeks) goes unexploited

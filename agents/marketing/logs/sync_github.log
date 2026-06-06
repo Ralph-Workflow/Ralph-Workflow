@@ -4221,3 +4221,19 @@
 [2026-06-06 16:06:15] Checking GitHub README for mirror notice...
 [2026-06-06 16:06:17] GitHub README does not match mirror notice — overwriting
 [2026-06-06 16:06:19] GitHub README overwritten with mirror notice
+[2026-06-06 17:11:26] Starting Codeberg -> GitHub sync
+[2026-06-06 17:11:26] Updating existing sync clone
+[2026-06-06 17:11:32] Codeberg is 0 commits ahead of GitHub, GitHub is 1 commits ahead
+[2026-06-06 17:11:32] WARNING: GitHub is 1 commits ahead of Codeberg — force-pushing Codeberg state
+[2026-06-06 17:11:34] Force sync complete
+[2026-06-06 17:11:34] Checking GitHub README for mirror notice...
+[2026-06-06 17:11:35] GitHub README does not match mirror notice — overwriting
+[2026-06-06 17:11:38] GitHub README overwritten with mirror notice
+[2026-06-06 17:12:01] Starting Codeberg -> GitHub sync
+[2026-06-06 17:12:01] Updating existing sync clone
+[2026-06-06 17:12:05] Codeberg is 0 commits ahead of GitHub, GitHub is 1 commits ahead
+[2026-06-06 17:12:05] WARNING: GitHub is 1 commits ahead of Codeberg — force-pushing Codeberg state
+[2026-06-06 17:12:07] Force sync complete
+[2026-06-06 17:12:07] Checking GitHub README for mirror notice...
+[2026-06-06 17:12:09] GitHub README does not match mirror notice — overwriting
+[2026-06-06 17:12:11] GitHub README overwritten with mirror notice
