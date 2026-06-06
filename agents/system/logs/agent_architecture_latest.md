@@ -1,63 +1,40 @@
 # Agent Architecture Watchdog Report
+**Checked:** 2026-06-07T01:02:45+02:00
 
-**Checked:** 2026-06-07T00:03 CEST  
-**Verdict:** `high_risk` — architecture-owned gates green; external marketing evidence stale  
-**Small gate:** passed
+## Verdict: EXTERNAL RISK — Architecture Green
 
----
+| Gate | Status |
+|------|--------|
+| Checker | AGENT_ARCHITECTURE_OK |
+| Verifier | pass (312 lines, freshness-gate intact, 50 refs) |
+| Independent Verification | qualified_pass (fresh at 01:02:44) |
+| Runner | executing |
+| Topology | 20/20/0 — all enabled, zero disabled |
+| Architecture-owned | **ALL GREEN** |
 
-## Live Topology (direct `openclaw cron list --json`)
+## Live Topology
+- **20 jobs total, 20 enabled, 0 disabled**
+- **3 running** (agent-architecture-watchdog + system-health-monitor + codeberg-github-mirror-sync), **0 last_error**
+- Clean topology — no drift, no disabled jobs
 
-| Metric | Value |
-|--------|-------|
-| Total jobs | 20 |
-| Enabled | 20 |
-| Disabled | 0 |
-| Running | 0 |
-| Last error | 0 |
+## External Blocker (not architecture-owned)
+- **Marketing independent verification:** 105.8h stale, verdict: fail
+- Sole remaining red item across the full stack
 
-Zero live disabled jobs. Zero live last-error jobs. Topology clean.
+## Repairs This Run
+1. Refreshed live cron topology (20/20/0, 3 concurrent runs, clean)
+2. Revalidated checker/verifier/runner pipeline → all green
+3. Ran fresh independent verification → qualified_pass
+4. Verified verifier source integrity (312 lines, 50 freshness references, unchanged since Jun 2)
+5. Corrected previous report reference-count (33→50; no material impact)
+6. Confirmed external blocker isolation: marketing IV only
 
-## Audit Pipeline
-
-| Stage | Result |
-|-------|--------|
-| Checker | `AGENT_ARCHITECTURE_OK` |
-| Runner | `already-running` (this watchdog) |
-| Verifier | `qualified_pass` |
-| Independent verification | `qualified_pass` |
-
-## Repairs Applied This Run
-
-1. **Refreshed live topology** — direct cron inspection: 20 enabled, 0 disabled, 0 running, 0 last_error
-2. **Revalidated checker/verifier/runner** — all three stages pass; pipeline coherent
-3. **Relocalized blocker** — architecture-owned gates green; only remaining red is external
-
-## What Is Still Red
-
-- **Marketing independent verification: 104.8h stale, verdict=fail**
-  - Artifact: `agents/marketing/logs/marketing_loop_independent_verification.json`
-  - Root cause: no fresh measurable primary-repo outcome evidence
-  - This is an external owner-loop blocker, not architecture drift
+## What's Still Red
+- Marketing independent evidence (external owner loop, 105.8h stale, verdict: fail)
+- No architecture-owned blockers remain
 
 ## Independent Verification Status
-
-- **Status:** performed
-- **Verdict:** qualified_pass
-- **Errors:** stale external-owner evidence (marketing IV 104.8h old)
-- Architecture verifier path is coherent; fails closed on stale signoff
-
-## Runtime Assertions
-
-- Ownership boundaries: OK
-- Hidden self-certification: none detected
-- Stale topology leakage: none detected
-- Shared market-intelligence reuse: verified
-- Loop integrity: OK
-- Health monitor issues: 1 (marketing_independent_verification, external watch only)
-
-## Notes
-
-- Architecture green = architecture-owned verifier path coherent; does not mean whole stack green
-- Persisted disabled history (marketing-pulse) is history only; live disabled count is 0
-- No live timeout-budget repair needed this run
+- **Artifact:** agents/system/logs/agent_architecture_independent_verification.json
+- **Checked:** 2026-06-07T01:02:44+02:00
+- **Verdict:** qualified_pass — architecture artifacts coherent; sole errors are externally owned (marketing)
+- **Verifier source:** agent_architecture_verifier.py (312 lines, 50 freshness/stale/independent refs)
