@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-06-06T18:15:00+02:00",
+  "type": "hn_handoff_refresh_and_live_verification",
+  "title": "HN handoff refresh with live thread verification + Matrix notification",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "warning": null,
+  "source": "marketing_active_loop_cron",
+  "actions": [
+    "Verified Ask HN thread #48413629 via Algolia API: 124 comments, last activity 17:58 CEST (moltar)",
+    "Discovered 3 NEW thread participants talking about Ralph's domain TODAY: madarco (Agentbox, 12:46 CEST), jpeeler (herde, 14:20 CEST), sermakarevich (SDDW, 14:38 CEST)",
+    "Updated HN_HANDOFF.md reply body to cite all 3 thread-native projects — not external research",
+    "Sent Matrix notification to mistlight with urgency signal (4-8h window remaining)",
+    "Updated MARKETING_SELF_IMPROVEMENT.md with run #11 entry"
+  ],
+  "adoption": {
+    "codeberg_stars": 12,
+    "github_stars": 3,
+    "pypi_downloads_month": 1303,
+    "note": "Unchanged from evaluator run #10 at 17:05 CEST"
+  },
+  "decision": "HN handoff is the highest-leverage current asset. Thread is more active than evaluator realized. Reply now cites 3 projects discussed IN the thread today. Human posting is the only remaining action — credential ceiling confirmed."
+}

@@ -55,10 +55,9 @@ Add whatever helps you do your job. This is your cheat sheet.
 
 ### Reddit
 - **Primary allowed account:** `ken.li156@gmail.com`
-- **Password:** `EX_3r=yC4&2z!G=`
+- **Password:** stored in `~/.openclaw/credentials/reddit.json` (600 permissions)
   - Rule: This is the only Reddit account allowed for future RalphWorkflow marketing activity.
 - **Historical/old account (do not use for future posting):** `ken@ralphworkflow.com`
-- **Historical password:** `V9%)/A@=sXX-ebn`
   - Note: keep only for historical recovery context; do not post from this account.
 
 ### Reddit API (PRAW)

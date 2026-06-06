@@ -1,5 +1,5 @@
 # PyPI Blocker Escalation
-Generated: 2026-06-06T12:37:33.973445
+Generated: 2026-06-06T18:14:53.125832
 
 🚨 **URGENT 7-DAY ESCALATION**
 
@@ -22,7 +22,7 @@ PyPI v0.8.8 has been built and ready for 7+ days. The missing PYPI_TOKEN is now 
    Or run manually: `python3 /home/mistlight/.openclaw/workspace/agents/marketing/pypi_auto_unblocker.py`
 
 ## Token was last checked
-2026-06-06T12:37:33.973445
+2026-06-06T18:14:53.125832
 
 ## Codeberg impact
 - Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
