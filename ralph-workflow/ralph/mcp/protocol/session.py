@@ -17,6 +17,7 @@ from ralph.mcp.protocol.capability_mapping import lookup_ralph_capability
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -62,6 +63,7 @@ class AgentSession:
     media_manifest: MediaManifest = field(default_factory=MediaManifest)
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
     stored_capability_profile: ResolvedCapabilityProfile | None = field(default=None)
+    tool_output_sink: Callable[[dict[str, object]], None] | None = field(default=None, repr=False)
 
     @property
     def capability_profile(self) -> ResolvedCapabilityProfile:
@@ -78,6 +80,11 @@ class AgentSession:
 
     def check_edit_area(self, _: str) -> object:
         return self.edit_area_result if self.edit_area_result is not None else "approved"
+
+    def stream_tool_output(self, event: dict[str, object]) -> None:
+        """Forward a streaming tool output event to the registered sink, if any."""
+        if self.tool_output_sink is not None:
+            self.tool_output_sink(event)
 
 
 __all__ = [

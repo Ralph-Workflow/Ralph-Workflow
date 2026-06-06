@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from http.server import BaseHTTPRequestHandler
 from time import sleep
 from typing import TYPE_CHECKING, cast
@@ -65,6 +66,16 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
             msg_id=data.get("id"),
         )
         server = cast("_FallbackHttpServer", self.server)
+
+        # Exec tool calls use SSE streaming: chunk notifications before final frame.
+        if (
+            request.method == "tools/call"
+            and isinstance(request.params, dict)
+            and request.params.get("name") == "exec"
+        ):
+            self._handle_exec_streaming_post(request, server)
+            return
+
         response, next_state = server.mcp_server.handle_request(request, server.state)
         server.state = next_state
         if response is None:
@@ -82,6 +93,65 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         if request.method == "initialize":
             session_id = cast("_FallbackHttpServer", self.server).mcp_server._session.session_id
         self._write_sse(encoded, 200, session_id=session_id)
+
+    def _handle_exec_streaming_post(
+        self,
+        request: JsonRpcRequest,
+        server: _FallbackHttpServer,
+    ) -> None:
+        """Handle a tools/call exec request with SSE chunk notification streaming.
+
+        Sends text/event-stream headers (no Content-Length) before dispatch so
+        chunks can be flushed immediately. After dispatch the final tools/call
+        response frame is written. AgentSession.tool_output_sink is restored in
+        finally so subsequent calls are not affected.
+        """
+        session = server.mcp_server._session
+        previous_sink = session.tool_output_sink
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+
+        def _write_notification(event: dict[str, object]) -> None:
+            notification: dict[str, object] = {
+                "jsonrpc": "2.0",
+                "method": "notifications/message",
+                "params": event,
+            }
+            frame = f"event: message\r\ndata: {json.dumps(notification)}\r\n\r\n".encode()
+            with suppress(OSError):
+                self.wfile.write(frame)
+                self.wfile.flush()
+
+        session.tool_output_sink = _write_notification
+        try:
+            response, next_state = server.mcp_server.handle_request(request, server.state)
+            server.state = next_state
+            if response is not None:
+                body: dict[str, object] = {"jsonrpc": response.jsonrpc, "id": response.msg_id}
+                if response.result is not None:
+                    body["result"] = response.result
+                if response.error is not None:
+                    body["error"] = response.error
+                final_frame = f"event: message\r\ndata: {json.dumps(body)}\r\n\r\n".encode()
+                with suppress(OSError):
+                    self.wfile.write(final_frame)
+                    self.wfile.flush()
+        except Exception as exc:
+            error_body: dict[str, object] = {
+                "jsonrpc": "2.0",
+                "id": request.msg_id,
+                "error": {"code": -32603, "message": str(exc)},
+            }
+            err_frame = f"event: message\r\ndata: {json.dumps(error_body)}\r\n\r\n".encode()
+            with suppress(OSError):
+                self.wfile.write(err_frame)
+                self.wfile.flush()
+        finally:
+            session.tool_output_sink = previous_sink
 
     def log_message(self, format: str, *args: object) -> None:
         del format, args

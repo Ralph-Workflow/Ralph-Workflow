@@ -13,6 +13,7 @@ from ralph.mcp.tools.coordination import (
     ToolContent,
 )
 from ralph.mcp.tools.exec import (
+    ExecRunDeps,
     handle_exec_command,
 )
 from tests.mock_session import MockSession
@@ -20,6 +21,17 @@ from tests.mock_workspace_root import MockWorkspaceRoot
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class _StreamingMockSession(MockSession):
+    """MockSession that records stream_tool_output calls."""
+
+    def __init__(self, caps: set[str]) -> None:
+        super().__init__(caps)
+        self.streamed_events: list[dict[str, object]] = []
+
+    def stream_tool_output(self, event: dict[str, object]) -> None:
+        self.streamed_events.append(event)
 
 CUSTOM_TIMEOUT_MS = 5000
 EXPECTED_TIMEOUT_SECONDS = 2.5
@@ -83,3 +95,45 @@ class TestHandleExecCommand:
 
         result = handle_exec_command(session, workspace, params)
         assert result.is_error is True
+
+
+    def test_session_stream_tool_output_receives_chunks_before_final_result(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """handle_exec_command forwards on_output_chunk events via session.stream_tool_output."""
+
+        def fake_run_command(
+            command: str,
+            args: list[str],
+            workspace: object,
+            timeout_ms: int,
+            deps: ExecRunDeps | None = None,
+        ) -> exec_completed_process._CompletedProcessAdapter:
+            del command, args, workspace, timeout_ms
+            if deps is not None and deps.on_output_chunk is not None:
+                deps.on_output_chunk("streamed-chunk")
+            return exec_completed_process._CompletedProcessAdapter(
+                stdout=b"streamed-chunk", stderr=b"", returncode=0
+            )
+
+        monkeypatch.setattr(exec_tool, "run_command", fake_run_command)
+
+        session = _StreamingMockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "echo", "args": [], "timeout_ms": 5000}
+
+        result = handle_exec_command(session, workspace, params)
+
+        assert result.is_error is False
+        streamed = session.streamed_events
+        assert streamed, "stream_tool_output must be called at least once"
+        for event in streamed:
+            assert event.get("tool") == "exec"
+            assert event.get("stream") == "combined"
+            assert isinstance(event.get("text"), str)
+        text_parts: list[str] = []
+        for event in streamed:
+            text_val = event.get("text")
+            if isinstance(text_val, str):
+                text_parts.append(text_val)
+        assert "streamed-chunk" in "".join(text_parts)

@@ -20,6 +20,7 @@ from ralph.mcp.tools.exec import (
     ExecutionError,
     run_command,
 )
+from ralph.mcp.tools.exec_sandbox import ExecSandboxManager
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 from ralph.testing._process_state import ProcessState
 from ralph.testing._process_streams import ProcessStreams
@@ -211,15 +212,14 @@ def test_passes_through_unrelated_env_values(
     assert env["UNRELATED"] == "/etc/hosts"
 
 
-def test_run_command_reuses_stable_sandbox_path(tmp_path: Path) -> None:
-    seen_cwds: list[Path] = []
+def test_run_command_sandbox_always_clean_on_entry(tmp_path: Path) -> None:
+    """Sandbox worktree contains only workspace files on every run, never prior-run artifacts."""
     clean_on_entry: list[bool] = []
 
     def fake_runner(
         command: list[str], cwd: Path, timeout_seconds: float | None
     ) -> exec_completed_process._CompletedProcessAdapter:
         del command, timeout_seconds
-        seen_cwds.append(cwd)
         clean_on_entry.append(not (cwd / "dirty.txt").exists())
         (cwd / "dirty.txt").write_text("dirty", encoding="utf-8")
         return exec_completed_process._CompletedProcessAdapter(stdout=b"", stderr=b"", returncode=0)
@@ -229,11 +229,43 @@ def test_run_command_reuses_stable_sandbox_path(tmp_path: Path) -> None:
     run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner))
     run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner))
 
-    assert len(seen_cwds) == 2
-    assert seen_cwds[0] == seen_cwds[1]
-    # Sandbox is clean at the start of each run; dirty files from one run are
-    # removed by rsync --delete before the next acquire, not by release cleanup.
+    assert len(clean_on_entry) == 2
     assert clean_on_entry == [True, True]
+
+
+def test_run_command_first_use_leaves_under_budget_garbage_intact(tmp_path: Path) -> None:
+    """The first run_command with a fresh sandbox manager never cleans under-budget garbage."""
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    exec_base = tmp_path / "exec-base"
+    exec_base.mkdir()
+
+    small_garbage = exec_base / "small_garbage.bin"
+    small_garbage.write_bytes(b"x" * 100)
+
+    manager = ExecSandboxManager(
+        base_dir=exec_base,
+        max_total_bytes=100_000_000,
+    )
+
+    def fake_runner(
+        command: list[str], cwd: Path, timeout_seconds: float | None
+    ) -> exec_completed_process._CompletedProcessAdapter:
+        del command, cwd, timeout_seconds
+        return exec_completed_process._CompletedProcessAdapter(
+            stdout=b"ok", stderr=b"", returncode=0
+        )
+
+    workspace = MockWorkspaceRoot(workspace_dir)
+    run_command(
+        "echo",
+        [],
+        workspace,
+        1000,
+        deps=ExecRunDeps(runner=fake_runner, overlay_factory=manager.acquire),
+    )
+
+    assert small_garbage.exists(), "Under-budget garbage must not be cleaned on first use"
 
 
 def _make_concurrent_overlay_factory(tmp_path: Path) -> object:
