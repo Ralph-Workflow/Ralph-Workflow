@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-06-06T17:10:23.337690+02:00
+- Checked: 2026-06-06T18:06:24.661366+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
 - Most urgent fix: Do not certify green until the external owner loop clears its live residue and independent signoff stays current.
@@ -10,7 +10,7 @@
 ## Live topology
 
 - Live Gateway jobs: 19 total / 19 enabled / 0 disabled
-- Live running jobs now: agent-architecture-watchdog, codeberg-github-mirror-sync, marketing-daily, system-health-monitor
+- Live running jobs now: Push research findings to git repo, agent-architecture-watchdog, marketing-active-loop, pypi-auto-unblocker
 - Live last-error residue: backlink-tracker, marketing-research-daily
 - Persisted disabled history only: none
 - User crontab ownership: ok
@@ -59,7 +59,7 @@
 - Verdict: qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
 - Previous artifact verdict: qualified_pass
-- Previous artifact checked at: 2026-06-06T17:09:32.591336+02:00
+- Previous artifact checked at: 2026-06-06T18:06:03.638060+02:00
 
 ## Small gate passed
 
