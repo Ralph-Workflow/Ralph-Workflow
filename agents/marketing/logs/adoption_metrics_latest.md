@@ -1,6 +1,6 @@
 # Adoption Metrics
 
-- Timestamp: 2026-06-06T06:13:43.120500
+- Timestamp: 2026-06-06T07:10:25.760866
 
 ## Codeberg (primary)
 - Stars: 12 (+0)
@@ -20,7 +20,7 @@
 - URL: https://pypi.org/project/ralph-workflow/
 
 ## GitHub (mirror)
-- Stars: 3 (+1)
+- Stars: 3 (+0)
 - Watchers: 2 (+0)
 - Forks: 0 (+0)
 - Open issues: 0

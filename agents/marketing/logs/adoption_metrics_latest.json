@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-06T06:13:43.120500",
+  "timestamp": "2026-06-06T07:10:25.760866",
   "metrics": [
     {
       "platform": "Codeberg",
@@ -39,7 +39,7 @@
       "forks_delta": 0
     },
     "GitHub": {
-      "stars_delta": 1,
+      "stars_delta": 0,
       "watchers_delta": 0,
       "forks_delta": 0
     }

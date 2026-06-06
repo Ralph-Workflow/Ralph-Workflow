@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-06T06:47:51.698759+02:00",
+  "checked_at": "2026-06-06T08:06:28.777594+02:00",
   "verdict": "qualified_pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
@@ -60,12 +60,12 @@
     }
   ],
   "remaining_blockers": [
-    "stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json, /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json, /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+    "stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json, /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
     "marketing independent verification is not pass: 'fail'"
   ],
   "architecture_errors": [],
   "external_blockers": [
-    "stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json, /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json, /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+    "stale external-owner evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json, /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
     "marketing independent verification is not pass: 'fail'"
   ],
   "evidence": [
@@ -98,7 +98,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]
