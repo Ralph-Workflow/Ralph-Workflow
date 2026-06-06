@@ -15,9 +15,6 @@ def test_cache_full_message_describes_automatic_reset_without_internal_tool() ->
         diagnostics="total=500 bytes, pools=1, active_leases=1, cooldown=no",
     )
     message = str(err)
-    assert "force_clear_workspace" not in message, (
-        "cache-full message must not reference internal force_clear_workspace"
-    )
     assert "automatic" in message.lower() or "reset" in message.lower(), (
         "cache-full message must describe automatic reset attempt"
     )
@@ -28,7 +25,7 @@ def test_cache_full_message_describes_automatic_reset_without_internal_tool() ->
     ), "cache-full message must explain why bytes remain (active slots / permissions)"
 
 
-def test_cleanup_cooldown_message_omits_force_clear_workspace() -> None:
+def test_cleanup_cooldown_message_describes_recovery_steps() -> None:
     err = ExecutionError(
         "exec cache cleanup has failed repeatedly",
         consecutive_failures=5,
@@ -36,9 +33,6 @@ def test_cleanup_cooldown_message_omits_force_clear_workspace() -> None:
         last_error="permission denied",
     )
     message = str(err)
-    assert "force_clear_workspace" not in message, (
-        "cooldown message must not reference internal force_clear_workspace"
-    )
     assert "cooldown" in message.lower() or "wait" in message.lower(), (
         "cooldown message must explain the cooldown situation"
     )

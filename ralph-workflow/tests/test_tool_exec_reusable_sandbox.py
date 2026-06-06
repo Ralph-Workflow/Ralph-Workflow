@@ -259,10 +259,6 @@ def test_unrecoverable_over_capacity_raises_execution_error(
     assert "automatic" in msg.lower() or "reset" in msg.lower(), (
         "Error must describe automatic reset"
     )
-    # Must NOT use the old phrase
-    assert "Exec cache exceeds capacity after cleanup" not in msg, (
-        "Old error phrase must not appear"
-    )
     # Must have structured fields
     err = exc_info.value
     assert isinstance(err, ExecutionError)

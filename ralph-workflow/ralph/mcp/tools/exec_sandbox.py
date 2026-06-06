@@ -225,6 +225,11 @@ class ExecSandboxManager:
         if post_bytes <= self._max_total_bytes:
             return
 
+        # Active slots from concurrent acquires in this process legitimately use space.
+        # Return without error — capacity will be reclaimed when those slots finish.
+        if active_now:
+            return
+
         diag = (
             f"current={post_bytes} bytes, cap={self._max_total_bytes} bytes, "
             f"removed_paths={removed_paths}, removed_bytes={removed_bytes}, "
