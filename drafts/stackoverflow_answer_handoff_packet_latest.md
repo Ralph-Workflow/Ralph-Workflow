@@ -1,78 +1,85 @@
 # Ralph Workflow StackOverflow Answer Handoff Packet
-Generated: 2026-06-03T03:15:01.445928
+Generated: 2026-06-06T12:15:00 CEST | Live SE API verified
 
-## Why this is still the live answer lane
-- The same high-intent question is still the strongest qualified StackOverflow target in the current window.
-- A recent polished answer already exists, so the right move is to reuse the proven asset instead of generating duplicate draft churn.
-- Codeberg remains the primary repo CTA.
+## ⚠️ Truth: this is a DRAFT-ONLY lane
+The SO answer lane creates drafts for manual human posting. It does NOT post answers autonomously. 0 of 15 drafts have ever been posted by a human. The cron fires every Tuesday + Sunday but only rescans/search-drafts — it does not post.
 
-## Target
+## Target #1 (BETTER TARGET — openclaw tag, Django-specific)
+- **Question:** Boss wants us to add more AI to our workflow
+- **URL:** https://stackoverflow.com/questions/79928220/boss-wants-us-to-add-more-ai-to-our-workflow
+- **Tags:** django, artificial-intelligence, claude, openclaw
+- **Current score (live SE API, 2026-06-06):** 2 (was 4.35 on Jun 3)
+- **Current answers:** 1 (score 1, not accepted, ~1000 chars — short/weak)
+- **Views:** 181
+- **Not protected** — can be answered by any registered user
+- **Why this target:** Asker uses OpenClaw (tagged). Django/Docker/PostgreSQL/Redis/Celery — exact stack match. Existing answer is weak and short (1005 chars). Our draft is 4601 chars, Django-specific, with concrete docker compose verification steps. The tag overlap (openclaw + claude + django) makes this the highest context-match SO question found across all searches.
+- **Draft:** `drafts/stackoverflow/so_answer_2026-05-31_boss-wants-us-to-add-more-ai-to-our-workflow.md`
+
+## Target #2 (fallen — was #1, now score 2, protected)
 - **Question:** Autonomous mode / wrapper for Claude Code?
 - **URL:** https://stackoverflow.com/questions/79896243/autonomous-mode-wrapper-for-claude-code
-- **Current score:** 5.0
+- **Current score (live SE API, 2026-06-06):** 2 (was 5.0 on Jun 3)
 - **Current answers:** 2
-- **Reused draft:** `/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-06-02_autonomous-mode-wrapper-for-claude-code.md`
+- **Protected** — requires 10+ reputation to answer
+- **Draft:** `drafts/stackoverflow/so_answer_2026-06-02_autonomous-mode-wrapper-for-claude-code.md`
+- **Verdict:** Still a good answer, but the question is lower quality than it was and requires reputation to post. Deprioritize vs Target #1.
 
-## Final answer text
-```md
-If the goal is "give it a high-level task and let it keep going until there is something real to review," I would stop looking for a single Claude Code flag and put it inside an outer workflow instead.
+## Target #1 Answer Text (ready to paste)
 
-Claude Code does have `--resume`, `--continue`, and `--max-turns` flags, but they optimize for session longevity rather than outcome quality. A long-running single session drifts — the model forgets the acceptance criteria, hallucinates scope creep, and produces a wall of changes that are painful to review. The real problem isn't duration; it's structure.
+The existing answer is right about making implicit knowledge explicit — AGENTS.md and project-specific skills are table stakes. But your Django/Docker/PostgreSQL/Redis/Celery setup needs a second thing: **a structured agent workflow that enforces reviewability at every handoff**, not just a smarter chat session.
 
-Here's the pattern that actually works for overnight unattended runs:
+From running autonomous coding agents against a similar stack, here's what separates "agent wrote something" from "I'd actually merge this":
 
-### 1. Bound the task before the agent starts
+### 1. Give the agent one bounded task at a time
 
-The agent's scope is the only safety boundary you have. Write one paragraph of acceptance criteria before any code changes happen:
+Don't let a single agent session touch Django views, Celery tasks, database migrations, AND Docker config in one unbroken run. Scope each task to one concern:
 
-```markdown
-# Task: Add rate-limiting to /api/ endpoints
-- Decorate all public /api/ views with a configurable rate limiter
-- Use Django's existing cache backend (no Redis dependency)
-- Tests must pass: pytest api/ -x --tb=short
-- Non-goals: auth changes, admin panel, frontend rate-limit UX
+```
+# Good task spec (one concern):
+"Add a rate-limiting decorator to the /api/ endpoints only.
+ Tests must pass, no new dependencies, post a PR."
 ```
 
-This is your contract. If the agent touches auth or frontend code, it's out of scope and the run should fail.
+The agent's scope is the best safety boundary you have. Multi-service cross-cutting changes are where agents hallucinate plausibly and break things you don't notice until staging.
 
-### 2. Run in phases, not one endless session
+### 2. Separate planning, execution, and verification into distinct phases
 
-A single Claude Code session that plans, implements, AND verifies will rationalize its own mistakes. Separate the phases:
+Self-verification is weak — the same model that wrote the code shouldn't be the only thing grading it. Structure your agent workflow as:
 
-1. **Plan phase** — Claude Code reads relevant files, proposes a change plan. You review the plan (not the code). 5 minutes of human review here saves hours of debugging later.
-2. **Execute phase** — implement only what the plan approved. No scope creep.
-3. **Verify phase** — run your test suite, linter, type checker. Output: pass/fail evidence, not a summary.
-4. **Review packet** — the agent packages a diff + test results + unresolved concerns into one markdown file. This is what you read at 9 AM.
+1. **Plan phase** — agent reads relevant files, proposes a change plan with acceptance criteria and risk notes. You review the plan (not the code).
+2. **Execute phase** — agent implements only what the plan approved. No scope creep.
+3. **Verify phase** — agent runs your existing test suite, Docker Compose checks, lints, and migration safety checks. Output: passing/failing evidence.
+4. **Review phase** — the agent packages a PR with: diff, what ran, what passed/failed, and any unresolved concerns.
 
-The rule: no passing verification output, no completion.
+The rule: no passing verification output, no completion. This turns "did the agent do it?" into "does the evidence hold up?" — which is a much easier question to answer at 9 AM.
 
-### 3. Auto-continue only between phases, never across failures
+### 3. Practical Django/Celery/Docker-specific changes
 
-Let the wrapper continue to the next phase when the current one succeeds. But if verification fails or the agent tries to leave scope, stop. "Should I continue?" is a control-plane question — the wrapper should decide based on evidence, not blindly say yes because the model asked nicely.
+Before turning agents loose:
 
-Concretely, the useful ingredients are:
+- **Run `docker compose` checks in the verify phase.** If the agent changed a model but forgot to regenerate migrations, `python manage.py makemigrations --check` catches it.
+- **Give the agent your actual test command, not a guess.** `docker compose run --rm web pytest --tb=short -x` — exact command, exact flags. Agents default to `python manage.py test` and miss your real setup.
+- **Set a task template your agents must fill.** One markdown file per task: goal, acceptance criteria, files touched, tests run, unresolved risks. This is your morning review payload.
+- **Start with a refactor that can't break the API.** Internal cleanup in one Django app with existing test coverage is the safest first task. If the tests pass and the diff is clean, you've proven the pipeline works.
 
-- A budget for retries / loop count per phase (not "let it run forever")
-- A persisted task spec on disk (survives crashes/timeouts/interruptions)
-- A verification gate (tests, build, lint — whatever matches the task)
-- A finish contract that produces a diff + check results, not just a text summary
-- Resume/checkpoint support so a long run can recover cleanly from a mid-run failure
+### 4. Tooling options (free and open-source)
 
-### 4. What to start with tonight
+You don't need an enterprise platform for this. The pattern described above (plan→execute→verify→review with TOML task specs) exists in open-source orchestrators that wrap Claude Code, Codex, or your existing agents. Ralph Workflow is one — free, runs on your machine, Codeberg-hosted. [Here's the full getting-started flow](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) (init → diagnose → dry-run, ~19 seconds). Whatever tool you choose, the structure matters more than the model: bounded tasks with separated verification beat unlimited chat sessions every time.
 
-Pick one small, well-tested module. Run it with plan-first, verify-last discipline. Don't merge unless the tests pass AND the diff makes sense. One task, one evening — you'll know by morning whether the pipeline holds up.
+### 5. Rollout path (do this tomorrow)
 
-That's the difference between an agent session and an unattended coding workflow. The structure matters more than the model.
+1. Pick one small, well-tested Django app where a refactor would be low-risk.
+2. Write a one-paragraph task spec with explicit acceptance criteria.
+3. Run the agent with a plan-first, verify-last loop.
+4. Don't merge unless the test suite passes AND the diff makes sense.
 
-### If you want to skip building this from scratch
-
-The plan→execute→verify→review pattern with TOML task specs, checkpoints, and verification gates is what Ralph Workflow implements — free, open-source, runs the agents you already have on your own machine. [Here's the full getting-started flow](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) (init → diagnose → dry-run, ~19 seconds). Primary repo: [Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow) with a [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow). Whatever tool you pick, the loop structure matters more than the model — bounded tasks with separated verification beat unlimited chat sessions every time.
+One task, one evening. If the result is mergeable, you've proven the pattern to your boss with evidence instead of promises. If it isn't, you learned what to tighten for task #2 — and you didn't bet the codebase on it.
 
 ---
 
 _Disclosure: I work on Ralph Workflow, a free/open-source composable agent orchestrator that implements the plan→execute→verify→review loop structure described above. Codeberg-first, runs with the agents you already have._
-```
 
 ## Outcome contract
-- Expected outcome: one live StackOverflow-compatible placement or manual reuse that sends qualified evaluators to Codeberg first.
-- Replacement condition: if this exact packet still has no placement path by the next review window, switch the lane instead of regenerating the same answer again.
+- Expected outcome: one live SO answer posted by human that sends qualified evaluators to Codeberg first
+- Target: Post to question #79928220 (not protected, no rep requirement)
+- Kill condition: if neither question has a human posting by June 19, retire the SO lane as a pure draft generator and repurpose the cron slot for conversion surface work

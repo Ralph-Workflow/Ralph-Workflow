@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-06-06T10:10:15.390219+00:00",
+  "updated_at": "2026-06-06T10:50:08.830238+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-03T11:33:59.794473+00:00",
-      "repeat_count": 156,
+      "repeat_count": 161,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -633,22 +633,46 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=156"
+        },
+        {
+          "at": "2026-06-06T10:45:43.916308+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=158"
+        },
+        {
+          "at": "2026-06-06T10:46:00.776461+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=159"
+        },
+        {
+          "at": "2026-06-06T10:46:05.576356+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=160"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-06T10:04:00.028764+00:00",
+      "last_seen": "2026-06-06T10:50:08.830184+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-06-06T10:04:08.760185+00:00"
+      "closed_at": "2026-06-06T10:46:05.576386+00:00"
     },
     "marketing_independent_verification::stale_artifact": {
       "key": "marketing_independent_verification::stale_artifact",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-06-03T11:33:59.794511+00:00",
-      "repeat_count": 907,
+      "repeat_count": 913,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -665,7 +689,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-06T10:10:15.390185+00:00",
+      "last_seen": "2026-06-06T10:50:08.830207+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -675,7 +699,7 @@
       "name": "agent_architecture_json",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-03T11:33:59.794526+00:00",
-      "repeat_count": 48,
+      "repeat_count": 54,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -862,22 +886,54 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=19 expected 20; live_jobs_enabled=19 expected 20::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=47"
+        },
+        {
+          "at": "2026-06-06T10:44:42.582305+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780742682349:42\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=20 expected 19; live_jobs_enabled=20 expected 19::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=49"
+        },
+        {
+          "at": "2026-06-06T10:46:05.267272+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=20 expected 19; live_jobs_enabled=20 expected 19::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=51"
+        },
+        {
+          "at": "2026-06-06T10:46:33.550860+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": false,
+          "detail": "gateway connect failed: Error: gateway closed (1000): \nGatewayTransportError: gateway closed (1000 normal closure): no close reason\nGateway target: ws://127.0.0.1:18789\nSource: local loopback\nConfig: /home/mistlight/.openclaw/openclaw.json\nBind: loopback",
+          "outcome": "no_progress",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=20 expected 19; live_jobs_enabled=20 expected 19::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=53"
+        },
+        {
+          "at": "2026-06-06T10:47:09.551389+00:00",
+          "action_type": "direct_architecture_escalation",
+          "ok": false,
+          "detail": "GatewayTransportError: gateway timeout after 30000ms\nGateway target: ws://127.0.0.1:18789\nSource: local loopback\nConfig: /home/mistlight/.openclaw/openclaw.json\nBind: loopback\nTraceback (most recent call last):\n  File \"/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_",
+          "outcome": "no_progress",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=20 expected 19; live_jobs_enabled=20 expected 19::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=53"
         }
       ],
-      "status": "resolved",
+      "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-06-06T08:41:23.860651+00:00",
-      "last_error": "live_jobs_checked=19 expected 20; live_jobs_enabled=19 expected 20",
+      "last_seen": "2026-06-06T10:50:08.830214+00:00",
+      "last_error": "live_jobs_checked=20 expected 19; live_jobs_enabled=20 expected 19",
       "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=[]",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "closed_at": "2026-06-06T08:41:01.751225+00:00"
+      "closed_at": "2026-06-06T10:46:05.267300+00:00"
     },
     "agent_architecture_verifier_runtime::artifact_contract_fail": {
       "key": "agent_architecture_verifier_runtime::artifact_contract_fail",
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-03T11:33:59.794540+00:00",
-      "repeat_count": 324,
+      "repeat_count": 330,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2600,15 +2656,39 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-06T11:47:39.384807+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=324"
+        },
+        {
+          "at": "2026-06-06T10:45:05.818178+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-06T12:09:52.216250+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=325"
+        },
+        {
+          "at": "2026-06-06T10:49:34.090422+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": false,
+          "detail": "gateway connect failed: Error: gateway closed (1000): \nGatewayTransportError: gateway closed (1000 normal closure): no close reason\nGateway target: ws://127.0.0.1:18789\nSource: local loopback\nConfig: /home/mistlight/.openclaw/openclaw.json\nBind: loopback",
+          "outcome": "no_progress",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-06T12:45:33.429357+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=329"
+        },
+        {
+          "at": "2026-06-06T10:49:54.708825+00:00",
+          "action_type": "direct_architecture_escalation",
+          "ok": false,
+          "detail": "{\n  \"ok\": false,\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"errors\": [\n    \"architecture audit metadata disagrees with live Gateway cron topology: live_jobs_checked=20 expected 19; live_jobs_enabled=20 expected 19. Pers",
+          "outcome": "no_progress",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-06T12:45:33.429357+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=329"
         }
       ],
-      "status": "resolved",
+      "status": "open",
       "blocked_by": [],
-      "last_seen": "2026-06-06T10:03:47.302545+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-06T11:47:39.384807+02:00\"\n}",
+      "last_seen": "2026-06-06T10:50:08.830219+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-06T12:49:54.697024+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-06-06T10:04:15.666845+00:00"
+      "closed_at": "2026-06-06T10:45:05.818212+00:00"
     },
     "docs_verifier::artifact_contract_fail": {
       "key": "docs_verifier::artifact_contract_fail",
