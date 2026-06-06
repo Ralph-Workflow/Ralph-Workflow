@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, cast
 
 from rich.text import Text
 
+from ralph.api.opencode import validate_local_model_support
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
@@ -43,9 +44,14 @@ from ralph.git.operations import (
     stage_all,
 )
 from ralph.mcp.artifacts.commit_message import (
+    COMMIT_MESSAGE_ARTIFACT,
+    COMMIT_MESSAGE_TYPE,
     delete_commit_message_artifacts,
+    normalize_commit_message_content,
     read_commit_message_artifact,
+    write_commit_message_artifact,
 )
+from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
@@ -298,22 +304,56 @@ def _resolve_commit_message_agents(config: UnifiedConfig, registry: AgentRegistr
     commit_candidates = [
         name for name in commit_chain if _commit_drain_agent_supported(registry, name)
     ]
-    if commit_candidates:
-        return commit_candidates
-
     review_candidates = [
         name for name in review_chain if _commit_drain_agent_supported(registry, name)
     ]
-    if review_candidates:
-        return review_candidates
-
     default_candidates = [_DEFAULT_COMMIT_AGENT]
-    return [name for name in default_candidates if _commit_drain_agent_supported(registry, name)]
+    default_supported = [
+        name for name in default_candidates if _commit_drain_agent_supported(registry, name)
+    ]
+
+    ordered_candidates: list[str] = []
+    for name in (*commit_candidates, *review_candidates, *default_supported):
+        if name not in ordered_candidates:
+            ordered_candidates.append(name)
+    return ordered_candidates
 
 
 def _commit_drain_agent_supported(registry: AgentRegistry, agent_name: str) -> bool:
     cfg = registry.get(agent_name)
-    return cfg is not None and bool(cfg.can_commit)
+    return cfg is not None and bool(cfg.can_commit) and _commit_agent_is_locally_supported(cfg)
+
+
+def _commit_agent_is_locally_supported(agent: AgentConfig) -> bool:
+    if agent.transport != AgentTransport.OPENCODE:
+        return True
+    model_id = _normalized_opencode_model_id(agent.model_flag)
+    if model_id is None:
+        return True
+    command_name = agent.cmd.split()[0]
+    return validate_local_model_support(model_id, command=command_name) is None
+
+
+def _normalized_opencode_model_id(model_flag: str | None) -> str | None:
+    if not model_flag:
+        return None
+    parts = model_flag.split()
+    if len(parts) == 2 and parts[0] in {"-m", "--model"}:
+        return parts[1].removeprefix("opencode/")
+    if len(parts) == 1:
+        return parts[0].removeprefix("opencode/")
+    return None
+
+
+def _commit_required_artifact() -> RequiredArtifact:
+    return RequiredArtifact(
+        phase="commit",
+        artifact_type=COMMIT_MESSAGE_TYPE,
+        json_path=COMMIT_MESSAGE_ARTIFACT,
+        markdown_path=None,
+        normalizer=normalize_commit_message_content,
+        artifact_required=True,
+    )
 
 
 def _working_tree_diff(repo_root: Path) -> str:
@@ -549,6 +589,7 @@ def invoke_commit_agent_attempt(
                 pure=_is_opencode_agent(agent),
                 session_id=session_id,
                 system_prompt_file=system_prompt,
+                required_artifact=_commit_required_artifact(),
             ),
         )
     else:
@@ -559,6 +600,7 @@ def invoke_commit_agent_attempt(
             pure=_is_opencode_agent(agent),
             session_id=session_id,
             system_prompt_file=system_prompt,
+            required_artifact=_commit_required_artifact(),
         )
     try:
         lines = invoke_agent(
@@ -603,6 +645,13 @@ def invoke_commit_agent_attempt(
             resume_session_id=resume_session_id,
         )
 
+    if artifact_message is None:
+        artifact_message = _recover_commit_message_from_output(
+            attempt_context.repo_root,
+            parsed_output=parsed_output,
+            raw_output=raw_output,
+        )
+
     if not artifact_message:
         return CommitAgentAttempt(
             failure_detail=_format_commit_agent_failure(
@@ -635,6 +684,56 @@ def _finalize_commit_attempt(
 
 def _is_missing_commit_artifact_failure(detail: str) -> bool:
     return _MISSING_COMMIT_ARTIFACT_REASON in detail
+
+
+def _recover_commit_message_from_output(
+    repo_root: Path,
+    *,
+    parsed_output: list[str],
+    raw_output: list[str],
+) -> str | None:
+    for candidate in (*raw_output, *parsed_output):
+        payload = _extract_commit_payload_from_text(candidate)
+        if payload is None:
+            continue
+        write_commit_message_artifact(repo_root, payload)
+        return read_commit_message_artifact(repo_root)
+    return None
+
+
+def _extract_commit_payload_from_text(text: str) -> dict[str, object] | None:
+    stripped = text.strip()
+    if not stripped:
+        return None
+    json_start = stripped.find("{")
+    if json_start < 0:
+        return None
+    candidate = stripped[json_start:]
+    try:
+        parsed = cast("object", json.loads(candidate))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    payload = cast("dict[str, object]", parsed)
+    artifact_type = payload.get("artifact_type")
+    if artifact_type == COMMIT_MESSAGE_TYPE:
+        content = payload.get("content")
+        if isinstance(content, str):
+            try:
+                nested = cast("object", json.loads(content))
+            except json.JSONDecodeError:
+                return None
+            if isinstance(nested, dict):
+                return normalize_commit_message_content(cast("dict[str, object]", nested))
+            return None
+        if isinstance(content, dict):
+            return normalize_commit_message_content(cast("dict[str, object]", content))
+        return None
+    try:
+        return normalize_commit_message_content(payload)
+    except ValueError:
+        return None
 
 
 def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str]) -> str:

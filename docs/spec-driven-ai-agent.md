@@ -1,7 +1,6 @@
 # Spec-Driven AI Agent: Why the Spec Still Matters
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
-That simple center composes into more complex workflows for substantial, well-specified software engineering work, and a written spec is what gives that stronger default workflow a real finish line.
+Ralph Workflow is a free and open-source AI agent orchestrator built for work that is big enough to deserve a real written spec. Its simple Ralph-loop core — plan, implement, review — gives each phase a concrete handoff boundary. The system composes into more complex workflows for serious engineering, but it never stops asking the same question: is the spec satisfied? A written spec is not a nice-to-have here — it is the finish line the loop keeps orbiting until it is actually reached.
 
 If an agent keeps saying it is done before the work actually holds up, the problem is often not raw model capability.
 The problem is that the task was never specific enough to verify honestly.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ralph.api import opencode
+from ralph.executor.process import ProcessResult
 from tests.test_api_opencode_helper__fakeclient import _FakeClient
 
 
@@ -160,3 +161,88 @@ def test_catalog_helpers_filter_and_sort(monkeypatch: pytest.MonkeyPatch) -> Non
     assert [model.id for model in opencode.search_models("openai")] == ["openai/gpt-5", "openai/o3"]
     assert [model.id for model in opencode.search_models("sonnet")] == ["anthropic/claude-sonnet-4"]
     assert opencode.list_providers() == ["Anthropic", "OpenAI"]
+
+
+def test_validate_local_model_support_reports_path_selected_from_path_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        opencode.shutil,
+        "which",
+        lambda command, path=None: "/first/opencode" if command == "opencode" else None,
+    )
+    monkeypatch.setattr(
+        opencode,
+        "_path_command_candidates",
+        lambda command, env_path=None: ("/first/opencode", "/second/opencode"),
+    )
+
+    def fake_run_process(
+        command: str,
+        args: tuple[str, ...] | list[str] = (),
+        *,
+        options: object | None = None,
+        _pm: object | None = None,
+    ) -> ProcessResult:
+        del options, _pm
+        if command == "opencode" and list(args) == ["--version"]:
+            return ProcessResult((command, *args), 0, "1.15.5\n", "")
+        if command == "opencode" and list(args) == ["models", "--refresh", "minimax"]:
+            return ProcessResult((command, *args), 1, "", "Provider not found: minimax\n")
+        raise AssertionError(f"Unexpected command: {command} {list(args)}")
+
+    message = opencode.validate_local_model_support(
+        "minimax/MiniMax-M3",
+        _run_process=fake_run_process,
+    )
+
+    assert message is not None
+    assert "/first/opencode" in message
+    assert "1.15.5" in message
+    assert "/second/opencode" in message
+    assert "first 'opencode' on PATH" in message
+
+
+def test_validate_local_model_support_rejects_missing_model_after_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        opencode.shutil,
+        "which",
+        lambda command, path=None: "/chosen/opencode" if command == "opencode" else None,
+    )
+    monkeypatch.setattr(
+        opencode,
+        "_path_command_candidates",
+        lambda command, env_path=None: ("/chosen/opencode",),
+    )
+
+    def fake_run_process(
+        command: str,
+        args: tuple[str, ...] | list[str] = (),
+        *,
+        options: object | None = None,
+        _pm: object | None = None,
+    ) -> ProcessResult:
+        del options, _pm
+        if command == "opencode" and list(args) == ["--version"]:
+            return ProcessResult((command, *args), 0, "1.16.2\n", "")
+        if command == "opencode" and list(args) == ["models", "--refresh", "openai"]:
+            return ProcessResult(
+                (command, *args),
+                0,
+                "openai/gpt-5.4\nopenai/gpt-5.4-mini\n",
+                "",
+            )
+        raise AssertionError(f"Unexpected command: {command} {list(args)}")
+
+    message = opencode.validate_local_model_support(
+        "openai/gpt-5.4-pro",
+        _run_process=fake_run_process,
+    )
+
+    assert message is not None
+    assert "openai/gpt-5.4-pro" in message
+    assert "/chosen/opencode" in message
+    assert "1.16.2" in message
+    assert "openai/gpt-5.4-mini" in message

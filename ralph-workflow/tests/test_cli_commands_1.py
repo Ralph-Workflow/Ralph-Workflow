@@ -365,6 +365,7 @@ def test_generate_commit_uses_direct_opencode_model_from_commit_drain(
         commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
+    monkeypatch.setattr(commit_module, "validate_local_model_support", lambda *args, **kwargs: None)
 
     invoked_model_flags: list[str | None] = []
 
@@ -465,6 +466,7 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     _stub_commit_bridge(monkeypatch)
+    monkeypatch.setattr(commit_module, "validate_local_model_support", lambda *args, **kwargs: None)
 
     prompt_bodies: list[str] = []
 
@@ -526,6 +528,62 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
     output = stream.getvalue()
     assert "Generated commit message" in output
     assert "fix: fallback agent message" in output
+
+
+def test_generate_commit_skips_locally_unsupported_opencode_commit_agents(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stream = _attach_console(monkeypatch, commit_module)
+    monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        commit_module,
+        "load_config",
+        lambda *args, **kwargs: UnifiedConfig(
+            agent_chains={
+                "commit_chain": [
+                    "opencode/minimax/MiniMax-M2.7-highspeed",
+                    "opencode/kimi-for-coding/k2p6",
+                ]
+            },
+            agent_drains={"commit": "commit_chain", "review": "commit_chain"},
+        ),
+    )
+    monkeypatch.setattr(
+        commit_module,
+        "working_tree_diff",
+        lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
+    )
+    monkeypatch.setattr(
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+    )
+    _stub_commit_bridge(monkeypatch)
+
+    monkeypatch.setattr(
+        commit_module,
+        "validate_local_model_support",
+        lambda model_id, **kwargs: "provider unsupported"
+        if model_id == "minimax/MiniMax-M2.7-highspeed"
+        else None,
+    )
+
+    invoked_model_flags: list[str | None] = []
+
+    def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
+        invoked_model_flags.append(agent_config.model_flag)
+        write_commit_message_artifact(tmp_path, "fix: commit drain message")
+        return iter([])
+
+    monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
+
+    commit_module.commit_plumbing(
+        options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
+    )
+
+    assert invoked_model_flags == ["-m kimi-for-coding/k2p6"]
+    output = stream.getvalue()
+    assert "Generated commit message" in output
+    assert "fix: commit drain message" in output
 
 
 def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
@@ -723,6 +781,54 @@ def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
     output = stream.getvalue()
     assert "Generated commit message" in output
     assert "fix: review fallback message" in output
+
+
+def test_generate_commit_appends_default_fallback_after_configured_chain(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stream = _attach_console(monkeypatch, commit_module)
+    monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        commit_module,
+        "load_config",
+        lambda *args, **kwargs: UnifiedConfig(
+            agent_chains={"commit_chain": ["opencode/kimi-for-coding/k2p6"]},
+            agent_drains={"commit": "commit_chain", "review": "commit_chain"},
+        ),
+    )
+    monkeypatch.setattr(
+        commit_module,
+        "working_tree_diff",
+        lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
+    )
+    monkeypatch.setattr(
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+    )
+    _stub_commit_bridge(monkeypatch)
+    monkeypatch.setattr(commit_module, "validate_local_model_support", lambda *args, **kwargs: None)
+
+    invoked_commands: list[str] = []
+
+    def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
+        invoked_commands.append(agent_config.cmd)
+        if agent_config.cmd == "claude":
+            write_commit_message_artifact(tmp_path, "fix: default fallback message")
+            return iter([])
+        if len(invoked_commands) <= 2:
+            return iter([])
+        return iter([])
+
+    monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
+
+    commit_module.commit_plumbing(
+        options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
+    )
+
+    assert invoked_commands == ["opencode", "opencode", "claude"]
+    output = stream.getvalue()
+    assert "Generated commit message" in output
+    assert "fix: default fallback message" in output
 
 
 def test_generate_commit_msg_writes_commit_message_artifact(

@@ -72,6 +72,8 @@ ralph --init        # one-time setup: installs agent bundles and capabilities
 ```
 
 Full docs at [ralphworkflow.com](https://ralphworkflow.com/docs).
+Maintainers working in-repo should use `ralph-workflow/docs/sphinx/` as the canonical
+source for the published manual.
 
 1. Run `ralph --diagnose` to confirm healthy helpers
 2. Write your task in `PROMPT.md` in your project root
@@ -92,15 +94,15 @@ Example terminal output from Ralph Workflow v0.8.8 on a fresh project:
 
 | Command | Output |
 |---|---|
-| `ralph --init` | [init-output.txt](docs/sphinx/_static/demo/init-output.txt) — banner, capabilities, first-run setup |
-| `ralph --diagnose` | [diagnose-output.txt](docs/sphinx/_static/demo/diagnose-output.txt) — agent inventory, config, MCP check |
-| `ralph --dry-run` | [dry-run-output.txt](docs/sphinx/_static/demo/dry-run-output.txt) — pipeline phases and iteration plan |
+| `ralph --init` | Banner, capabilities, first-run setup |
+| `ralph --diagnose` | Agent inventory, config, MCP check |
+| `ralph --dry-run` | Pipeline phases and iteration plan |
 | ▶ **Full demo** | [![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) — watch the complete first-run flow |
 | ⭐ **Contribute** | `ralph contribute` — opens Codeberg in your browser so you can star the project |
 
 These are **unedited terminal captures** from a real run — not mock-ups.
 
-## Built-in capabilities
+**Built-in capabilities:**
 
 - **Phase routing** — planning agent → development agent → review agent → fix loop
 - **Cost arbitrage** — use cheaper agents for planning, stronger ones for coding

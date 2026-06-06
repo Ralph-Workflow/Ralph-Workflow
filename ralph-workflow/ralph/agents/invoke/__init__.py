@@ -77,6 +77,7 @@ from ralph.agents.invoke._types import (
     _PtyExtras,
 )
 from ralph.agents.invoke._workspace import WorkspaceMonitor
+from ralph.api.opencode import validate_local_model_support
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.startup import (
@@ -114,6 +115,8 @@ from ralph.timeout_defaults import (
     CHILD_PROGRESS_TTL_SECONDS,
     CHILD_STALE_LABEL_TTL_SECONDS,
 )
+
+_MODELED_FLAG_PARTS = 2
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -241,6 +244,7 @@ def invoke_agent(
         AgentInvocationError: If agent exits with non-zero code.
     """
     base_opts = options or InvokeOptions()
+    _fail_for_unsupported_local_opencode_model(config, base_opts)
     runtime = resolve_invocation_runtime(
         config,
         base_opts.extra_env,
@@ -327,6 +331,33 @@ def invoke_agent(
         _log_workspace_completion(monitor)
     finally:
         _stop_workspace_monitor(monitor)
+
+
+def _normalized_opencode_model_id(model_flag: str | None) -> str | None:
+    if not model_flag:
+        return None
+    parts = model_flag.split()
+    if len(parts) == _MODELED_FLAG_PARTS and parts[0] in {"-m", "--model"}:
+        return parts[1].removeprefix("opencode/")
+    if len(parts) == 1:
+        return parts[0].removeprefix("opencode/")
+    return None
+
+
+def _fail_for_unsupported_local_opencode_model(
+    config: AgentConfig,
+    options: InvokeOptions,
+) -> None:
+    if _agent_transport(config) != AgentTransport.OPENCODE:
+        return
+    model_id = _normalized_opencode_model_id(options.model_flag or config.model_flag)
+    if model_id is None:
+        return
+    command_name = config.cmd.split()[0]
+    message = validate_local_model_support(model_id, command=command_name)
+    if message is None:
+        return
+    raise AgentInvocationError("opencode", 1, message)
 
 
 def resolve_invocation_runtime(

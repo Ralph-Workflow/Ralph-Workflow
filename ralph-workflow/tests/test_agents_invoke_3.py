@@ -218,6 +218,41 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
     assert permission_config["ralph_*"] == "allow"
 
 
+def test_invoke_agent_fails_fast_when_local_opencode_does_not_support_model(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+        model_flag="-m opencode/minimax/MiniMax-M3",
+    )
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke.validate_local_model_support",
+        lambda model_id, **kwargs: f"invalid local model: {model_id}",
+    )
+
+    def fail_popen(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("subprocess should not be launched when preflight fails")
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fail_popen)
+
+    with pytest.raises(AgentInvocationError, match="invalid local model: minimax/MiniMax-M3"):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False),
+                _clock=FakeClock(),
+            )
+        )
+
+
 def test_invoke_agent_merges_existing_opencode_config_content(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

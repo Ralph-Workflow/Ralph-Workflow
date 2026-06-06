@@ -25,6 +25,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.git.operations import GitOperationError
+from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
 
 _OUTPUT_BATCH = 400
@@ -189,6 +190,46 @@ def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
     )
 
 
+def test_commit_invocation_requires_commit_message_artifact(tmp_path: Path) -> None:
+    prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text("Generate a commit message.", encoding="utf-8")
+
+    attempt_context = CommitAttemptContext(
+        repo_root=tmp_path,
+        verbose=False,
+        extra_env={},
+    )
+    display_context = make_display_context()
+
+    captured_options = []
+
+    def fake_invoke_agent(agent: object, prompt_file: object, *, options: object = None) -> object:
+        del agent, prompt_file
+        captured_options.append(options)
+        return iter([])
+
+    with (
+        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
+        patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
+        patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
+        patch("ralph.cli.commands.commit.read_commit_message_artifact", return_value=None),
+    ):
+        invoke_commit_agent_attempt(
+            _claude_commit_agent(),
+            prompt_file=str(prompt_file),
+            attempt_context=attempt_context,
+            display_context=display_context,
+        )
+
+    assert len(captured_options) == 1
+    opts = captured_options[0]
+    assert opts.required_artifact is not None
+    assert opts.required_artifact.artifact_type == "commit_message"
+    assert opts.required_artifact.json_path == ".agent/tmp/commit_message.json"
+    assert opts.required_artifact.artifact_required is True
+
+
 def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() -> None:
     display_context = make_display_context()
     session_line = '{"session_id":"sess-early"}'
@@ -205,6 +246,68 @@ def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() 
     assert resume_session_id == "sess-early"
     assert len(raw_output) < _OUTPUT_BATCH
     assert len(parsed_output) < _OUTPUT_BATCH
+
+
+def test_commit_invocation_recovers_direct_commit_artifact_payload_from_output(tmp_path: Path) -> None:
+    prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text("Generate a commit message.", encoding="utf-8")
+    display_context = make_display_context()
+
+    agent = AgentConfig(cmd="agent", can_commit=True, json_parser=JsonParserType.GENERIC)
+
+    def fake_invoke_agent(_agent: object, *_args: object, **_kwargs: object) -> object:
+        return iter(
+            [
+                '{"artifact_type":"commit_message","content":{"type":"commit","subject":"fix: recovered from output"}}'
+            ]
+        )
+
+    with (
+        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
+        patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
+    ):
+        attempt = invoke_commit_agent_attempt(
+            agent,
+            prompt_file=str(prompt_file),
+            attempt_context=CommitAttemptContext(repo_root=tmp_path, verbose=False, extra_env={}),
+            display_context=display_context,
+        )
+
+    assert attempt.failure_detail == ""
+    assert attempt.message == "fix: recovered from output"
+    assert read_commit_message_artifact(tmp_path) == "fix: recovered from output"
+
+
+def test_commit_invocation_recovers_prefixed_commit_artifact_payload_from_output(tmp_path: Path) -> None:
+    prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text("Generate a commit message.", encoding="utf-8")
+    display_context = make_display_context()
+
+    agent = AgentConfig(cmd="agent", can_commit=True, json_parser=JsonParserType.GENERIC)
+
+    def fake_invoke_agent(_agent: object, *_args: object, **_kwargs: object) -> object:
+        return iter(
+            [
+                'claude raw: {"artifact_type":"commit_message","content":{"type":"commit","subject":"fix: prefixed recovery"}}'
+            ]
+        )
+
+    with (
+        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
+        patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
+    ):
+        attempt = invoke_commit_agent_attempt(
+            agent,
+            prompt_file=str(prompt_file),
+            attempt_context=CommitAttemptContext(repo_root=tmp_path, verbose=False, extra_env={}),
+            display_context=display_context,
+        )
+
+    assert attempt.failure_detail == ""
+    assert attempt.message == "fix: prefixed recovery"
+    assert read_commit_message_artifact(tmp_path) == "fix: prefixed recovery"
 
 
 def test_handle_agent_commit_generation_reports_stage_failure_without_traceback(

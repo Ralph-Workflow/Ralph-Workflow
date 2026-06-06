@@ -603,7 +603,7 @@ def test_cleanup_base_enforces_total_byte_budget_across_idle_slots(
 ) -> None:
     manager = exec_sandbox.ExecSandboxManager(
         base_dir=tmp_path / "exec-base",
-        max_total_bytes=100,
+        max_total_bytes=250,
         max_pool_bytes=1_024,
         max_idle_slot_age_s=60.0,
         max_idle_pool_age_s=60.0,
@@ -622,26 +622,28 @@ def test_cleanup_base_enforces_total_byte_budget_across_idle_slots(
         slot_root = manager._slot_root(pool_root, workspace_key, slot_index)
         ws_root = slot_root / "ws"
         ws_root.mkdir(parents=True)
-        (slot_root / ".ralph-sandbox-ready").write_text('{"ready": true}', encoding="utf-8")
+        ready_path = slot_root / ".ralph-sandbox-ready"
+        ready_path.write_text('{"ready": true}', encoding="utf-8")
         pid, started_at = exec_sandbox._current_process_identity()
         payload: dict[str, int | float] = {"pid": pid}
         if started_at is not None:
             payload["started_at"] = started_at
-        (slot_root / ".ralph-exec-owner.json").write_text(
-            json.dumps(payload), encoding="utf-8"
-        )
+        owner_path = slot_root / ".ralph-exec-owner.json"
+        owner_path.write_text(json.dumps(payload), encoding="utf-8")
         (ws_root / "payload.bin").write_bytes(b"x" * size)
         os.utime(slot_root, (mtime, mtime))
         os.utime(ws_root, (mtime, mtime))
+        os.utime(ready_path, (mtime, mtime))
+        os.utime(owner_path, (mtime, mtime))
         return slot_root
 
     now = tmp_path.stat().st_mtime
-    oldest = seed_idle_slot(workspace_a, 1, 32, now - 2.0)
-    newest = seed_idle_slot(workspace_b, 1, 32, now - 1.0)
+    oldest = seed_idle_slot(workspace_a, 1, 140, now - 2.0)
+    newest = seed_idle_slot(workspace_b, 1, 140, now - 1.0)
 
     summary = manager.cleanup_base()
 
-    assert summary.remaining_bytes <= 100
+    assert summary.remaining_bytes <= 250
     assert not oldest.exists()
     assert newest.exists()
 

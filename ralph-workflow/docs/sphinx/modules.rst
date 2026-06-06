@@ -215,6 +215,13 @@ ralph.cli.commands.commit
    :members:
    :show-inheritance:
 
+ralph.cli.commands.contribute
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.cli.commands.contribute
+   :members:
+   :show-inheritance:
+
 ralph.cli.commands.diagnose
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

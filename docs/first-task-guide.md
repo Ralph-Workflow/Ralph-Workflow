@@ -110,8 +110,8 @@ Need more examples? See the [first-task prompt templates](./first-task-prompt-te
 ## Step 3: Start the run and walk away
 
 ```bash
-pip install ralph-workflow
-ralph --pipeline build
+pipx install ralph-workflow
+ralph
 ```
 
 That is it. Ralph Workflow takes over from here:

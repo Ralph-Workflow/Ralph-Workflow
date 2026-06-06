@@ -29,7 +29,9 @@ def _build_banner() -> Text:
         "  [theme.text.muted]Multi-agent AI orchestration pipeline[/theme.text.muted]\n"
         "\n"
         "  [bold]⭐ Star &amp; fork the project[/bold]\n"
-        "  [theme.text.muted]Every star helps more developers discover the tool.[/theme.text.muted]\n"
+        "  [theme.text.muted]"
+        "Every star helps more developers discover the tool."
+        "[/theme.text.muted]\n"
     )
 
 
@@ -85,7 +87,7 @@ def contribute(
     except Exception as exc:
         typer.echo(f"Could not open browser: {exc}", err=True)
         typer.echo(f"Visit: {url}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
 
     if not opened:
         typer.echo(f"Could not open browser automatically. Visit: {url}")

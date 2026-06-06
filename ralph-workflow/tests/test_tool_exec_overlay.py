@@ -193,10 +193,11 @@ def test_git_state_fingerprint_changes_when_branch_commit_changes(tmp_path: Path
     gitdir.mkdir()
     (gitdir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
     (gitdir / "refs" / "heads").mkdir(parents=True)
-    (gitdir / "refs" / "heads" / "main").write_text("abc\n", encoding="utf-8")
+    ref_path = gitdir / "refs" / "heads" / "main"
+    ref_path.write_text("abc\n", encoding="utf-8")
     fp1 = exec_overlay._git_state_fingerprint(gitdir)
 
-    (gitdir / "refs" / "heads" / "main").write_text("def\n", encoding="utf-8")
+    ref_path.write_text("different-commit\n", encoding="utf-8")
     fp2 = exec_overlay._git_state_fingerprint(gitdir)
 
     assert fp1 != fp2
