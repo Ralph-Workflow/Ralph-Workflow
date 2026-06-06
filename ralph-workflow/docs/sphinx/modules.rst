@@ -250,6 +250,13 @@ ralph.cli.commands.smoke
    :members:
    :show-inheritance:
 
+ralph.cli.commands.star
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.cli.commands.star
+   :members:
+   :show-inheritance:
+
 ralph.cli.commands.check_policy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

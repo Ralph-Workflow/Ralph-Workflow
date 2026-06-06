@@ -39,7 +39,12 @@ def star(
                 typer.style("   → Opened in browser. Click ⭐ to star!", fg=typer.colors.GREEN)
             )
         except Exception:
-            typer.echo(typer.style("   (browser could not be opened — copy the link above)", fg=typer.colors.YELLOW))
+            typer.echo(
+                typer.style(
+                    "   (browser could not be opened — copy the link above)",
+                    fg=typer.colors.YELLOW,
+                )
+            )
     else:
         typer.echo("   (use without --no-browser to open in your browser)")
     typer.echo("")
