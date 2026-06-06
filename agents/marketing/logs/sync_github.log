@@ -4285,3 +4285,37 @@
 [2026-06-06 18:38:12] Checking GitHub README for mirror notice...
 [2026-06-06 18:38:13] GitHub README does not match mirror notice — overwriting
 [2026-06-06 18:38:15] GitHub README overwritten with mirror notice
+[2026-06-06 19:10:51] Starting Codeberg -> GitHub sync
+[2026-06-06 19:10:51] Updating existing sync clone
+[2026-06-06 19:10:57] Codeberg is 0 commits ahead of GitHub, GitHub is 1 commits ahead
+[2026-06-06 19:10:57] WARNING: GitHub is 1 commits ahead of Codeberg — force-pushing Codeberg state
+[2026-06-06 19:10:59] Force sync complete
+[2026-06-06 19:10:59] Checking GitHub README for mirror notice...
+[2026-06-06 19:11:00] GitHub README does not match mirror notice — overwriting
+[2026-06-06 19:11:03] GitHub README overwritten with mirror notice
+[2026-06-06 19:11:09] Starting Codeberg -> GitHub sync
+[2026-06-06 19:11:09] Updating existing sync clone
+[2026-06-06 19:11:13] Codeberg is 0 commits ahead of GitHub, GitHub is 1 commits ahead
+[2026-06-06 19:11:13] WARNING: GitHub is 1 commits ahead of Codeberg — force-pushing Codeberg state
+[2026-06-06 19:11:15] Force sync complete
+[2026-06-06 19:11:15] Checking GitHub README for mirror notice...
+[2026-06-06 19:11:17] GitHub README does not match mirror notice — overwriting
+[2026-06-06 19:11:18] GitHub README overwritten with mirror notice
+[2026-06-06 19:34:34] Starting Codeberg -> GitHub sync
+[2026-06-06 19:34:34] Creating dedicated sync clone in /tmp/ralph-github-sync
+[2026-06-06 19:34:58] Codeberg is 0 commits ahead of GitHub, GitHub is 1 commits ahead
+[2026-06-06 19:34:58] WARNING: GitHub is 1 commits ahead of Codeberg — force-pushing Codeberg state
+[2026-06-06 19:34:58] Sync already running, skipping
+[2026-06-06 19:35:00] Force sync complete
+[2026-06-06 19:35:00] Checking GitHub README for mirror notice...
+[2026-06-06 19:35:00] Sync already running, skipping
+[2026-06-06 19:35:01] GitHub README does not match mirror notice — overwriting
+[2026-06-06 19:35:04] GitHub README overwritten with mirror notice
+[2026-06-06 20:06:02] Starting Codeberg -> GitHub sync
+[2026-06-06 20:06:02] Updating existing sync clone
+[2026-06-06 20:06:05] Codeberg is 4 commits ahead of GitHub, GitHub is 1 commits ahead
+[2026-06-06 20:06:05] WARNING: Histories diverged. Codeberg 4 ahead, GitHub 1 ahead — force-pushing Codeberg
+[2026-06-06 20:06:07] Force sync complete
+[2026-06-06 20:06:07] Checking GitHub README for mirror notice...
+[2026-06-06 20:06:09] GitHub README does not match mirror notice — overwriting
+[2026-06-06 20:06:11] GitHub README overwritten with mirror notice
