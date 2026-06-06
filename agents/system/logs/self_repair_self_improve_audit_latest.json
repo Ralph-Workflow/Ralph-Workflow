@@ -1,6 +1,6 @@
 {
   "schema_version": "ecc.self-repair-self-improve-audit.v1",
-  "checked_at": "2026-06-06T00:04:34.499475+02:00",
+  "checked_at": "2026-06-06T03:04:56.632191+02:00",
   "total_loops_audited": 19,
   "loops_with_self_repair": 18,
   "loops_with_self_improve": 18,
@@ -36,48 +36,6 @@
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
-      "job": "pypi-auto-unblocker",
-      "script": "UNKNOWN",
-      "has_self_repair": false,
-      "sr_detail": "no_script_found",
-      "needs_self_repair": false,
-      "has_self_improve": false,
-      "si_detail": "no_script_found",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": true,
-      "job_id": "f136f614-0183-464a-b064-fa3fa953ad3e",
-      "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "marketing-churn-watchdog",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/churn_escalation_watchdog.py",
-      "has_self_repair": true,
-      "sr_detail": "is_watchdog_for:marketing_loop_runner.py",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:self_improv",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "6685e8b4-50be-47ca-9a3a-9f0f86ba5415",
-      "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "marketing-active-loop",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_runner.py",
-      "has_self_repair": true,
-      "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
-      "model": "openrouter/deepseek/deepseek-v4-pro"
-    },
-    {
       "job": "Push research findings to git repo",
       "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
       "has_self_repair": true,
@@ -90,34 +48,6 @@
       "self_improve_missing": false,
       "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
       "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "marketing-outcome-capability-runner",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/outcome_capability_runner.py",
-      "has_self_repair": true,
-      "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "6571aec7-c6bd-4e1c-99e5-0f0b7efaabee",
-      "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "ralph-workflow-docs-verifier-supervisor",
-      "script": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-      "has_self_repair": true,
-      "sr_detail": "patterns:stale_artifact,auto_?repair,health_.*monitor",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:Verifier artifact,verifier artifact,verdict\": \"pass",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "49041897-5970-4473-9732-7e69d74b0e5a",
-      "model": "openrouter/deepseek/deepseek-v4-pro"
     },
     {
       "job": "repo-adoption-tracker",
@@ -159,6 +89,34 @@
       "self_repair_missing": false,
       "self_improve_missing": false,
       "job_id": "a49ec2cc-8343-45bf-a52e-eff8b0975585",
+      "model": "openrouter/deepseek/deepseek-v4-pro"
+    },
+    {
+      "job": "pypi-auto-unblocker",
+      "script": "UNKNOWN",
+      "has_self_repair": false,
+      "sr_detail": "no_script_found",
+      "needs_self_repair": false,
+      "has_self_improve": false,
+      "si_detail": "no_script_found",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": true,
+      "job_id": "f136f614-0183-464a-b064-fa3fa953ad3e",
+      "model": "minimax/MiniMax-M2.7-highspeed"
+    },
+    {
+      "job": "marketing-active-loop",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_runner.py",
+      "has_self_repair": true,
+      "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
+      "needs_self_repair": true,
+      "has_self_improve": true,
+      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
       "model": "openrouter/deepseek/deepseek-v4-pro"
     },
     {
@@ -218,6 +176,20 @@
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
+      "job": "marketing-churn-watchdog",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/churn_escalation_watchdog.py",
+      "has_self_repair": true,
+      "sr_detail": "is_watchdog_for:marketing_loop_runner.py",
+      "needs_self_repair": true,
+      "has_self_improve": true,
+      "si_detail": "patterns:self_improv",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "6685e8b4-50be-47ca-9a3a-9f0f86ba5415",
+      "model": "minimax/MiniMax-M2.7-highspeed"
+    },
+    {
       "job": "marketing-workflow-audit",
       "script": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_workflow_audit.py",
       "has_self_repair": true,
@@ -272,6 +244,34 @@
       "self_improve_missing": false,
       "job_id": "0251da77-feaa-40ee-837e-7bc10895dc87",
       "model": "minimax/MiniMax-M2.7-highspeed"
+    },
+    {
+      "job": "marketing-outcome-capability-runner",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/outcome_capability_runner.py",
+      "has_self_repair": true,
+      "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
+      "needs_self_repair": true,
+      "has_self_improve": true,
+      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "6571aec7-c6bd-4e1c-99e5-0f0b7efaabee",
+      "model": "minimax/MiniMax-M2.7-highspeed"
+    },
+    {
+      "job": "ralph-workflow-docs-verifier-supervisor",
+      "script": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
+      "has_self_repair": true,
+      "sr_detail": "patterns:stale_artifact,auto_?repair,health_.*monitor",
+      "needs_self_repair": true,
+      "has_self_improve": true,
+      "si_detail": "patterns:Verifier artifact,verifier artifact,verdict\": \"pass",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "49041897-5970-4473-9732-7e69d74b0e5a",
+      "model": "openrouter/deepseek/deepseek-v4-pro"
     }
   ],
   "findings": [
