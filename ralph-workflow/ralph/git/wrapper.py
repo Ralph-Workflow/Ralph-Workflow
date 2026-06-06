@@ -32,15 +32,17 @@ def start_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) 
     repo = Repo(repo_root)
     helpers = helpers or GitHelpers()
     helpers.wrapper_repo_root = Path(repo_root)
+    try:
+        ralph_dir = _ensure_ralph_dir(repo)
+        helpers.wrapper_dir = ralph_dir
 
-    ralph_dir = _ensure_ralph_dir(repo)
-    helpers.wrapper_dir = ralph_dir
-
-    _write_marker(ralph_dir)
-    _write_track_file(ralph_dir)
-    _capture_head_oid(repo, ralph_dir)
-    _store_previous_hooks_path(repo, ralph_dir)
-    _set_hooks_path(repo, ralph_dir)
+        _write_marker(ralph_dir)
+        _write_track_file(ralph_dir)
+        _capture_head_oid(repo, ralph_dir)
+        _store_previous_hooks_path(repo, ralph_dir)
+        _set_hooks_path(repo, ralph_dir)
+    finally:
+        repo.close()
 
 
 def end_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) -> None:
@@ -48,33 +50,38 @@ def end_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) ->
     repo = Repo(repo_root)
     helpers = helpers or GitHelpers()
     helpers.wrapper_repo_root = Path(repo_root)
-
-    ralph_dir = _ralph_dir_from_repo(repo)
-    _restore_hooks_path(repo, ralph_dir)
-    _remove_marker(ralph_dir)
-    _remove_head_oid(ralph_dir)
-    _remove_track_file(ralph_dir)
+    try:
+        ralph_dir = _ralph_dir_from_repo(repo)
+        _restore_hooks_path(repo, ralph_dir)
+        _remove_marker(ralph_dir)
+        _remove_head_oid(ralph_dir)
+        _remove_track_file(ralph_dir)
+    finally:
+        repo.close()
 
 
 def detect_unauthorized_commit(repo_root: Path | str) -> bool:
     """Return True if the HEAD OID no longer matches the stored baseline."""
 
     repo = Repo(repo_root)
-    ralph_dir = _ralph_dir_from_repo(repo)
-    head_file = ralph_dir / HEAD_OID_FILENAME
-    if not head_file.exists():
-        return False
-
-    stored_oid = head_file.read_text().strip()
-    if not stored_oid:
-        return False
-
     try:
-        current_head = repo.head.commit.hexsha
-    except (ValueError, GitCommandError):
-        return False
+        ralph_dir = _ralph_dir_from_repo(repo)
+        head_file = ralph_dir / HEAD_OID_FILENAME
+        if not head_file.exists():
+            return False
 
-    return current_head != stored_oid
+        stored_oid = head_file.read_text().strip()
+        if not stored_oid:
+            return False
+
+        try:
+            current_head = repo.head.commit.hexsha
+        except (ValueError, GitCommandError):
+            return False
+
+        return current_head != stored_oid
+    finally:
+        repo.close()
 
 
 def _ensure_ralph_dir(repo: Repo) -> Path:

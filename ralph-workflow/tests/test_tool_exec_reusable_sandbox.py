@@ -648,6 +648,145 @@ def test_cleanup_base_enforces_total_byte_budget_across_idle_slots(
     assert newest.exists()
 
 
+def test_acquire_recovers_over_capacity_base_wide_reclaimable_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_total_bytes=50,
+        max_pool_bytes=1_024,
+        max_idle_slot_age_s=3600.0,
+        max_idle_pool_age_s=3600.0,
+    )
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", manager._path_size_bytes)
+
+    workspace_key = exec_sandbox._workspace_key(workspace)
+    sibling_workspace = tmp_path / "sibling-workspace"
+    sibling_key = exec_sandbox._workspace_key(sibling_workspace)
+
+    base = manager._base_dir
+    base.mkdir(parents=True, exist_ok=True)
+
+    # Seed 1: root-level non-lock file — ignored by normal cleanup
+    root_file = base / "root_legacy.bin"
+    root_file.write_bytes(b"x" * 35)
+
+    # Seed 2: root-level orphan dir — too young for normal pool expiry
+    orphan_dir = base / "orphan_dir"
+    orphan_dir.mkdir()
+    (orphan_dir / "data.bin").write_bytes(b"x" * 35)
+
+    # Seed 3: sibling pool with non-slot garbage — young, not expired
+    sibling_pool = base / sibling_key
+    sibling_pool.mkdir()
+    sibling_garbage = sibling_pool / "garbage.bin"
+    sibling_garbage.write_bytes(b"x" * 35)
+
+    # Seed 4: current workspace pool with non-slot legacy garbage
+    current_pool = base / workspace_key
+    current_pool.mkdir()
+    current_legacy = current_pool / "legacy.bin"
+    current_legacy.write_bytes(b"x" * 35)
+
+    # Total = 35 * 4 = 140 bytes > hard cap (50 * 2 = 100)
+    # Normal cleanup cannot remove these: no slot dirs, pools too young to expire
+
+    with manager.acquire(workspace) as sandbox:
+        assert sandbox.exists()
+
+    assert not root_file.exists(), "root-level non-lock file must be removed by recovery"
+    assert not orphan_dir.exists(), "root-level orphan directory must be removed by recovery"
+    assert not sibling_garbage.exists(), "sibling pool garbage must be removed by recovery"
+    assert not current_legacy.exists(), "current pool legacy garbage must be removed by recovery"
+
+
+def test_acquire_recovers_over_capacity_preserving_live_slot_when_garbage_is_reclaimable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_total_bytes=50,
+        max_pool_bytes=1_024,
+        max_slots=4,
+        max_idle_slot_age_s=3600.0,
+        max_idle_pool_age_s=3600.0,
+    )
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", manager._path_size_bytes)
+
+    workspace_key = exec_sandbox._workspace_key(workspace)
+    base = manager._base_dir
+    pool_root = base / workspace_key
+    slot_1 = manager._slot_root(pool_root, workspace_key, 1)
+    slot_1.mkdir(parents=True)
+
+    pid, started_at = exec_sandbox._current_process_identity()
+    live_payload: dict[str, int | float] = {"pid": pid}
+    if started_at is not None:
+        live_payload["started_at"] = started_at
+    lock_path = manager._lock_path(slot_1)
+    lock_path.write_text(json.dumps(live_payload), encoding="utf-8")
+    live_payload_file = slot_1 / "live_payload.bin"
+    live_payload_file.write_bytes(b"x" * 20)
+
+    # Reclaimable root garbage pushes total over hard cap: 20 + 90 = 110 > 100
+    root_garbage = base / "reclaimable.bin"
+    root_garbage.write_bytes(b"x" * 90)
+
+    try:
+        with manager.acquire(workspace) as sandbox:
+            assert sandbox.exists()
+            assert lock_path.exists(), "live slot lock must be preserved during recovery"
+            assert live_payload_file.exists(), "live slot payload must be preserved during recovery"
+            assert not root_garbage.exists(), "reclaimable garbage must be removed by recovery"
+    finally:
+        lock_path.unlink(missing_ok=True)
+
+
+def test_acquire_reports_unrecoverable_over_capacity_without_deleting_live_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_total_bytes=50,
+        max_pool_bytes=1_024,
+        max_idle_slot_age_s=3600.0,
+        max_idle_pool_age_s=3600.0,
+    )
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", manager._path_size_bytes)
+
+    workspace_key = exec_sandbox._workspace_key(workspace)
+    base = manager._base_dir
+    pool_root = base / workspace_key
+    slot_1 = manager._slot_root(pool_root, workspace_key, 1)
+    slot_1.mkdir(parents=True)
+
+    pid, started_at = exec_sandbox._current_process_identity()
+    live_payload: dict[str, int | float] = {"pid": pid}
+    if started_at is not None:
+        live_payload["started_at"] = started_at
+    lock_path = manager._lock_path(slot_1)
+    lock_path.write_text(json.dumps(live_payload), encoding="utf-8")
+    live_large_file = slot_1 / "live_large.bin"
+    live_large_file.write_bytes(b"x" * 110)  # 110 > hard cap 100, cannot be reclaimed
+
+    try:
+        with pytest.raises(exec_sandbox.ExecutionError, match="automatic reset"), manager.acquire(
+            workspace
+        ):
+            pass
+
+        assert lock_path.exists(), "live lock must be preserved after failed recovery"
+        assert live_large_file.exists(), "live payload must be preserved after failed recovery"
+    finally:
+        lock_path.unlink(missing_ok=True)
+
+
 def test_reusable_sandbox_rejects_workspace_copy_over_hard_byte_cap(
     tmp_path: Path,
 ) -> None:

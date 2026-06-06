@@ -66,7 +66,7 @@ class ExecutionError(ToolError):
         return base
 
     def _render_cache_full(self) -> str:
-        lines: list[str] = ["Error: Exec cache exceeds capacity after cleanup"]
+        lines: list[str] = ["Error: Exec cache exceeds capacity after automatic reset"]
         if self.current_bytes is not None:
             lines.append(f"  Current usage: {self.current_bytes} bytes")
         if self.cap_bytes is not None:
@@ -76,12 +76,12 @@ class ExecutionError(ToolError):
             removed_b = self.removed_bytes or 0
             remaining = self.remaining_bytes or 0
             lines.append(
-                f"  Last cleanup: removed {removed_p} paths ({removed_b} bytes), "
+                f"  Cleanup+reset: removed {removed_p} paths ({removed_b} bytes), "
                 f"{remaining} bytes remaining"
             )
         lines.append(
-            "  Suggestion: Run force_clear_workspace to reset cache, "
-            "or increase max_total_bytes"
+            "  Remaining bytes usually indicate active/live exec slots, "
+            "unacquirable locks, or filesystem permission issues"
         )
         if self.diagnostics:
             lines.append(f"  Diagnostics: {self.diagnostics}")
@@ -96,8 +96,8 @@ class ExecutionError(ToolError):
         if self.last_error:
             lines.append(f"  Last error: {self.last_error}")
         lines.append(
-            "  Suggestion: Wait for cooldown to expire, "
-            "or run force_clear_workspace to reset"
+            "  Wait for cooldown to expire then retry; "
+            "check for permission issues or stale locks if the problem persists"
         )
         if self.diagnostics:
             lines.append(f"  Diagnostics: {self.diagnostics}")

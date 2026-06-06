@@ -54,8 +54,11 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
 
     with suppress(InvalidGitRepositoryError):
         repo = Repo(repo_root_path)
-        with suppress(Exception):
-            repo.git.rm("--cached", "--", relative_path)
+        try:
+            with suppress(Exception):
+                repo.git.rm("--cached", "--", relative_path)
+        finally:
+            repo.close()
 
     with suppress(OSError):
         target.unlink(missing_ok=True)
@@ -70,17 +73,20 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
         patterns: List of patterns to add to exclude.
     """
     repo = Repo(repo_root, search_parent_directories=False)
-    exclude_path = Path(repo.git_dir) / "info" / "exclude"
-    exclude_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        exclude_path = Path(repo.git_dir) / "info" / "exclude"
+        exclude_path.parent.mkdir(parents=True, exist_ok=True)
 
-    existing: set[str] = set()
-    if exclude_path.exists():
-        existing = set(exclude_path.read_text().splitlines())
+        existing: set[str] = set()
+        if exclude_path.exists():
+            existing = set(exclude_path.read_text().splitlines())
 
-    new_patterns = [p for p in patterns if p not in existing]
-    if new_patterns:
-        with exclude_path.open("a", encoding="utf-8") as f:
-            if new_patterns[0]:
-                f.write("\n")
-            f.write("\n".join(new_patterns))
-        logger.debug("Added {} patterns to .git/info/exclude", len(new_patterns))
+        new_patterns = [p for p in patterns if p not in existing]
+        if new_patterns:
+            with exclude_path.open("a", encoding="utf-8") as f:
+                if new_patterns[0]:
+                    f.write("\n")
+                f.write("\n".join(new_patterns))
+            logger.debug("Added {} patterns to .git/info/exclude", len(new_patterns))
+    finally:
+        repo.close()

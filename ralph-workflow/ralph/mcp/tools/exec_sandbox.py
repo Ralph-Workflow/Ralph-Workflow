@@ -212,21 +212,7 @@ class ExecSandboxManager:
                 last_error=self._last_cleanup_error or "unknown",
             )
         summary = self._pre_acquire_cleanup()
-        if (
-            self._max_total_bytes > 0
-            and summary.remaining_bytes > self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
-        ):
-            cap = self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
-            diag = self._try_cache_diagnostics()
-            raise ExecutionError(
-                "exec cache exceeds hard cap even after cleanup",
-                current_bytes=summary.remaining_bytes,
-                cap_bytes=cap,
-                removed_paths=summary.removed_paths,
-                removed_bytes=summary.removed_bytes,
-                remaining_bytes=summary.remaining_bytes,
-                diagnostics=diag,
-            )
+        summary = self._check_and_recover_capacity(workspace_root, summary)
         workspace_bytes = self._workspace_size_bytes(workspace_root)
         if workspace_bytes > self._max_workspace_bytes:
             raise OSError(
@@ -304,6 +290,157 @@ class ExecSandboxManager:
         except Exception:
             self._record_cleanup_failure()
             raise
+
+    def _check_and_recover_capacity(
+        self, workspace_root: Path, summary: ExecCacheCleanupSummary
+    ) -> ExecCacheCleanupSummary:
+        """After normal cleanup: attempt emergency recovery if still over hard cap."""
+        if (
+            self._max_total_bytes <= 0
+            or summary.remaining_bytes <= self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
+        ):
+            return summary
+        recovery = self._recover_over_capacity_base_wide(_workspace_key(workspace_root))
+        combined = ExecCacheCleanupSummary(
+            removed_paths=summary.removed_paths + recovery.removed_paths,
+            removed_bytes=summary.removed_bytes + recovery.removed_bytes,
+            remaining_bytes=recovery.remaining_bytes,
+        )
+        self._last_cleanup_summary = combined
+        if combined.remaining_bytes <= self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER:
+            return combined
+        cap = self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
+        diag = self._try_cache_diagnostics()
+        raise ExecutionError(
+            "exec cache exceeds hard cap even after automatic reset",
+            current_bytes=combined.remaining_bytes,
+            cap_bytes=cap,
+            removed_paths=combined.removed_paths,
+            removed_bytes=combined.removed_bytes,
+            remaining_bytes=combined.remaining_bytes,
+            diagnostics=diag,
+        )
+
+    def _recover_over_capacity_base_wide(
+        self, current_workspace_key: str
+    ) -> ExecCacheCleanupSummary:
+        """Emergency base-wide sweep: stage reclaimable base-dir entries for deletion.
+
+        Lock order: base_lock -> pool_lock (never reversed). Deletion happens outside
+        locks. One du recomputation after deletion.
+        """
+        staged_dirs: list[Path] = []
+        staged_files: list[Path] = []
+        cleanup_entered = False
+        try:
+            with self._base_lock():
+                cleanup_entered = True
+                for child in list(self._base_dir.iterdir()):
+                    self._stage_base_child_for_recovery_locked(
+                        child, current_workspace_key, staged_dirs, staged_files
+                    )
+        except ExecSandboxBusyError:
+            pass
+        except Exception:
+            self._record_cleanup_failure()
+            raise
+
+        removed_paths = 0
+        for f in staged_files:
+            with suppress(OSError):
+                f.unlink(missing_ok=True)
+                removed_paths += 1
+        for d in staged_dirs:
+            if d.exists():
+                self._rmtree_with_escalation(d)
+                removed_paths += 1
+
+        remaining = self._path_size_bytes_via_du(self._base_dir)
+        if cleanup_entered:
+            self._record_cleanup_success()
+        return ExecCacheCleanupSummary(
+            removed_paths=removed_paths,
+            removed_bytes=0,
+            remaining_bytes=remaining,
+        )
+
+    def _stage_base_child_for_recovery_locked(
+        self,
+        child: Path,
+        current_workspace_key: str,
+        staged_dirs: list[Path],
+        staged_files: list[Path],
+    ) -> None:
+        """Classify and stage one base-dir child for emergency recovery (under base_lock)."""
+        name = child.name
+        if name == _BASE_LOCK_FILE:
+            return
+        if name.startswith(_TRASH_PREFIX):
+            staged_dirs.append(child)
+            return
+        if not child.is_dir(follow_symlinks=False):
+            if child.is_file(follow_symlinks=False):
+                staged_files.append(child)
+            return
+        is_pool = len(name) == _KEY_LENGTH and all(c in "0123456789abcdef" for c in name)
+        if not is_pool:
+            staged = self._stage_dir_for_deletion(child)
+            if staged is not None:
+                staged_dirs.append(staged)
+            return
+        if name == current_workspace_key:
+            staged_dirs.extend(self._recover_current_pool_locked(child, current_workspace_key))
+            return
+        if self._pool_lock_is_live(child) or self._pool_has_live_leases(child):
+            return
+        staged = self._stage_locked_pool_dir_for_deletion(child)
+        if staged is not None:
+            staged_dirs.append(staged)
+            self._managed_workspace_keys.discard(name)
+            self._pool_state_cache.pop(str(child), None)
+
+    def _recover_current_pool_locked(self, pool_root: Path, workspace_key: str) -> list[Path]:
+        """Under base_lock: recover reclaimable data from the current workspace pool.
+
+        When no live slot lock exists, stages the whole pool. Otherwise acquires
+        pool_lock and stages only non-live slots and non-lock garbage children.
+        """
+        staged: list[Path] = []
+        if not pool_root.exists():
+            return staged
+        has_live = any(
+            self._slot_is_locked_by_live_process(slot_root)
+            for slot_root in self._all_slot_dirs(pool_root)
+        )
+        if not has_live:
+            staged_path = self._stage_locked_pool_dir_for_deletion(pool_root)
+            if staged_path is not None:
+                staged.append(staged_path)
+                self._managed_workspace_keys.discard(workspace_key)
+                self._pool_state_cache.pop(str(pool_root), None)
+            return staged
+        try:
+            with self._pool_lock(pool_root):
+                for child in list(pool_root.iterdir()):
+                    cname = child.name
+                    if cname in {_POOL_LOCK_FILE, _POOL_STATE_FILE}:
+                        continue
+                    if child.is_dir(follow_symlinks=False) and cname.startswith(_SLOT_PREFIX):
+                        if not self._slot_is_locked_by_live_process(child):
+                            staged_path = self._stage_dir_for_deletion(child)
+                            if staged_path is not None:
+                                staged.append(staged_path)
+                    elif child.is_file(follow_symlinks=False):
+                        with suppress(OSError):
+                            child.unlink(missing_ok=True)
+                    elif child.is_dir(follow_symlinks=False):
+                        staged_path = self._stage_dir_for_deletion(child)
+                        if staged_path is not None:
+                            staged.append(staged_path)
+                self._pool_state_cache.pop(str(pool_root), None)
+        except ExecSandboxBusyError:
+            pass
+        return staged
 
     def _reset(self, workspace_root: Path, sandbox_root: Path, worktree: Path) -> None:
         if not self._is_ready(sandbox_root):
@@ -1027,50 +1164,6 @@ class ExecSandboxManager:
             )
         except Exception:
             return None
-
-    def force_clear_workspace(self, workspace_root: Path) -> None:
-        """Emergency admin method: force-clear all slots for a workspace.
-
-        Acquires ``_base_lock``, ignores cooldown, locates the pool by
-        workspace key, skips any slot whose lock is held by a live process,
-        removes all other slots, resets pool state, and removes the workspace
-        key from tracked keys.
-
-        Safety: refuses to clear if the calling process owns any locked slot
-        in that pool (prevents self-deletion).
-
-        This is NOT for routine use — it is an emergency recovery path for
-        stuck-cache scenarios.
-        """
-        workspace_key = _workspace_key(workspace_root)
-        pool_root = self._base_dir / workspace_key
-        if not pool_root.exists():
-            return
-
-        # Safety: refuse self-deletion
-        if self._pool_owned_by_current_process(pool_root):
-            return
-
-        self._acquire_named_lock(self._base_lock_path())
-        try:
-            for slot_root in list(self._all_slot_dirs(pool_root)):
-                if self._slot_is_locked_by_live_process(slot_root):
-                    continue
-                shutil.rmtree(slot_root, ignore_errors=True)
-            # Reset pool state
-            state_path = self._pool_state_path(pool_root)
-            state_path.unlink(missing_ok=True)
-            # Remove from tracked keys
-            self._managed_workspace_keys.discard(workspace_key)
-            # Remove pool dir if empty
-            remaining = self._all_slot_dirs(pool_root)
-            if not remaining:
-                shutil.rmtree(pool_root, ignore_errors=True)
-            # Reset cooldown to allow normal operation
-            self._consecutive_cleanup_failures = 0
-            self._cleanup_cooldown_until_monotonic = 0.0
-        finally:
-            self._base_lock_path().unlink(missing_ok=True)
 
     def cache_diagnostics(self) -> dict[str, object]:
         """Return structured cache diagnostics using stat-only operations.
