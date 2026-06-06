@@ -41,7 +41,7 @@ from ralph.process.manager._managed_process_output_limit_exceeded_error import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from ralph.process.manager import ProcessManager
     from ralph.process.manager._process_manager_types import _PsutilModuleLike, _PsutilProcessLike
@@ -564,6 +564,7 @@ def run_command(
                 timeout_seconds,
                 cwd,
                 resolved_deps.process_manager,
+                on_output_chunk=resolved_deps.on_output_chunk,
             )
         except FileNotFoundError as exc:
             raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
@@ -584,6 +585,7 @@ def _run_subprocess(
     timeout_seconds: float | None,
     workspace_root: Path,
     pm: ProcessManager | None = None,
+    on_output_chunk: Callable[[str], None] | None = None,
 ) -> _CompletedProcessAdapter:
     effective_pm = pm if pm is not None else get_process_manager()
     handle = effective_pm.spawn(
@@ -598,10 +600,18 @@ def _run_subprocess(
     )
     stdout: bytes | None = b""
     stderr: bytes | None = b""
+    chunk_callback: Callable[[bytes], None] | None = None
+    if on_output_chunk is not None:
+        _str_callback = on_output_chunk
+
+        def chunk_callback(raw: bytes) -> None:
+            _str_callback(raw.decode("utf-8", errors="replace"))
+
     try:
         stdout, stderr = handle.communicate_and_cleanup(
             timeout=timeout_seconds,
             output_limit_bytes=_MAX_OUTPUT_BYTES,
+            on_output_chunk=chunk_callback,
         )
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)

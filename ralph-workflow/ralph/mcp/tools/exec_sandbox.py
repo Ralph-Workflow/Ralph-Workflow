@@ -300,7 +300,9 @@ class ExecSandboxManager:
             or summary.remaining_bytes <= self._max_total_bytes * _DEFAULT_HARD_CAP_MULTIPLIER
         ):
             return summary
-        recovery = self._recover_over_capacity_base_wide(_workspace_key(workspace_root))
+        recovery = self._recover_over_capacity_base_wide(
+            _workspace_key(workspace_root), summary.remaining_bytes
+        )
         combined = ExecCacheCleanupSummary(
             removed_paths=summary.removed_paths + recovery.removed_paths,
             removed_bytes=summary.removed_bytes + recovery.removed_bytes,
@@ -322,7 +324,7 @@ class ExecSandboxManager:
         )
 
     def _recover_over_capacity_base_wide(
-        self, current_workspace_key: str
+        self, current_workspace_key: str, pre_recovery_bytes: int
     ) -> ExecCacheCleanupSummary:
         """Emergency base-wide sweep: stage reclaimable base-dir entries for deletion.
 
@@ -356,11 +358,12 @@ class ExecSandboxManager:
                 removed_paths += 1
 
         remaining = self._path_size_bytes_via_du(self._base_dir)
+        removed_bytes = max(0, pre_recovery_bytes - remaining)
         if cleanup_entered:
             self._record_cleanup_success()
         return ExecCacheCleanupSummary(
             removed_paths=removed_paths,
-            removed_bytes=0,
+            removed_bytes=removed_bytes,
             remaining_bytes=remaining,
         )
 
@@ -389,7 +392,9 @@ class ExecSandboxManager:
                 staged_dirs.append(staged)
             return
         if name == current_workspace_key:
-            staged_dirs.extend(self._recover_current_pool_locked(child, current_workspace_key))
+            self._recover_current_pool_locked(
+                child, current_workspace_key, staged_dirs, staged_files
+            )
             return
         if self._pool_lock_is_live(child) or self._pool_has_live_leases(child):
             return
@@ -399,15 +404,21 @@ class ExecSandboxManager:
             self._managed_workspace_keys.discard(name)
             self._pool_state_cache.pop(str(child), None)
 
-    def _recover_current_pool_locked(self, pool_root: Path, workspace_key: str) -> list[Path]:
+    def _recover_current_pool_locked(
+        self,
+        pool_root: Path,
+        workspace_key: str,
+        staged_dirs: list[Path],
+        staged_files: list[Path],
+    ) -> None:
         """Under base_lock: recover reclaimable data from the current workspace pool.
 
         When no live slot lock exists, stages the whole pool. Otherwise acquires
         pool_lock and stages only non-live slots and non-lock garbage children.
+        Pool-level file entries are staged in staged_files for outside-lock deletion.
         """
-        staged: list[Path] = []
         if not pool_root.exists():
-            return staged
+            return
         has_live = any(
             self._slot_is_locked_by_live_process(slot_root)
             for slot_root in self._all_slot_dirs(pool_root)
@@ -415,10 +426,10 @@ class ExecSandboxManager:
         if not has_live:
             staged_path = self._stage_locked_pool_dir_for_deletion(pool_root)
             if staged_path is not None:
-                staged.append(staged_path)
+                staged_dirs.append(staged_path)
                 self._managed_workspace_keys.discard(workspace_key)
                 self._pool_state_cache.pop(str(pool_root), None)
-            return staged
+            return
         try:
             with self._pool_lock(pool_root):
                 for child in list(pool_root.iterdir()):
@@ -429,18 +440,16 @@ class ExecSandboxManager:
                         if not self._slot_is_locked_by_live_process(child):
                             staged_path = self._stage_dir_for_deletion(child)
                             if staged_path is not None:
-                                staged.append(staged_path)
+                                staged_dirs.append(staged_path)
                     elif child.is_file(follow_symlinks=False):
-                        with suppress(OSError):
-                            child.unlink(missing_ok=True)
+                        staged_files.append(child)
                     elif child.is_dir(follow_symlinks=False):
                         staged_path = self._stage_dir_for_deletion(child)
                         if staged_path is not None:
-                            staged.append(staged_path)
+                            staged_dirs.append(staged_path)
                 self._pool_state_cache.pop(str(pool_root), None)
         except ExecSandboxBusyError:
             pass
-        return staged
 
     def _reset(self, workspace_root: Path, sandbox_root: Path, worktree: Path) -> None:
         if not self._is_ready(sandbox_root):

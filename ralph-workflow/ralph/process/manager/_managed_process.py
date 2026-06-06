@@ -17,6 +17,7 @@ from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
     from _thread import LockType
+    from collections.abc import Callable
 
     from ralph.process.manager._process_manager import ProcessManager
     from ralph.process.manager._process_manager_types import (
@@ -144,6 +145,7 @@ class ManagedProcess:
         timeout: float | None = None,
         cleanup_grace_period_s: float = 0.0,
         output_limit_bytes: int | None = None,
+        on_output_chunk: Callable[[bytes], None] | None = None,
     ) -> tuple[bytes | None, bytes | None]:
         """Drain output and clean up any descendant processes with psutil."""
         psutil_mod = self._manager._psutil
@@ -166,6 +168,7 @@ class ManagedProcess:
                     timeout=timeout,
                     output_limit_bytes=output_limit_bytes,
                     cleanup_grace_period_s=cleanup_grace_period_s,
+                    on_output_chunk=on_output_chunk,
                 )
         except (subprocess.TimeoutExpired, ManagedProcessOutputLimitExceededError):
             with contextlib.suppress(Exception):
@@ -237,6 +240,7 @@ class ManagedProcess:
         limit_exceeded: threading.Event,
         output_lock: threading.Lock,
         total_output_bytes_ref: list[int],
+        on_chunk: Callable[[bytes], None] | None = None,
     ) -> None:
         if stream is None:
             return
@@ -244,6 +248,9 @@ class ManagedProcess:
             chunk = stream.read(8_192)
             if not chunk:
                 break
+            if on_chunk is not None:
+                with contextlib.suppress(Exception):
+                    on_chunk(chunk)
             with output_lock:
                 total_output_bytes_ref[0] += len(chunk)
                 self._append_output_tail(buffer, chunk, output_limit_bytes)
@@ -257,6 +264,7 @@ class ManagedProcess:
         timeout: float | None,
         output_limit_bytes: int,
         cleanup_grace_period_s: float,
+        on_output_chunk: Callable[[bytes], None] | None = None,
     ) -> tuple[bytes, bytes]:
         stdout_buffer = bytearray()
         stderr_buffer = bytearray()
@@ -275,6 +283,7 @@ class ManagedProcess:
                 limit_exceeded,
                 output_lock,
                 total_output_bytes_ref,
+                on_output_chunk,
             ),
             daemon=True,
         )
@@ -287,6 +296,7 @@ class ManagedProcess:
                 limit_exceeded,
                 output_lock,
                 total_output_bytes_ref,
+                on_output_chunk,
             ),
             daemon=True,
         )

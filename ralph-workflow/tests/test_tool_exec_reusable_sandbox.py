@@ -707,6 +707,7 @@ def test_acquire_recovers_over_capacity_preserving_live_slot_when_garbage_is_rec
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    sibling_workspace = tmp_path / "sibling-workspace"
     manager = exec_sandbox.ExecSandboxManager(
         base_dir=tmp_path / "exec-base",
         max_total_bytes=50,
@@ -718,6 +719,7 @@ def test_acquire_recovers_over_capacity_preserving_live_slot_when_garbage_is_rec
     monkeypatch.setattr(manager, "_path_size_bytes_via_du", manager._path_size_bytes)
 
     workspace_key = exec_sandbox._workspace_key(workspace)
+    sibling_key = exec_sandbox._workspace_key(sibling_workspace)
     base = manager._base_dir
     pool_root = base / workspace_key
     slot_1 = manager._slot_root(pool_root, workspace_key, 1)
@@ -730,18 +732,34 @@ def test_acquire_recovers_over_capacity_preserving_live_slot_when_garbage_is_rec
     lock_path = manager._lock_path(slot_1)
     lock_path.write_text(json.dumps(live_payload), encoding="utf-8")
     live_payload_file = slot_1 / "live_payload.bin"
-    live_payload_file.write_bytes(b"x" * 20)
+    live_payload_file.write_bytes(b"x" * 10)
 
-    # Reclaimable root garbage pushes total over hard cap: 20 + 90 = 110 > 100
+    # Seed current-pool garbage (non-slot file in pool root)
+    current_pool_garbage = pool_root / "pool_legacy.bin"
+    current_pool_garbage.write_bytes(b"x" * 30)
+
+    # Seed sibling pool with reclaimable garbage (no live lock)
+    sibling_pool = base / sibling_key
+    sibling_pool.mkdir(parents=True, exist_ok=True)
+    sibling_garbage = sibling_pool / "sibling_data.bin"
+    sibling_garbage.write_bytes(b"x" * 30)
+
+    # Seed root-level reclaimable garbage
     root_garbage = base / "reclaimable.bin"
-    root_garbage.write_bytes(b"x" * 90)
+    root_garbage.write_bytes(b"x" * 30)
+
+    # Total: 10 (live) + 30 (current pool garbage) + 30 (sibling garbage) + 30 (root) = 100
+    # Hard cap = 50 * 2 = 100, so we need to be > 100. Let's add 1 more byte.
+    root_garbage.write_bytes(b"x" * 31)  # Now: 10 + 30 + 30 + 31 = 101 > 100
 
     try:
         with manager.acquire(workspace) as sandbox:
             assert sandbox.exists()
             assert lock_path.exists(), "live slot lock must be preserved during recovery"
             assert live_payload_file.exists(), "live slot payload must be preserved during recovery"
-            assert not root_garbage.exists(), "reclaimable garbage must be removed by recovery"
+            assert not current_pool_garbage.exists(), "current pool garbage must be removed"
+            assert not sibling_garbage.exists(), "sibling pool garbage must be removed"
+            assert not root_garbage.exists(), "reclaimable root garbage must be removed by recovery"
     finally:
         lock_path.unlink(missing_ok=True)
 

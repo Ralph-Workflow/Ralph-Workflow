@@ -20,10 +20,14 @@ def ensure_git_initialized(repo_root: Path | str) -> None:
         repo_root: Path to the repository root.
     """
     with suppress(InvalidGitRepositoryError):
-        Repo(repo_root, search_parent_directories=False)
+        repo = Repo(repo_root, search_parent_directories=False)
+        repo.close()
         return
-    Repo.init(repo_root)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    logger.info("Initialized git repository at {}", repo_root)
+    new_repo: Repo = Repo.init(repo_root)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    try:
+        logger.info("Initialized git repository at {}", repo_root)
+    finally:
+        new_repo.close()
 
 
 def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:

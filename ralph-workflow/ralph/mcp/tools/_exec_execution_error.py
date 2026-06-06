@@ -96,8 +96,8 @@ class ExecutionError(ToolError):
         if self.last_error:
             lines.append(f"  Last error: {self.last_error}")
         lines.append(
-            "  Wait for cooldown to expire then retry; "
-            "check for permission issues or stale locks if the problem persists"
+            "  Wait for cooldown to expire then retry; check for active/live exec slots, "
+            "permission issues, or stale locks if the problem persists"
         )
         if self.diagnostics:
             lines.append(f"  Diagnostics: {self.diagnostics}")

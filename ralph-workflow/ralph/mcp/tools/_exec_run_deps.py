@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 type CwdProvider = Callable[[], Path]
 type CommandRunner = Callable[[list[str], Path, float | None], _CompletedProcessAdapter]
 type OverlayFactory = Callable[[Path], AbstractContextManager[Path]]
+type OutputChunkCallback = Callable[[str], None]
 
 
 @dataclass(frozen=True)
@@ -25,3 +26,4 @@ class ExecRunDeps:
     cwd_provider: CwdProvider | None = None
     overlay_factory: OverlayFactory | None = None
     process_manager: ProcessManager | None = None
+    on_output_chunk: OutputChunkCallback | None = None

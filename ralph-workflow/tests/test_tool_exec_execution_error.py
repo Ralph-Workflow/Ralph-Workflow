@@ -42,3 +42,8 @@ def test_cleanup_cooldown_message_omits_force_clear_workspace() -> None:
     assert "cooldown" in message.lower() or "wait" in message.lower(), (
         "cooldown message must explain the cooldown situation"
     )
+    assert (
+        "active" in message.lower()
+        or "live" in message.lower()
+        or "slot" in message.lower()
+    ), "cooldown message must mention active/live exec slots as a possible cause"

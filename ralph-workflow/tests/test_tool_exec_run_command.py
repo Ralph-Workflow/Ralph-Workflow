@@ -356,3 +356,81 @@ def test_run_command_kills_process_when_output_exceeds_limit(
     message = str(excinfo.value)
     assert "67890-suffix" in message
     assert "err-tail" in message
+
+
+class _ChunkedStream:
+    """Fake IO[bytes] stream that returns fixed-size chunks for deterministic testing."""
+
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = list(chunks)
+
+    def read(self, n: int) -> bytes:
+        del n
+        if not self._chunks:
+            return b""
+        return self._chunks.pop(0)
+
+    def close(self) -> None:
+        pass
+
+    def __iter__(self) -> _ChunkedStream:
+        return self
+
+    def __next__(self) -> bytes:
+        chunk = self.read(8_192)
+        if not chunk:
+            raise StopIteration
+        return chunk
+
+
+def test_run_subprocess_streams_output_chunks_in_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify that on_output_chunk receives chunks in order before run_command returns."""
+
+    class ChunkedFakePopen(FakePopen):
+        def __init__(self) -> None:
+            super().__init__(
+                pid=201,
+                state=ProcessState(returncode=0),
+                streams=ProcessStreams(
+                    stdout=_ChunkedStream([b"first-chunk", b"second-chunk"]),
+                    stderr=_ChunkedStream([b"err-chunk"]),
+                ),
+            )
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            if self._returncode is None:
+                self._returncode = 0
+            return self._returncode
+
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=lambda command, opts: ChunkedFakePopen(),
+    )
+    received_chunks: list[str] = []
+
+    result = run_command(
+        "echo",
+        ["hello"],
+        tmp_path,
+        5_000,
+        deps=ExecRunDeps(
+            process_manager=pm,
+            overlay_factory=_passthrough_overlay,
+            on_output_chunk=received_chunks.append,
+        ),
+    )
+
+    assert received_chunks, "on_output_chunk must be called at least once with output"
+    assert received_chunks.index("first-chunk") < len(received_chunks), (
+        "first-chunk must be received before run_command returns"
+    )
+    assert "second-chunk" in received_chunks, (
+        "second-chunk must be received before run_command returns"
+    )
+    combined = "".join(received_chunks)
+    assert "first-chunk" in combined
+    assert "second-chunk" in combined
+    assert result.stdout == b"first-chunksecond-chunk"
