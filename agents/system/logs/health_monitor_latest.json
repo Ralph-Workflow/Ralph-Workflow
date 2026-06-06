@@ -1,44 +1,17 @@
 {
-  "ts": "2026-06-06T22:05:40.359665",
+  "ts": "2026-06-06T23:03:19.426500",
   "jobs_checked": 20,
-  "issues_found": 3,
+  "issues_found": 1,
   "issues": [
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 6169.12,
+      "artifact_age_minutes": 6226.78,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_json",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "last_error": "live_jobs_checked=21 expected 20; live_jobs_disabled=1 expected 0; disabled_job_names=['marketing-pulse'] expected []",
-      "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=['marketing-pulse']"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_json_escalation",
-      "category": "escalation_required",
-      "last_error": "live_jobs_checked=21 expected 20; live_jobs_disabled=1 expected 0; disabled_job_names=['marketing-pulse'] expected []",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=92",
-      "repeats_in_recent_history": 92,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_json::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
     }
   ],
-  "repairs_attempted": [
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_json_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    }
-  ]
+  "repairs_attempted": []
 }

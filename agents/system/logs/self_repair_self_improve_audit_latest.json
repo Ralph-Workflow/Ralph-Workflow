@@ -1,6 +1,6 @@
 {
   "schema_version": "ecc.self-repair-self-improve-audit.v1",
-  "checked_at": "2026-06-06T22:05:20.278412+02:00",
+  "checked_at": "2026-06-06T22:55:38.162833+02:00",
   "total_loops_audited": 20,
   "loops_with_self_repair": 18,
   "loops_with_self_improve": 18,

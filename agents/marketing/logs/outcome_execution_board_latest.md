@@ -1,17 +1,17 @@
 # Outcome Execution Board Runner
 
-- Generated: `2026-05-25T18:53:00`
-- Repair needed at start: `False`
-- Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-05-25_marketing_execution_board.md`
-- Selected lane: `distribution_architecture_guard_pause`
-- Action type: `distribution_architecture_guard_pause`
-- Executed lane: `distribution_architecture_guard_pause`
+- Generated: `2026-06-06T23:07:11.203166`
+- Repair needed at start: `True`
+- Execution board: `/home/mistlight/.openclaw/workspace/drafts/2026-06-06_marketing_execution_board.md`
+- Selected lane: `curator_due_followup`
+- Action type: `truth_snapshot_only`
+- Executed lane: `None`
 - Truthful do-now lane available: `False`
-- Artifact: `/tmp/guard-pause.md`
+- Artifact: `/home/mistlight/.openclaw/workspace/drafts/2026-06-06_marketing_execution_board.md`
 - Codeberg primary CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
-- Measurement window: Verify the next runner produces a truthful lane or a changed blocker/fingerprint state.
-- Next truthful checkpoint: `2026-06-05T00:00:00` (curator_review_due)
-- Checkpoint reason: Curator reply/review window matures for 1. ai-for-developers/awesome-ai-coding-tools.
+- Measurement window: Review reply/backlink movement and Codeberg deltas within 7 days.
+- Next truthful checkpoint: `2026-06-07T00:00:00` (curator_review_due)
+- Checkpoint reason: Curator reply/review window matures for Claude Code Alternatives.
 
 ## Structural capability added
 - Dedicated execution-board runtime that re-checks the consolidated do-now asset list before every system-design follow-through pass.
@@ -19,4 +19,4 @@
 - Preserves fake-green protection: if the board has no truthful do-now asset, that absence is logged explicitly instead of being masked by queue refreshes.
 
 ## Summary
-Reused existing distribution-architecture guard artifact.
+Execution board refreshed, but no truthful do-now lane was available; the board itself is the structural truth source.
