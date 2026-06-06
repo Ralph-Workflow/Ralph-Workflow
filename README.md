@@ -2,7 +2,7 @@
 
 > **The operating system for autonomous coding.**
 
-![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg)
+![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
 
 > Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 
@@ -26,6 +26,8 @@ Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and 
 | Locked to one vendor | Claude + Codex + OpenCode in the same pipeline — your choice |
 | "Look at the diff" | Runnable, tested software with integration checks |
 
+[See how Ralph Workflow compares to 14 other autonomous coding tools →](https://ralphworkflow.com/compare)
+
 ## Who it's for
 
 Developers and teams who have **ambitious, well-specified work** that's too big to babysit and too risky to trust blindly. A good first run looks like:
@@ -38,13 +40,13 @@ It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
 
 ## Quick start
 
-Write your task in `PROMPT.md` before you sleep. Ralph reads it, runs planning → development → review cycles, and produces git commits you can inspect in the morning.
-
 ```
 $ ralph --init
 $ $EDITOR PROMPT.md
 $ ralph
 ```
+
+Write your task in `PROMPT.md` before you sleep. Ralph reads it, runs planning → development → review cycles, and produces git commits you can inspect in the morning.
 
 ### Docker (no Python required)
 
@@ -84,19 +86,15 @@ That's it. The default workflow is already strong enough to start with. Customiz
 
 For first-run guidance — task selection, diagnosis, and a walked-through first wake-up — see **[START_HERE.md](START_HERE.md)**.
 
-## Compared to other tools
-
-Ralph Workflow is compared to 14 autonomous coding tools — Claude Code, Cursor, Aider, Continue, Copilot, Hermes Agent, Conductor OSS, kodo, Symphony, and more. See the full comparison matrix and deep-dive pages at **[ralphworkflow.com/compare](https://ralphworkflow.com/compare)**.
-
 ## See it in action
 
 Example terminal output from Ralph Workflow v0.8.8 on a fresh project:
 
 | Command | Output |
 |---|---|
-| `ralph --init` | Banner, capabilities, first-run setup |
-| `ralph --diagnose` | Agent inventory, config, MCP check |
-| `ralph --dry-run` | Pipeline phases and iteration plan |
+| `ralph --init` | [init-output.txt](docs/sphinx/_static/demo/init-output.txt) — banner, capabilities, first-run setup |
+| `ralph --diagnose` | [diagnose-output.txt](docs/sphinx/_static/demo/diagnose-output.txt) — agent inventory, config, MCP check |
+| `ralph --dry-run` | [dry-run-output.txt](docs/sphinx/_static/demo/dry-run-output.txt) — pipeline phases and iteration plan |
 | ▶ **Full demo** | [![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) — watch the complete first-run flow |
 | ⭐ **Contribute** | `ralph contribute` — opens Codeberg in your browser so you can star the project |
 
@@ -116,9 +114,7 @@ These are **unedited terminal captures** from a real run — not mock-ups.
 | Page | What it covers |
 |---|---|
 | [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |
-| [Quickstart](https://ralphworkflow.com/docs/quickstart.html) | Write a spec and run it in 10 minutes |
-| [Configuration](https://ralphworkflow.com/docs/configuration.html) | Agent routing, phase policies, model selection |
-| [User Stories](https://ralphworkflow.com/docs/user-stories.html) | Real workflows from real runs |
+| [Full Docs](https://ralphworkflow.com/docs) | Quickstart, configuration, user stories, and more |
 
 ## Engineering-practice requirements
 

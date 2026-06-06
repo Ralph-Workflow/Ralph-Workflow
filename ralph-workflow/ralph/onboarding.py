@@ -17,7 +17,7 @@ ERROR_REPORTING_DISCLOSURE: Final[str] = (
 )
 CODEBERG_STAR_CTA: Final[str] = (
     f"⭐ Star {CODEBERG_REPO} so we know you're using it — "
-    "stars drive development priority"
+    "stars drive development priority. Run `ralph star` to star from your terminal."
 )
 STARTER_PROMPT_SENTINEL: Final[str] = (
     "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"

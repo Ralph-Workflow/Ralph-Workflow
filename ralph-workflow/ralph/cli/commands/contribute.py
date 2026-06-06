@@ -4,6 +4,8 @@ This is a lightweight community-support command. It opens the canonical
 Codeberg repository in the default browser so you can star the project,
 watch for releases, or fork it — all from a single CLI invocation.
 
+Alias: `ralph star` is a shortcut that does the same thing.
+
 No git repository, configuration, or authentication is required.
 """
 

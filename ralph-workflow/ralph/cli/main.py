@@ -31,6 +31,7 @@ from ralph.cli.commands.init import init_command
 from ralph.cli.commands.prompt_helper import run_prompt_helper
 from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.smoke import smoke_interactive_claude_command
+from ralph.cli.commands.star import star
 from ralph.cli.options import display_agents_table, display_providers_table
 from ralph.config.bootstrap import (
     ensure_global_config,
@@ -103,7 +104,7 @@ def _get_cli_context() -> DisplayContext:
     return _make_display_context()
 
 
-_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset({"cleanup"})
+_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset({"cleanup", "star", "contribute"})
 _QUICK_FLAGS: frozenset[str] = frozenset({"-Q", "--quick"})
 _THOROUGH_DEVELOPER_ITERS = 10
 
@@ -728,6 +729,7 @@ def smoke_interactive_claude() -> None:
 
 
 app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
+app.command()(star)
 
 
 def _validate_mode_flags(*, quick: bool, thorough: bool, resume: bool, no_resume: bool) -> None:

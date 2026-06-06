@@ -11,6 +11,8 @@
 
 > **GitHub is the mirror. Codeberg is the primary repo.**
 > Inspect, star, watch, fork, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+>
+> Already installed? Run **`ralph star`** to open the repo in your browser. ⭐
 
 Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 
@@ -48,7 +50,7 @@ A good first run looks like:
 
 New to autonomous coding? The 4-step guide walks you through picking a task, writing a short spec, running Ralph Workflow, and judging the result honestly — all in one page. Prefer a deeper narrative? [Read the blog version →](https://ralphworkflow.com/blog/your-first-overnight-task-start-here-guide)
 
-For a strong first run, pick a task with clear acceptance criteria: "add tests to an existing module so coverage reaches 80%", "refactor one subsystem with existing tests to confirm no regressions", or "build a fitness-app slice with concrete feature checks". The common thread is a well-specified outcome you can judge honestly in the morning — not how small the task is.
+Start with a bounded, verifiable task — the kind of work you would actually merge. A good first run is 2-6 hours, has a clear boundary, and a concrete correctness check. For a strong first run, pick a task with clear acceptance criteria: "add tests to an existing module so coverage reaches 80%", "refactor one subsystem with existing tests to confirm no regressions", or "build a fitness-app slice with concrete feature checks". The common thread is a well-specified outcome you can judge honestly in the morning, not how small the task is.
 
 ## Install
 
@@ -188,6 +190,12 @@ Ralph Workflow sends anonymous crash reports and performance metrics to help fix
 Each installation generates a random 32-character identifier stored in `~/.config/ralph-workflow-user.ini`. This identifier is not tied to your name, email address, IP address, or any other personal data — it is a random string used only to distinguish different installations in crash reports. A fresh random session identifier is generated on every run.
 
 To opt out: delete or rename `~/.config/ralph-workflow-user.ini`. Ralph Workflow creates a new random ID on the next run.
+
+## Community
+
+⭐ **Star the project** — run `ralph star` from your terminal or visit <https://codeberg.org/RalphWorkflow/Ralph-Workflow>.
+
+Every star helps more developers discover Ralph Workflow and drives development priority.
 
 ## Development and verification
 

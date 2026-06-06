@@ -19,8 +19,7 @@ This page routes you to the next page that best matches your question.
 ### I want the maintained operator manual
 
 - [Manual home](../ralph-workflow/docs/sphinx/index.rst)
-- [Configuration](../ralph-workflow/docs/sphinx/configuration.md)
-- [Reference](../ralph-workflow/docs/sphinx/reference.md)
+- [Configuration + Reference](../ralph-workflow/docs/sphinx/configuration.md)
 - [User stories](../ralph-workflow/docs/sphinx/user-stories.md)
 
 ### I need the repo-root docs families mapped clearly
