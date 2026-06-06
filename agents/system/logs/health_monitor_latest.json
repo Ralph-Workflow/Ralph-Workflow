@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-06T03:05:17.846719",
+  "ts": "2026-06-06T04:01:58.557055",
   "jobs_checked": 19,
   "issues_found": 1,
   "issues": [
@@ -8,17 +8,10 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 5028.77,
+      "artifact_age_minutes": 5085.46,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     }
   ],
-  "repairs_attempted": [
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    }
-  ]
+  "repairs_attempted": []
 }

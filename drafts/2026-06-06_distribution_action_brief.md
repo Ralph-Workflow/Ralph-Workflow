@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-06T03:09:38
+Generated: 2026-06-06T04:06:18
 Chosen lane: **curator_due_followup**
 
 ## Why this lane
