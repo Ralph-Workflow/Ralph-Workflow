@@ -1,21 +1,31 @@
 {
-  "timestamp": "2026-06-02T11:13:30.254682+00:00",
-  "sitemap_urls_total": 102,
+  "timestamp": "2026-06-06T03:30:02.319353+00:00",
+  "sitemap_urls_total": 110,
   "google_indexing": {
     "status": "gsc_search_analytics",
-    "pages_with_search_presence": 16,
-    "total_urls": 102,
-    "total_impressions_28d": 404,
+    "pages_with_search_presence": 17,
+    "total_urls": 110,
+    "total_impressions_28d": 470,
     "total_clicks_28d": 22,
-    "ctr_28d": 5.45,
+    "ctr_28d": 4.68,
     "top_pages": [
       {
         "url": "https://ralphworkflow.com/",
-        "impressions": 353,
+        "impressions": 403,
         "clicks": 22
       },
       {
+        "url": "https://ralphworkflow.com/docs/troubleshooting.html",
+        "impressions": 10,
+        "clicks": 0
+      },
+      {
         "url": "https://ralphworkflow.com/contact",
+        "impressions": 9,
+        "clicks": 0
+      },
+      {
+        "url": "https://ralphworkflow.com/docs/",
         "impressions": 9,
         "clicks": 0
       },
@@ -40,38 +50,28 @@
         "clicks": 0
       },
       {
-        "url": "https://ralphworkflow.com/docs/",
-        "impressions": 4,
-        "clicks": 0
-      },
-      {
         "url": "https://ralphworkflow.com/docs/spec-driven-ai-agent",
         "impressions": 3,
         "clicks": 0
       },
       {
-        "url": "https://ralphworkflow.com/docs/example-review-bundle",
-        "impressions": 2,
-        "clicks": 0
-      },
-      {
-        "url": "https://ralphworkflow.com/docs/example-review-bundle.html",
+        "url": "https://ralphworkflow.com/blog/ai-agent-orchestration-landscape-gap-2026",
         "impressions": 2,
         "clicks": 0
       }
     ],
-    "estimated_indexed": 16
+    "estimated_indexed": 17
   },
-  "gap_unindexed": 86,
-  "pct_indexed_estimate": 15.7,
+  "gap_unindexed": 93,
+  "pct_indexed_estimate": 15.5,
   "escalation_threshold": {
     "pct_unindexed_limit": 50,
-    "unindexed_pct": 84.3,
+    "unindexed_pct": 84.5,
     "triggered": true
   },
   "escalation": {
     "first_detected": "2026-05-31T07:11:07.410924+00:00",
-    "days_since": 2,
+    "days_since": 5,
     "chronic": false,
     "action": "monitoring"
   }
