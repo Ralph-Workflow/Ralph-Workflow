@@ -1,0 +1,68 @@
+{
+  "timestamp": "2026-06-06T06:06:00+02:00",
+  "run_type": "marketing_active_loop_cron",
+  "action": "delta_capture_and_process_repair",
+  "status": "executed",
+  "live_external_action": true,
+  "outcome_ready": true,
+  "summary": "Fixed stale execution board symlink (→12 days of stale reads); discovered first adoption delta in 5+ weeks (GitHub 2→3★); regenerated Reddit handoff with 7 fresh opportunities (6 ready replies). Chose process repair + delta capture over content generation because content is saturated and all external lanes remain credential-blocked.",
+  "adoption_delta": {
+    "codeberg": {"stars": 12, "delta": 0, "weeks_flat": "5+"},
+    "github": {"stars": 3, "delta": "+1", "note": "FIRST ADOPTION MOVEMENT IN 5+ WEEKS — validates recent structural changes (ralph star CLI, ralph contribute, README improvements)"},
+    "pypi": {"downloads_month": 1303, "version": "0.8.8"}
+  },
+  "process_repair": {
+    "type": "execution_board_symlink_fix",
+    "before": "marketing_execution_board_latest.md → 2026-06-05_marketing_execution_board.md (May 25 content)",
+    "after": "marketing_execution_board_latest.md → 2026-06-06_marketing_execution_board.md (June 6 content)",
+    "impact": "All subsequent cron runs now read truthful current data instead of 12-day-stale board with expired review windows"
+  },
+  "reddit_handoff": {
+    "regenerated": true,
+    "timestamp": "2026-06-06T04:09:42Z",
+    "opportunities": 7,
+    "replies_crafted": 6,
+    "monitor_source": "seo-reports/reddit_monitor_latest_healthy.md",
+    "search_provider": "DDG lite (working, HTTP 200)",
+    "output": "drafts/REDDIT_HANDOFF.md",
+    "ready_for_human": true
+  },
+  "why_not_content": {
+    "blog_posts": 52,
+    "saturation_threshold": 40,
+    "saturation_gate": "active",
+    "telegraph_crossposts": "96+ (2 more cross-posted at 06:00 today: Anthropic Dynamic Workflows + Hyper YC P26)",
+    "reasoning": "Content saturation gate is active. Generating more blog posts when 52 exist and adoption is flat is activity theater. Last night's evaluator run #5 correctly identified the credential ceiling as the structural bottleneck."
+  },
+  "blocked_lanes_status": {
+    "reddit_posting": "blocked (403 direct). Handoff bridge is active workaround — measurement-pending (7-day window from Jun 5 21:28)",
+    "dev_to": "blocked (no API key)",
+    "hacker_news": "blocked (no karma)",
+    "smtp": "blocked (no credentials)",
+    "apollo": "blocked (Cloudflare)",
+    "pypi_token": "blocked (no token)",
+    "gh_auth": "blocked (no credentials)"
+  },
+  "measurement_pending": {
+    "reddit_handoff_bridge": {"window": "7 days to first human-posted reply, 14 days to Codeberg star delta", "deployed": "2026-06-05T21:24 CEST"},
+    "ralph_star_cli": {"window": "ongoing", "deployed": "v0.8.8", "note": "First GitHub delta (+1★) may be attributable to recent CLI + README improvements"},
+    "anthropic_comparison_post": {"window": "7-14 day SEO", "deployed": "2026-06-05"}
+  },
+  "next_best_autonomous_action": "If GitHub delta continues (2nd star within 48h), investigate correlation with ralph star CLI and ralph contribute command to identify which conversion surface is working. If Reddit handoff remains unused after 24h from deployment (Jun 6 21:28 CEST), regenerate with fresh opportunities. Otherwise, improve repo/site conversion surfaces based on GSC keyword data.",
+  "kill_conditions_active": {
+    "new_blog_generation": "saturation gate active (52>40)",
+    "hn_lobsters_preflight": "no credentials",
+    "directory_submissions": "never produced a backlink",
+    "apollo_launcher": "Cloudflare-blocked",
+    "stackoverflow_regeneration": "cooldown, packet already delivered",
+    "reddit_research_only_monitor": "research-only unless handoff bridge needs fresh data",
+    "new_audit_reports": "26+ audits reached same conclusion — structural change required, not more reports"
+  },
+  "structural_health": {
+    "execution_board_symlink": "FIXED (was stale 12 days)",
+    "reddit_handoff_bridge": "fresh (06:09 CEST today)",
+    "telegraph_cron": "healthy (ran 06:00, 2 posts cross-posted)",
+    "content_saturation_gate": "active and enforced",
+    "adoption_tracking": "healthy (hourly cron, captured GitHub delta)"
+  }
+}

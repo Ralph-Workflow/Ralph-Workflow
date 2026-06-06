@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-06-06T05:46:03.454026+02:00
+- Checked: 2026-06-06T06:47:38.012564+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
 - Most urgent fix: Do not certify green until the external owner loop clears its live residue and independent signoff stays current.
@@ -10,7 +10,7 @@
 ## Live topology
 
 - Live Gateway jobs: 19 total / 19 enabled / 0 disabled
-- Live running jobs now: agent-architecture-watchdog
+- Live running jobs now: agent-architecture-watchdog, system-health-monitor
 - Live last-error residue: none
 - Persisted disabled history only: none
 - User crontab ownership: ok
@@ -22,7 +22,7 @@
    - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green.
 
 2. **Medium — Live Gateway topology matches the current runtime state**
-   - Mechanism: Direct live cron inspection shows 19 enabled/total-visible jobs, 0 disabled jobs, 1 running jobs, and 0 live last-error jobs.
+   - Mechanism: Direct live cron inspection shows 19 enabled/total-visible jobs, 0 disabled jobs, 2 running jobs, and 0 live last-error jobs.
    - Recommended fix: Keep direct cron inspection as the source of truth on each watchdog run and avoid conflating persisted disabled history with live runtime topology.
 
 3. **Medium — Architecture verifier path is green on freshness and ownership gates**
@@ -43,7 +43,7 @@
 
 ## Repaired this run
 
-- **refreshed_live_topology** — Refreshed the audit against the current live view: 19 enabled jobs, 0 disabled jobs, 1 running jobs, and 0 live last-error jobs.
+- **refreshed_live_topology** — Refreshed the audit against the current live view: 19 enabled jobs, 0 disabled jobs, 2 running jobs, and 0 live last-error jobs.
 - **relocalized_runtime_drift** — Removed stale topology mismatch as an architecture-owned blocker so any remaining red stays localized to the external owner loop.
 - **revalidated_shared_findings_consumption** — Reconfirmed that code-backed marketing consumers still expose machine-verifiable shared market-intelligence consumption.
 

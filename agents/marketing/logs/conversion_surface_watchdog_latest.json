@@ -1,51 +1,13 @@
 {
-  "generated_at": "2026-06-05T05:00:01.373694+00:00",
+  "generated_at": "2026-06-06T05:00:01.788342+00:00",
   "agent": "conversion_surface_watchdog",
   "repair_target": "outcome_system_underpowered",
-  "total_posts": 50,
-  "avg_score": 10.0,
-  "below_threshold_count": 2,
-  "strong_posts_count": 48,
-  "weak_posts_count": 1,
+  "total_posts": 52,
+  "avg_score": 10.4,
+  "below_threshold_count": 0,
+  "strong_posts_count": 52,
+  "weak_posts_count": 0,
   "posts": [
-    {
-      "slug": "why-5-projects-reinvented-same-loop-pattern",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-5-projects-reinvented-same-loop-pattern.md",
-      "lines": 100,
-      "scores": {
-        "codeberg_link": 0,
-        "codeberg_primary": 0,
-        "pip_install": 2,
-        "first_task_guide": 0,
-        "free_use_invite": 2,
-        "ends_with_crosslinks": 0,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No Codeberg repo link",
-        "MISSING: No first-task guide link"
-      ],
-      "total_score": 4
-    },
-    {
-      "slug": "agentic-devtool-goldrush-yc-2026",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/agentic-devtool-goldrush-yc-2026.md",
-      "lines": 109,
-      "scores": {
-        "codeberg_link": 0,
-        "codeberg_primary": 0,
-        "pip_install": 2,
-        "first_task_guide": 0,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": 0,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No Codeberg repo link",
-        "MISSING: No first-task guide link"
-      ],
-      "total_score": 5
-    },
     {
       "slug": "claude-code-multi-agent-overnight-postmortem",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md",
@@ -445,6 +407,24 @@
       "total_score": 10
     },
     {
+      "slug": "ralph-workflow-vs-anthropic-dynamic-workflows",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-anthropic-dynamic-workflows.md",
+      "lines": 108,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 10
+    },
+    {
       "slug": "ralph-workflow-vs-claude-code",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-claude-code.md",
       "lines": 106,
@@ -787,6 +767,38 @@
       "total_score": 11
     },
     {
+      "slug": "ralph-workflow-vs-hyper-yc-p26",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-hyper-yc-p26.md",
+      "lines": 89,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": 0,
+        "star_ask": 0
+      },
+      "findings": [],
+      "total_score": 11
+    },
+    {
+      "slug": "agentic-devtool-goldrush-yc-2026",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/agentic-devtool-goldrush-yc-2026.md",
+      "lines": 121,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
+    },
+    {
       "slug": "ai-agent-workflow-composer-composable-pipelines",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-workflow-composer-composable-pipelines.md",
       "lines": 141,
@@ -897,20 +909,25 @@
       },
       "findings": [],
       "total_score": 13
-    }
-  ],
-  "auto_fixes": [
-    {
-      "slug": "why-5-projects-reinvented-same-loop-pattern",
-      "before_score": 4,
-      "action": "added_standard_conversion_block"
     },
     {
-      "slug": "agentic-devtool-goldrush-yc-2026",
-      "before_score": 5,
-      "action": "added_standard_conversion_block"
+      "slug": "why-5-projects-reinvented-same-loop-pattern",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-5-projects-reinvented-same-loop-pattern.md",
+      "lines": 112,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
     }
   ],
+  "auto_fixes": [],
   "unchanged": [],
   "measurement_window_days": 14,
   "success_metric": "Codeberg stars_delta_window > 0 within 14 days",
