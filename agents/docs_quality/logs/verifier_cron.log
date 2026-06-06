@@ -29301,3 +29301,130 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned. README\u2192START_HERE\u2192docs/README is a coherent route. Promoted pages reinforce instead of fighting. No internal leakage, no stale framing, no hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with correct tagline ('operating system for autonomous coding'), frames as improvement on Ralph-loop, composable loop framework, emphasizes default workflow as-is-first. No internal plumbing in top fold."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Practical first-run guide that leads with task selection and result evaluation, not internals. Explicitly positions Codeberg primary / GitHub mirror."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly routes users after README+START_HERE, keeps proof secondary, links to pages that all open with the same core positioning framing."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Correctly self-identifies as 'supporting proof, not the main product pitch' and orders evidence as working behavior > real checks > written scope > supporting artifacts."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "PyPI README contains the most complete journey with clear install, quick start, fit/non-fit, and honest engineering-practice requirements. Mentions generic Ralph only to distinguish improvement."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is coherent, positioning-aligned, and well-structured. No hard failures. The journey from README \u2192 START_HERE \u2192 docs/README is clean, the promoted next-click pages reinforce the same story instead of fighting it, and the information architecture correctly subordinates proof and internal mechanics to product value.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'The operating system for autonomous coding', correctly frames as AI agent orchestrator, explains simple core composing into complex workflows, has strong who-it's-for with explicit non-fit, result-first evaluation emphasis, Codeberg primary badge, engineering-practice requirements section. No artifact/transcript/plumbing leakage."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "The 'Keep proof secondary' section explicitly tells users to use proof-oriented pages only after the product story \u2014 this is exactly right for information architecture. Routes are cleanly organized by goal. No internal terminology."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with correct framing, reinforces simple-core/composition/default-workflow story, guides toward result-first evaluation (real repo change, meaningful checks), and correctly defers deeper content to secondary pages."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "README \u2192 START_HERE \u2192 docs/README forms a coherent, well-aligned journey. All promoted next-click pages reinforce the same positioning story without internal leakage.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with the operating-system tagline, simple-core framing, right audience, engineering-practice honesty, and correctly routes to START_HERE.md and docs. No hard-failure patterns on the first screen."
+    },
+    {
+      "path": "START_HERE.md (github-mirror)",
+      "reason": "Reflects the positioning boilerplate verbatim, frames result-first judgment clearly, and routes to docs/README as the next-level switchboard instead of dumping internals."
+    },
+    {
+      "path": "docs/README.md (github-mirror)",
+      "reason": "Clean intent-based switchboard with explicit 'keep proof secondary' guidance. Prevents route confusion by separating operator path from contributor path."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Full spec-first conversion guide with no internal plumbing distraction. Good/bad task tables, five-minute spec template, honest assessment section \u2014 all positioning-aligned."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Self-identifies as 'supporting proof' and tells users to start with the product story first. Orders evidence by working behavior \u2192 real checks \u2192 written scope \u2192 logs, exactly matching the result-first directive."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
