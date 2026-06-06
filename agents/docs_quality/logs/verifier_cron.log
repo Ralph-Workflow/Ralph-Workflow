@@ -29129,3 +29129,175 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independent verifier failed signoff
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_FAIL
+- /home/mistlight/Ralph-Workflow/README.md:1: [top-link-budget] Too many top-of-page links (11). Max 10.
+- /home/mistlight/Ralph-Workflow/ralph-workflow/README.md:1: [heading-sprawl] Too many second-level headings (13). Max 12.
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The Ralph Workflow docs system cleanly implements the positioning document. The README \u2192 START_HERE \u2192 docs/README journey is coherent, hard failures are avoided, and promoted next-click pages reinforce the same product story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md:3",
+      "reason": "Opens with 'The operating system for autonomous coding' \u2014 nails the primary framing immediately."
+    },
+    {
+      "path": "README.md:15-17",
+      "reason": "Explains Ralph-loop core \u2192 composable loop framework \u2192 strong default workflow \u2192 extend later, exactly matching the positioning doc's recommended writing order."
+    },
+    {
+      "path": "START_HERE.md:6-8",
+      "reason": "Continues the exact same three-tier framing (simple Ralph-loop core \u2192 composes into complex workflows \u2192 strong default workflow) without drift."
+    },
+    {
+      "path": "docs/README.md:7-9",
+      "reason": "Positions itself after README+START_HERE, routes by user intent, and includes 'Keep proof secondary' section \u2014 good IA discipline."
+    },
+    {
+      "path": "docs/reviewable-output.md:3-7",
+      "reason": "Explicitly labels itself 'supporting proof, not the main product pitch' and says 'start with the product story and operator route first' \u2014 owns its secondary role."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is cohesive and well-aligned with the positioning. README leads with orchestrator framing and simple-core composition, not process internals. START_HERE converts that into a concrete first-run path. docs/README routes to subordinated proof pages. All promoted next-click pages reinforce the same story. No hard failures detected.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Rename 'Cost arbitrage' in the capabilities list \u2014 it reads as internal/proprietary shorthand, not end-user value language (README line 107)"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding' tagline and free/open-source orchestrator framing before any capabilities. Comparison table is positioned after value proposition. Who-it's-for explicitly excludes small/narrow tasks. Codeberg primary and GitHub mirror correctly framed."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Leads with the Ralph-loop core, composability claim, and default-workflow framing before setup. Task selection guidance is concrete and honest. 'What success looks like' section models result-first evaluation without logs or plumbing."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly says 'use this page after README and START_HERE.' Has a dedicated 'Keep proof secondary' section that routes proof pages after the product story. Promoted product-framing pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) all reinforce the simple-core / composable / strong-default message."
+    },
+    {
+      "path": "reviewable-output.md",
+      "reason": "Opens with a disclaimer saying it's supporting proof, not the main pitch. Evaluates evidence in the correct order (working behavior > checks > scope > logs). Properly subordinated \u2014 linked from docs/README under a clearly secondary heading."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, well-positioned, and structurally sound. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding,' immediately defines Ralph as an orchestrator, explains simple Ralph-loop core \u2192 composable framework \u2192 strong default, and includes a result-first comparison table."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Leads with positioning, gates proof secondary, shortest honest first run with clear task selection, result-first success criteria, and 'next pages only if you need them' \u2014 perfect journeymate for README."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself 'after README and START_HERE,' routes readers by intent, includes a 'keep proof secondary' section, and links to product-framing pages before proof pages."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Self-gates as 'supporting proof, not the main product pitch' and 'use this page after you already understand the product story' \u2014 exactly the correct pattern for a proof page."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs map forms a coherent journey. No internal leakage, artifact-first selling, or stale framing on primary surfaces. Promoted next-click pages reinforce the same story rather than fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with positioning-verbatim tagline, explains simple Ralph-loop core first, explicit fit/non-fit, Codeberg-primary framing, no artifact/internals leakage."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with same simple-core framing, leads with result-first evaluation, documents fit/non-fit, defers to docs map only after first-run path."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positioned as post-README/START_HERE, routes cleanly, includes 'Keep proof secondary' section, links proof pages as supporting not primary."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Detailed spec template, morning-after review process, honest when-and-when-not, result-first throughout \u2014 ideal conversion page."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
