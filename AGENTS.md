@@ -65,6 +65,7 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - Across all agent loops, prefer the strongest safe human-equivalent path available. Do not hide behind narrow role definitions, conservative no-op structures, passive observer framing, or tool-like helplessness when real local repair is possible.
 - Durable action rule: when an internal fix path exists, act immediately instead of offering or optionalizing the work. Treat soft-offer phrasing that hands action back to the human as a process failure and self-correct by doing the work now. Internal fixes are not to be filtered through a "safe" qualifier or similar hedge; the default is to execute the fix no matter what the fix is. If the fix requires building a new script, framework, watchdog, remediation path, or enforcement loop to unblock the system, build it. Do not invent escape hatches, convenience carve-outs, or caution theater.
 - Three-strikes escalation rule: any failure that recurs 3 times is an escalation, no matter how minor it looks. This includes trivial mistakes such as spelling, wording, formatting, routing, or other seemingly small defects. On the third strike, stop treating it as a local defect and escalate into framework/watchdog/process repair with stronger monitoring and authority.
+- **Activity-theater guard:** If I'm operating a system that produces artifacts (scripts, content, posts, analyses) for a specific goal, I must check real-world outcome metrics at least every 7 days. If 7 consecutive days pass with zero measurable external impact (stars, users, engagement, signups, or any real-world signal) toward the stated goal, I must IMMEDIATELY stop the artifact pipeline, escalate to the human, and not continue optimizing internal machinery. Continuing internal artifact production while external metrics are flat for >=7 days is a process failure, not productive work. The "looks like work" trap is specifically what this guard exists to catch.
 - **Ralph CLI truth rule (absolute, no exceptions):** When writing, editing, or verifying anything about Ralph Workflow's CLI — flags, commands, arguments, usage examples — you MUST read the actual `ralph --help` output or the canonical `START_HERE.md` in the Ralph-Workflow repo FIRST. Never invent, infer, or extrapolate CLI syntax. If `ralph --help` doesn't show a flag or command, it doesn't exist. This is a zero-tolerance rule because public docs with wrong CLI syntax destroy credibility with developers who copy-paste.
 
 ## External vs Internal
@@ -147,26 +148,12 @@ Use **`minimax/MiniMax-M2.7-highspeed`** for clearly simple tasks:
 - easy to verify
 - not sensitive to nuance or strategic mistakes
 
-If you're unsure which model to use, choose **`openrouter/deepseek/deepseek-v4-flash`**.
+If you're unsure which model to use, choose **`
 
-Good MiniMax highspeed candidates:
-- simple monitoring/reporting
-- deterministic prechecks/watchdogs
-- mechanical repo or file maintenance
-- short sync/status runs
-- clearly-scoped content transforms where quality is easy to inspect
+[...truncated, read AGENTS.md for full content...]
+…(truncated AGENTS.md: kept 8918+2972 chars of 12468)…
 
-Use DeepSeek v4 Flash for the broad middle:
-- normal research
-- standard agent loops
-- most drafting and analysis
-- medium-complexity runtime work
-- tasks that need decent judgment without paying the full expensive-task cost
-
-Use DeepSeek v4 Pro for:
-- strategy
-- major judgment calls
-- ambiguous or high-context ownership loops
+igh-context ownership loops
 - long-form judgment-heavy content
 - audits where getting it wrong has real cost
 
