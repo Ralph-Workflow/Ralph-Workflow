@@ -30,8 +30,8 @@ from ralph.agents.invoke._commands import (
     _build_command,
     _build_opencode_command,
     _command_for_log,
-    _interactive_stop_hook_settings,
     _interactive_stop_sentinel_path,
+    _merge_interactive_settings_json,
     check_agent_available,
 )
 from ralph.agents.invoke._completion import (
@@ -185,7 +185,7 @@ def _prepare_interactive_claude_options(opts: InvokeOptions, config: AgentConfig
         return opts
     session_id = opts.session_id or opts.initial_session_id or str(uuid4())
     sentinel_path = opts.stop_sentinel_path or _interactive_stop_sentinel_path(session_id)
-    settings_json = opts.settings_json or _interactive_stop_hook_settings(sentinel_path)
+    settings_json = _merge_interactive_settings_json(opts.settings_json, sentinel_path)
     return InvokeOptions(
         model_flag=opts.model_flag,
         session_id=opts.session_id,

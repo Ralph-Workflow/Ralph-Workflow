@@ -9,8 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
-from readability import Document
 from selectolax.parser import HTMLParser
+
+from readability import Document
 
 _MAX_LINKS = 100
 

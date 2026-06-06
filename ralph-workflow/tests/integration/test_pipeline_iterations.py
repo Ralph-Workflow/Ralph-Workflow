@@ -7,6 +7,7 @@ real subprocesses.
 
 from __future__ import annotations
 
+import gc
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -431,6 +432,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
         verbosity=Verbosity.QUIET,
         counter_overrides={"iteration": 1},
     )
+    gc.collect()
 
     assert result == 0
     assert planning_analysis_calls == MAX_PLANNING_ANALYSIS_ITERATIONS

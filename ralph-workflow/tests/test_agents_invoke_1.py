@@ -498,6 +498,109 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
     ]
 
 
+def test_invoke_agent_claude_interactive_default_settings_include_permission_request_hook(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--dangerously-skip-permissions",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run_pty_and_read_lines(
+        cmd: list[str],
+        ctx: object,
+        extras: object = None,
+    ) -> list[str]:
+        del ctx, extras
+        captured["cmd"] = cmd
+        return ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+
+    monkeypatch.setattr(invoke_module, "run_pty_and_read_lines", fake_run_pty_and_read_lines)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+        )
+    )
+
+    cmd = cast("list[str]", captured["cmd"])
+    settings_index = cmd.index("--settings")
+    settings = _json_object(cmd[settings_index + 1])
+    hooks = cast("dict[str, object]", settings["hooks"])
+
+    assert settings["skipDangerousModePermissionPrompt"] is True
+    assert "Stop" in hooks
+    assert "PermissionRequest" in hooks
+    permission_entries = cast("list[object]", hooks["PermissionRequest"])
+    permission_entry = cast("dict[str, object]", permission_entries[0])
+    permission_hooks = cast("list[object]", permission_entry["hooks"])
+    permission_hook = cast("dict[str, object]", permission_hooks[0])
+    assert permission_hook["type"] == "command"
+    assert "PermissionRequest" in cast("str", permission_hook["command"])
+    assert "allow" in cast("str", permission_hook["command"])
+
+
+def test_invoke_agent_claude_interactive_merges_custom_settings_with_required_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--dangerously-skip-permissions",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run_pty_and_read_lines(
+        cmd: list[str],
+        ctx: object,
+        extras: object = None,
+    ) -> list[str]:
+        del ctx, extras
+        captured["cmd"] = cmd
+        return ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+
+    monkeypatch.setattr(invoke_module, "run_pty_and_read_lines", fake_run_pty_and_read_lines)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                settings_json='{"tui":"fullscreen","hooks":{"Notification":[]}}',
+            ),
+        )
+    )
+
+    cmd = cast("list[str]", captured["cmd"])
+    settings_index = cmd.index("--settings")
+    settings = _json_object(cmd[settings_index + 1])
+    hooks = cast("dict[str, object]", settings["hooks"])
+
+    assert settings["tui"] == "fullscreen"
+    assert settings["skipDangerousModePermissionPrompt"] is True
+    assert "Notification" in hooks
+    assert "Stop" in hooks
+    assert "PermissionRequest" in hooks
+
+
 def test_build_command_injects_claude_interactive_append_system_prompt_file() -> None:
     config = AgentConfig(
         cmd="claude",

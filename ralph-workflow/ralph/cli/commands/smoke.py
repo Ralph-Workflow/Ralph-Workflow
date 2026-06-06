@@ -1,8 +1,10 @@
 """Manual smoke tests for expensive agent-runtime checks.
 
 These smoke tests are intentionally excluded from the verify pipeline because they
-consume live agent tokens. They exist to help operators validate real-world agent
-behavior, especially interactive-Claude parity, when changing the runtime.
+consume live agent tokens. They exist to validate the real invoke_agent pipeline
+against a live agent runtime, especially interactive-Claude parity, when changing
+the runtime. A smoke fix is only valid when it improves the shared runtime path,
+not when it special-cases this command alone.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.display.vt_normalizer import normalize_vt_text
 from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
     read_smoke_test_result_artifact,
@@ -62,18 +65,19 @@ _MAX_VISIBLE_OUTPUT_LINES = 80
 _HEADLESS_SEMANTIC_GUIDE = (
     "session capture, tool activity, completion signal, parser events, and tmp/ artifact creation"
 )
-_PERMISSION_PROMPT_MARKERS = (
-    "allow?",
-    "approve",
-    "permission",
-    "y/n",
-)
 _CRASH_MARKERS = (
     "traceback",
     "fatal",
     "segmentation fault",
     "panic",
     "crash",
+)
+_PROMPT_SHAPED_MARKERS = (
+    "claude requested permissions",
+    "allow this action?",
+    "enable auto mode?",
+    "yes, i accept",
+    "yes, i trust this folder",
 )
 
 
@@ -140,11 +144,21 @@ def _meaningful_output_lines(config: AgentConfig, lines: list[str]) -> list[str]
     return collected
 
 
+def _looks_like_permission_prompt_surface(line: str) -> bool:
+    normalized = normalize_vt_text(line).lower()
+    if not normalized.strip():
+        return False
+    if "bypass permissions on" in normalized:
+        return False
+    has_confirm_footer = "enter to confirm" in normalized or "esc to cancel" in normalized
+    return has_confirm_footer and any(marker in normalized for marker in _PROMPT_SHAPED_MARKERS)
+
+
 def _detect_break_indicators(lines: list[str]) -> list[str]:
     errors: list[str] = []
-    lowered = [line.strip().lower() for line in lines]
-    if any(any(marker in line for marker in _PERMISSION_PROMPT_MARKERS) for line in lowered):
+    if any(_looks_like_permission_prompt_surface(line) for line in lines):
         errors.append("unexpected permission prompt observed in transcript")
+    lowered = [line.strip().lower() for line in lines]
     if any(any(marker in line for marker in _CRASH_MARKERS) for line in lowered):
         errors.append("crash-like transcript output observed")
     return errors

@@ -80,6 +80,9 @@ def _fuzzy_contains_permission_prompt(text: str) -> bool:
     lower = visible.lower()
     lines = [line.strip().lower() for line in visible.splitlines() if line.strip()]
 
+    if "bypass permissions on" in lower:
+        return False
+
     if any(pattern.search(visible) is not None for pattern in _PERMISSION_PROMPT_PATTERNS):
         return True
 
@@ -100,7 +103,8 @@ def _fuzzy_contains_permission_prompt(text: str) -> bool:
 
     permission_phrases = [
         "claude requested",
-        "permission",
+        "permission prompt",
+        "permissions to",
         "authorize",
         "tool use",
         "requires confirmation",

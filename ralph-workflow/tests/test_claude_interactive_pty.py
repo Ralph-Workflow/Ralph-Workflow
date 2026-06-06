@@ -39,6 +39,15 @@ def test_permission_prompt_line_is_detected() -> None:
     assert invoke_module.is_permission_prompt_line("claude tool: write_file") is False
 
 
+def test_permission_prompt_line_ignores_bypass_status_indicator() -> None:
+    status_line = (
+        "\x1b[38;2;255;107;128m⏵⏵ bypass permissions on"
+        "\x1b[38;2;153;153;153m (shift+tab to cycle) · ← for agents\x1b[39m"
+    )
+
+    assert invoke_module.is_permission_prompt_line(status_line) is False
+
+
 def test_auto_response_for_interactive_prompt_handles_auto_mode_gate() -> None:
     menu = """
     Enable auto mode?

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -38,23 +39,84 @@ def _interactive_stop_sentinel_path(session_id: str) -> Path:
     return Path(tempfile.gettempdir()) / f"ralph-claude-interactive-{session_id}.done"
 
 
-def _interactive_stop_hook_settings(sentinel_path: Path) -> str:
-    command = f"touch {_shell_single_quote(str(sentinel_path))}"
-    settings: dict[str, object] = {
+def _python_hook_command(source: str) -> str:
+    return f"{shlex.quote(sys.executable)} -c {_shell_single_quote(source)}"
+
+
+def _interactive_permission_request_hook_command() -> str:
+    payload = {
+        "hookSpecificOutput": {
+            "hookEventName": "PermissionRequest",
+            "decision": {"behavior": "allow"},
+        }
+    }
+    return _python_hook_command(
+        f"import json; print(json.dumps({payload!r}, separators=(',', ':')))"
+    )
+
+
+def _interactive_default_settings(sentinel_path: Path) -> dict[str, object]:
+    stop_command = _python_hook_command(
+        f"from pathlib import Path; Path({str(sentinel_path)!r}).touch()"
+    )
+    permission_command = _interactive_permission_request_hook_command()
+    return {
+        "skipDangerousModePermissionPrompt": True,
         "hooks": {
             "Stop": [
                 {
                     "hooks": [
                         {
                             "type": "command",
-                            "command": command,
+                            "command": stop_command,
+                        }
+                    ]
+                }
+            ],
+            "PermissionRequest": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": permission_command,
                         }
                     ]
                 }
             ]
         }
     }
-    return json.dumps(settings)
+
+
+def _merge_interactive_settings_json(settings_json: str | None, sentinel_path: Path) -> str:
+    settings = _interactive_default_settings(sentinel_path)
+    if settings_json is None:
+        return json.dumps(settings)
+    try:
+        parsed_obj = cast("object", json.loads(settings_json))
+    except json.JSONDecodeError:
+        return settings_json
+    if not isinstance(parsed_obj, dict):
+        return settings_json
+    parsed_dict = cast("dict[str, object]", parsed_obj)
+
+    merged = dict(parsed_dict)
+    merged.setdefault("skipDangerousModePermissionPrompt", True)
+
+    parsed_hooks = parsed_dict.get("hooks")
+    existing_hooks = (
+        cast("dict[str, object]", parsed_hooks) if isinstance(parsed_hooks, dict) else {}
+    )
+    default_hooks = settings["hooks"]
+    assert isinstance(default_hooks, dict)
+    merged_hooks: dict[str, object] = dict(existing_hooks)
+    for event_name, default_value in default_hooks.items():
+        merged_hooks.setdefault(event_name, default_value)
+    merged["hooks"] = merged_hooks
+    return json.dumps(merged)
+
+
+def _interactive_stop_hook_settings(sentinel_path: Path) -> str:
+    return _merge_interactive_settings_json(None, sentinel_path)
 
 
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:

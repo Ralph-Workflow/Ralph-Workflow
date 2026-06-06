@@ -85,6 +85,30 @@ def test_render_smoke_report_surfaces_working_and_broken_observations() -> None:
     assert "thinking: checking prompt" in report
 
 
+def test_detect_break_indicators_ignores_bypass_status_line() -> None:
+    status_line = (
+        "\x1b[38;2;255;107;128m⏵⏵ bypass permissions on"
+        "\x1b[38;2;153;153;153m (shift+tab to cycle) · ← for agents\x1b[39m"
+    )
+
+    assert smoke_module._detect_break_indicators([status_line]) == []
+
+
+def test_detect_break_indicators_flags_prompt_shaped_bypass_warning() -> None:
+    warning_prompt = """
+    WARNING: Claude Code running in Bypass Permissions mode
+
+    1. No, exit
+    2. Yes, I accept
+
+    Enter to confirm · Esc to cancel
+    """
+
+    assert smoke_module._detect_break_indicators([warning_prompt]) == [
+        "unexpected permission prompt observed in transcript"
+    ]
+
+
 def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_guided_parity(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
