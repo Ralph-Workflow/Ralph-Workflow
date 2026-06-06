@@ -29558,3 +29558,89 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, well-positioned, and does not require re-audit. The README \u2192 START_HERE \u2192 docs map journey flows cleanly with consistent framing at every step.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "GitHub mirror README lines 91-93 use relative paths (`docs/sphinx/_static/demo/`) that may 404 when clicked on GitHub. These should be full repo URLs or absolute paths.",
+    "GitHub mirror START_HERE.md also uses relative paths to demo outputs \u2014 same link-rot risk.",
+    "ralph-workflow/README.md line 25 loosely collapses into 'original Ralph loop' lore before establishing the improvement narrative \u2014 minor but drifts from the positioning directive."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md (root, GitHub mirror, and ralph-workflow/)",
+      "reason": "All three READMEs open with the correct tagline, position as composable loop framework, call out Codeberg primary/GitHub mirror, give honest fit/non-fit, and lead with result-first evaluation. The comparison table correctly frames diff-as-output as a negative \u2014 exactly matching the positioning."
+    },
+    {
+      "path": "README.md \u2192 START_HERE.md \u2192 docs/README.md",
+      "reason": "Journey is explicitly signposted: README ends with 'see START_HERE.md'; START_HERE ends with 'Next pages only if you need them' linking docs; docs/README opens with 'Use this page after README.md and START_HERE.md'. Each step narrows from 'what it is' to 'try it' to 'find the right next page'."
+    },
+    {
+      "path": "docs/README.md lines 47-49",
+      "reason": "Contains an explicit 'Keep proof secondary' section, routing proof-oriented pages behind the product story \u2014 exactly what the positioning directs."
+    },
+    {
+      "path": "docs/first-task-guide.md + docs/reviewable-output.md",
+      "reason": "reviewable-output.md opens with 'not the main product pitch' and 'Use this page after you already understand the workflow'. first-task-guide.md leads with the simple-core framing, then task selection, spec writing, execution, and honest assessment. Both are correctly secondary to the main product story."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Strongly aligned docs system. README \u2192 START_HERE \u2192 docs/README forms a coherent journey. Promoted next-click pages all open with correct positioning and route evaluators correctly. No top-level internal leakage, no hype sludge, clear audience fit/non-fit, proof properly gated as secondary.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with correct tagline and positioning. Framing as 'composable loop framework' with 'simple Ralph-loop core' + 'powerful in composition' is exactly right. Default-workflow emphasis and explicit non-fit section are both strong."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Reinforces correct positioning upfront, explicitly says 'Keep proof secondary,' and gates proof/evidence pages behind product-story-first routes. The docs map routes evaluators correctly instead of into stale framing."
+    },
+    {
+      "path": "github-mirror/docs/reviewable-output.md",
+      "reason": "Opens with correct positioning and explicitly frames itself as 'supporting proof... not the main product pitch' \u2014 the exact right relationship to the top-level story."
+    },
+    {
+      "path": "github-mirror/START_HERE.md",
+      "reason": "Short, honest first-run path with strong task-selection guidance, result-first success criteria, and 'Next pages only if you need them' to minimize link anxiety."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

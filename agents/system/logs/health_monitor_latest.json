@@ -1,5 +1,5 @@
 {
-  "ts": "2026-06-06T23:03:19.426500",
+  "ts": "2026-06-07T00:02:53.012347",
   "jobs_checked": 20,
   "issues_found": 1,
   "issues": [
@@ -8,10 +8,29 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 6226.78,
+      "artifact_age_minutes": 6286.32,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     }
   ],
-  "repairs_attempted": []
+  "repairs_attempted": [
+    {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T00:02:40.051081+02:00\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780783363668:36\"\n}"
+    }
+  ]
 }
