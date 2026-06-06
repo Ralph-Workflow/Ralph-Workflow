@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, cast
 
 from rich.text import Text
 
-from ralph.api.opencode import validate_local_model_support
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
@@ -28,6 +27,7 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
+from ralph.api.opencode import validate_local_model_support
 from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.cli.commands._commit_chain_config import CommitChainConfig
@@ -51,11 +51,11 @@ from ralph.mcp.artifacts.commit_message import (
     read_commit_message_artifact,
     write_commit_message_artifact,
 )
-from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
+from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.prompts.commit import (
@@ -106,6 +106,7 @@ _MAX_METADATA_PARTS = 5
 _MISSING_COMMIT_ARTIFACT_REASON = "agent completed without writing a commit_message artifact"
 _MAX_COMMIT_PARSED_OUTPUT_LINES = 128
 _MAX_COMMIT_RAW_OUTPUT_LINES = 256
+_MODELED_FLAG_PARTS = 2
 
 Repo: _RepoFactoryProtocol | None = None
 
@@ -338,7 +339,7 @@ def _normalized_opencode_model_id(model_flag: str | None) -> str | None:
     if not model_flag:
         return None
     parts = model_flag.split()
-    if len(parts) == 2 and parts[0] in {"-m", "--model"}:
+    if len(parts) == _MODELED_FLAG_PARTS and parts[0] in {"-m", "--model"}:
         return parts[1].removeprefix("opencode/")
     if len(parts) == 1:
         return parts[0].removeprefix("opencode/")
@@ -708,30 +709,41 @@ def _extract_commit_payload_from_text(text: str) -> dict[str, object] | None:
     json_start = stripped.find("{")
     if json_start < 0:
         return None
-    candidate = stripped[json_start:]
+    candidate = _parse_json_object_candidate(stripped[json_start:])
+    if candidate is None:
+        return None
+    artifact_type = candidate.get("artifact_type")
+    if artifact_type == COMMIT_MESSAGE_TYPE:
+        return _extract_commit_payload_from_artifact_wrapper(candidate)
+    try:
+        return normalize_commit_message_content(candidate)
+    except ValueError:
+        return None
+
+
+def _parse_json_object_candidate(candidate: str) -> dict[str, object] | None:
     try:
         parsed = cast("object", json.loads(candidate))
     except json.JSONDecodeError:
         return None
     if not isinstance(parsed, dict):
         return None
-    payload = cast("dict[str, object]", parsed)
-    artifact_type = payload.get("artifact_type")
-    if artifact_type == COMMIT_MESSAGE_TYPE:
-        content = payload.get("content")
-        if isinstance(content, str):
-            try:
-                nested = cast("object", json.loads(content))
-            except json.JSONDecodeError:
-                return None
-            if isinstance(nested, dict):
-                return normalize_commit_message_content(cast("dict[str, object]", nested))
-            return None
-        if isinstance(content, dict):
-            return normalize_commit_message_content(cast("dict[str, object]", content))
+    return cast("dict[str, object]", parsed)
+
+
+def _extract_commit_payload_from_artifact_wrapper(
+    payload: dict[str, object],
+) -> dict[str, object] | None:
+    content = payload.get("content")
+    nested: dict[str, object] | None = None
+    if isinstance(content, dict):
+        nested = cast("dict[str, object]", content)
+    elif isinstance(content, str):
+        nested = _parse_json_object_candidate(content)
+    if nested is None:
         return None
     try:
-        return normalize_commit_message_content(payload)
+        return normalize_commit_message_content(nested)
     except ValueError:
         return None
 

@@ -248,7 +248,9 @@ def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() 
     assert len(parsed_output) < _OUTPUT_BATCH
 
 
-def test_commit_invocation_recovers_direct_commit_artifact_payload_from_output(tmp_path: Path) -> None:
+def test_commit_invocation_recovers_direct_commit_artifact_payload_from_output(
+    tmp_path: Path,
+) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text("Generate a commit message.", encoding="utf-8")
@@ -259,7 +261,8 @@ def test_commit_invocation_recovers_direct_commit_artifact_payload_from_output(t
     def fake_invoke_agent(_agent: object, *_args: object, **_kwargs: object) -> object:
         return iter(
             [
-                '{"artifact_type":"commit_message","content":{"type":"commit","subject":"fix: recovered from output"}}'
+                '{"artifact_type":"commit_message","content":'
+                '{"type":"commit","subject":"fix: recovered from output"}}'
             ]
         )
 
@@ -279,7 +282,9 @@ def test_commit_invocation_recovers_direct_commit_artifact_payload_from_output(t
     assert read_commit_message_artifact(tmp_path) == "fix: recovered from output"
 
 
-def test_commit_invocation_recovers_prefixed_commit_artifact_payload_from_output(tmp_path: Path) -> None:
+def test_commit_invocation_recovers_prefixed_commit_artifact_payload_from_output(
+    tmp_path: Path,
+) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text("Generate a commit message.", encoding="utf-8")
@@ -290,7 +295,8 @@ def test_commit_invocation_recovers_prefixed_commit_artifact_payload_from_output
     def fake_invoke_agent(_agent: object, *_args: object, **_kwargs: object) -> object:
         return iter(
             [
-                'claude raw: {"artifact_type":"commit_message","content":{"type":"commit","subject":"fix: prefixed recovery"}}'
+                'claude raw: {"artifact_type":"commit_message","content":'
+                '{"type":"commit","subject":"fix: prefixed recovery"}}'
             ]
         )
 
