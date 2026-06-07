@@ -1,6 +1,6 @@
 {
   "schema_version": "ecc.self-repair-self-improve-audit.v1",
-  "checked_at": "2026-06-07T04:17:18.294430+02:00",
+  "checked_at": "2026-06-07T05:20:51.771358+02:00",
   "total_loops_audited": 20,
   "loops_with_self_repair": 18,
   "loops_with_self_improve": 18,
@@ -20,20 +20,6 @@
       "self_improve_missing": false,
       "job_id": "1c0ad179-185c-4067-ba16-d41702524ee0",
       "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "ralph-site-owner-loop",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/run.py",
-      "has_self_repair": true,
-      "sr_detail": "patterns:def.*repair\\b,self_?repair,stale_artifact",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:third-party,flat-adoption,adoption_is_flat",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "a49ec2cc-8343-45bf-a52e-eff8b0975585",
-      "model": "openrouter/deepseek/deepseek-v4-pro"
     },
     {
       "job": "codeberg-github-mirror-sync",
@@ -64,34 +50,6 @@
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
-      "job": "Push research findings to git repo",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
-      "has_self_repair": true,
-      "sr_detail": "idempotent_reporter_exempt",
-      "needs_self_repair": false,
-      "has_self_improve": true,
-      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
-      "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "repo-adoption-tracker",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/adoption_tracker.py",
-      "has_self_repair": true,
-      "sr_detail": "idempotent_reporter_exempt",
-      "needs_self_repair": false,
-      "has_self_improve": true,
-      "si_detail": "patterns:adoption is also flat,adoption deltas and replace any tactic that stays ",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "126471f7-1226-4aee-a2fe-e7ff17a28d6d",
-      "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
       "job": "pypi-auto-unblocker",
       "script": "UNKNOWN",
       "has_self_repair": false,
@@ -118,6 +76,34 @@
       "self_improve_missing": false,
       "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
       "model": "openrouter/deepseek/deepseek-v4-pro"
+    },
+    {
+      "job": "Push research findings to git repo",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
+      "has_self_repair": true,
+      "sr_detail": "idempotent_reporter_exempt",
+      "needs_self_repair": false,
+      "has_self_improve": true,
+      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
+      "model": "minimax/MiniMax-M2.7-highspeed"
+    },
+    {
+      "job": "repo-adoption-tracker",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/adoption_tracker.py",
+      "has_self_repair": true,
+      "sr_detail": "idempotent_reporter_exempt",
+      "needs_self_repair": false,
+      "has_self_improve": true,
+      "si_detail": "patterns:adoption is also flat,adoption deltas and replace any tactic that stays ",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "126471f7-1226-4aee-a2fe-e7ff17a28d6d",
+      "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
       "job": "agent-architecture-watchdog",
@@ -202,6 +188,20 @@
       "self_improve_missing": false,
       "job_id": "6685e8b4-50be-47ca-9a3a-9f0f86ba5415",
       "model": "minimax/MiniMax-M2.7-highspeed"
+    },
+    {
+      "job": "ralph-site-owner-loop",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/run.py",
+      "has_self_repair": true,
+      "sr_detail": "patterns:def.*repair\\b,self_?repair,stale_artifact",
+      "needs_self_repair": true,
+      "has_self_improve": true,
+      "si_detail": "patterns:third-party,flat-adoption,adoption_is_flat",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "a49ec2cc-8343-45bf-a52e-eff8b0975585",
+      "model": "openrouter/deepseek/deepseek-v4-pro"
     },
     {
       "job": "marketing-workflow-audit",

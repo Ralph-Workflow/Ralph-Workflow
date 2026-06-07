@@ -1,5 +1,5 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-06-07T00:06:16
+Generated: 2026-06-07T06:11:36
 
 ## Why this board exists
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -44,7 +44,7 @@ Generated: 2026-06-07T00:06:16
 - stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
 
 ## Verified infrastructure state (programmatic, not fabricated)
-- **Telegraph guard**: clear
+- **Telegraph guard**: cooldown (cooldown_active) — clears ~06:14 UTC
 - **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
 - **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
 - **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-07 02:16 UTC",
+  "timestamp": "2026-06-07 04:04 UTC",
   "results": [
     {
       "name": "ralph-docs-watchdog",
@@ -14,7 +14,8 @@
       "errors": [],
       "status": "ok",
       "ownerCronStatus": "running",
-      "checkerResult": "AGENT_ARCHITECTURE_OK"
+      "checkerResult": "AGENT_ARCHITECTURE_OK",
+      "verifierContractExternalized": true
     }
   ]
 }
