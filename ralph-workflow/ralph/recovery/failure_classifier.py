@@ -68,6 +68,22 @@ _TOOL_AVAILABILITY_SUBSTRINGS: tuple[str, ...] = (
     "no such tool available",
 )
 
+_POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS: tuple[str, ...] = (
+    "empty response with no tool calls",
+    "empty response",
+)
+
+_POST_TOOL_ACTIVITY_MARKERS: tuple[str, ...] = (
+    '"type":"tool_result"',
+    '"type": "tool_result"',
+    '"type":"mcp_tool_result"',
+    '"type": "mcp_tool_result"',
+    '"type":"tool_use"',
+    '"type": "tool_use"',
+    '[plain] tool:',
+    ' tool: ',
+)
+
 _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
     {
         "Missing required artifact",
@@ -200,6 +216,12 @@ def _is_tool_dispatch_unregistered_error(exc: BaseException) -> bool:
     return "is not registered" in message.casefold()
 
 
+def _is_post_tool_empty_response_failure(detail_parts: list[str]) -> bool:
+    return contains_casefolded_marker(
+        detail_parts, _POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+    ) and contains_casefolded_marker(detail_parts, _POST_TOOL_ACTIVITY_MARKERS)
+
+
 def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) -> bool:
     """Return True if the message matches Claude Code documented limit/billing families."""
     return contains_casefolded_marker(detail_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
@@ -327,10 +349,13 @@ class FailureClassifier:
            substring "no such tool available" — the live Claude Code
            ``<tool_use_error>Error: No such tool available: mcp__<server>__<tool></tool_use_error>``
            message format.
+        3. The agent reports an empty response after prior tool activity.
+           This is the transport-agnostic post-tool desync family: the
+           tool boundary succeeded, but the model failed to continue the turn.
         """
         return (exc is not None and _is_tool_dispatch_unregistered_error(exc)) or (
             contains_casefolded_marker(detail_parts, _TOOL_AVAILABILITY_SUBSTRINGS)
-        )
+        ) or _is_post_tool_empty_response_failure(detail_parts)
 
     def _categorize_exc(
         self,

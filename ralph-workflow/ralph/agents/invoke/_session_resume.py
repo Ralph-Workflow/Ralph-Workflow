@@ -138,7 +138,8 @@ def _is_tool_availability_marker(failure_reason: str) -> bool:
         return False
     if failure_reason == "ToolDispatchError":
         return True
-    return "no such tool available" in failure_reason.casefold()
+    folded = failure_reason.casefold()
+    return "no such tool available" in folded or "empty response with no tool calls" in folded
 
 
 def recovery_action_for_failure_reason(

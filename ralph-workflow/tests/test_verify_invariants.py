@@ -47,6 +47,7 @@ def _run_patched_import(
     then tries to import it. Returns the subprocess result.
     """
     verify_path = _get_verify_path()
+    repo_root = str(Path(verify_path).parent.parent)
     original = Path(verify_path).read_text(encoding="utf-8")
 
     # Patch the constant value
@@ -66,8 +67,7 @@ def _run_patched_import(
         # Create a runner script that imports the patched verify.py
         runner = (
             "import sys\n"
-            f"sys.path.insert(0, {str(Path(tmp_path).parent)!r})\n"
-            f"sys.path.insert(0, {str(Path(verify_path).parent)!r})\n"
+            f"sys.path.insert(0, {repo_root!r})\n"
             f"import importlib.util\n"
             f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
             f"mod = importlib.util.module_from_spec(spec)\n"
@@ -159,6 +159,7 @@ def _run_label_patched_import(
     Only patches the constants that are provided (not None).
     """
     verify_path = _get_verify_path()
+    repo_root = str(Path(verify_path).parent.parent)
     original = Path(verify_path).read_text(encoding="utf-8")
     patched = original
 
@@ -185,8 +186,7 @@ def _run_label_patched_import(
     try:
         runner = (
             "import sys\n"
-            f"sys.path.insert(0, {str(Path(tmp_path).parent)!r})\n"
-            f"sys.path.insert(0, {str(Path(verify_path).parent)!r})\n"
+            f"sys.path.insert(0, {repo_root!r})\n"
             f"import importlib.util\n"
             f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
             f"mod = importlib.util.module_from_spec(spec)\n"
@@ -284,6 +284,7 @@ def _run_step_timeout_patched_import(
     then tries to import it. Returns the subprocess result.
     """
     verify_path = _get_verify_path()
+    repo_root = str(Path(verify_path).parent.parent)
     original = Path(verify_path).read_text(encoding="utf-8")
 
     # Patch the _VERIFY_STEP_TIMEOUT_SECONDS constant value.
@@ -302,8 +303,7 @@ def _run_step_timeout_patched_import(
     try:
         runner = (
             "import sys\n"
-            f"sys.path.insert(0, {str(Path(tmp_path).parent)!r})\n"
-            f"sys.path.insert(0, {str(Path(verify_path).parent)!r})\n"
+            f"sys.path.insert(0, {repo_root!r})\n"
             f"import importlib.util\n"
             f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
             f"mod = importlib.util.module_from_spec(spec)\n"
@@ -368,6 +368,7 @@ def _run_integration_timeout_patched_import(
     timeout_value: float, *, minus_o: bool = False
 ) -> subprocess.CompletedProcess[str]:
     verify_path = _get_verify_path()
+    repo_root = str(Path(verify_path).parent.parent)
     original = Path(verify_path).read_text(encoding="utf-8")
 
     patched = original.replace(
@@ -385,8 +386,7 @@ def _run_integration_timeout_patched_import(
     try:
         runner = (
             "import sys\n"
-            f"sys.path.insert(0, {str(Path(tmp_path).parent)!r})\n"
-            f"sys.path.insert(0, {str(Path(verify_path).parent)!r})\n"
+            f"sys.path.insert(0, {repo_root!r})\n"
             f"import importlib.util\n"
             f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
             f"mod = importlib.util.module_from_spec(spec)\n"

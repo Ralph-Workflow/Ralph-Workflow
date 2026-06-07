@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -57,10 +58,31 @@ def run_git(
         ),
     )
     try:
-        raw_stdout, raw_stderr = proc.communicate(timeout=effective_options.timeout)
+        communicate_and_cleanup = getattr(proc, "communicate_and_cleanup", None)
+        if callable(communicate_and_cleanup):
+            raw_stdout, raw_stderr = communicate_and_cleanup(
+                timeout=effective_options.timeout,
+                cleanup_grace_period_s=0.0,
+            )
+        else:
+            raw_stdout, raw_stderr = proc.communicate(timeout=effective_options.timeout)
+        with contextlib.suppress(Exception):
+            proc.poll()
+        with contextlib.suppress(Exception):
+            proc.wait(timeout=0)
     except subprocess.TimeoutExpired:
         proc.terminate(grace_period_s=0)
         raise
+    finally:
+        raw_proc = getattr(proc, "_proc", None)
+        for stream in (proc.stdout, proc.stderr):
+            if stream is None:
+                continue
+            with contextlib.suppress(Exception):
+                stream.close()
+        if raw_proc is not None and hasattr(raw_proc, "__exit__"):
+            with contextlib.suppress(Exception):
+                raw_proc.__exit__(None, None, None)
 
     def _str(v: bytes | str | None) -> str:
         if v is None:

@@ -52,7 +52,12 @@ from ralph.mcp.artifacts.commit_message import (
     write_commit_message_artifact,
 )
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
-from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
+from ralph.mcp.server.lifecycle import (
+    McpServerExtras,
+    RestartAwareMcpBridge,
+    SessionBridgeLike,
+    start_mcp_server,
+)
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import RequiredArtifact
@@ -66,6 +71,8 @@ from ralph.prompts.commit import (
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.prompts.payload_refs import sanitize_surrogates as _sanitize_surrogates
 from ralph.prompts.system_prompt import materialize_system_prompt
+from ralph.recovery.failure_classifier import FailureClassifier
+from ralph.recovery.failure_details import failure_detail_parts
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
@@ -482,6 +489,7 @@ def _generate_commit_message_with_chain(
                 verbose=chain_config.verbose,
                 extra_env=extra_env,
                 general_config=chain_config.general_config,
+                bridge=bridge,
             )
             result = _generate_commit_message_with_agent(
                 cfg,
@@ -519,6 +527,23 @@ def _generate_commit_message_with_agent(
         failure_details.append(initial_attempt.failure_detail)
     else:
         return _finalize_commit_attempt(initial_attempt, failure_details)
+
+    if initial_attempt.retryable_failure and initial_attempt.resume_session_id:
+        if initial_attempt.reset_tool_registry:
+            reset_tool_registry = getattr(attempt_context.bridge, "reset_tool_registry", None)
+            if callable(reset_tool_registry):
+                reset_tool_registry()
+        session_retry = invoke_commit_agent_attempt(
+            agent,
+            prompt_file=prompt_file,
+            attempt_context=attempt_context,
+            session_id=initial_attempt.resume_session_id,
+            display_context=display_context,
+        )
+        if session_retry.failure_detail:
+            failure_details.append(session_retry.failure_detail)
+        else:
+            return _finalize_commit_attempt(session_retry, failure_details)
 
     if not _is_missing_commit_artifact_failure(initial_attempt.failure_detail):
         return CommitAgentResult(failure_details=failure_details)
@@ -610,10 +635,21 @@ def invoke_commit_agent_attempt(
             options=options,
         )
     except AgentInvocationError as exc:
+        parsed_output = _parsed_output_from_invocation_error(exc)
+        classifier = FailureClassifier().classify(exc, phase="commit", agent=agent.cmd)
+        resume_session_id = (
+            extract_session_id(tuple(parsed_output))
+            if parsed_output
+            else None
+        )
         return CommitAgentAttempt(
             failure_detail=_format_agent_invocation_failure(
-                agent.cmd, prompt_file, exc, parsed_output=[]
-            )
+                agent.cmd, prompt_file, exc, parsed_output=parsed_output
+            ),
+            parsed_output=parsed_output,
+            resume_session_id=resume_session_id,
+            reset_tool_registry=classifier.reset_tool_registry,
+            retryable_failure=classifier.reset_tool_registry,
         )
 
     try:

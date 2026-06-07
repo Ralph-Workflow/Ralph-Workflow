@@ -172,4 +172,9 @@ class TestResolveInvocationRuntime:
         assert result.agent_env is not None
         payload = _json_object(result.agent_env["NANOCODER_MCPSERVERS"])
         servers = cast("dict[str, dict[str, object]]", payload["mcpServers"])
-        assert servers["ralph"]["alwaysAllow"] == ["read_file", "ralph_submit_artifact"]
+        assert servers["ralph"]["alwaysAllow"] == [
+            "read_file",
+            "mcp__ralph__read_file",
+            "ralph_submit_artifact",
+            "mcp__ralph__ralph_submit_artifact",
+        ]

@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.config.models import GeneralConfig
+    from ralph.mcp.server.lifecycle import SessionBridgeLike
 
 
 @dataclass(frozen=True)
@@ -17,3 +18,4 @@ class CommitAttemptContext:
     verbose: bool
     extra_env: dict[str, str]
     general_config: GeneralConfig | None = None
+    bridge: SessionBridgeLike | None = None

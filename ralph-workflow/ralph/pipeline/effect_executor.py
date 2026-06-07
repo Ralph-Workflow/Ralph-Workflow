@@ -100,6 +100,22 @@ _TRANSIENT_CONNECTIVITY_MARKERS = (
     "socket hang up",
 )
 
+_POST_TOOL_EMPTY_RESPONSE_MARKERS = (
+    "empty response with no tool calls",
+    "empty response",
+)
+
+_POST_TOOL_ACTIVITY_MARKERS = (
+    '"type":"tool_result"',
+    '"type": "tool_result"',
+    '"type":"mcp_tool_result"',
+    '"type": "mcp_tool_result"',
+    '"type":"tool_use"',
+    '"type": "tool_use"',
+    '[plain] tool:',
+    ' tool: ',
+)
+
 
 @dataclass(frozen=True)
 class _AttemptResult:
@@ -580,6 +596,10 @@ def _retryable_agent_failure_reason(
     for marker in _TRANSIENT_CONNECTIVITY_MARKERS:
         if marker in details:
             return "a transient connectivity failure"
+    if contains_casefolded_marker(
+        _recovery_error_parts(exc), _POST_TOOL_EMPTY_RESPONSE_MARKERS
+    ) and contains_casefolded_marker(_recovery_error_parts(exc), _POST_TOOL_ACTIVITY_MARKERS):
+        return "a post-tool-result continuation failure"
     return None
 
 

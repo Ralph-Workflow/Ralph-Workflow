@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(130)]
 
 _BUDGET_SECONDS = 60.0
 

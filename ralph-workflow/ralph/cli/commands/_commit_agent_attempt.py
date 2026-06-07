@@ -13,3 +13,5 @@ class CommitAgentAttempt:
     parsed_output: list[str] = field(default_factory=list)
     raw_output: list[str] = field(default_factory=list)
     resume_session_id: str | None = None
+    reset_tool_registry: bool = False
+    retryable_failure: bool = False

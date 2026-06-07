@@ -11,7 +11,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke import AgentInactivityTimeoutError, OpenCodeResumableExitError
+from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
+    AgentInvocationError,
+    OpenCodeResumableExitError,
+)
 from ralph.pipeline.effect_executor import AgentRecoveryInput, build_agent_recovery_plan
 from ralph.pipeline.effects import InvokeAgentEffect
 
@@ -88,3 +92,30 @@ class TestNonResumableExceptionYieldsNoRecovery:
         assert plan is not None
         assert plan.prompt_file != ".agent/PROMPT.md"
         assert plan.session_id == "sess-def"
+
+    def test_post_tool_empty_response_yields_recovery_plan(self, tmp_path: Path) -> None:
+        exc = AgentInvocationError(
+            "opencode",
+            1,
+            "Model returned an empty response with no tool calls",
+            parsed_output=['{"type":"tool_result","tool":"read_file"}'],
+        )
+        effect = _make_effect(prompt_file="PROMPT.md")
+
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=["[plain] tool: read_file"],
+                rendered_output=[],
+                extracted_session_id="sess-post-tool",
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
+        )
+
+        assert plan is not None
+        assert plan.prompt_file != "PROMPT.md"
+        assert plan.session_id == "sess-post-tool"

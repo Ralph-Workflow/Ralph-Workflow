@@ -8,6 +8,7 @@ import platform
 from pathlib import Path
 from typing import cast
 
+from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, claude_tool_name
 from ralph.mcp.transport.common import _load_mcpservers_from_paths
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
@@ -29,7 +30,14 @@ def build_nanocoder_mcp_config(
         "url": endpoint,
     }
     if always_allow:
-        ralph_server["alwaysAllow"] = list(always_allow)
+        expanded_allow: list[str] = []
+        for tool_name in always_allow:
+            if tool_name not in expanded_allow:
+                expanded_allow.append(tool_name)
+            alias = claude_tool_name(tool_name, server_name=RALPH_MCP_SERVER_NAME)
+            if alias not in expanded_allow:
+                expanded_allow.append(alias)
+        ralph_server["alwaysAllow"] = expanded_allow
     server_map["ralph"] = ralph_server
     payload = {"mcpServers": server_map}
     return json.dumps(payload, sort_keys=True), upstreams

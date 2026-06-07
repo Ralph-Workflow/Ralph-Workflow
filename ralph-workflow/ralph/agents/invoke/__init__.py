@@ -519,12 +519,13 @@ def _canonical_http_mcp_tool_names(endpoint: str) -> tuple[str, ...]:
     canonical: list[str] = []
     seen: set[str] = set()
     for tool_name in visible_tool_names:
+        canonical_name = tool_name
         if tool_name.startswith(prefix):
-            tool_name = tool_name[len(prefix):]
-        if not tool_name or tool_name in seen:
+            canonical_name = tool_name[len(prefix):]
+        if not canonical_name or canonical_name in seen:
             continue
-        seen.add(tool_name)
-        canonical.append(tool_name)
+        seen.add(canonical_name)
+        canonical.append(canonical_name)
     return tuple(canonical)
 
 

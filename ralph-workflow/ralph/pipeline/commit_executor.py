@@ -7,12 +7,16 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol, cast
 
-from git import Repo
 from loguru import logger
 
 from ralph.config.enums import Verbosity
 from ralph.display.artifact_renderer import render_commit_message
-from ralph.git.operations import create_commit, has_uncommitted_changes, stage_all
+from ralph.git.operations import (
+    create_commit,
+    has_uncommitted_changes,
+    list_changed_paths,
+    stage_all,
+)
 from ralph.git.operations import stage_files as _stage_files
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -212,40 +216,12 @@ def _normalize_repo_relative_path(raw_path: str) -> str:
     return normalized
 
 
-def _close_repo(repo: Repo | None) -> None:
-    close = cast("Callable[[], object] | None", getattr(repo, "close", None))
-    if callable(close):
-        close()
-
-
 def _changed_commit_paths(repo_root: Path) -> list[str]:
-    repo: Repo | None = None
-    try:
-        repo = Repo(repo_root)
-        status_output = cast("str", repo.git.status("--porcelain"))
-    finally:
-        _close_repo(repo)
-    status_lines = status_output.splitlines()
-    changed: list[str] = []
-    for line in status_lines:
-        if len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
-            continue
-        path_part = line[_PORCELAIN_STATUS_PREFIX_LEN:]
-        if " -> " in path_part:
-            _, _, path_part = path_part.partition(" -> ")
-        path = path_part.strip()
-        if path and path not in changed:
-            changed.append(path)
-    return changed
+    return list_changed_paths(repo_root)
 
 
 def _repo_has_commit_work(repo_root: Path) -> bool:
-    repo: Repo | None = None
-    try:
-        repo = Repo(repo_root)
-        return repo.is_dirty(untracked_files=True)
-    finally:
-        _close_repo(repo)
+    return has_uncommitted_changes(repo_root)
 
 
 def cleanup_commit_message_artifacts(repo_root: Path) -> None:

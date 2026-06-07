@@ -192,14 +192,17 @@ def has_uncommitted_changes(repo_root: Path | str) -> bool:
     authoritative skip check for commit phases: if this returns False, there
     is literally nothing for a commit agent to package up.
     """
+    repo_root_path = Path(repo_root)
     try:
-        return bool(_git_status_porcelain_lines(Path(repo_root)))
+        result = run_git(("status", "--porcelain"), cwd=repo_root_path, label="git-status")
+        if result.returncode == 0:
+            return bool(result.stdout.splitlines())
     except OSError:
         pass
 
     repo: Repo | None = None
     try:
-        repo = Repo(repo_root)
+        repo = Repo(repo_root_path)
         return repo.is_dirty(untracked_files=True)
     finally:
         _close_repo(repo)
@@ -245,6 +248,31 @@ def has_staged_changes(repo_root: Path | str) -> bool:
         line.startswith("??") or (line and line[0] not in {" ", "?"})
         for line in status_lines
     )
+
+
+def list_changed_paths(repo_root: Path | str) -> list[str]:
+    """Return unique changed paths from ``git status --porcelain`` in output order."""
+    try:
+        status_lines = _git_status_porcelain_lines(Path(repo_root))
+    except OSError:
+        repo: Repo | None = None
+        try:
+            repo = Repo(repo_root)
+            status_lines = cast("str", repo.git.status("--porcelain")).splitlines()
+        finally:
+            _close_repo(repo)
+
+    changed_paths: list[str] = []
+    for line in status_lines:
+        if not line or len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
+            continue
+        path_part = line[_PORCELAIN_STATUS_PREFIX_LEN:]
+        if " -> " in path_part:
+            _, _, path_part = path_part.partition(" -> ")
+        path = path_part.strip()
+        if path and path not in changed_paths:
+            changed_paths.append(path)
+    return changed_paths
 
 
 def get_staged_files(repo_root: Path | str) -> list[str]:

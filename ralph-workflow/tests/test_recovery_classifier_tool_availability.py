@@ -89,11 +89,7 @@ def test_classifier_routes_runtime_tool_dispatch_error_to_reset_tool_registry() 
 
 def test_classifier_routes_empty_response_after_tool_result_to_reset_tool_registry() -> None:
     exc = RuntimeError("Model returned an empty response with no tool calls")
-    setattr(
-        exc,
-        "parsed_output",
-        ['{"type":"tool_result","tool":"read_file","result":{"ok":true}}'],
-    )
+    exc.parsed_output = ['{"type":"tool_result","tool":"read_file","result":{"ok":true}}']
     classified = FailureClassifier().classify(
         exc, phase="development", agent="claude/haiku"
     )

@@ -90,6 +90,8 @@ class ManagedProcess:
         except subprocess.TimeoutExpired:
             raise
         rc = self._proc.returncode
+        if rc is None:
+            rc = self._proc.wait(timeout=0)
         if rc is not None and self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return stdout, stderr
