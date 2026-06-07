@@ -1,102 +1,17 @@
 {
-  "ts": "2026-06-07T11:04:12.631250",
+  "ts": "2026-06-07T12:04:20.738827",
   "jobs_checked": 21,
-  "issues_found": 7,
+  "issues_found": 1,
   "issues": [
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 6947.7,
+      "artifact_age_minutes": 7007.82,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review",
-      "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "The docs system is well-aligned with the positioning document. The README \u2192 START_HERE \u2192 docs/README forms a coherent one-route journey with consistent messaging. Promoted next-click pages reinforce rather than fight the story. No hard failures detected \u2014 the user should not need to repeat this instruction."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_readme-s-built-in-capabilities-list-under-see-it",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "README's 'Built-in capabilities' list under 'See it in action' uses mildly internal-mechanics phrasing ('phase routing', 'repo-based handoff', 'recovery + retry'). Below the fold so not a lead, but slightly at odds with the 'don't lead with internals' guardrail \u2014 consider reframing toward user benefit instead of implementation shape.",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: README's 'Built-in capabilities' list under 'See it in action' uses mildly internal-mechanics phrasing ('phase routing', 'repo-based handoff', 'recovery + retry'). Below the fold so not a lead, but slightly at odds with the 'don't lead with internals' guardrail \u2014 consider reframing toward user benefit instead of implementation shape."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T11:03:31.190283+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_escalation",
-      "category": "escalation_required",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=21",
-      "repeats_in_recent_history": 21,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review::loop_verification_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_readme-s-built-in-capabilities-list-under-see-it_escalation",
-      "category": "escalation_required",
-      "last_error": "README's 'Built-in capabilities' list under 'See it in action' uses mildly internal-mechanics phrasing ('phase routing', 'repo-based handoff', 'recovery + retry'). Below the fold so not a lead, but slightly at odds with the 'don't lead with internals' guardrail \u2014 consider reframing toward user benefit instead of implementation shape.",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_readme-s-built-in-capabilities-list-under-see-it:review_followup_required repeat_count=12",
-      "repeats_in_recent_history": 12,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review_mustFix_readme-s-built-in-capabilities-list-under-see-it::review_followup_required",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
-      "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T11:03:31.190283+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=33",
-      "repeats_in_recent_history": 33,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
     }
   ],
-  "repairs_attempted": [
-    {
-      "type": "rerun_docs_verifier",
-      "job": "docs_agentic_review",
-      "ok": true,
-      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"The docs system is well-aligned with the positioning document. The README \\u2192 START_HERE \\u2192 docs/README forms a coherent one-route journey with consistent messaging. P"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "docs_agentic_review_mustFix_readme-s-built-in-capabilities-list-under-see-it",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-07T09:03:01.252800+00:00"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_mustFix_readme-s-built-in-capabilities-list-under-see-it_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    }
-  ]
+  "repairs_attempted": []
 }
