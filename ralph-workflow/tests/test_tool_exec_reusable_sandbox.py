@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 from typing import TYPE_CHECKING
 
@@ -265,6 +267,93 @@ def test_unrecoverable_over_capacity_raises_execution_error(
     assert err.current_bytes is not None
     assert err.cap_bytes is not None
     assert err.remaining_bytes is not None
+
+
+# ---------------------------------------------------------------------------
+# Over-capacity suppressed when live/active slots explain the overage
+# ---------------------------------------------------------------------------
+
+
+def test_no_error_when_live_external_slot_explains_overage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No error when over-budget bytes belong to a slot owned by a still-alive process."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    base = tmp_path / "exec-base"
+    base.mkdir(parents=True, exist_ok=True)
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=base,
+        max_total_bytes=50,
+    )
+
+    workspace_key = exec_sandbox._workspace_key(workspace)
+    pool_dir = base / workspace_key
+    pool_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create a slot owned by the current (live) process
+    live_slot = pool_dir / f"slot-{workspace_key}-0099"
+    live_slot.mkdir()
+    (live_slot / ".ralph-exec-owner.json").write_text(
+        json.dumps({"pid": os.getpid()})
+    )
+
+    # du always reports over-budget so recovery cannot free space
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", lambda path: 200)
+
+    # acquire must succeed: live slot explains the overage
+    with manager.acquire(workspace):
+        pass
+
+
+def test_no_error_when_active_in_process_slot_explains_overage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No error when over-budget bytes belong to a currently-active in-process slot."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_total_bytes=50,
+    )
+
+    # Disable TTL so every acquire triggers a fresh capacity check.
+    monkeypatch.setattr(exec_sandbox, "_CAPACITY_CHECK_INTERVAL_S", 0.0)
+
+    # First call (first acquire's capacity check): under budget so acquire succeeds.
+    # Subsequent calls: over budget — simulates growth from the active slot.
+    call_count = [0]
+
+    def sized(path: object) -> int:
+        call_count[0] += 1
+        return 0 if call_count[0] == 1 else 200
+
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", sized)
+
+    slot1_ready = threading.Event()
+    slot1_release = threading.Event()
+    first_error: list[Exception | None] = [None]
+
+    def hold_slot1() -> None:
+        try:
+            with manager.acquire(workspace):
+                slot1_ready.set()
+                slot1_release.wait(timeout=_ENTER_WAIT_TIMEOUT_S)
+        except Exception as exc:
+            first_error[0] = exc
+            slot1_ready.set()
+
+    t = threading.Thread(target=hold_slot1, daemon=True)
+    t.start()
+    assert slot1_ready.wait(timeout=_ENTER_WAIT_TIMEOUT_S), "First slot not acquired in time"
+    assert first_error[0] is None, f"First acquire failed: {first_error[0]}"
+
+    # Second acquire: active_now contains the first slot; no error expected
+    with manager.acquire(workspace):
+        pass
+
+    slot1_release.set()
+    t.join(timeout=_THREAD_JOIN_TIMEOUT_S)
 
 
 # ---------------------------------------------------------------------------

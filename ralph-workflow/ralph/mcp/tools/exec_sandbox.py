@@ -51,6 +51,7 @@ _DEFAULT_MAX_POOL_BYTES = 512 * 1024 * 1024
 _DEFAULT_MAX_WORKSPACE_BYTES = 2 * 1024 * 1024 * 1024
 _WORKSPACE_SIZE_CACHE_TTL_S = 60.0
 _FORCED_MAX_SLOT_AGE_S = 24 * 60 * 60.0
+_CAPACITY_CHECK_INTERVAL_S = 5.0
 
 
 def _workspace_key(workspace_root: Path) -> str:
@@ -137,6 +138,9 @@ class ExecSandboxManager:
         self._active_slots: set[Path] = set()
         self._workspace_size_cache: dict[str, tuple[int, float]] = {}
         self._managed_workspace_keys: set[str] = set()
+        self._last_capacity_check_t: float = 0.0
+        self._last_capacity_bytes: int = 0
+        self._over_budget_due_to_live_slots: bool = False
 
     @contextmanager
     def acquire(self, workspace_root: Path) -> Iterator[Path]:
@@ -179,19 +183,39 @@ class ExecSandboxManager:
         return slot_root
 
     def _ensure_capacity_or_recover(self, workspace_root: Path) -> None:
-        """Run cleanup only if base_dir usage exceeds max_total_bytes."""
+        """Run cleanup only under capacity pressure; skip expensive du scan when under budget."""
         if self._max_total_bytes <= 0 or not self._base_dir.exists():
             return
+
+        now = time.monotonic()
+        with self._rr_lock:
+            last_t = self._last_capacity_check_t
+            last_bytes = self._last_capacity_bytes
+            live_slots_flag = self._over_budget_due_to_live_slots
+
+        # Fast path: recently under budget, or recently confirmed the overage is from live slots
+        if now - last_t < _CAPACITY_CHECK_INTERVAL_S and (
+            last_bytes <= self._max_total_bytes or live_slots_flag
+        ):
+            return
+
         current_bytes = self._path_size_bytes_via_du(self._base_dir)
+        with self._rr_lock:
+            self._last_capacity_check_t = now
+            self._last_capacity_bytes = current_bytes
+            self._over_budget_due_to_live_slots = False
+
         if current_bytes <= self._max_total_bytes:
             return
+
         workspace_key = _workspace_key(workspace_root)
         self._recover_over_capacity(workspace_key, current_bytes)
 
     def _recover_over_capacity(self, current_workspace_key: str, pre_bytes: int) -> None:
         """Remove reclaimable base-dir entries when over budget.
 
-        Preserves any slot root currently registered in _active_slots.
+        Only removes entries whose owner process is dead. Preserves in-process
+        active slots and dirs owned by live external processes.
         Tolerates concurrent missing/reappearing paths gracefully.
         """
         with self._rr_lock:
@@ -199,12 +223,14 @@ class ExecSandboxManager:
 
         staged_dirs: list[Path] = []
         staged_files: list[Path] = []
+        current_time = time.time()
 
         if self._base_dir.exists():
             try:
                 for child in list(self._base_dir.iterdir()):
                     self._stage_child_for_recovery(
-                        child, current_workspace_key, active_now, staged_dirs, staged_files
+                        child, current_workspace_key, active_now, staged_dirs, staged_files,
+                        current_time,
                     )
             except OSError:
                 pass
@@ -219,10 +245,27 @@ class ExecSandboxManager:
                 self._rmtree_with_escalation(d)
                 removed_paths += 1
 
-        post_bytes = self._path_size_bytes_via_du(self._base_dir)
-        removed_bytes = max(0, pre_bytes - post_bytes)
+        # Only run du if we removed something; otherwise reuse pre_bytes as estimate
+        if removed_paths > 0:
+            post_bytes = self._path_size_bytes_via_du(self._base_dir)
+            removed_bytes = max(0, pre_bytes - post_bytes)
+        else:
+            post_bytes = pre_bytes
+            removed_bytes = 0
+
+        # Update cache so the fast path reflects the outcome
+        with self._rr_lock:
+            self._last_capacity_check_t = time.monotonic()
+            self._last_capacity_bytes = post_bytes
 
         if post_bytes <= self._max_total_bytes:
+            return
+
+        # Still over budget.  Check whether active or live slots account for the remaining
+        # bytes — that is expected concurrent-use growth, not a failure.
+        if active_now or self._has_live_external_slots(active_now, current_time):
+            with self._rr_lock:
+                self._over_budget_due_to_live_slots = True
             return
 
         diag = (
@@ -247,6 +290,7 @@ class ExecSandboxManager:
         active_slots: frozenset[Path],
         staged_dirs: list[Path],
         staged_files: list[Path],
+        current_time: float,
     ) -> None:
         name = child.name
         # Trash dirs from previous recovery passes
@@ -265,7 +309,7 @@ class ExecSandboxManager:
                 staged_dirs.append(staged_path)
             return
         if name == current_workspace_key:
-            self._recover_current_pool(child, active_slots, staged_dirs)
+            self._recover_current_pool(child, active_slots, staged_dirs, current_time)
         elif not any(s.is_relative_to(child) for s in active_slots):
                 staged_path = self._stage_dir_for_deletion(child)
                 if staged_path is not None:
@@ -277,23 +321,58 @@ class ExecSandboxManager:
         pool_root: Path,
         active_slots: frozenset[Path],
         staged_dirs: list[Path],
+        current_time: float,
     ) -> None:
-        """Stage non-active slot dirs from the current workspace pool for deletion."""
+        """Stage reclaimable dirs from the current workspace pool for deletion.
+
+        Handles all dir formats (not just slot- prefixed) to recover old-format
+        entries. Preserves in-process active slots and dirs owned by live processes.
+        """
         if not pool_root.exists():
             return
         try:
             for child in list(pool_root.iterdir()):
                 if not child.is_dir(follow_symlinks=False):
                     continue
-                if not child.name.startswith(_SLOT_PREFIX):
-                    continue
                 if child in active_slots:
+                    continue
+                # Previous-pass trash dirs: add directly without re-staging
+                if child.name.startswith(_TRASH_PREFIX):
+                    staged_dirs.append(child)
+                    continue
+                # Only reclaim dirs whose owner process is dead
+                if not self._slot_owner_is_dead(child, current_time):
                     continue
                 staged_path = self._stage_dir_for_deletion(child)
                 if staged_path is not None:
                     staged_dirs.append(staged_path)
         except OSError:
             pass
+
+    def _has_live_external_slots(
+        self, active_in_process: frozenset[Path], current_time: float
+    ) -> bool:
+        """Return True if any slot outside this process's active set has a live owner."""
+        try:
+            for pool_root in self._base_dir.iterdir():
+                if not pool_root.is_dir():
+                    continue
+                name = pool_root.name
+                if len(name) != _KEY_LENGTH or not all(c in "0123456789abcdef" for c in name):
+                    continue
+                try:
+                    for slot_dir in pool_root.iterdir():
+                        if not slot_dir.is_dir():
+                            continue
+                        if slot_dir in active_in_process:
+                            continue
+                        if not self._slot_owner_is_dead(slot_dir, current_time):
+                            return True
+                except OSError:
+                    continue
+        except OSError:
+            pass
+        return False
 
     def cleanup_base(self) -> ExecCacheCleanupSummary:
         """Remove stale/orphaned cache entries; does not acquire filesystem locks."""
