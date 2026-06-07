@@ -23,4 +23,24 @@ def test_transcript_lines_from_assistant_tool_result_event_emits_result_line() -
 
     lines = transcript_lines_from_event(raw_line)
 
-    assert lines == ["claude tool result: Exit code: 0\nStdout:\nhello\n"]
+    assert lines == ["claude result: Exit code: 0\nStdout:\nhello\n"]
+
+
+def test_transcript_lines_from_assistant_thinking_event_emits_thinking_line() -> None:
+    raw_line = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "thinking",
+                        "thinking": "Let me compare these plan steps before editing.",
+                    }
+                ]
+            },
+        }
+    )
+
+    lines = transcript_lines_from_event(raw_line)
+
+    assert lines == ["Let me compare these plan steps before editing.\n"]

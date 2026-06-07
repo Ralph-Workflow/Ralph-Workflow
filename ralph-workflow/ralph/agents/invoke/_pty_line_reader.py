@@ -50,6 +50,9 @@ from ralph.agents.invoke._pty_transcript import (
     transcript_lines_from_event,
 )
 from ralph.agents.invoke._session import _TURN_BOUNDARY_MARKER, _extract_session_id_from_line
+from ralph.agents.parsers.claude_interactive_transcript_parser import (
+    ClaudeInteractiveTranscriptParser,
+)
 from ralph.process.child_liveness import AliveBy, ChildLivenessRegistry, classify_child_snapshot
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
@@ -233,6 +236,7 @@ class PtyLineReader:
         transcript_path: Path | None = None
         transcript_session_id: str | None = None
         file_obj = None
+        transcript_parser = ClaudeInteractiveTranscriptParser()
         while not self._monitor_stop.is_set():
             candidate_ids = self._transcript_session_id_candidates()
             if transcript_path is None or (
@@ -256,7 +260,7 @@ class PtyLineReader:
             if not line:
                 self._monitor_stop.wait(0.1)
                 continue
-            emitted_lines = transcript_lines_from_event(line)
+            emitted_lines = transcript_lines_from_event(line, parser=transcript_parser)
             if emitted_lines:
                 with self._lines_lock:
                     self._lines_queue.extend(emitted_lines)
