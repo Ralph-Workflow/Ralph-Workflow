@@ -203,3 +203,117 @@ See [Recovery](recovery.md) for retry budget and fallover behavior.
 - [CLI Reference](cli.md) — all flags and sub-commands
 - [Configuration Reference](configuration.md) — config file structure and FAQ
 - [Recovery](recovery.md) — failure classification and retry behavior
+- [MCP Architecture](mcp-architecture.md) — MCP server, tool registry, and dual-alias exposure
+
+## Successful tool result, then wedge
+
+**Symptom:** The agent produces a successful tool result, the live MCP server logs
+the result, and then nothing meaningful is emitted before the inactivity timeout
+fires. The tool calls log shows `claude tool: <name>` followed by silence.
+
+**Cause:** Before the fix, the MCP server's `tools/list` returned each tool under
+its raw name only (e.g. `read_file`), but Claude Code's strict MCP mode invokes
+tools by their `mcp__<server>__<tool>` alias (e.g. `mcp__ralph__read_file`). The
+strict-MCP call came back as
+`<tool_use_error>Error: No such tool available: mcp__<server>__<tool></tool_use_error>`,
+the agent emitted nothing meaningful in response, and the watchdog fired
+`NO_OUTPUT_DEADLINE`. This looked like a 'successful tool result, then wedge' but
+was actually a broken tool registry.
+
+**Fix:** The MCP server now exposes **both** the raw tool name and the
+`mcp__<server>__<tool>` alias in `tools/list` for every registered tool. The
+`tools/call` handler resolves the alias to the canonical (raw) name before
+dispatch, so strict-MCP clients see a tool they can actually invoke. The
+recovery classifier routes any 'No such tool available' substring to
+`FailureCategory.AGENT` with `reset_tool_registry=True`, so the next attempt
+calls `RestartAwareMcpBridge.reset_tool_registry()` to rebuild the visible tool
+list — bounded by `_TOOL_REGISTRY_MAX_RESETS` (default 3).
+
+See [MCP Architecture](mcp-architecture.md#mcp-tools) for the dual-alias rule
+and [Recovery](recovery.md#tool-availability-failures) for the bounded recovery
+path.
+
+## Ctrl+C ignored on a stuck PTY run
+
+**Symptom:** The agent appears wedged (no output for > the idle timeout).
+Pressing Ctrl+C once does not interrupt the run. The user has to press Ctrl+C
+a second time to force a kill, which terminates the entire pipeline.
+
+**Cause:** Before the fix, the first SIGINT routed through `handle_keyboard_interrupt`
+and the `InterruptController.begin_interrupt(grace_period_s=...)` path, which
+called the generic `shutdown_all` callback. On a wedged PTY agent run, the
+generic shutdown did not target the agent's process group quickly enough, so
+the first SIGINT appeared to be ignored. The second SIGINT was caught by the
+force-kill handler and escalated to `os._exit` — which is not a clean
+shutdown.
+
+**Fix:** `InterruptController` now has a `shutdown_all_for_label` field and a
+`kill_label` keyword argument on `begin_interrupt`. The factory
+`controller_from_process_manager` wires a closure that calls
+`manager.shutdown_all_for_label(label_prefix, grace_period_s=...)`. The runner
+passes `kill_label="invoke:"` so the first SIGINT targets the agent's
+specific label (e.g. `invoke:claude`). The controller is the single source
+of truth for interrupt-driven shutdown — there is no parallel `kill_label`
+mechanism in `handle_keyboard_interrupt`.
+
+## Session-resume flag drift
+
+**Symptom:** After a retry, Claude behaves like a fresh session — it
+re-reads the prompt, re-explores the workspace, and ignores the prior
+session state. The transcript announcement line includes the expected
+session id, but the next attempt shows no continuation of prior work.
+
+**Cause:** Before the fix, the interactive Claude command path mixed two
+semantically different flags: `--session-id <id>` (create a new session and
+tag it) and `--resume <id>` (continue an existing session). A SINGLE
+`elif` branch in `_build_claude_interactive_command` emitted
+`--session-id` when `initial_session_id` was set, which is a fresh-session
+flag. The `agent_invocation` retry path passed a prior session id via
+`initial_session_id`, so the retry always started a new session instead of
+resuming the old one.
+
+**Fix:** A new helper `ralph.agents.invoke._session_resume.resolve_session_resume_flag`
+is the **only** function that knows Claude Code's `--resume` vs `--session-id`
+semantics. The `--session-id` `elif` branch is removed; the
+`--resume` path goes through the helper. The state field
+`last_agent_failure_reason: str` (added to `PipelineState` with an
+import-time `model_validator` invariant) drives the resume-or-create
+decision.
+
+## Tool-availability failures
+
+**Symptom:** The recovery controller reports `reset_tool_registry=True`
+on a failure that recurs multiple times. The error message in the recovery
+log contains the substring `tool-registry-reset exhausted` and the
+run terminates with a hard cap error.
+
+**Cause:** The recovery classifier routes failures containing the substring
+`"no such tool available"` (case-insensitive) to
+`FailureCategory.AGENT` with `reset_tool_registry=True`. Each subsequent
+attempt calls `RestartAwareMcpBridge.reset_tool_registry()`, which
+increments the bridge's `tool_registry_resets` counter. The counter is
+capped at `_TOOL_REGISTRY_MAX_RESETS` (default 3). After the cap, the
+bridge raises `McpServerError` with a message containing
+`'tool-registry-reset exhausted'` and the current count.
+
+**Three additive caps** (each is independent and the orchestrator can
+distinguish which one fired by the error message substring):
+
+1. `tool-registry-reset exhausted` — the new
+   `_TOOL_REGISTRY_MAX_RESETS` cap, raised by
+   `RestartAwareMcpBridge.reset_tool_registry()` after 3 resets.
+2. `restart budget` + `exhausted` — the existing
+   `McpRestartPolicy.max_restarts` cap, raised by
+   `RestartAwareMcpBridge.check_health_and_restart_if_needed()` after
+   the configured number of crash restarts.
+3. `recovery-attempt exhausted` — the existing
+   `max_recovery_attempts` cap, raised by the recovery controller
+   after the configured number of agent-invocation retries.
+
+**Fix:** If `tool-registry-reset exhausted` fires, the bridge cannot
+rebuild the visible tool list. Check the agent logs for repeated
+`No such tool available` errors. The most common cause is a
+mismatched alias in the live MCP server's `tools/list` response — see
+[MCP Architecture](mcp-architecture.md#mcp-tools) for the dual-alias
+rule. The counter starts at zero, so a fresh bridge gives 3 resets
+of headroom.

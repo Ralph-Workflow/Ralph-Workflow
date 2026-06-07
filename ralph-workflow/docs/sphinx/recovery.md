@@ -111,9 +111,86 @@ When `checkpoint_enabled = false`, Ralph Workflow stops writing checkpoints and 
 
 Most operators do not need the lower-level liveness rules, watchdog thresholds, or session-safety edge cases. If you are debugging those details specifically, use the maintainer-oriented architecture docs.
 
+## Tool-availability failures
+
+When the live MCP server reports that a tool is missing (the agent's
+`tools/list` snapshot lost the alias after a restart, retry, or
+transient recovery), the failure is classified as a tool-availability
+failure and routed to a single bounded recovery path.
+
+The recovery classifier matches on two surfaces:
+
+- The literal substring `"no such tool available"` (case-insensitive)
+  anywhere in the failure detail. This is the wire-level format
+  Claude Code emits:
+  `<tool_use_error>Error: No such tool available: mcp__<server>__<tool></tool_use_error>`.
+- A runtime `ToolDispatchError` exception with the substring
+  `"is not registered"` in its message. The class-name check
+  excludes the programming-time `ToolRegistrationError` so bridge
+  construction errors stay on the existing `USER_CONFIG` /
+  `AMBIGUOUS` path.
+
+The constant `ralph.recovery.failure_classifier._TOOL_AVAILABILITY_SUBSTRINGS`
+contains exactly one entry: `"no such tool available"`. Do NOT add a
+literal `"Tool ... is not registered"` substring here — the existing
+matcher does case-insensitive literal-substring matching, not regex,
+and the literal `...` would never match the runtime message.
+
+When the classifier routes a failure to tool-availability, the
+returned `ClassifiedFailure` has:
+
+- `category = FailureCategory.AGENT`
+- `reset_session = True`
+- `reset_tool_registry = True`
+
+The next attempt calls
+`RestartAwareMcpBridge.reset_tool_registry()`, which rebuilds the
+visible tool list by rerunning the preflight. The bridge's
+`tool_registry_resets` counter is incremented by 1 per call. The
+counter is exposed via the `tool_registry_resets` property so the
+recovery controller and operator can inspect it.
+
+### `_TOOL_REGISTRY_MAX_RESETS` cap
+
+The new `_TOOL_REGISTRY_MAX_RESETS` constant (default 3) caps the
+tool-registry-reset counter. After 3 successful resets, the next
+`reset_tool_registry()` call raises `McpServerError` with a message
+containing the substring `tool-registry-reset exhausted` and the
+current count.
+
+The cap is enforced at import time via `if/raise RuntimeError`, so
+the constant cannot silently regress to zero or negative (it survives
+`python -O`).
+
+### Three additive caps
+
+Three independent caps bound recovery retries. The orchestrator can
+distinguish which one fired by the error message substring:
+
+1. `tool-registry-reset exhausted` — the new
+   `_TOOL_REGISTRY_MAX_RESETS` cap, raised by
+   `RestartAwareMcpBridge.reset_tool_registry()` after 3
+   tool-registry resets.
+2. `restart budget` + `exhausted` — the existing
+   `McpRestartPolicy.max_restarts` cap, raised by
+   `RestartAwareMcpBridge.check_health_and_restart_if_needed()`
+   after the configured number of crash restarts.
+3. `recovery-attempt exhausted` — the existing `max_recovery_attempts`
+   cap, raised by the recovery controller after the configured
+   number of agent-invocation retries.
+
+All three caps are independent. A misconfigured bridge can hit them
+in any order. The error message substrings are stable, so the
+operator can branch on them deterministically.
+
+The `tests/test_recovery_three_caps_distinguished.py` test exercises
+all three caps in sequence and asserts each raises a distinguishable
+error message by substring.
+
 ## Related pages
 
 - [Concepts](concepts.md) — phase, drain, checkpoint, and recovery terminology
 - [Troubleshooting](troubleshooting.md) — common recovery-related issues and fixes
 - [Parallel Mode](parallel-mode.md) — recovery behavior in same-workspace parallel runs
 - [Developer Reference](developer-reference.md) — deeper implementation detail
+- [MCP Architecture](mcp-architecture.md) — MCP server, tool registry, and dual-alias exposure

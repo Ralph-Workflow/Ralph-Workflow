@@ -91,7 +91,11 @@ from ralph.mcp.protocol.startup import (
     tools_list_request,
 )
 from ralph.mcp.session_plan import effective_session_mcp_plan_from_servers
-from ralph.mcp.tools.names import claude_tool_name
+from ralph.mcp.tools.names import (
+    RALPH_MCP_SERVER_NAME,
+    claude_tool_name,
+    claude_tool_name_prefix,
+)
 from ralph.mcp.transport.agy import (
     agy_workspace_mcp_endpoint,
     load_existing_agy_upstream_servers,
@@ -477,7 +481,20 @@ def _provider_allowed_mcp_tool_names(
     except (PreflightError, ValueError) as exc:
         logger.warning("Failed to discover Ralph MCP tools for provider allowlist: {}", exc)
         return ()
-    return tuple(claude_tool_name(tool_name) for tool_name in visible_tool_names)
+    prefix = claude_tool_name_prefix(server_name=RALPH_MCP_SERVER_NAME)
+    canonical: list[str] = []
+    seen: set[str] = set()
+    for tool_name in visible_tool_names:
+        if tool_name.startswith(prefix):
+            stripped = tool_name[len(prefix):]
+            if not stripped or stripped in seen:
+                continue
+            seen.add(stripped)
+            canonical.append(stripped)
+        elif tool_name not in seen:
+            seen.add(tool_name)
+            canonical.append(tool_name)
+    return tuple(claude_tool_name(tool_name) for tool_name in canonical)
 
 
 def _discover_http_mcp_tool_names(endpoint: str) -> list[str]:

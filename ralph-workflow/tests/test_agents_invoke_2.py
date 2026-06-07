@@ -423,6 +423,77 @@ def test_provider_allowed_mcp_tool_names_maps_live_ralph_endpoint_to_claude_alia
     )
 
 
+def test_provider_allowed_mcp_tool_names_dedupes_mixed_raw_and_aliased_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression test: when ``tools/list`` returns BOTH the raw tool name and
+    the ``mcp__<server>__<tool>`` alias (post-fix behavior), the
+    ``--allowedTools`` value must contain each alias exactly once.
+
+    The pre-fix code mapped every entry through ``claude_tool_name`` so the
+    already-aliased names became ``mcp__ralph__mcp__ralph__read_file`` and
+    appeared in the live smoke log as duplicates. The fix dedupes by stripping
+    the ``mcp__<server>__`` prefix from already-aliased names BEFORE applying
+    ``claude_tool_name`` once, and dedupes the final tuple.
+    """
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--permission-mode auto",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    mixed = [
+        "read_file",
+        "mcp__ralph__read_file",
+        "ralph_submit_artifact",
+        "mcp__ralph__ralph_submit_artifact",
+    ]
+    monkeypatch.setattr(
+        "ralph.agents.invoke.discover_http_mcp_tool_names",
+        lambda endpoint: list(mixed),
+    )
+
+    allowed = provider_allowed_mcp_tool_names(config, "http://127.0.0.1:9999/mcp")
+
+    assert allowed == (
+        claude_tool_name("read_file"),
+        claude_tool_name("ralph_submit_artifact"),
+    )
+    assert len(allowed) == len(set(allowed))
+
+
+def test_provider_allowed_mcp_tool_names_dedupes_double_prefixed_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pre-fix regression produced ``mcp__ralph__mcp__ralph__read_file``
+    by mapping an already-aliased name through ``claude_tool_name``. Pin
+    that the result NEVER contains a double-prefixed alias.
+    """
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--permission-mode auto",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke.discover_http_mcp_tool_names",
+        lambda endpoint: ["mcp__ralph__read_file", "mcp__ralph__ralph_submit_artifact"],
+    )
+
+    allowed = provider_allowed_mcp_tool_names(config, "http://127.0.0.1:9999/mcp")
+
+    for name in allowed:
+        assert not name.startswith("mcp__ralph__mcp__ralph__"), (
+            f"double-prefixed alias leaked: {name}"
+        )
+    assert allowed == (
+        claude_tool_name("read_file"),
+        claude_tool_name("ralph_submit_artifact"),
+    )
+
+
 def test_claude_builtin_command_preserves_login_capable_mode(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("prompt", encoding="utf-8")

@@ -122,6 +122,50 @@ The full tool list is in {doc}`mcp-tools`. Tools are implemented in `ralph.mcp.t
 
 Tool names are defined in `ralph.mcp.tools.names`.
 
+### `mcp__<server>__<tool>` alias exposure
+
+The MCP server exposes every registered tool under **two** names in
+`tools/list` so strict-MCP clients (e.g. Claude Code in strict MCP mode)
+can always invoke the tool by the canonical Claude alias:
+
+1. The **raw name** (e.g. `read_file`) — for backward compatibility
+   with non-strict-MCP clients and direct dispatch paths.
+2. The **Claude alias** (e.g. `mcp__ralph__read_file`) — what
+   strict-MCP Claude Code actually invokes.
+
+The rule (in `ralph.mcp.server._mcp_server.McpServer._handle_tools_list`):
+
+- For each tool definition in the registry, emit the raw entry
+  **unconditionally**.
+- If `claude_tool_name(tool_name) != tool_name` (the alias is
+  non-degenerate), emit a SECOND entry under the alias name with the
+  same `description` and `inputSchema`.
+- A runtime invariant enforces no duplicate `name` values in the
+  returned `tools` list.
+- An import-time invariant in the same module asserts that every
+  member of `RalphToolName` produces a non-degenerate alias (i.e.
+  `claude_tool_name(name) != name`).
+
+The `tools/call` handler resolves BOTH `read_file` and
+`mcp__ralph__read_file` to the same registered handler. The
+`resolve_alias_to_canonical(name)` helper strips the
+`mcp__<server>__` prefix when it matches the configured server name
+(`ralph.mcp.tools.names.RALPH_MCP_SERVER_NAME = "ralph"`), so
+strict-MCP clients can call `mcp__ralph__read_file` and have it
+dispatch to the same handler as `read_file`.
+
+The preflight (`ralph.mcp.protocol.startup.preflight_http_mcp_server_tools`)
+accepts EITHER the raw name OR the alias name in `required_tools`, so
+the preflight does not depend on the strict-MCP client's view of the
+tool list.
+
+If a tool is registered with a name that already starts with
+`mcp__<server>__`, the server emits it ONCE under the alias name
+(deduped); the raw entry is skipped to avoid the
+`mcp__ralph__mcp__ralph__<tool>` double-prefix regression that
+affected `ralph.agents.invoke._provider_allowed_mcp_tool_names`
+before the fix.
+
 ## Protocol modules
 
 | Module | Purpose |
