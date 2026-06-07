@@ -1,56 +1,40 @@
-# Agent Architecture Watchdog — Refresh Report
-**Checked:** 2026-06-07 19:03 CEST / 17:03 UTC
-**Verdict:** Architecture-owned gates: **GREEN** | Whole-stack: **HIGH_RISK** (external blocker)
+# Agent Architecture Watchdog — June 7, 2026 20:15 CEST
 
----
+## Current Verdict: ARCHITECTURE_GREEN_EXTERNAL_RED
 
-## Independent Verification: QUALIFIED_PASS ✅
-
-`agent_architecture_independent_verify.py` → `qualified_pass=true`
-`agent_architecture_verifier.py` → `ok` (zero errors)
-`agent_architecture_checker.py` → `AGENT_ARCHITECTURE_OK`
-
-### Architecture Gates — All Green
-
+### Architecture-Owned Gates: ✅ ALL GREEN
 | Gate | Status | Detail |
 |------|--------|--------|
-| Loop integrity | ✅ OK | ralph-docs-watchdog + agent-architecture-watchdog |
-| Docs verifier | ✅ PASS | Independently verified pass, incident closed |
-| Cron topology | ✅ COHERENT | 20 enabled, 0 disabled, 3 running |
-| Ownership boundaries | ✅ OK | No self-certification loops |
-| Market-intelligence consumption | ✅ VERIFIED | Machine-verifiable, 628 min fresh |
-| Stale topology leakage | ✅ NONE | No stale claims |
-| Health monitor (architecture-owned) | ✅ CLEAR | 0 architecture-owned issues |
+| checker | AGENT_ARCHITECTURE_OK | exit 0 |
+| verifier | ok=true, 0 errors | exit 0 |
+| independent verify | qualified_pass | 10 claims verified, 0 architecture errors |
+| loop integrity | dual-ok | ralph-docs=ok, agent-architecture=ok |
+| cron topology | 20/20 enabled, 0 disabled | clean structurally |
+| docs verifier | independently verified pass | 82 consecutive passes |
+| health monitor (arch) | 0 architecture-owned issues | self-cleared since last run |
 
-### External Blocker — RED
+### Repaired This Run
+1. **Architecture verifier race condition** — Initial parallel execution at 20:06 caused verifier to read stale IV artifact. Reran at 20:15 after IV write confirmed: ok=true, 0 errors.
+2. **Health monitor improvement observed** — Down from 7 issues to 1. All 2 architecture-owned issues self-cleared. All 5 external docs/marketing issues resolved.
+3. **Competitor-analysis error cleared** — Previous gateway-restart error self-cleared (lastRunStatus=ok now).
+4. **Live topology refreshed** — 20 jobs, 20 enabled, 0 disabled, 5 running, 1 error (content-poster).
 
-| Issue | Detail |
-|-------|--------|
-| Marketing independent verification | **FAIL** — artifact age: 7,428 min (threshold: 240 min, last updated June 2) |
-| Supporting artifacts | market_intelligence: 628 min, workflow_audit: 639 min |
-| Root cause | Codeberg-primary adoption measurement-pending |
-| Action required | Marketing owner loop must produce fresh outcome evidence → rerun marketing independent verification |
+### Still Red
+1. **Marketing independent verification** — ~7,500 min old (threshold 240 min), verdict=fail. Sole whole-stack blocker.
+2. **content-poster** — status=error, lastRunStatus=error (gateway restart interrupt). Should self-clear at next run (June 8 08:00 Berlin).
 
----
+### Independent Verification: QUALIFIED_PASS
+- Architecture verifier fails closed on stale signoff: verified
+- Live loop topology/ownership checks green: verified
+- Shared market-intelligence reuse machine-verifiable: verified
+- 10 claims verified, 0 architecture errors
+- 2 external blockers (marketing IV stale, marketing audit stale) — not architecture-owned
 
-## Repairs Applied This Run
+### Small Gate Passed
+- Checker → Verifier → Independent Verify → Loop Integrity: all green
+- Health monitor: architecture-owned issues = 0
+- No hidden self-certification detected
+- No stale topology leakage detected
 
-1. **Refreshed live topology** — 20 enabled, 0 disabled, 3 running, 2 transient errors (gateway restart — competitor-analysis, content-poster)
-2. **Ran independent verifier** — `qualified_pass=true` with correct external blocker isolation
-3. **Ran architecture verifier** — `ok`, zero architecture errors
-4. **Ran architecture checker** — `AGENT_ARCHITECTURE_OK`
-5. **Revalidated market-intelligence consumption** — Remains machine-verifiable, 628 min fresh
-
-## What Is Still Red
-
-- **Marketing independent pass** — Only blocker. Architecture-side cannot self-certify past external evidence. Marketing independent verification artifact is 7,428 min old vs 240 min threshold.
-
-## Small Gate Passed
-
-- Independent verifier ran → `qualified_pass=true` ✅
-- Architecture verifier ran → `ok` (zero errors) ✅
-- Architecture checker ran → `AGENT_ARCHITECTURE_OK` ✅
-- Architecture artifacts fresh (written this run) ✅
-- No new architecture-owned issues detected ✅
-- External blocker correctly localized, no manufactured incidents ✅
-- Two transient gateway-restart errors (competitor-analysis, content-poster) — self-resolving ✅
+### Highest-Risk Unresolved
+Marketing independent verification fail (7,500 min old). Requires marketing owner loop to produce fresh measurable outcome evidence, then marketing IV rerun.

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-07T14:05:39.919128",
+  "timestamp": "2026-06-07T20:13:51.476558",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -118,28 +118,28 @@
       {
         "query": "ralph workflow",
         "position": 2.0,
-        "impressions": 47,
+        "impressions": 48,
         "clicks": 15,
-        "ctr": 31.9
+        "ctr": 31.2
       },
       {
         "query": "ralph ai",
         "position": 8.0,
-        "impressions": 29,
+        "impressions": 32,
         "clicks": 0,
         "ctr": 0
       },
       {
         "query": "ralph framework",
         "position": 5.0,
-        "impressions": 19,
+        "impressions": 20,
         "clicks": 1,
-        "ctr": 5.3
+        "ctr": 5.0
       },
       {
         "query": "ralph ai agent",
         "position": 12.0,
-        "impressions": 11,
+        "impressions": 12,
         "clicks": 0,
         "ctr": 0
       },
@@ -158,6 +158,34 @@
         "ctr": 0
       },
       {
+        "query": "ralph software",
+        "position": 8.0,
+        "impressions": 8,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "\"ralph loop\" ai workflow",
+        "position": 7.0,
+        "impressions": 6,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph coding",
+        "position": 20,
+        "impressions": 6,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph open source",
+        "position": 8.0,
+        "impressions": 6,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
         "query": "ralph orchestrator",
         "position": 21.0,
         "impressions": 6,
@@ -172,36 +200,8 @@
         "ctr": 0
       },
       {
-        "query": "\"ralph loop\" ai workflow",
-        "position": 6,
-        "impressions": 5,
-        "clicks": 0,
-        "ctr": 0
-      },
-      {
-        "query": "ralph coding",
-        "position": 22.0,
-        "impressions": 5,
-        "clicks": 0,
-        "ctr": 0
-      },
-      {
-        "query": "ralph open source",
-        "position": 9.0,
-        "impressions": 5,
-        "clicks": 0,
-        "ctr": 0
-      },
-      {
         "query": "ralph prompt",
         "position": 8.0,
-        "impressions": 5,
-        "clicks": 0,
-        "ctr": 0
-      },
-      {
-        "query": "ralph software",
-        "position": 9.0,
         "impressions": 5,
         "clicks": 0,
         "ctr": 0
@@ -216,6 +216,20 @@
       {
         "query": "ralf ai",
         "position": 5.0,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph claude code",
+        "position": 40,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph repo",
+        "position": 10.0,
         "impressions": 3,
         "clicks": 0,
         "ctr": 0
@@ -237,20 +251,6 @@
       {
         "query": "claude code ralph loop",
         "position": 46.0,
-        "impressions": 2,
-        "clicks": 0,
-        "ctr": 0
-      },
-      {
-        "query": "ralph claude code",
-        "position": 31,
-        "impressions": 2,
-        "clicks": 0,
-        "ctr": 0
-      },
-      {
-        "query": "ralph code",
-        "position": 26.0,
         "impressions": 2,
         "clicks": 0,
         "ctr": 0
@@ -306,7 +306,7 @@
     ],
     "coverage_pct": 100.0,
     "scan_method": "homepage+sitemap",
-    "urls_scanned": 42
+    "urls_scanned": 36
   },
   "serp": {
     "position": null,

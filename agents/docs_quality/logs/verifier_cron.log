@@ -31707,3 +31707,136 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-positioned and coherent. The simple-core\u2192composable-framework story holds across all surfaces. No internal leakage on top-level pages. Promoted next-click pages reinforce the same positioning. The docs journey is healthy.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding' tagline, immediately defines as orchestrator not chat tool, makes the simple-core/composable-framework contrast, has explicit who-it's-for/not-for, includes engineering-practice dependency section."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with the positioning framing verbatim, shortest honest first run, clear success criteria, task selection guidance, Codeberg-primary callout."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by user intent after README/START_HERE, includes 'Keep proof secondary' section, all promoted pages reinforce simple-core story."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Explicitly self-identifies as supporting proof not main pitch, defers to product story and operator route first, orders evidence correctly (working behavior \u2192 real checks \u2192 written scope \u2192 logs)."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "PyPI surface maintains the same positioning, opens with tagline, frames Codeberg as primary, clear who-it-fits/does-not-fit."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The README \u2192 START_HERE \u2192 docs/README journey is coherent and well-positioned. No hard failures. All promoted next-click pages reinforce the same product story rather than fighting it. The docs system is mature enough that a reviewer would not need to repeat these instructions.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "first-task-guide.md refs '10-document spec, 1,316 assertions, 5 platforms' \u2014 metric-heavy prose better suited to a case-study page than a docs/ route bullet. Minor, not a hard failure."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with the correct tagline ('operating system for autonomous coding'), immediately frames as composable loop framework + AI agent orchestrator, includes 'What it does', 'Why it's different' (clean comparison table), 'Who it's for' (ambitious work \u2014 not small tweaks), engineering-practice requirements. No internal plumbing on top-level surface."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with the correct Ralph-loop-core composable framing. Leads with real tasks and honest outcomes. The 'What success looks like' section emphasizes working software and real checks before logs. Correct audience-fit language."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Properly demotes itself to the navigation hub after README + START_HERE. 'Keep proof secondary' explicitly enforces the information hierarchy. Routes to supporting product pages without letting them compete with the primary story."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Correctly self-frames as supporting proof. Opens with the product story deferral. Evaluates output in the right order: working behavior \u2192 real checks \u2192 written scope \u2192 supporting artifacts. No evidence of the reviewable-output-as-main-differentiator drift."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Core conversion page. Uses spec-first, result-first framing throughout. The spec template with explicit invariants section is exactly the right emphasis. Correctly calls out that most bad results are spec failures, not generation failures."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Coherent, well-positioned docs system. README\u2192START_HERE\u2192docs/README forms a clean route. Promoted pages reinforce the same story rather than fighting it. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with the correct Ralph-loop core framing, gives concrete task selection guidance, defines success in terms of working software and real checks, and explicitly points to docs/README only as a next-step (low link-anxiety)."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes users by intent, explicitly says 'Keep proof secondary' and 'Use this page after README and START_HERE', proof-oriented pages are clearly marked as supporting material not the main pitch."
+    },
+    {
+      "path": "reviewable-output.md",
+      "reason": "Self-positions as 'supporting proof, not the main product pitch' and 'Use this page after you already understand the product story' \u2014 the exact internal-leakage guardrail the positioning doc demands."
+    },
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding' and 'composable loop framework', uses contrast table against common tools, clearly states audience fit/non-fit, ships the Codeberg-primary framing."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
