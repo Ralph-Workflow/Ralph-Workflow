@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._runtime_constants import DEFAULT_MOUNT_PATH
+from ralph.mcp.server.exec_sse_streaming import exec_sse_streaming_post
 
 if TYPE_CHECKING:
     from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
@@ -99,15 +100,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         request: JsonRpcRequest,
         server: _FallbackHttpServer,
     ) -> None:
-        """Handle a tools/call exec request with SSE chunk notification streaming.
-
-        Sends text/event-stream headers (no Content-Length) before dispatch so
-        chunks can be flushed immediately. After dispatch the final tools/call
-        response frame is written. AgentSession.tool_output_sink is restored in
-        finally so subsequent calls are not affected.
-        """
         session = server.mcp_server._session
-        previous_sink = session.tool_output_sink
 
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -115,43 +108,18 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "keep-alive")
         self.end_headers()
 
-        def _write_notification(event: dict[str, object]) -> None:
-            notification: dict[str, object] = {
-                "jsonrpc": "2.0",
-                "method": "notifications/message",
-                "params": event,
-            }
-            frame = f"event: message\r\ndata: {json.dumps(notification)}\r\n\r\n".encode()
+        def _write_frame(frame: bytes) -> None:
             with suppress(OSError):
                 self.wfile.write(frame)
                 self.wfile.flush()
 
-        session.tool_output_sink = _write_notification
-        try:
-            response, next_state = server.mcp_server.handle_request(request, server.state)
-            server.state = next_state
-            if response is not None:
-                body: dict[str, object] = {"jsonrpc": response.jsonrpc, "id": response.msg_id}
-                if response.result is not None:
-                    body["result"] = response.result
-                if response.error is not None:
-                    body["error"] = response.error
-                final_frame = f"event: message\r\ndata: {json.dumps(body)}\r\n\r\n".encode()
-                with suppress(OSError):
-                    self.wfile.write(final_frame)
-                    self.wfile.flush()
-        except Exception as exc:
-            error_body: dict[str, object] = {
-                "jsonrpc": "2.0",
-                "id": request.msg_id,
-                "error": {"code": -32603, "message": str(exc)},
-            }
-            err_frame = f"event: message\r\ndata: {json.dumps(error_body)}\r\n\r\n".encode()
-            with suppress(OSError):
-                self.wfile.write(err_frame)
-                self.wfile.flush()
-        finally:
-            session.tool_output_sink = previous_sink
+        server.state = exec_sse_streaming_post(
+            request,
+            session,
+            server.mcp_server.handle_request,
+            server.state,
+            write_frame=_write_frame,
+        )
 
     def log_message(self, format: str, *args: object) -> None:
         del format, args

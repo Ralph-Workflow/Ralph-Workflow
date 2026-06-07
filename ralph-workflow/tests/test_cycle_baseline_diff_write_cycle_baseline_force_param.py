@@ -14,6 +14,7 @@ from ralph.pipeline.cycle_baseline import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from pathlib import Path
 
 
@@ -25,12 +26,15 @@ def _make_commit(repo: Repo, root: Path, filename: str, content: str, message: s
 
 
 @pytest.fixture()
-def git_repo(tmp_path: Path) -> tuple[Path, Repo]:
+def git_repo(tmp_path: Path) -> Generator[tuple[Path, Repo], None, None]:
     repo = Repo.init(tmp_path, initial_branch="main")
     repo.config_writer().set_value("user", "name", "Test").release()
     repo.config_writer().set_value("user", "email", "test@test.com").release()
     _make_commit(repo, tmp_path, "readme.txt", "initial", "initial commit")
-    return tmp_path, repo
+    try:
+        yield tmp_path, repo
+    finally:
+        repo.close()
 
 
 class TestWriteCycleBaselineForceParam:

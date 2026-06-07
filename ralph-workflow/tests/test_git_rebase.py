@@ -126,9 +126,9 @@ def test_continue_rebase_executes_cli_when_ready(
 
 
 def test_rebase_onto_returns_noop_when_branch_up_to_date(tmp_git_repo: Path) -> None:
-    repo = Repo(tmp_git_repo)
-    branch_name = "feature-noop"
-    repo.git.checkout("-b", branch_name)
+    with Repo(tmp_git_repo) as repo:
+        branch_name = "feature-noop"
+        repo.git.checkout("-b", branch_name)
     responses = {
         ("git", ("merge-base", "--is-ancestor", branch_name, "HEAD")): _mk_result(returncode=0),
     }
@@ -144,10 +144,10 @@ def test_rebase_onto_returns_noop_when_branch_up_to_date(tmp_git_repo: Path) -> 
 
 
 def test_rebase_onto_detects_conflicts(monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path) -> None:
-    repo = Repo(tmp_git_repo)
-    current = repo.active_branch.name
-    base_branch = current
-    repo.git.checkout("-b", "feature-conflict")
+    with Repo(tmp_git_repo) as repo:
+        current = repo.active_branch.name
+        base_branch = current
+        repo.git.checkout("-b", "feature-conflict")
     responses = {
         ("git", ("merge-base", "--is-ancestor", base_branch, "HEAD")): _mk_result(returncode=1),
         ("git", ("rebase", base_branch)): _mk_result(
@@ -170,24 +170,27 @@ def test_rebase_onto_detects_conflicts(monkeypatch: pytest.MonkeyPatch, tmp_git_
 @pytest.mark.subprocess_e2e
 def test_get_conflicted_files_reports_conflicts(tmp_git_repo: Path) -> None:
     repo = Repo(tmp_git_repo)
-    base = repo.active_branch.name
-    repo.git.checkout("-b", "feature")
-    (tmp_git_repo / "README.md").write_text("feature content")
-    repo.index.add(["README.md"])
-    repo.index.commit("feature update")
-    repo.git.checkout(base)
-    (tmp_git_repo / "README.md").write_text("base content")
-    repo.index.add(["README.md"])
-    repo.index.commit("base update")
-    repo.git.checkout("feature")
-    with pytest.raises(GitCommandError):
-        repo.git.merge(base)
-
     try:
-        files = get_conflicted_files(repo_root=tmp_git_repo)
-        assert "README.md" in files
+        base = repo.active_branch.name
+        repo.git.checkout("-b", "feature")
+        (tmp_git_repo / "README.md").write_text("feature content")
+        repo.index.add(["README.md"])
+        repo.index.commit("feature update")
+        repo.git.checkout(base)
+        (tmp_git_repo / "README.md").write_text("base content")
+        repo.index.add(["README.md"])
+        repo.index.commit("base update")
+        repo.git.checkout("feature")
+        with pytest.raises(GitCommandError):
+            repo.git.merge(base)
+
+        try:
+            files = get_conflicted_files(repo_root=tmp_git_repo)
+            assert "README.md" in files
+        finally:
+            repo.git.merge("--abort")
     finally:
-        repo.git.merge("--abort")
+        repo.close()
 
 
 def test_classify_rebase_error_detects_interactive_stop_command() -> None:
@@ -211,11 +214,11 @@ def test_classify_rebase_error_detects_reference_update_failure() -> None:
 
 
 def test_check_rebase_preconditions_requires_both_identity_fields(tmp_git_repo: Path) -> None:
-    repo = Repo(tmp_git_repo)
-    writer = repo.config_writer()
-    writer.set_value("user", "name", "Example User")
-    writer.set_value("user", "email", "")
-    writer.release()
+    with Repo(tmp_git_repo) as repo:
+        writer = repo.config_writer()
+        writer.set_value("user", "name", "Example User")
+        writer.set_value("user", "email", "")
+        writer.release()
 
     with pytest.raises(RebasePreconditionError, match="Git identity is not configured"):
         check_rebase_preconditions(tmp_git_repo)
@@ -224,10 +227,10 @@ def test_check_rebase_preconditions_requires_both_identity_fields(tmp_git_repo: 
 def test_check_rebase_preconditions_detects_sparse_checkout_without_patterns(
     tmp_git_repo: Path,
 ) -> None:
-    repo = Repo(tmp_git_repo)
-    writer = repo.config_writer()
-    writer.set_value("core", "sparseCheckout", "true")
-    writer.release()
+    with Repo(tmp_git_repo) as repo:
+        writer = repo.config_writer()
+        writer.set_value("core", "sparseCheckout", "true")
+        writer.release()
 
     info_dir = tmp_git_repo / ".git" / "info"
     info_dir.mkdir(exist_ok=True)
@@ -281,8 +284,8 @@ def test_continue_rebase_at_blocks_when_index_has_conflicts(tmp_git_repo: Path) 
 
 
 def test_verify_rebase_completed_at_rejects_detached_head(tmp_git_repo: Path) -> None:
-    repo = Repo(tmp_git_repo)
-    repo.git.checkout(repo.head.commit.hexsha)
+    with Repo(tmp_git_repo) as repo:
+        repo.git.checkout(repo.head.commit.hexsha)
 
     with pytest.raises(RebaseVerificationError, match="HEAD is detached"):
         verify_rebase_completed_at(tmp_git_repo, "main")
@@ -328,24 +331,27 @@ def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) ->
 
 def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -> str:
     repo = Repo(repo_root)
-    base_branch = repo.active_branch.name
-    conflict_file = repo_root / "conflict.txt"
+    try:
+        base_branch = repo.active_branch.name
+        conflict_file = repo_root / "conflict.txt"
 
-    conflict_file.write_text("base\n")
-    repo.index.add(["conflict.txt"])
-    repo.index.commit("add conflict file")
+        conflict_file.write_text("base\n")
+        repo.index.add(["conflict.txt"])
+        repo.index.commit("add conflict file")
 
-    repo.git.checkout("-b", feature_branch)
-    conflict_file.write_text("feature\n")
-    repo.index.add(["conflict.txt"])
-    repo.index.commit("feature change")
+        repo.git.checkout("-b", feature_branch)
+        conflict_file.write_text("feature\n")
+        repo.index.add(["conflict.txt"])
+        repo.index.commit("feature change")
 
-    repo.git.checkout(base_branch)
-    conflict_file.write_text("main\n")
-    repo.index.add(["conflict.txt"])
-    repo.index.commit("main change")
+        repo.git.checkout(base_branch)
+        conflict_file.write_text("main\n")
+        repo.index.add(["conflict.txt"])
+        repo.index.commit("main change")
 
-    repo.git.checkout(feature_branch)
+        repo.git.checkout(feature_branch)
+    finally:
+        repo.close()
     result = subprocess.run(
         ["git", "rebase", base_branch],
         cwd=str(repo_root),

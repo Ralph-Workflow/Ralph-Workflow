@@ -24,15 +24,14 @@ def read_hooks_path(repo: Repo) -> str:
 def test_start_agent_phase_sets_hooks_path(tmp_git_repo: Path) -> None:
     """Start phase should update core.hooksPath to Ralph's hooks directory."""
 
-    repo = Repo(tmp_git_repo)
-    with pytest.raises(GitCommandError):
-        read_hooks_path(repo)
+    with Repo(tmp_git_repo) as repo:
+        with pytest.raises(GitCommandError):
+            read_hooks_path(repo)
 
-    start_agent_phase(tmp_git_repo)
+        start_agent_phase(tmp_git_repo)
 
-    expected = str(Path(repo.git_dir) / "ralph" / "hooks")
-    assert read_hooks_path(repo) == expected
-    repo.git.clear_cache()
+        expected = str(Path(repo.git_dir) / "ralph" / "hooks")
+        assert read_hooks_path(repo) == expected
 
 
 def test_detect_unauthorized_commit_detects_new_commit(tmp_git_repo: Path) -> None:
@@ -41,22 +40,19 @@ def test_detect_unauthorized_commit_detects_new_commit(tmp_git_repo: Path) -> No
     start_agent_phase(tmp_git_repo)
     assert detect_unauthorized_commit(tmp_git_repo) is False
 
-    repo = Repo(tmp_git_repo)
-    (tmp_git_repo / "README.md").write_text("unauthorized")
-    repo.index.add(["README.md"])
-    repo.index.commit("unauthorized commit")
-
-    assert detect_unauthorized_commit(tmp_git_repo) is True
-    repo.git.clear_cache()
+    with Repo(tmp_git_repo) as repo:
+        (tmp_git_repo / "README.md").write_text("unauthorized")
+        repo.index.add(["README.md"])
+        repo.index.commit("unauthorized commit")
+        assert detect_unauthorized_commit(tmp_git_repo) is True
 
 
 def test_end_agent_phase_restores_hooks_path(tmp_git_repo: Path) -> None:
     """Ending the agent phase should restore the previous hooksPath setting."""
 
-    repo = Repo(tmp_git_repo)
-    start_agent_phase(tmp_git_repo)
-    end_agent_phase(tmp_git_repo)
+    with Repo(tmp_git_repo) as repo:
+        start_agent_phase(tmp_git_repo)
+        end_agent_phase(tmp_git_repo)
 
-    with pytest.raises(GitCommandError):
-        read_hooks_path(repo)
-    repo.git.clear_cache()
+        with pytest.raises(GitCommandError):
+            read_hooks_path(repo)

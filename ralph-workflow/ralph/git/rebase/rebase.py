@@ -142,13 +142,16 @@ def rebase_onto(
     executor = executor or SubprocessExecutor()
 
     repo = _open_repo(path)
-    head_commit = _safe_head_commit(repo)
-    if head_commit is None:
-        return RebaseNoOp("Repository has no commits yet (unborn branch)")
+    try:
+        head_commit = _safe_head_commit(repo)
+        if head_commit is None:
+            return RebaseNoOp("Repository has no commits yet (unborn branch)")
 
-    validation_result = _validate_rebase_request(repo, upstream_branch, executor, path)
-    if validation_result is not None:
-        return validation_result
+        validation_result = _validate_rebase_request(repo, upstream_branch, executor, path)
+        if validation_result is not None:
+            return validation_result
+    finally:
+        repo.close()
 
     result = executor.execute("git", ("rebase", upstream_branch), cwd=path)
     return _rebase_result_from_process(result, path)
@@ -205,11 +208,12 @@ def _resolve_repo_root(repo_root: Path | str | None = None) -> Path:
         repo = Repo(candidate, search_parent_directories=True)
     except InvalidGitRepositoryError as exc:
         raise RebaseOperationError(f"Not a git repository: {exc}") from exc
-
-    if not repo.working_tree_dir:
-        raise RebaseOperationError("Cannot determine git working tree directory")
-
-    return Path(repo.working_tree_dir).resolve()
+    try:
+        if not repo.working_tree_dir:
+            raise RebaseOperationError("Cannot determine git working tree directory")
+        return Path(repo.working_tree_dir).resolve()
+    finally:
+        repo.close()
 
 
 def _open_repo(repo_root: Path) -> Repo:
@@ -221,10 +225,13 @@ def _open_repo(repo_root: Path) -> Repo:
 
 def _git_dir(repo_root: Path) -> Path:
     repo = _open_repo(repo_root)
-    git_dir = repo.git_dir
-    if not git_dir:
-        raise RebaseOperationError("Cannot determine .git directory for repository")
-    return Path(git_dir).resolve()
+    try:
+        git_dir = repo.git_dir
+        if not git_dir:
+            raise RebaseOperationError("Cannot determine .git directory for repository")
+        return Path(git_dir).resolve()
+    finally:
+        repo.close()
 
 
 def _safe_head_commit(repo: Repo) -> Commit | None:

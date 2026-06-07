@@ -117,10 +117,10 @@ class TestHandleReview:
             encoding="utf-8",
         )
 
-        repo = Repo(tmp_git_repo)
-        (tmp_git_repo / "changed.txt").write_text("x")
-        repo.index.add(["changed.txt"])
-        repo.index.commit("new work")
+        with Repo(tmp_git_repo) as repo:
+            (tmp_git_repo / "changed.txt").write_text("x")
+            repo.index.add(["changed.txt"])
+            repo.index.commit("new work")
         new_head = get_head_sha(tmp_git_repo)
         assert new_head != baseline
 
