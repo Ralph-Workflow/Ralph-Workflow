@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
 from ralph.agents.invoke._process_reader import _agent_command_name
+from ralph.agents.invoke._session_resume import resolve_session_resume_flag
 from ralph.agents.invoke._types import _BuildCommandOptions
 from ralph.config.enums import AgentTransport
 from ralph.mcp.transport.claude import claude_mcp_config
@@ -373,10 +374,14 @@ def _build_claude_interactive_command(
     _extend_claude_transport_flags(cmd, AgentTransport.CLAUDE_INTERACTIVE, options)
     if options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
-    if config.session_flag and options.session_id:
-        cmd.extend(config.session_flag.format(options.session_id).split())
-    elif options.initial_session_id is not None:
-        cmd.extend(["--session-id", options.initial_session_id])
+    if options.session_id:
+        extra_args, _ = resolve_session_resume_flag(
+            AgentTransport.CLAUDE_INTERACTIVE,
+            has_prior_session=True,
+            prior_session_id=options.session_id,
+            recovery_action="resume",
+        )
+        cmd.extend(extra_args)
     if options.settings_json is not None:
         cmd.extend(["--settings", options.settings_json])
     if options.system_prompt_file:

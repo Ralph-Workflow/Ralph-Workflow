@@ -42,14 +42,43 @@ class InterruptController:
     stop_connectivity: Callable[[], None] | None = None
     kill_process_group: Callable[[int, int], None] | None = None
     hard_exit: Callable[[int], None] | None = None
+    # Optional label-targeted shutdown. When set, ``begin_interrupt`` with
+    # a non-empty ``kill_label`` calls this closure INSTEAD of the
+    # generic ``shutdown_all``. The closure is built by
+    # ``controller_from_process_manager`` to wrap
+    # ``manager.shutdown_all_for_label(label_prefix, grace_period_s=...)``
+    # so the FIRST SIGINT can target the agent's process group
+    # directly instead of the generic tracked-process shutdown. The
+    # label is the agent's process label (e.g. ``"invoke:claude"``).
+    shutdown_all_for_label: Callable[[str, float], None] | None = None
 
-    def begin_interrupt(self, *, grace_period_s: float) -> None:
-        """Record the interrupt and attempt graceful tracked-process shutdown."""
+    def begin_interrupt(
+        self,
+        *,
+        grace_period_s: float,
+        kill_label: str = "",
+    ) -> None:
+        """Record the interrupt and attempt graceful tracked-process shutdown.
+
+        When ``kill_label`` is non-empty AND ``shutdown_all_for_label`` is
+        set, the controller calls the label-targeted closure INSTEAD of
+        the generic ``shutdown_all``. This lets the FIRST SIGINT route
+        through a path that targets a specific agent process group
+        rather than the generic tracked-process shutdown.
+
+        The empty-label fallback preserves the existing behavior for
+        callers that don't pass a label: ``self.shutdown_all(grace_period_s)``
+        is called exactly as before. This is the backward-compatible
+        path; the new kill_label kwarg is optional and defaults to "".
+        """
         self.record_interrupt()
         if self.stop_connectivity is not None:
             with suppress(Exception):
                 self.stop_connectivity()
-        self.shutdown_all(grace_period_s)
+        if kill_label and self.shutdown_all_for_label is not None:
+            self.shutdown_all_for_label(kill_label, grace_period_s)
+        else:
+            self.shutdown_all(grace_period_s)
 
     def force_interrupt(self, *, bridge_pids: Iterable[int] = ()) -> None:
         """Escalate to immediate tracked-process termination."""
@@ -99,14 +128,24 @@ def controller_from_process_manager(
     kill_process_group: Callable[[int, int], None] | None = None,
     hard_exit: Callable[[int], None] | None = None,
 ) -> InterruptController:
-    """Build an :class:`InterruptController` from a ProcessManager instance."""
+    """Build an :class:`InterruptController` from a ProcessManager instance.
+
+    Wires both ``shutdown_all`` and ``shutdown_all_for_label`` closures
+    so ``begin_interrupt(kill_label=...)`` can target a specific agent
+    process group instead of the generic tracked-process shutdown.
+    The label is the agent's process label (e.g. ``"invoke:claude"``).
+    """
     manager = process_manager or get_process_manager()
 
     def _shutdown_all(grace_period_s: float) -> None:
         manager.shutdown_all(grace_period_s=grace_period_s)
 
+    def _shutdown_all_for_label(label_prefix: str, grace_period_s: float) -> None:
+        manager.shutdown_all_for_label(label_prefix, grace_period_s=grace_period_s)
+
     return InterruptController(
         shutdown_all=_shutdown_all,
+        shutdown_all_for_label=_shutdown_all_for_label,
         record_interrupt=record_interrupt,
         stop_connectivity=stop_connectivity,
         kill_process_group=kill_process_group,

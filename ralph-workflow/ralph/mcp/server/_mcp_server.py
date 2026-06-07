@@ -11,6 +11,7 @@ from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._server_state import ServerState
+from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name
 
 if TYPE_CHECKING:
     from ralph.mcp.protocol.session import AgentSession
@@ -26,6 +27,23 @@ if TYPE_CHECKING:
 
     class _ModelDump(Protocol):
         def __call__(self, **kwargs: bool) -> dict[str, object]: ...
+
+
+# Import-time invariant: every RalphToolName alias must be a non-degenerate
+# mcp__<server>__<tool> name. The whole point of exposing aliases in
+# tools/list is that strict-MCP clients (e.g. Claude Code) only accept the
+# `mcp__<server>__<tool>` form. If `claude_tool_name(name) == name` for any
+# member, the alias emission rule in `_handle_tools_list` becomes a no-op
+# and the live failure mode (Claude attempts `mcp__<server>__<tool>` and the
+# server rejects it) reappears. Fail loudly with a RuntimeError (NOT
+# `assert`) so the invariant survives `python -O`.
+for _member in RalphToolName:
+    _alias = claude_tool_name(_member)
+    if _alias == str(_member):
+        raise RuntimeError(
+            f"claude_tool_name({_member!r}) degenerated to its raw name; "
+            "alias emission in _handle_tools_list would be a no-op"
+        )
 
 
 def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]:
@@ -101,11 +119,19 @@ def _extract_client_capabilities(params: dict[str, object] | None) -> set[str]:
 class McpServer:
     """Lightweight MCP server that dispatches JSON-RPC requests to Ralph tools."""
 
-    def __init__(self, session: AgentSession, workspace: FsWorkspace, registry: ToolBridge) -> None:
+    def __init__(
+        self,
+        session: AgentSession,
+        workspace: FsWorkspace,
+        registry: ToolBridge,
+        *,
+        expose_mcp_aliases: bool = True,
+    ) -> None:
         self._session = session
         self._workspace = workspace
         self._registry = registry
         self._client_capabilities: set[str] | None = None
+        self._expose_mcp_aliases = expose_mcp_aliases
 
     def handle_request(
         self, request: JsonRpcRequest, state: ServerState
@@ -149,18 +175,79 @@ class McpServer:
         )
 
     def _handle_tools_list(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
-        tools = [
-            {
+        tools: list[dict[str, object]] = []
+        seen_names: set[str] = set()
+        for definition in self._registry.list_definitions():
+            raw_entry: dict[str, object] = {
                 "name": definition.name,
                 "description": definition.description,
                 "inputSchema": definition.input_schema,
             }
-            for definition in self._registry.list_definitions()
-        ]
+            tools.append(raw_entry)
+            seen_names.add(definition.name)
+            if self._expose_mcp_aliases:
+                alias = self._alias_for_tool_name(definition.name)
+                if alias and alias != definition.name and alias not in seen_names:
+                    tools.append(
+                        {
+                            "name": alias,
+                            "description": definition.description,
+                            "inputSchema": definition.input_schema,
+                        }
+                    )
+                    seen_names.add(alias)
+        # Runtime invariant: no duplicate names in the tools list. The alias
+        # emission rule ensures this by construction (we only emit an alias
+        # that differs from the raw name and was not already seen), but we
+        # re-check here so a future regression in the alias builder cannot
+        # silently break the strict-MCP client contract.
+        names = [entry["name"] for entry in tools]
+        if len(names) != len(set(names)):
+            raise RuntimeError(
+                f"_handle_tools_list emitted duplicate tool names: {names}"
+            )
         return (
             JsonRpcResponse(jsonrpc="2.0", result={"tools": tools}, msg_id=request.msg_id),
             ServerState.RUNNING,
         )
+
+    @staticmethod
+    def _alias_for_tool_name(name: str) -> str | None:
+        """Return the canonical `mcp__<server>__<tool>` alias for a tool name.
+
+        Returns None if the name does not correspond to a known
+        :class:`RalphToolName` member, or if the alias degenerates to the raw
+        name (which is excluded by the import-time invariant in this module
+        but we still guard here for safety).
+        """
+        try:
+            member = RalphToolName(name)
+        except ValueError:
+            return None
+        alias = claude_tool_name(member, server_name=RALPH_MCP_SERVER_NAME)
+        if alias == name:
+            return None
+        return alias
+
+    @staticmethod
+    def _resolve_alias_to_canonical(name: str) -> str | None:
+        """Resolve a possibly-aliased tool name to its registered canonical name.
+
+        If ``name`` matches the `mcp__<server>__<tool>` alias pattern with the
+        expected server name, the canonical tool name is returned. Returns
+        None for non-aliased names or aliases that do not correspond to a
+        known tool — callers fall through to the original name so the standard
+        "Tool is not registered" error surfaces with the same message the
+        operator sees in live logs.
+        """
+        prefix = f"mcp__{RALPH_MCP_SERVER_NAME}__"
+        if not name.startswith(prefix):
+            return None
+        raw = name[len(prefix):]
+        try:
+            return str(RalphToolName(raw))
+        except ValueError:
+            return None
 
     def _handle_prompts_list(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
         return (
@@ -271,6 +358,16 @@ class McpServer:
         if not isinstance(arguments_value, dict):
             error = {"code": -32602, "message": "tools/call arguments must be an object"}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+        # Resolve the alias `mcp__<server>__<tool>` to its canonical
+        # registered tool name BEFORE dispatch. This is what makes the
+        # strict-MCP client contract (Claude Code's `mcp__<server>__<tool>`
+        # invocations) routable. If the alias does not correspond to any
+        # known tool, the original name is used so the dispatch failure
+        # surfaces with the live error message the operator sees in logs.
+        resolved_name = self._resolve_alias_to_canonical(tool_name)
+        if resolved_name is not None:
+            tool_name = resolved_name
 
         try:
             raw_result = self._registry.dispatch(

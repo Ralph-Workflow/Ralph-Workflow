@@ -490,11 +490,17 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
         transport=AgentTransport.CLAUDE_INTERACTIVE,
     )
 
+    # The session-resume flag is decided by the single-source-of-truth
+    # helper. When `options.session_id` is set, the helper emits
+    # `--resume <id>` (NOT `--session-id`); the pre-fix code emitted
+    # `--session-id` for the interactive Claude path, which created a
+    # new session tagged with the id instead of continuing the prior
+    # session. After the fix, the only decision point is the helper.
     cmd = build_command(
         config,
         "PROMPT.md",
         options=BuildCommandOptions(
-            initial_session_id="fresh-session-1",
+            session_id="resume-session-1",
             settings_json='{"hooks":{}}',
         ),
     )
@@ -502,8 +508,8 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
     assert cmd == [
         "claude",
         "--dangerously-skip-permissions",
-        "--session-id",
-        "fresh-session-1",
+        "--resume",
+        "resume-session-1",
         "--settings",
         '{"hooks":{}}',
         "PROMPT.md",

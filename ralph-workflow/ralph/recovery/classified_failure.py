@@ -21,3 +21,11 @@ class ClassifiedFailure:
     original_exception: BaseException | None
     raw_message: str
     reset_session: bool = field(default=False)
+    # When True, the next recovery attempt should call
+    # `RestartAwareMcpBridge.reset_tool_registry()` to rebuild the
+    # visible tool list. Set by the failure classifier when the live
+    # MCP server reports a missing tool via the
+    # "No such tool available: mcp__<server>__<tool>" string (the
+    # post-tool-result wedge failure mode) or when a runtime
+    # `ToolDispatchError` is raised with an "is not registered" message.
+    reset_tool_registry: bool = field(default=False)

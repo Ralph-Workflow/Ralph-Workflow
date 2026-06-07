@@ -48,6 +48,26 @@ SESSION_NOT_FOUND_SUBSTRINGS: tuple[str, ...] = (
     "session does not exist",
 )
 
+# Substrings that indicate a backing MCP tool is missing at runtime. The
+# live Claude Code failure mode emits
+#   `<tool_use_error>Error: No such tool available: mcp__<server>__<tool></tool_use_error>`
+# when the agent's `tools/list` snapshot lost the alias (post-restart, post-retry,
+# or after a transient MCP recovery) and the call lands in the live server
+# with no registered handler. This is a tool-availability failure, NOT a
+# stale-session failure: the session is still valid; the tool registry needs
+# rebuilding. Routing it to `reset_tool_registry=True` lets the next attempt
+# call `RestartAwareMcpBridge.reset_tool_registry()` and recover without
+# needing a fresh session.
+#
+# IMPORTANT: The matching is case-insensitive literal-substring via
+# `contains_casefolded_marker`. Do NOT add a literal `"Tool ... is not registered"`
+# substring here — `...` would be matched as three literal characters
+# (the helper does NOT do regex). The runtime `ToolDispatchError` check is
+# handled by a separate class-name + substring helper below.
+_TOOL_AVAILABILITY_SUBSTRINGS: tuple[str, ...] = (
+    "no such tool available",
+)
+
 _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
     {
         "Missing required artifact",
@@ -157,6 +177,29 @@ def _is_stale_session_message(raw_message: str) -> bool:
     return contains_casefolded_marker((raw_message,), SESSION_NOT_FOUND_SUBSTRINGS)
 
 
+def _is_tool_dispatch_unregistered_error(exc: BaseException) -> bool:
+    """Detect a runtime `ToolDispatchError` raised by the tool bridge.
+
+    The bridge raises ``ToolDispatchError(f"Tool '{name}' is not registered")``
+    at ``ralph/mcp/tools/bridge/_tool_bridge.py:64`` when a tools/call hits
+    a name that is not in the live registry. This is the runtime-side
+    mirror of the live `No such tool available: mcp__<server>__<tool>`
+    failure mode and MUST be classified as a tool-availability failure
+    (route to ``reset_tool_registry=True``).
+
+    We distinguish it from the programming-time
+    ``ToolRegistrationError`` (raised at bridge construction by
+    ``_tool_registration_error.py:8``) by class name: ``ToolDispatchError``
+    is the runtime path; ``ToolRegistrationError`` is the bridge-
+    construction path. Programming-time errors should NOT trigger a
+    registry reset — they indicate a code defect in the bridge builder.
+    """
+    if type(exc).__name__ != "ToolDispatchError":
+        return False
+    message = str(exc)
+    return "is not registered" in message.casefold()
+
+
 def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) -> bool:
     """Return True if the message matches Claude Code documented limit/billing families."""
     return contains_casefolded_marker(detail_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
@@ -225,6 +268,27 @@ class FailureClassifier:
             connectivity_state=connectivity_state,
         )
 
+        # Detect tool-availability failures independently of the category
+        # table above. Both the live `No such tool available: mcp__<server>__<tool>`
+        # string and the runtime `ToolDispatchError("Tool 'X' is not registered")`
+        # exception are routed to `reset_tool_registry=True` so the next
+        # attempt calls `RestartAwareMcpBridge.reset_tool_registry()`. The
+        # class-name check (`ToolDispatchError` vs `ToolRegistrationError`)
+        # prevents the programming-time bridge-construction error from being
+        # classified here.
+        reset_tool_registry = self._is_tool_availability_failure(exc_obj, detail_parts)
+        # Tool-availability failures are agent-side (the agent's tool
+        # registry lost an alias) even when the message-based classifier
+        # returns AMBIGUOUS. Upgrade the category to AGENT so the
+        # failure counts against the agent budget and the recovery
+        # controller can route it through its bounded retry path.
+        if reset_tool_registry and category not in {
+            FailureCategory.AGENT,
+            FailureCategory.ENVIRONMENTAL,
+        }:
+            category = FailureCategory.AGENT
+            counts = True
+
         if category == FailureCategory.AMBIGUOUS:
             logger.warning(
                 "Ambiguous failure classification in phase={} agent={}: "
@@ -243,6 +307,29 @@ class FailureClassifier:
             original_exception=original,
             raw_message=raw_message,
             reset_session=reset_session,
+            reset_tool_registry=reset_tool_registry,
+        )
+
+    def _is_tool_availability_failure(
+        self,
+        exc: BaseException | None,
+        detail_parts: list[str],
+    ) -> bool:
+        """Return True when the failure is a backing MCP tool-availability error.
+
+        Two paths qualify:
+
+        1. The exception is a runtime ``ToolDispatchError`` with an
+           "is not registered" message (raised at
+           ``ralph/mcp/tools/bridge/_tool_bridge.py:64``). Programming-time
+           ``ToolRegistrationError`` is excluded by class name.
+        2. Any failure detail surface contains the case-insensitive
+           substring "no such tool available" — the live Claude Code
+           ``<tool_use_error>Error: No such tool available: mcp__<server>__<tool></tool_use_error>``
+           message format.
+        """
+        return (exc is not None and _is_tool_dispatch_unregistered_error(exc)) or (
+            contains_casefolded_marker(detail_parts, _TOOL_AVAILABILITY_SUBSTRINGS)
         )
 
     def _categorize_exc(

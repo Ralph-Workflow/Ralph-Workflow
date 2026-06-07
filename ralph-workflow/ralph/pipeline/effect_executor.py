@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading as _threading
 import uuid
 from collections import deque
 from dataclasses import dataclass
@@ -16,7 +17,11 @@ from ralph.agents.invoke import (
     build_invoke_options_from_config,
     extract_session_id,
 )
-from ralph.config.enums import Verbosity
+from ralph.agents.invoke._session_resume import (
+    recovery_action_for_failure_reason,
+    resolve_session_resume_flag,
+)
+from ralph.config.enums import AgentTransport, Verbosity
 from ralph.config.mcp_loader import McpConfigError
 from ralph.git.operations import stage_files
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
@@ -52,6 +57,7 @@ from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
+from ralph.recovery.failure_classifier import FailureClassifier
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 from ralph.recovery.retry_prompt import build_retry_error_block
 from ralph.workspace import FsWorkspace
@@ -99,6 +105,13 @@ class _AttemptResult:
     event: PipelineEvent | None
     next_prompt_file: str
     next_session_id: str | None
+    # When True, the next attempt should call
+    # `RestartAwareMcpBridge.reset_tool_registry()` before dispatching.
+    # Set by the failure classifier when a tool-availability failure
+    # (e.g. live `No such tool available: mcp__<server>__<tool>`) is
+    # detected. The default False preserves the existing behavior on
+    # non-tool-availability failures.
+    reset_tool_registry: bool = False
 
 
 def execute_agent_effect(
@@ -173,15 +186,33 @@ def execute_agent_effect(
 
 def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
     attempt_prompt_file = ctx.effect.prompt_file
-    resume_session_id: str | None = (
-        ctx.state.last_agent_session_id
-        if (
-            ctx.state is not None
-            and ctx.state.session_preserve_retry_pending
-            and ctx.state.last_agent_session_id
+    # Single source of truth for the session-resume decision: the new helper
+    # in ralph.agents.invoke._session_resume reads the stored failure reason
+    # from pipeline state and returns the right flag (--resume for Claude
+    # Code, --session for OpenCode) plus the session id to thread into
+    # InvokeOptions. The pre-fix code had a divergent `--session-id` branch
+    # in _build_claude_interactive_command that silently created a new
+    # session for the resume path. Now ALL resume-vs-create decisions go
+    # through this helper.
+    resume_session_id: str | None = None
+    if (
+        ctx.state is not None
+        and ctx.state.session_preserve_retry_pending
+        and ctx.state.last_agent_failure_reason
+        and ctx.state.last_agent_session_id
+    ):
+        action = recovery_action_for_failure_reason(
+            ctx.state.last_agent_failure_reason,
+            has_prior_session=True,
         )
-        else None
-    )
+        if action != "fresh":
+            _extra, sid = resolve_session_resume_flag(
+                ctx.agent_config.transport or AgentTransport.GENERIC,
+                has_prior_session=True,
+                prior_session_id=ctx.state.last_agent_session_id,
+                recovery_action=action,
+            )
+            resume_session_id = sid
     bridge = None
     try:
         _materialize = ctx.deps.materialize_system_prompt_fn or materialize_system_prompt
@@ -238,6 +269,11 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
             )
             if result.event is not None:
                 return result.event
+            if (
+                result.reset_tool_registry
+                and isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
+            ):
+                bridge_ctx.bridge.reset_tool_registry()
             attempt_prompt_file = result.next_prompt_file
             resume_session_id = result.next_session_id
     except McpConfigError:
@@ -362,13 +398,36 @@ def _run_attempt(
         final_session_id = extracted_session_id or extract_session_id(tuple(raw_output))
         if ctx.deps.set_session_id_cb is not None:
             ctx.deps.set_session_id_cb(final_session_id)
+        # Success path: clear any previously recorded failure reason so
+        # the next attempt starts fresh. The single-source-of-truth
+        # resume helper reads this field to decide between "resume" and
+        # "fresh".
+        _set_last_captured_failure_reason("")
         return _AttemptResult(PipelineEvent.AGENT_SUCCESS, attempt_prompt_file, resume_session_id)
     except McpServerError as exc:
         logger.error(
             "MCP server failed permanently after {} restart(s): {}", exc.restart_count, exc
         )
+        _set_last_captured_failure_reason("McpServerError")
         return _AttemptResult(PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id)
     except ctx.deps.agent_invocation_error as exc:
+        # Capture the class name as the failure reason. The single-source-
+        # of-truth resume helper reads this to decide the recovery
+        # action.
+        _set_last_captured_failure_reason(exc.__class__.__name__)
+        # Run the failure classifier to detect tool-availability
+        # failures (the post-tool-result wedge). The classifier returns
+        # a ClassifiedFailure with reset_tool_registry=True when the
+        # message matches "no such tool available" or the exception is a
+        # runtime ToolDispatchError with "is not registered". The next
+        # attempt (in _invoke_agent_with_recovery's for loop) will call
+        # bridge.reset_tool_registry() when this flag is set.
+        classifier = FailureClassifier()
+        classified = classifier.classify(
+            exc,
+            phase=str(ctx.effect.phase),
+            agent=ctx.effect.agent_name,
+        )
         recovery_plan = build_agent_recovery_plan(
             AgentRecoveryInput(
                 exc=exc,
@@ -387,7 +446,10 @@ def _run_attempt(
         if recovery_plan is None:
             logger.error("Agent invocation failed: {}", exc)
             return _AttemptResult(
-                PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id
+                PipelineEvent.AGENT_FAILURE,
+                attempt_prompt_file,
+                resume_session_id,
+                reset_tool_registry=classified.reset_tool_registry,
             )
         logger.warning(
             "Retrying agent '{}' after {} ({}/{})",
@@ -396,7 +458,12 @@ def _run_attempt(
             attempt_index + 1,
             ctx.max_recovery_attempts,
         )
-        return _AttemptResult(None, recovery_plan.prompt_file, recovery_plan.session_id)
+        return _AttemptResult(
+            None,
+            recovery_plan.prompt_file,
+            recovery_plan.session_id,
+            reset_tool_registry=classified.reset_tool_registry,
+        )
     except Exception:
         logger.exception("Unexpected error during agent invocation: {}")
         return _AttemptResult(PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id)
@@ -597,4 +664,41 @@ resolve_recovery_session_id = _resolve_recovery_session_id
 recovery_context_lines = _recovery_context_lines
 retry_prompt_file_for_context = _retry_prompt_file_for_context
 
-__all__ = ["stage_files"]
+
+# Module-level helpers to capture the most recent agent failure reason
+# for the single-source-of-truth session-resume helper. State mutation
+# is performed at the runner level (where PipelineState is constructed),
+# so we use a thread-local similar to the existing
+# `_set_last_captured_session_id` pattern in `_runner_session.py`.
+
+_failure_reason_local: _threading.local = _threading.local()
+
+
+def _set_last_captured_failure_reason(reason: str) -> None:
+    _failure_reason_local.reason = reason
+
+
+def pop_last_captured_failure_reason() -> str:
+    """Return and clear the most recent agent-side failure reason.
+
+    Set by ``_set_last_captured_failure_reason`` (called by
+    ``_run_attempt``) and consumed by the runner when it applies the
+    captured state to ``PipelineState`` via ``copy_with``. The
+    thread-local storage matches the pattern used by
+    ``_set_last_captured_session_id`` in ``_runner_session.py``.
+
+    Returns:
+        The last recorded failure reason (the exception class name),
+        or the empty string if no failure was recorded. The
+        thread-local is cleared on read so a subsequent call returns
+        the empty string unless a new failure was recorded in between.
+    """
+    reason: str = getattr(_failure_reason_local, "reason", "")
+    _failure_reason_local.reason = ""
+    return reason
+
+
+__all__ = [
+    "pop_last_captured_failure_reason",
+    "stage_files",
+]

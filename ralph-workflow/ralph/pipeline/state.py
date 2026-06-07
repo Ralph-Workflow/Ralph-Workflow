@@ -158,6 +158,12 @@ class PipelineState(_FrozenPipelineStateModel):
     recovery_cycle_cap: int = Field(default=200, ge=1)
     last_retry_delay_ms: int = 0
     last_agent_session_id: str | None = None
+    # Tracks the class name of the last agent-side failure so the session
+    # resume helper can map failure reason to recovery action. Empty string
+    # means "no failure recorded" (the cleared state on the success path).
+    # Default '' is intentional so legacy checkpoints load cleanly without
+    # any migration.
+    last_agent_failure_reason: str = ""
     session_preserve_retry_pending: bool = False
 
     @model_validator(mode="after")
@@ -167,6 +173,18 @@ class PipelineState(_FrozenPipelineStateModel):
                 "PipelineState requires phase to be set from PipelinePolicy.entry_phase "
                 "before construction; use PipelineState.from_policy(policy) "
                 "or pass phase= explicitly."
+            )
+        # Import-time invariant on last_agent_failure_reason: this field is
+        # the input to resolve_session_resume_flag's failure-reason mapping.
+        # A non-string value (None, int, dict, etc.) would silently bypass
+        # the recovery action lookup and yield a fresh session on every
+        # retry, defeating the resume policy. Enforce with `if`/`raise
+        # RuntimeError` (NOT `assert`) so the check survives `python -O`
+        # and the deserialization path (model_validate) is covered too.
+        if not isinstance(self.last_agent_failure_reason, str):
+            raise RuntimeError(
+                "PipelineState.last_agent_failure_reason must be str; "
+                f"got {type(self.last_agent_failure_reason).__name__}"
             )
         return self
 

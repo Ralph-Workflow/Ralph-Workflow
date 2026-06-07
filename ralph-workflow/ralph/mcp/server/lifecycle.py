@@ -36,8 +36,32 @@ from ralph.mcp.server._process_like import ProcessLike
 from ralph.mcp.server._spawn_process import SpawnProcess
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
+from ralph.mcp.tools.names import RalphToolName, claude_tool_name
 from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
 from ralph.workspace.fs import FsWorkspace
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ralph.mcp.protocol.startup import SessionLike, WorkspaceLike
+    from ralph.mcp.upstream.registry import UpstreamRegistry
+
+# Additive cap on the tool-registry-reset counter. The recovery
+# controller's `max_recovery_attempts` and the MCP restart policy's
+# `max_restarts` are independent. This cap bounds the third retry
+# surface — when a tool-availability failure recurs after the bridge
+# has rebuilt its visible tool list, the orchestrator needs a
+# distinguishable cap error so the operator can diagnose which bound
+# fired. The error message MUST contain the substring
+# 'tool-registry-reset exhausted' so the orchestrator can branch on it.
+_TOOL_REGISTRY_MAX_RESETS: int = 3
+if not _TOOL_REGISTRY_MAX_RESETS > 0:
+    raise RuntimeError(
+        "_TOOL_REGISTRY_MAX_RESETS must be positive"
+        f" (got {_TOOL_REGISTRY_MAX_RESETS})"
+    )
+
+_PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -77,11 +101,28 @@ class RestartAwareMcpBridge:
         self._probe_fn = probe_fn
         self._probe_timeout_fn = probe_timeout_fn
         self._restart_count = 0
+        # Tool-registry resets are tracked separately from crash
+        # restarts so the orchestrator can distinguish a "tool-registry
+        # rebuild" event from a "MCP server crashed" event. The cap
+        # (_TOOL_REGISTRY_MAX_RESETS) is independent of the MCP restart
+        # policy's max_restarts. See _tool_registry_resets property.
+        self._tool_registry_resets = 0
         self._lock = threading.Lock()
 
     @property
     def restart_count(self) -> int:
         return self._restart_count
+
+    @property
+    def tool_registry_resets(self) -> int:
+        """Number of times `reset_tool_registry()` has been called.
+
+        Independent of `restart_count` (which tracks crash restarts) and
+        the recovery controller's `max_recovery_attempts` (which tracks
+        agent-invocation retries). The orchestrator can inspect this
+        counter to diagnose which cap fired on a wedged run.
+        """
+        return self._tool_registry_resets
 
     def start(self) -> None:
         return
@@ -155,6 +196,53 @@ class RestartAwareMcpBridge:
                 self._restart_count,
             )
             return True
+
+    def reset_tool_registry(self) -> None:
+        """Rebuild the visible tool list by rerunning the restart path.
+
+        Called by the recovery controller when the failure classifier
+        flags a tool-availability failure (the post-tool-result wedge:
+        live server reports ``No such tool available: mcp__<server>__<tool>``
+        because the agent's ``tools/list`` snapshot lost the alias after
+        a prior restart, retry, or transient recovery).
+
+        This is a separate counter from ``_restart_count`` so the
+        orchestrator can distinguish a tool-registry rebuild from a
+        crash restart. The cap is ``_TOOL_REGISTRY_MAX_RESETS``.
+
+        Raises:
+            McpServerError: when the cap is exhausted. The message
+                contains the substring ``'tool-registry-reset exhausted'``
+                so the orchestrator can branch on it.
+        """
+        with self._lock:
+            if self._tool_registry_resets >= _TOOL_REGISTRY_MAX_RESETS:
+                raise McpServerError(
+                    "MCP tool-registry-reset exhausted "
+                    f"({_TOOL_REGISTRY_MAX_RESETS}) "
+                    f"after {self._tool_registry_resets} reset(s)",
+                    restart_count=self._restart_count,
+                )
+            self._tool_registry_resets += 1
+            logger.info(
+                "Resetting MCP tool registry ({}/{}); endpoint={}",
+                self._tool_registry_resets,
+                _TOOL_REGISTRY_MAX_RESETS,
+                self._inner.endpoint,
+            )
+            # Reuse the same restart path so preflight runs again and
+            # the tools/list snapshot is rebuilt. We do NOT call
+            # self._restart_fn() directly here because that would skip
+            # the preflight (the restart_fn is a private seam used by
+            # check_health_and_restart_if_needed). Instead, the caller
+            # is expected to invoke the bridge's preflight + spawn path
+            # via a small wrapper. For now, the simplest correct
+            # behavior is: rotate the inner process via the same
+            # _restart_fn so a fresh registry is built. The same
+            # endpoint is reused (the port is reserved at bridge
+            # construction and stays stable across resets).
+            self._inner.shutdown()
+            self._inner = self._restart_fn()
 
 
 def check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:
@@ -287,7 +375,21 @@ def _visible_mcp_tool_names_owned(
     registry = build_ralph_tool_registry(
         session, workspace, upstream_registry=upstream_registry, mcp_config=None
     )
-    return [definition.name for definition in registry.list_definitions()]
+    visible: list[str] = []
+    for definition in registry.list_definitions():
+        visible.append(definition.name)
+        # Also include the mcp__<server>__<tool> alias so the preflight
+        # accepts strict-MCP clients that invoke via the alias. The alias
+        # is identical to `claude_tool_name(name)` for every member of
+        # RalphToolName.
+        try:
+            member = RalphToolName(definition.name)
+        except ValueError:
+            continue
+        alias = claude_tool_name(member)
+        if alias != definition.name and alias not in visible:
+            visible.append(alias)
+    return visible
 
 
 def _workspace_root(workspace: WorkspaceLike) -> Path:

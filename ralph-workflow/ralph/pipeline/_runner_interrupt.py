@@ -44,7 +44,21 @@ def handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) ->
 
     def _begin_interrupt() -> None:
         try:
-            controller.begin_interrupt(grace_period_s=process_manager.policy.default_grace_period_s)
+            # Pass a label-targeted kill_label so the FIRST SIGINT routes
+            # through InterruptController.begin_interrupt's new
+            # shutdown_all_for_label path. This directly targets the
+            # agent's process group instead of the generic tracked-process
+            # shutdown. The label convention is documented in
+            # InterruptController.begin_interrupt and matches the agent
+            # process labels set by AGENT_LABEL_SCOPE_ENV (e.g.
+            # "invoke:claude"). The label uses literal prefix matching
+            # (ProcessManager.shutdown_all_for_label uses record.label.startswith),
+            # so the value is "invoke:" (the literal prefix), not
+            # "invoke:*" (a glob that would be a literal '*').
+            controller.begin_interrupt(
+                grace_period_s=process_manager.policy.default_grace_period_s,
+                kill_label="invoke:",
+            )
         except BaseException as exc:
             interrupt_error.append(exc)
         finally:

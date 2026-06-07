@@ -44,5 +44,6 @@
   "recovery_cycle_cap": 200,
   "last_retry_delay_ms": 0,
   "last_agent_session_id": null,
+  "last_agent_failure_reason": "",
   "session_preserve_retry_pending": false
 }
