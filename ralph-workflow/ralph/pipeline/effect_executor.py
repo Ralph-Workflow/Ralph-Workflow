@@ -78,6 +78,7 @@ _VERBOSE_LOG_LEVEL = 2
 _AGENT_RAW_OUTPUT_TAIL_LINES = 256
 _AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
 _RECOVERY_CONTEXT_LINES = 12
+_RECOVERY_CONTEXT_MAX_CHARS = 240
 _PORCELAIN_STATUS_PREFIX_LEN = 3
 _TRANSIENT_CONNECTIVITY_MARKERS = (
     "connection refused",
@@ -437,7 +438,14 @@ def _resolve_recovery_session_id(
     resumable_session_id = cast("object", getattr(exc, "resumable_session_id", None))
     if isinstance(resumable_session_id, str) and resumable_session_id:
         return resumable_session_id
-    return extracted_session_id or None
+    if extracted_session_id:
+        return extracted_session_id
+    parsed_output = cast("object", getattr(exc, "parsed_output", None))
+    if isinstance(parsed_output, list) and parsed_output:
+        parsed_session_id = extract_session_id(tuple(str(item) for item in parsed_output))
+        if parsed_session_id:
+            return parsed_session_id
+    return None
 
 
 def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
@@ -482,15 +490,44 @@ def _recovery_context_lines(
 ) -> list[str]:
     _error_parts_fn = _fn or _recovery_error_parts
     if rendered_output:
-        return rendered_output[-_RECOVERY_CONTEXT_LINES:]
+        return _tail_recovery_context_lines(rendered_output)
     parsed_output = cast("object", getattr(exc, "parsed_output", None))
     if isinstance(parsed_output, list) and parsed_output:
-        return [str(item) for item in parsed_output[-_RECOVERY_CONTEXT_LINES:]]
+        return _tail_recovery_context_lines([str(item) for item in parsed_output])
     stripped_raw = [line.strip() for line in raw_output if line.strip()]
     if stripped_raw:
-        return stripped_raw[-_RECOVERY_CONTEXT_LINES:]
+        return _tail_recovery_context_lines(stripped_raw)
     error_parts = [part.strip() for part in _error_parts_fn(exc) if part.strip()]
-    return error_parts[-_RECOVERY_CONTEXT_LINES:]
+    return _tail_recovery_context_lines(error_parts)
+
+
+def _tail_recovery_context_lines(lines: list[str]) -> list[str]:
+    if len(lines) <= _RECOVERY_CONTEXT_LINES:
+        return lines
+    omitted = len(lines) - _RECOVERY_CONTEXT_LINES
+    return [f"<previous log omitted> ({omitted} earlier lines)", *lines[-_RECOVERY_CONTEXT_LINES:]]
+
+
+def _condense_recovery_context_lines(context_lines: list[str]) -> list[str]:
+    condensed = [_condense_recovery_line(line) for line in context_lines]
+    if (
+        len(context_lines) > _RECOVERY_CONTEXT_LINES
+        and condensed
+        and not condensed[0].startswith("<previous log omitted>")
+    ):
+        omitted = len(context_lines) - _RECOVERY_CONTEXT_LINES
+        return [
+            f"<previous log omitted> ({omitted} earlier lines)",
+            *condensed[-_RECOVERY_CONTEXT_LINES:],
+        ]
+    return condensed
+
+
+def _condense_recovery_line(line: str) -> str:
+    stripped = line.strip()
+    if len(stripped) <= _RECOVERY_CONTEXT_MAX_CHARS:
+        return stripped
+    return stripped[:_RECOVERY_CONTEXT_MAX_CHARS].rstrip() + " ... (truncated)"
 
 
 def _retry_prompt_file_for_context(
@@ -512,7 +549,8 @@ def _write_retry_context_file(*, workspace_root: Path, context_lines: list[str])
     prompt_dir = workspace_root / ".agent" / "tmp"
     prompt_dir.mkdir(parents=True, exist_ok=True)
     context_path = prompt_dir / f"agent_retry_context_{uuid.uuid4().hex}.md"
-    summary = "\n".join(context_lines) if context_lines else "(no output captured)"
+    condensed = _condense_recovery_context_lines(context_lines)
+    summary = "\n".join(condensed) if condensed else "(no output captured)"
     context_path.write_text(summary, encoding="utf-8")
     return context_path
 
@@ -533,7 +571,8 @@ def _write_agent_retry_prompt(
         workspace_root=workspace_root,
         context_lines=context_lines,
     )
-    summary = "\n".join(context_lines) if context_lines else "(no output captured)"
+    condensed = _condense_recovery_context_lines(context_lines)
+    summary = "\n".join(condensed) if condensed else "(no output captured)"
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",
         prompt_path=str(prompt_path),

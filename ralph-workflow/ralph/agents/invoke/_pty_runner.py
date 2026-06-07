@@ -122,6 +122,11 @@ def run_pty_and_read_lines(
                     WatchdogFireReason.PROCESS_EXIT_HANG,
                 )
         except _IdleStreamTimeoutError as exc:
+            session_resume_safe = exc.reason in {
+                WatchdogFireReason.NO_OUTPUT_DEADLINE,
+                WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
+                WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
+            }
             raise AgentInactivityTimeoutError(
                 _agent_command_name(ctx.config),
                 exc.timeout_seconds,
@@ -129,7 +134,12 @@ def run_pty_and_read_lines(
                     tuple(parsed_output),
                     explicit_completion_seen=explicit_completion_seen,
                 ),
-                InactivityTimeoutOpts(reason=exc.reason, diagnostic=exc.diagnostic),
+                InactivityTimeoutOpts(
+                    reason=exc.reason,
+                    session_resume_safe=session_resume_safe,
+                    resumable_session_id=captured_session_id or expected_session_id,
+                    diagnostic=exc.diagnostic,
+                ),
             ) from exc
 
         _check_process_result(

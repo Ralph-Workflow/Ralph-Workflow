@@ -15,6 +15,7 @@ class InactivityTimeoutOpts:
 
     reason: WatchdogFireReason | None = None
     session_resume_safe: bool = False
+    resumable_session_id: str | None = None
     diagnostic: dict[str, str | int | float | bool] | None = None
 
 

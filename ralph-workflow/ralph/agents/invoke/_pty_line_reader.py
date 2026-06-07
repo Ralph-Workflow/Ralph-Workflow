@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.agents.activity import AgentActivityKind
 from ralph.agents.execution_state import (
     AgentExecutionState,
     GenericExecutionStrategy,
@@ -100,6 +101,11 @@ class PtyLineReader:
         self._terminal_counter: list[int] = [0]
         self._last_meaningful: list[bool] = [False]
         self._last_hard_stop: list[WaitingStatusEvent | None] = [None]
+        self._last_activity_kind: AgentActivityKind | None = None
+        self._awaiting_post_tool_result_progress = False
+        self._last_tool_use_name: str | None = None
+        self._last_tool_result_at: float | None = None
+        self._last_tool_result_excerpt: str | None = None
         self._reader_done: list[bool] = [False]
         self._input_writer_fd = os.dup(handle.master_fd)
         self._input_writer_lock = threading.Lock()
@@ -306,6 +312,22 @@ class PtyLineReader:
         )
         fire_reason = watchdog.last_fire_reason
         assert fire_reason is not None
+        hard_stop_event = self._last_hard_stop[0]
+        hard_stop_diag = hard_stop_event.diagnostic if hard_stop_event is not None else None
+        diagnostic = hard_stop_diag
+        if (
+            fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
+            and self._awaiting_post_tool_result_progress
+            and self._last_tool_result_at is not None
+        ):
+            fire_reason = WatchdogFireReason.STALLED_AFTER_TOOL_RESULT
+            diagnostic = {
+                "last_tool_name": self._last_tool_use_name or "tool",
+                "last_tool_result_excerpt": self._last_tool_result_excerpt or "",
+                "idle_since_tool_result_seconds": round(
+                    self._clock.monotonic() - self._last_tool_result_at, 1
+                ),
+            }
         timeout_val = (
             self._policy.max_session_seconds
             if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
@@ -316,12 +338,10 @@ class PtyLineReader:
             pending_lines = list(self._lines_queue)
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
-        hard_stop_event = self._last_hard_stop[0]
-        hard_stop_diag = hard_stop_event.diagnostic if hard_stop_event is not None else None
         return pending_lines, _IdleStreamTimeoutError(
             timeout_val,
             fire_reason,
-            diagnostic=hard_stop_diag,
+            diagnostic=diagnostic,
         )
 
     def _run_drain_window(
@@ -479,6 +499,17 @@ class PtyLineReader:
         self._observe_queued_line(queued_line)
         activity_signal = self._strategy.classify_activity_line(queued_line)
         if activity_signal is not None:
+            self._last_activity_kind = activity_signal.kind
+            if activity_signal.kind == AgentActivityKind.TOOL_USE:
+                self._awaiting_post_tool_result_progress = False
+                raw = activity_signal.raw.strip()
+                self._last_tool_use_name = raw.split(":", 1)[-1].strip() if ":" in raw else raw
+            elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
+                self._awaiting_post_tool_result_progress = True
+                self._last_tool_result_at = self._clock.monotonic()
+                self._last_tool_result_excerpt = activity_signal.raw.strip()[:200]
+            elif activity_signal.kind == AgentActivityKind.OUTPUT_LINE:
+                self._awaiting_post_tool_result_progress = False
             self._last_meaningful[0] = activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
             watchdog.record_activity()
         else:

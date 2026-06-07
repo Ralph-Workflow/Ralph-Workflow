@@ -21,6 +21,7 @@ class AgentInactivityTimeoutError(AgentInvocationError):
         self.timeout_seconds = timeout_seconds
         self.reason = _opts.reason
         self.session_resume_safe = _opts.session_resume_safe
+        self.resumable_session_id = _opts.resumable_session_id
         if _opts.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
             duration = f"{timeout_seconds:.0f}s"
             base_msg = f"Agent kept child agents alive without producing output for {duration}"
@@ -43,6 +44,15 @@ class AgentInactivityTimeoutError(AgentInvocationError):
         elif _opts.reason == WatchdogFireReason.PROCESS_EXIT_HANG:
             duration = f"{timeout_seconds:.0f}s"
             stderr_msg = f"Agent subprocess closed stdout but did not exit within {duration}"
+        elif _opts.reason == WatchdogFireReason.STALLED_AFTER_TOOL_RESULT:
+            duration = f"{timeout_seconds:.0f}s"
+            tool_name = (
+                _opts.diagnostic.get("last_tool_name", "tool") if _opts.diagnostic else "tool"
+            )
+            stderr_msg = (
+                f"Agent produced no follow-up output for {duration} after receiving a tool result"
+                f" (last_tool={tool_name})"
+            )
         else:
             stderr_msg = f"Agent produced no output for {timeout_seconds:.0f}s"
         super().__init__(

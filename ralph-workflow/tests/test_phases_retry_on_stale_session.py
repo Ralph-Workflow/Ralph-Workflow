@@ -206,11 +206,11 @@ def test_runner_stale_session_internal_retry_succeeds(
     assert "no conversation found with session id" in context_text
 
 
-def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
+def test_runner_inactivity_timeout_with_captured_session_retries_same_session(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Forced inactivity termination ignores captured session IDs and retries fresh."""
+    """Claude interactive inactivity retry preserves the observed session ID."""
     monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
     monkeypatch.setattr(
@@ -224,7 +224,8 @@ def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
 
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the change", encoding="utf-8")
-    captured_session = '{"session_id":"unsafe-after-kill"}'
+    captured_session_id = "unsafe-after-kill"
+    captured_session = f'{{"session_id":"{captured_session_id}"}}'
     captured_calls: list[tuple[str | None, str]] = []
 
     def fake_invoke_agent(
@@ -241,7 +242,10 @@ def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
                 "claude",
                 300.0,
                 [captured_session],
-                InactivityTimeoutOpts(reason=WatchdogFireReason.NO_OUTPUT_DEADLINE),
+                InactivityTimeoutOpts(
+                    reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+                    session_resume_safe=True,
+                ),
             )
         return []
 
@@ -271,13 +275,84 @@ def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
     assert result == PipelineEvent.AGENT_SUCCESS
     assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
     second_session_id, second_prompt = captured_calls[1]
-    assert second_session_id is None
+    assert second_session_id == captured_session_id
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
     assert retry_content.splitlines()[0] == "ERROR RECOVERY REQUIRED"
     assert "inactivity timeout" in retry_content.lower()
     assert "the exact cause may be unknown" in retry_content.lower()
     assert "original prompt:" in retry_content.lower()
     assert str(prompt_file) in retry_content
+
+
+def test_runner_retry_prompt_condenses_visible_output_in_real_retry_flow(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
+    monkeypatch.setattr(
+        runner_module,
+        "materialize_system_prompt",
+        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
+    )
+
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+    huge_line = "claude result: " + ("x" * 1200)
+    captured_calls: list[tuple[str | None, str]] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        session_id = options.session_id if options is not None else None
+        captured_calls.append((session_id, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInactivityTimeoutError(
+                "claude",
+                300.0,
+                [huge_line] * 20,
+                InactivityTimeoutOpts(
+                    reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+                    session_resume_safe=True,
+                ),
+            )
+        return []
+
+    result = runner_module.execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="claude",
+            phase="development",
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        runner_module.AgentExecutionDeps(
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
+            agent_registry=_registry_factory(
+                AgentConfig(
+                    cmd="claude",
+                    output_flag="--json-stream",
+                    session_flag="--resume {}",
+                )
+            ),
+        ),
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        state=_make_state(),
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    retry_content = Path(captured_calls[1][1]).read_text(encoding="utf-8")
+    assert "<previous log omitted>" in retry_content
+    assert huge_line not in retry_content
+    assert " ... (truncated)" in retry_content
 
 
 def test_runner_stale_session_with_parsed_session_id_retries_fresh(

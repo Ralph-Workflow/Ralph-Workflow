@@ -40,6 +40,13 @@ class _IdleStreamTimeoutError(RuntimeError):
         elif reason == WatchdogFireReason.PROCESS_EXIT_HANG:
             duration = f"{timeout_seconds:.0f}s"
             msg = f"Agent subprocess closed stdout but did not exit within {duration}"
+        elif reason == WatchdogFireReason.STALLED_AFTER_TOOL_RESULT:
+            duration = f"{timeout_seconds:.0f}s"
+            tool_name = diagnostic.get("last_tool_name", "tool") if diagnostic else "tool"
+            msg = (
+                f"Agent produced no follow-up output for {duration} after receiving a tool result"
+                f" (last_tool={tool_name})"
+            )
         else:
             msg = f"Agent produced no output for {timeout_seconds:.0f}s"
         super().__init__(msg)
