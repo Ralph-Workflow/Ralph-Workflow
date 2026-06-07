@@ -307,6 +307,7 @@ def invoke_agent(
             extras = _PtyExtras(
                 expected_session_id=opts.session_id or opts.initial_session_id,
                 stop_sentinel_path=opts.stop_sentinel_path,
+                permission_prompt_listener=opts.permission_prompt_listener,
             )
             lines_iter = run_pty_and_read_lines(cmd, ctx, extras)
             yield from lines_iter

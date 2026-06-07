@@ -69,6 +69,14 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
     def supports_session_continuation(self) -> bool:
         return True
 
+    def classify_quiet(
+        self,
+        handle: _LiveDescendantHandle,
+        liveness_probe: LivenessProbe,
+    ) -> AgentExecutionState:
+        del handle, liveness_probe
+        return AgentExecutionState.ACTIVE
+
     def classify_exit(
         self,
         handle: _LiveDescendantHandle,

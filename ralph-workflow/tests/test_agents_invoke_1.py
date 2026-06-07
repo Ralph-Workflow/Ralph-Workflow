@@ -438,6 +438,18 @@ def test_claude_interactive_execution_strategy_classify_exit_resumable_without_s
     assert strategy.classify_exit(_FakeHandle(), signals) == AgentExecutionState.RESUMABLE_CONTINUE
 
 
+def test_claude_interactive_execution_strategy_classify_quiet_ignores_os_descendants() -> None:
+    strategy = ClaudeInteractiveExecutionStrategy()
+
+    class _FakeHandle:
+        def has_live_descendants(self) -> bool:
+            return True
+
+    state = strategy.classify_quiet(_FakeHandle(), FakeLivenessProbe())
+
+    assert state == AgentExecutionState.ACTIVE
+
+
 def test_build_command_injects_claude_append_system_prompt_file() -> None:
     config = AgentConfig(
         cmd="claude -p",
@@ -548,6 +560,49 @@ def test_invoke_agent_claude_interactive_default_settings_include_permission_req
     assert permission_hook["type"] == "command"
     assert "PermissionRequest" in cast("str", permission_hook["command"])
     assert "allow" in cast("str", permission_hook["command"])
+
+
+def test_invoke_agent_claude_interactive_passes_permission_prompt_listener_to_pty_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--dangerously-skip-permissions",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    captured_listener: list[object | None] = []
+
+    def fake_run_pty_and_read_lines(
+        cmd: list[str],
+        ctx: object,
+        extras: object = None,
+    ) -> list[str]:
+        del cmd, ctx
+        captured_listener.append(getattr(extras, "permission_prompt_listener", None))
+        return ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+
+    monkeypatch.setattr(invoke_module, "run_pty_and_read_lines", fake_run_pty_and_read_lines)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                permission_prompt_listener=lambda _message: None,
+            ),
+        )
+    )
+
+    assert len(captured_listener) == 1
+    assert callable(captured_listener[0])
 
 
 def test_invoke_agent_claude_interactive_merges_custom_settings_with_required_hooks(
