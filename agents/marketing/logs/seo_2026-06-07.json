@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-07T09:00:02.378672",
+  "timestamp": "2026-06-07T14:05:39.919128",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -306,7 +306,7 @@
     ],
     "coverage_pct": 100.0,
     "scan_method": "homepage+sitemap",
-    "urls_scanned": 35
+    "urls_scanned": 42
   },
   "serp": {
     "position": null,

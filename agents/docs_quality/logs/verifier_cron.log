@@ -31202,3 +31202,136 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-positioned. README leads with orchestrator value, not process plumbing. Journey from README \u2192 START_HERE \u2192 docs/README is coherent. Promoted next-click pages reinforce the same story instead of fighting it. The three README variants (root, PyPI, mirror) are each calibrated for their audience without drifting.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md:1-4",
+      "reason": "Tagline and first paragraph nail the positioning as operating-system-for-autonomous-coding / orchestrator. Leads with product value, not process receipts."
+    },
+    {
+      "path": "README.md:15-17",
+      "reason": "'simple Ralph-loop core \u2192 composable framework' framing exactly matches positioning doc. 'Not a chat window or prompt tool' is the right contrast."
+    },
+    {
+      "path": "docs/README.md:48-49",
+      "reason": "Docs map explicitly says 'Keep proof secondary' \u2014 implements the positioning doc's content-boundary rule."
+    },
+    {
+      "path": "rails-workflow/README.md:25",
+      "reason": "PyPI README explicitly frames Ralph Workflow as an improvement on Ralph, not generic Ralph \u2014 follows the guardrail."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-architected, positioning-aligned, and structurally sound. The README \u2192 START_HERE \u2192 docs/README journey forms a coherent route that respects the positioning doc's hierarchy (simple core first, composition second, default workflow third, extension fourth). Promoted next-click pages reinforce rather than fight the story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (Codeberg primary)",
+      "reason": "Leads with 'operating system for autonomous coding' and 'AI agent orchestrator'. Explains simple core first, then composition, then default workflow. No internal plumbing at the top. Comparison table is concrete, not hype."
+    },
+    {
+      "path": "START_HERE.md (github-mirror)",
+      "reason": "Straight into task selection with good/bad framing. Does not re-explain the whole product. Does not lead with logs or artifacts. Repo hierarchy note is present but unobtrusive."
+    },
+    {
+      "path": "docs/README.md (github-mirror)",
+      "reason": "Explicitly positions itself after README+START_HERE. Routes by reader intent. Says 'Keep proof secondary' inline. Links to product-framing pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) that all echo the same simple-core/composable/strong-default line correctly."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Hardest test \u2014 could easily leak into internal language. Handles it correctly: explicitly labels itself as secondary proof, says to start with product story first, orders evidence by working-behavior > real-checks > scope > supporting-artifacts. This is the positioning doc's preferred order."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Strong spec-driven framing. Teaches the spec-as-contract pattern instead of prompt-as-request. The 'what must not change' section is a practical differentiator. Good audience-fit honesty in the assessment section."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with the positioning document. Every promoted page opens with the same core framing (simple Ralph-loop core, composable loop framework, operating system for autonomous coding), avoids internal plumbing as the lead story, and routes readers coherently from README \u2192 START_HERE \u2192 docs/README. The supporting pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md) reinforce rather than fight the main journey. reviewable-output.md explicitly self-frames as secondary proof. The only residual risk is that the root README's \"Built-in capabilities\" list uses terms like \"Phase routing\" and \"Repo-based handoff\" which are mildly implementation-adjacent, but they appear well below the fold in a feature-bullet context with plain-English explanations, so they do not violate the lead-story boundary.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "No hard failures. Minor consideration: the root README's 'Built-in capabilities' section at line 103-110 uses 'Phase routing' and 'Repo-based handoff' \u2014 slightly internal plumbing language. While acceptable below the fold, a lighter reframe (e.g. 'Multi-agent pipeline', 'File-based context sharing') would make the paragraph more end-user-friendly."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding', explains simple-core/complex-composition immediately, has clear who-it's-for/who-it's-not-for, engineering-practice requirements section, and Codeberg-primary framing. The ordering follows the positioning doc's prescribed writing order."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Focuses on 'one real task', leads with 'judge the outcome by what the software does now and what checks ran', opens with Codeberg-primary disclaimer. No internal plumbing, no artifact language, no process receipts."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly says 'Keep proof secondary' and positions itself as a routing page after README + START_HERE. Manages link anxiety well with role-based routing and explicit 'use this after' guidance."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Opens with proper positioning framing, gives concrete spec template with 'what must not change' section, has an honest 'when it works / when it doesn't' section, and directly echoes the result-first evaluation standard."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Self-frames as 'supporting proof, not the main product pitch' and explicitly says 'Logs and transcripts can be useful. They just should not be the main promise.' This is exactly the right secondary-page behavior."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

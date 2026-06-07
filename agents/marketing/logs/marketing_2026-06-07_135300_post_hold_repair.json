@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-06-07T13:53:00.000000",
+  "type": "distribution_architecture_repair",
+  "title": "post-hold re-entry: distribution architecture repair",
+  "status": "executed",
+  "ok": true,
+  "hold_cleared": true,
+  "actions": [
+    {
+      "action": "cli_bugfix",
+      "detail": "Fixed duplicate star command registration in ralph/cli/main.py (line 736 removed)",
+      "commit": "5e2449e00",
+      "pushed_to": "codeberg main"
+    },
+    {
+      "action": "artifact_repair",
+      "detail": "Regenerated stale execution board (was 13-day-old copy of May 25 board)"
+    },
+    {
+      "action": "lane_state_update",
+      "detail": "Updated distribution_lane_latest.json to distribution_architecture_repair_executed"
+    },
+    {
+      "action": "verification",
+      "detail": "Confirmed all 7 external lanes remain credential-blocked, Codeberg 12 stars flat 5+ weeks"
+    }
+  ],
+  "lane_status": "all_external_lanes_credential_blocked",
+  "next_time_sensitive_deadline": "HN harness-engineering handoff ~20:00 CEST Jun 7"
+}
