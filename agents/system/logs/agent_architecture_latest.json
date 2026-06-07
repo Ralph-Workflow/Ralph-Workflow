@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-06-07T17:11:00.504256+02:00",
+    "checked_at": "2026-06-07T18:08:23.745952+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
@@ -33,10 +33,10 @@
       "marketing-pulse"
     ],
     "live_running_job_names": [
+      "Push research findings to git repo",
       "agent-architecture-watchdog",
-      "codeberg-github-mirror-sync",
-      "marketing-daily",
-      "system-health-monitor"
+      "marketing-active-loop",
+      "pypi-auto-unblocker"
     ],
     "live_last_error_job_names": [
       "competitor-analysis",
@@ -180,13 +180,14 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-06-07T17:11:13.781716+02:00",
+    "checked_at": "2026-06-07T18:08:10.035967+02:00",
     "verdict": "qualified_pass",
-    "previous_artifact_checked_at": "2026-06-07T17:10:15.236784+02:00",
+    "previous_artifact_checked_at": "2026-06-07T18:08:10.035967+02:00",
     "previous_artifact_verdict": "qualified_pass",
     "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
   "what_still_needs_independent_verification": [
+    "Fresh architecture independent verification against the refreshed live topology.",
     "Fresh marketing independent pass backed by measurable primary-repo movement."
   ],
   "highest_risk_unresolved_issue": {
@@ -202,27 +203,31 @@
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
     "architecture_verifier_status": "pass",
-    "architecture_verifier_checked_at": "2026-06-07T17:11:13.781716+02:00",
+    "architecture_verifier_checked_at": "2026-06-07T18:08:10.035967+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
     },
-    "health_monitor_issues_found": 1,
+    "health_monitor_issues_found": 11,
     "health_monitor_issue_names": [
-      "marketing_independent_verification"
+      "marketing_independent_verification",
+      "docs_agentic_review",
+      "docs_agentic_review_mustFix_ralph-workflow-readme-md-lacks-the-explicit-not"
     ],
     "health_monitor_issue_categories": [
-      "marketing_independent_verification:stale_artifact"
+      "marketing_independent_verification:stale_artifact",
+      "docs_agentic_review:loop_verification_fail",
+      "docs_agentic_review_mustFix_ralph-workflow-readme-md-lacks-the-explicit-not:review_followup_required"
     ],
     "marketing_workflow_audit_timeout_seconds": 3600,
     "marketing_workflow_audit_last_duration_ms": 488968,
     "marketing_workflow_audit_timeout_headroom_seconds": 3111.032,
     "marketing_workflow_audit_timeout_repaired_pending_clean_rerun": false,
     "live_running_job_names": [
+      "Push research findings to git repo",
       "agent-architecture-watchdog",
-      "codeberg-github-mirror-sync",
-      "marketing-daily",
-      "system-health-monitor"
+      "marketing-active-loop",
+      "pypi-auto-unblocker"
     ],
     "live_last_error_job_names": [
       "competitor-analysis",
@@ -244,10 +249,14 @@
     "independent_architecture_verdict": "qualified_pass",
     "docs_blocker_localized": false,
     "external_watch_issue_names": [
-      "marketing_independent_verification"
+      "marketing_independent_verification",
+      "docs_agentic_review",
+      "docs_agentic_review_mustFix_ralph-workflow-readme-md-lacks-the-explicit-not"
     ],
     "external_watch_issue_categories": [
-      "marketing_independent_verification:stale_artifact"
+      "marketing_independent_verification:stale_artifact",
+      "docs_agentic_review:loop_verification_fail",
+      "docs_agentic_review_mustFix_ralph-workflow-readme-md-lacks-the-explicit-not:review_followup_required"
     ],
     "required_runtime_consumers_present": [
       "agents/marketing/distribution_lane_executor.py",

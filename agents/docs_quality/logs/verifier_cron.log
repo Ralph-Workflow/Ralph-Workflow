@@ -31588,3 +31588,85 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README journey is coherent, promoted pages reinforce the simple-core/composable/strong-default framing, and internal mechanics are properly demoted to supporting pages.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding', explains Ralph-loop core as a composable framework, includes a comparison table that stays at user-value level, defines clear fit/non-fit, and links to START_HERE \u2014 all without leaking internal plumbing into the top-level story."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by user intent (fastest first run / operator manual / proof / product framing), signals 'keep proof secondary' in its own heading, and promotes pages that reinforce rather than fight the journey."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Opens with an explicit demotion banner \u2014 'This page is supporting proof... not the main product pitch' \u2014 proving the hierarchy rule is enforced at the page level, not just in navigation copy."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with the positioning document. The README \u2192 START_HERE \u2192 docs/README journey is coherent, next-click pages reinforce the same story, and no hard failures are present.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with the correct tagline, frames Ralph Workflow as a composable loop framework, defines clear audience fit/non-fit, links to START_HERE, respects Codeberg-primary framing, and avoids internal process residue."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Gives the shortest honest first-run path without skipping product context. Reinforces the simple-core/composable-loop story and routes cleanly to docs/README.md and first-task-guide.md."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Functions as an honest switchboard that tells the reader when they should be on this page (after README + START_HERE). Routes by question type and explicitly deprioritizes proof-oriented pages."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Concrete, honest, and practical. Frames the spec as a contract not a prompt, includes the mandatory invariants section, and honestly evaluates when the tool works and doesn't."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "Package-level README is consistent with the top-level story, adds appropriate depth (name origin, fit/non-fit table, accountabilty framing) without contradicting the positioning."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
