@@ -274,10 +274,14 @@ def test_unrecoverable_over_capacity_raises_execution_error(
 # ---------------------------------------------------------------------------
 
 
-def test_no_error_when_live_external_slot_explains_overage(
+def test_external_slot_deleted_during_capacity_recovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No error when over-budget bytes belong to a slot owned by a still-alive process."""
+    """External slots (not in active_slots) are deleted during recovery, not protected.
+
+    In the lock-free design any process that loses a slot simply recreates it
+    on the next acquire, so external slots are always reclaimable under pressure.
+    """
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     base = tmp_path / "exec-base"
@@ -286,24 +290,28 @@ def test_no_error_when_live_external_slot_explains_overage(
         base_dir=base,
         max_total_bytes=50,
     )
+    # Use real file sizes so deletion actually brings us under budget
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", manager._path_size_bytes)
 
     workspace_key = exec_sandbox._workspace_key(workspace)
     pool_dir = base / workspace_key
     pool_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create a slot owned by the current (live) process
+    # Create a slot owned by the current (live) process — not in active_slots
     live_slot = pool_dir / f"slot-{workspace_key}-0099"
     live_slot.mkdir()
     (live_slot / ".ralph-exec-owner.json").write_text(
-        json.dumps({"pid": os.getpid()})
+        json.dumps({"pid": os.getpid()}), encoding="utf-8"
     )
+    (live_slot / "big_file.bin").write_bytes(b"x" * 80)
+    # Total = 80 bytes > 50 byte budget
 
-    # du always reports over-budget so recovery cannot free space
-    monkeypatch.setattr(manager, "_path_size_bytes_via_du", lambda path: 200)
+    # acquire must succeed: external slot is deleted, freeing space
+    with manager.acquire(workspace) as sandbox:
+        assert sandbox.exists()
 
-    # acquire must succeed: live slot explains the overage
-    with manager.acquire(workspace):
-        pass
+    # The external slot must have been deleted during capacity recovery
+    assert not live_slot.exists(), "External slot must be deleted during capacity recovery"
 
 
 def test_no_error_when_active_in_process_slot_explains_overage(
