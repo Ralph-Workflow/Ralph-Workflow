@@ -18,6 +18,7 @@ class _GeneralConfigStub:
     agent_waiting_status_interval_seconds: float = 60.0
     agent_suspect_waiting_on_child_seconds: float | None = 300.0
     agent_idle_no_progress_waiting_on_child_seconds: float = 600.0
+    agent_post_tool_result_progression_seconds: float | None = 120.0
     agent_child_progress_ttl_seconds: float = 300.0
     agent_child_heartbeat_ttl_seconds: float = 60.0
     agent_child_stale_label_ttl_seconds: float = 120.0

@@ -13,6 +13,7 @@ from loguru import logger
 
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
+    InvokeOptions,
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
     extract_session_id,
@@ -204,6 +205,7 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
         action = recovery_action_for_failure_reason(
             ctx.state.last_agent_failure_reason,
             has_prior_session=True,
+            reset_tool_registry=ctx.state.last_agent_reset_tool_registry,
         )
         if action != "fresh":
             _extra, sid = resolve_session_resume_flag(
@@ -307,94 +309,17 @@ def _run_attempt(
         extracted_session_id = session_id
 
     try:
-        _check_health: _CheckMcpBridgeHealthFn = cast(
-            "_CheckMcpBridgeHealthFn",
-            ctx.deps.check_mcp_bridge_health_fn or check_mcp_bridge_health,
+        _check_bridge_health(ctx, bridge_ctx)
+        options = _build_attempt_invoke_options(ctx, bridge_ctx, resume_session_id)
+        _consume_attempt_output(
+            ctx,
+            bridge_ctx,
+            attempt_prompt_file,
+            options,
+            raw_output,
+            rendered_output,
+            _capture_session_id,
         )
-        _check_health(bridge_ctx.bridge)
-        if (
-            isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
-            and bridge_ctx.bridge.restart_count > 0
-            and ctx.display_subscriber is not None
-        ):
-            ctx.display_subscriber.record_mcp_restart(bridge_ctx.bridge.restart_count)
-
-        def _permission_prompt_listener(message: str) -> None:
-            if ctx.display_subscriber is None:
-                return
-            prefix = "Ralph auto-answered permission prompt: "
-            summary = message.removeprefix(prefix)
-            prompt_summary, _, selected_option = summary.partition(" → ")
-            ctx.display_subscriber.record_permission_prompt_action(
-                agent_name=ctx.effect.agent_name,
-                prompt_summary=prompt_summary or "permission prompt",
-                selected_option=selected_option or "confirm",
-            )
-
-        options = build_invoke_options_from_config(
-            ctx.config.general,
-            InvokeRuntimeOptions(
-                verbose=ctx.config.general.verbosity >= _VERBOSE_LOG_LEVEL,
-                show_progress=False,
-                workspace_path=ctx.workspace_scope.root,
-                extra_env={
-                    MCP_ENDPOINT_ENV: bridge_ctx.bridge.agent_endpoint_uri(),
-                    MCP_RUN_ID_ENV: bridge_ctx.session.run_id,
-                    AGENT_LABEL_SCOPE_ENV: bridge_ctx.session.run_id,
-                },
-                session_id=resume_session_id,
-                system_prompt_file=bridge_ctx.system_prompt_file,
-                waiting_listener=ctx.waiting_listener,
-                permission_prompt_listener=_permission_prompt_listener,
-                required_artifact=(
-                    resolve_phase_required_artifact(
-                        ctx.policy_bundle.pipeline,
-                        ctx.policy_bundle.artifacts,
-                        phase=ctx.effect.phase,
-                        drain=ctx.effect.drain or ctx.effect.phase,
-                    )
-                    if ctx.policy_bundle is not None
-                    else None
-                ),
-            ),
-        )
-        _on_mcp_restart = (
-            ctx.display_subscriber.record_mcp_restart
-            if ctx.display_subscriber is not None
-            else None
-        )
-        _supervisor: _McpSupervisorFactory = cast(
-            "_McpSupervisorFactory",
-            ctx.deps.mcp_supervisor_factory or McpSupervisor,
-        )
-        _get_heartbeat = ctx.deps.heartbeat_policy_from_env_fn or heartbeat_policy_from_env
-        with _supervisor(
-            bridge_ctx.bridge,
-            check_interval=_get_heartbeat().interval,
-            on_restart=_on_mcp_restart,
-        ):
-            output_lines = ctx.deps.invoke_agent(
-                ctx.agent_config, attempt_prompt_file, options=options
-            )
-            if verbosity_rank(ctx.verbosity) >= VERBOSITY_RANK[Verbosity.NORMAL]:
-                stream_parsed_agent_activity(
-                    output_lines,
-                    str(ctx.agent_config.json_parser),
-                    ctx.effect.agent_name,
-                    ctx.display,
-                    transport=ctx.agent_config.transport,
-                    display_context=ctx.resolved_display_context,
-                    raw_output_sink=raw_output,
-                    rendered_output_sink=rendered_output,
-                    session_id_sink=_capture_session_id,
-                )
-            else:
-                for line in output_lines:
-                    text_line = str(line)
-                    raw_output.append(text_line)
-                    session_id = extract_session_id((text_line,))
-                    if session_id is not None:
-                        extracted_session_id = session_id
         final_session_id = extracted_session_id or extract_session_id(tuple(raw_output))
         if ctx.deps.set_session_id_cb is not None:
             ctx.deps.set_session_id_cb(final_session_id)
@@ -403,12 +328,14 @@ def _run_attempt(
         # resume helper reads this field to decide between "resume" and
         # "fresh".
         _set_last_captured_failure_reason("")
+        _set_last_captured_reset_tool_registry(False)
         return _AttemptResult(PipelineEvent.AGENT_SUCCESS, attempt_prompt_file, resume_session_id)
     except McpServerError as exc:
         logger.error(
             "MCP server failed permanently after {} restart(s): {}", exc.restart_count, exc
         )
         _set_last_captured_failure_reason("McpServerError")
+        _set_last_captured_reset_tool_registry(False)
         return _AttemptResult(PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id)
     except ctx.deps.agent_invocation_error as exc:
         # Capture the class name as the failure reason. The single-source-
@@ -428,6 +355,7 @@ def _run_attempt(
             phase=str(ctx.effect.phase),
             agent=ctx.effect.agent_name,
         )
+        _set_last_captured_reset_tool_registry(classified.reset_tool_registry)
         recovery_plan = build_agent_recovery_plan(
             AgentRecoveryInput(
                 exc=exc,
@@ -466,7 +394,118 @@ def _run_attempt(
         )
     except Exception:
         logger.exception("Unexpected error during agent invocation: {}")
+        _set_last_captured_failure_reason("")
+        _set_last_captured_reset_tool_registry(False)
         return _AttemptResult(PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id)
+
+
+def _check_bridge_health(ctx: _AgentInvocationCtx, bridge_ctx: _AgentBridgeCtx) -> None:
+    _check_health: _CheckMcpBridgeHealthFn = cast(
+        "_CheckMcpBridgeHealthFn",
+        ctx.deps.check_mcp_bridge_health_fn or check_mcp_bridge_health,
+    )
+    _check_health(bridge_ctx.bridge)
+    if (
+        isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
+        and bridge_ctx.bridge.restart_count > 0
+        and ctx.display_subscriber is not None
+    ):
+        ctx.display_subscriber.record_mcp_restart(bridge_ctx.bridge.restart_count)
+
+
+def _make_permission_prompt_listener(ctx: _AgentInvocationCtx) -> Callable[[str], None]:
+    def _permission_prompt_listener(message: str) -> None:
+        if ctx.display_subscriber is None:
+            return
+        prefix = "Ralph auto-answered permission prompt: "
+        summary = message.removeprefix(prefix)
+        prompt_summary, _, selected_option = summary.partition(" → ")
+        ctx.display_subscriber.record_permission_prompt_action(
+            agent_name=ctx.effect.agent_name,
+            prompt_summary=prompt_summary or "permission prompt",
+            selected_option=selected_option or "confirm",
+        )
+
+    return _permission_prompt_listener
+
+
+def _build_attempt_invoke_options(
+    ctx: _AgentInvocationCtx,
+    bridge_ctx: _AgentBridgeCtx,
+    resume_session_id: str | None,
+) -> InvokeOptions:
+    required_artifact = (
+        resolve_phase_required_artifact(
+            ctx.policy_bundle.pipeline,
+            ctx.policy_bundle.artifacts,
+            phase=ctx.effect.phase,
+            drain=ctx.effect.drain or ctx.effect.phase,
+        )
+        if ctx.policy_bundle is not None
+        else None
+    )
+    return build_invoke_options_from_config(
+        ctx.config.general,
+        InvokeRuntimeOptions(
+            verbose=ctx.config.general.verbosity >= _VERBOSE_LOG_LEVEL,
+            show_progress=False,
+            workspace_path=ctx.workspace_scope.root,
+            extra_env={
+                MCP_ENDPOINT_ENV: bridge_ctx.bridge.agent_endpoint_uri(),
+                MCP_RUN_ID_ENV: bridge_ctx.session.run_id,
+                AGENT_LABEL_SCOPE_ENV: bridge_ctx.session.run_id,
+            },
+            session_id=resume_session_id,
+            system_prompt_file=bridge_ctx.system_prompt_file,
+            waiting_listener=ctx.waiting_listener,
+            permission_prompt_listener=_make_permission_prompt_listener(ctx),
+            required_artifact=required_artifact,
+        ),
+    )
+
+
+def _consume_attempt_output(
+    ctx: _AgentInvocationCtx,
+    bridge_ctx: _AgentBridgeCtx,
+    attempt_prompt_file: str,
+    options: InvokeOptions,
+    raw_output: deque[str],
+    rendered_output: deque[str],
+    capture_session_id: Callable[[str], None],
+) -> None:
+    on_mcp_restart = (
+        ctx.display_subscriber.record_mcp_restart if ctx.display_subscriber is not None else None
+    )
+    supervisor_factory: _McpSupervisorFactory = cast(
+        "_McpSupervisorFactory",
+        ctx.deps.mcp_supervisor_factory or McpSupervisor,
+    )
+    get_heartbeat = ctx.deps.heartbeat_policy_from_env_fn or heartbeat_policy_from_env
+    with supervisor_factory(
+        bridge_ctx.bridge,
+        check_interval=get_heartbeat().interval,
+        on_restart=on_mcp_restart,
+    ):
+        output_lines = ctx.deps.invoke_agent(ctx.agent_config, attempt_prompt_file, options=options)
+        if verbosity_rank(ctx.verbosity) >= VERBOSITY_RANK[Verbosity.NORMAL]:
+            stream_parsed_agent_activity(
+                output_lines,
+                str(ctx.agent_config.json_parser),
+                ctx.effect.agent_name,
+                ctx.display,
+                transport=ctx.agent_config.transport,
+                display_context=ctx.resolved_display_context,
+                raw_output_sink=raw_output,
+                rendered_output_sink=rendered_output,
+                session_id_sink=capture_session_id,
+            )
+            return
+        for line in output_lines:
+            text_line = str(line)
+            raw_output.append(text_line)
+            session_id = extract_session_id((text_line,))
+            if session_id is not None:
+                capture_session_id(session_id)
 
 
 def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecoveryPlan | None:
@@ -698,7 +737,38 @@ def pop_last_captured_failure_reason() -> str:
     return reason
 
 
+_reset_tool_registry_local: _threading.local = _threading.local()
+
+
+def _set_last_captured_reset_tool_registry(value: bool) -> None:
+    _reset_tool_registry_local.value = value
+
+
+def pop_last_captured_reset_tool_registry() -> bool:
+    """Return and clear the most recent agent-side reset_tool_registry flag.
+
+    Set by ``_set_last_captured_reset_tool_registry`` (called by
+    ``_run_attempt``) and consumed by the runner when it applies the
+    captured state to ``PipelineState`` via ``copy_with``. When
+    True, the next attempt's resume-vs-create decision honors the
+    tool-availability recovery path: a session-resume is issued
+    instead of a fresh session.
+
+    Returns:
+        The last recorded reset_tool_registry flag (a bool), or False
+        if none was recorded. The thread-local is cleared on read so
+        a subsequent call returns False unless a new value was
+        recorded in between.
+    """
+    raw: object = getattr(_reset_tool_registry_local, "value", False)
+    is_bool = isinstance(raw, bool)
+    value: bool = bool(raw) if is_bool else False
+    _reset_tool_registry_local.value = False
+    return value
+
+
 __all__ = [
     "pop_last_captured_failure_reason",
+    "pop_last_captured_reset_tool_registry",
     "stage_files",
 ]

@@ -11,6 +11,7 @@ from typing import cast
 import pytest
 from git import Actor, GitCommandError, Repo
 
+from ralph.git.git_run_result import GitRunResult
 from ralph.git.operations import (
     GitOperationError,
     append_to_gitignore,
@@ -106,6 +107,28 @@ def test_has_uncommitted_changes_dirty_repo(tmp_git_repo: Path) -> None:
 def test_has_uncommitted_changes_untracked_file(tmp_git_repo: Path) -> None:
     (tmp_git_repo / "new_file.txt").write_text("new")
     assert has_uncommitted_changes(tmp_git_repo) is True
+
+
+def test_has_uncommitted_changes_prefers_subprocess_git_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ralph.git.operations.run_git",
+        lambda args, *, cwd, label: GitRunResult(
+            args=("git", *args),
+            returncode=0,
+            stdout=" M README.md\n",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        "ralph.git.operations.Repo",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Repo fallback should not run")
+        ),
+    )
+
+    assert has_uncommitted_changes(Path("/tmp/repo")) is True
 
 
 def test_has_commits_since_no_baseline_returns_true(tmp_git_repo: Path) -> None:

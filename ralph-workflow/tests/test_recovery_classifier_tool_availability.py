@@ -87,6 +87,21 @@ def test_classifier_routes_runtime_tool_dispatch_error_to_reset_tool_registry() 
     assert classified.reset_tool_registry is True
 
 
+def test_classifier_routes_empty_response_after_tool_result_to_reset_tool_registry() -> None:
+    exc = RuntimeError("Model returned an empty response with no tool calls")
+    setattr(
+        exc,
+        "parsed_output",
+        ['{"type":"tool_result","tool":"read_file","result":{"ok":true}}'],
+    )
+    classified = FailureClassifier().classify(
+        exc, phase="development", agent="claude/haiku"
+    )
+    assert classified.reset_tool_registry is True
+    assert classified.category == FailureCategory.AGENT
+    assert classified.counts_against_budget is True
+
+
 def test_classifier_does_not_route_programming_time_tool_registration_error() -> None:
     """ToolRegistrationError is the programming-time bridge-construction
     error (raised at _tool_registration_error.py:8). It is NOT a
@@ -168,6 +183,7 @@ def test_tool_availability_substrings_constant_is_exact() -> None:
             "mcp__ralph__read_file</tool_use_error>",
             True,
         ),
+        ("Model returned an empty response with no tool calls", False),
         ("Connection refused", False),
         ("Session not found", False),
         ("Tool 'read_file' requires capability 'workspace.read'", False),

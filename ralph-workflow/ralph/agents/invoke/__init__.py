@@ -109,6 +109,10 @@ from ralph.mcp.transport.common import (
 from ralph.mcp.transport.common import (
     merge_mcp_toml_into_upstreams as _merge_mcp_toml_into_upstreams,
 )
+from ralph.mcp.transport.nanocoder import (
+    build_nanocoder_mcp_config,
+    load_existing_nanocoder_upstream_servers,
+)
 from ralph.mcp.transport.opencode import build_opencode_provider_config
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe
@@ -397,6 +401,7 @@ def resolve_invocation_runtime(
             transport
             not in (
                 AgentTransport.OPENCODE,
+                AgentTransport.NANOCODER,
                 AgentTransport.CODEX,
                 AgentTransport.CLAUDE,
                 AgentTransport.CLAUDE_INTERACTIVE,
@@ -423,6 +428,29 @@ def resolve_invocation_runtime(
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
         _apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)
+
+    elif transport == AgentTransport.NANOCODER:
+        if endpoint is None:
+            raise RuntimeError("endpoint must be set for NANOCODER transport")
+        nanocoder_mcp_servers = runtime_env.get("NANOCODER_MCPSERVERS") or _env.get(
+            "NANOCODER_MCPSERVERS"
+        )
+        mcp_config, env_upstreams = build_nanocoder_mcp_config(
+            nanocoder_mcp_servers,
+            endpoint,
+            always_allow=_canonical_http_mcp_tool_names(endpoint),
+        )
+        runtime_env["NANOCODER_MCPSERVERS"] = mcp_config
+        _apply_upstream_env(
+            load_existing_nanocoder_upstream_servers(
+                workspace_path,
+                env=runtime_env or dict(_env),
+            )
+            + env_upstreams,
+            workspace_path,
+            runtime_env,
+            server_env,
+        )
 
     elif transport == AgentTransport.CODEX:
         codex_home, upstreams = prepare_codex_home_with_upstreams(
@@ -476,6 +504,12 @@ def _provider_allowed_mcp_tool_names(
         AgentTransport.CLAUDE_INTERACTIVE,
     ):
         return ()
+    return tuple(
+        claude_tool_name(tool_name) for tool_name in _canonical_http_mcp_tool_names(endpoint)
+    )
+
+
+def _canonical_http_mcp_tool_names(endpoint: str) -> tuple[str, ...]:
     try:
         visible_tool_names = discover_http_mcp_tool_names(endpoint)
     except (PreflightError, ValueError) as exc:
@@ -486,15 +520,12 @@ def _provider_allowed_mcp_tool_names(
     seen: set[str] = set()
     for tool_name in visible_tool_names:
         if tool_name.startswith(prefix):
-            stripped = tool_name[len(prefix):]
-            if not stripped or stripped in seen:
-                continue
-            seen.add(stripped)
-            canonical.append(stripped)
-        elif tool_name not in seen:
-            seen.add(tool_name)
-            canonical.append(tool_name)
-    return tuple(claude_tool_name(tool_name) for tool_name in canonical)
+            tool_name = tool_name[len(prefix):]
+        if not tool_name or tool_name in seen:
+            continue
+        seen.add(tool_name)
+        canonical.append(tool_name)
+    return tuple(canonical)
 
 
 def _discover_http_mcp_tool_names(endpoint: str) -> list[str]:

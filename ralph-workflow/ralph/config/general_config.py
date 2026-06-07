@@ -20,6 +20,7 @@ from ralph.timeout_defaults import (
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
+    POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
     WAITING_STATUS_INTERVAL_SECONDS,
@@ -175,6 +176,20 @@ class GeneralConfig(RalphBaseModel):
         description=(
             "Reconciliation window after stdout EOF during which"
             " late terminal acks are still accepted."
+        ),
+    )
+    agent_post_tool_result_progression_seconds: float | None = Field(
+        default=POST_TOOL_RESULT_PROGRESSION_SECONDS,
+        gt=0.0,
+        description=(
+            "Maximum seconds allowed between a tool result and the"
+            " next follow-up activity (OUTPUT_LINE/STREAM_DELTA/TOOL_USE/"
+            " LIFECYCLE) before the watchdog fires"
+            " STALLED_AFTER_TOOL_RESULT. When set, this is a direct-fire"
+            " path that detects the post-tool-result wedge in ~120s by"
+            " default instead of waiting for the 300s idle timeout."
+            " When None, the legacy NO_OUTPUT_DEADLINE-only behavior is"
+            " preserved."
         ),
     )
 

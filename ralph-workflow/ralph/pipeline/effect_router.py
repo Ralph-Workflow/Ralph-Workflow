@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-from git import Repo
-
+from ralph.git.operations import has_uncommitted_changes
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
@@ -30,7 +29,6 @@ from ralph.prompts.materialize import prompt_file_for_phase
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -202,16 +200,10 @@ def _commit_phase_effect(
 
 
 def _should_early_skip_commit(workspace_root: Path) -> bool:
-    repo: Repo | None = None
     try:
-        repo = Repo(workspace_root)
-        return not repo.is_dirty(untracked_files=True)
+        return not has_uncommitted_changes(workspace_root)
     except Exception:
         return False
-    finally:
-        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
-        if callable(close):
-            close()
 
 
 def _agent_name_for_phase_from_policy(

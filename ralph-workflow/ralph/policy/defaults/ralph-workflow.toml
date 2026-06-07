@@ -122,6 +122,13 @@
 # can_commit = false
 # display_name = "OpenCode"
 
+# [agents.nanocoder]
+# cmd = "nanocoder"
+# transport = "nanocoder"
+# json_parser = "generic"
+# can_commit = false
+# display_name = "Nanocoder"
+
 # [agents.agy]
 # cmd = "agy"
 # transport = "agy"
@@ -143,7 +150,7 @@
 # ---------------------------------------------------------------------------
 # [agent_chains.*] — Named reusable chain definitions (list of agent names)
 # The active defaults below are the recommended starting point. They showcase
-# explicit model families and ordered fallback across Claude, OpenCode, Codex, and Google Anti Gravity (agy).
+# explicit model families and ordered fallback across Claude, OpenCode, Codex, Nanocoder, and Google Anti Gravity (agy).
 # ---------------------------------------------------------------------------
 
 [agent_chains]

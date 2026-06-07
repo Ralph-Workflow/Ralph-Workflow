@@ -15,12 +15,15 @@ from git import Actor, InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
 from loguru import logger
 
+from ralph.git.subprocess_runner import run_git
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 _LOCK_PATH_PATTERN = re.compile(r"Unable to create '([^']+\.lock)'")
 _RECOVERABLE_GIT_LOCK_FILES = frozenset({"index.lock", "HEAD.lock", "packed-refs.lock"})
 _STALE_GIT_LOCK_AGE_SECONDS = 10.0
+_PORCELAIN_STATUS_PREFIX_LEN = 3
 _RALPH_WORKFLOW_COAUTHOR_TRAILER = (
     "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
 )
@@ -189,6 +192,11 @@ def has_uncommitted_changes(repo_root: Path | str) -> bool:
     authoritative skip check for commit phases: if this returns False, there
     is literally nothing for a commit agent to package up.
     """
+    try:
+        return bool(_git_status_porcelain_lines(Path(repo_root)))
+    except OSError:
+        pass
+
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
@@ -224,12 +232,19 @@ def has_staged_changes(repo_root: Path | str) -> bool:
     Returns:
         True if there are staged changes.
     """
-    repo: Repo | None = None
     try:
-        repo = Repo(repo_root)
-        return bool(repo.index.diff("HEAD")) or bool(repo.untracked_files)
-    finally:
-        _close_repo(repo)
+        status_lines = _git_status_porcelain_lines(Path(repo_root))
+    except OSError:
+        repo: Repo | None = None
+        try:
+            repo = Repo(repo_root)
+            return bool(repo.index.diff("HEAD")) or bool(repo.untracked_files)
+        finally:
+            _close_repo(repo)
+    return any(
+        line.startswith("??") or (line and line[0] not in {" ", "?"})
+        for line in status_lines
+    )
 
 
 def get_staged_files(repo_root: Path | str) -> list[str]:
@@ -241,13 +256,35 @@ def get_staged_files(repo_root: Path | str) -> list[str]:
     Returns:
         List of staged file paths.
     """
-    repo: Repo | None = None
     try:
-        repo = Repo(repo_root)
-        staged = repo.index.diff("HEAD")
-        return [item.a_path for item in staged if item.a_path] if staged else []
-    finally:
-        _close_repo(repo)
+        status_lines = _git_status_porcelain_lines(Path(repo_root))
+    except OSError:
+        repo: Repo | None = None
+        try:
+            repo = Repo(repo_root)
+            staged = repo.index.diff("HEAD")
+            return [item.a_path for item in staged if item.a_path] if staged else []
+        finally:
+            _close_repo(repo)
+
+    staged_paths: list[str] = []
+    for line in status_lines:
+        if not line or line[0] in {" ", "?"} or len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
+            continue
+        path_part = line[_PORCELAIN_STATUS_PREFIX_LEN:]
+        if " -> " in path_part:
+            _, _, path_part = path_part.partition(" -> ")
+        path = path_part.strip()
+        if path and path not in staged_paths:
+            staged_paths.append(path)
+    return staged_paths
+
+
+def _git_status_porcelain_lines(repo_root: Path) -> list[str]:
+    result = run_git(("status", "--porcelain"), cwd=repo_root, label="git-status")
+    if result.returncode != 0:
+        return []
+    return result.stdout.splitlines()
 
 
 def stage_all(repo_root: Path | str) -> None:

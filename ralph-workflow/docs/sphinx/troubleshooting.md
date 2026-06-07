@@ -36,6 +36,7 @@ fails when it tries to invoke an agent.
 - **Claude Code**: see <https://docs.claude.com/claude-code>
 - **Codex CLI**: see <https://platform.openai.com/docs/codex>
 - **opencode**: see <https://opencode.ai>
+- **Nanocoder**: see <https://docs.nanocollective.org/nanocoder/docs>
 - **Google Anti Gravity (agy)**: see <https://github.com/google-antigravity/antigravity-cli>
 
 Verify after installation:
@@ -55,7 +56,7 @@ The PATH column in the Agents table should show `on PATH` in green.
 **Fix:**
 
 - Use WSL2 or a POSIX-compatible environment on Windows.
-- Or route the phase to another headless transport such as Codex or OpenCode.
+- Or route the phase to another headless transport such as Codex, OpenCode, or Nanocoder.
 
 ## MCP servers fail to start
 

@@ -32,7 +32,14 @@ def test_agent_registry_from_config_loads_all_agents() -> None:
 
     registry = AgentRegistry.from_config(config)
 
-    assert set(registry.list_agents()) >= {"claude", "claude-headless", "codex", "opencode", "agy"}
+    assert set(registry.list_agents()) >= {
+        "claude",
+        "claude-headless",
+        "codex",
+        "opencode",
+        "agy",
+        "nanocoder",
+    }
     assert registry.get("opencode") == AgentConfig(cmd="opencode", can_commit=True)
 
 
@@ -110,6 +117,13 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert agy.yolo_flag == "--dangerously-skip-permissions"
     assert agy.print_flag == "--print"
     assert agy.session_flag is None
+
+    nanocoder = registry.get("nanocoder")
+    assert nanocoder is not None
+    assert nanocoder.cmd == "nanocoder"
+    assert nanocoder.transport == AgentTransport.NANOCODER
+    assert nanocoder.can_commit is False
+    assert nanocoder.session_flag is None
 
 
 def test_ccs_alias_keeps_claude_transport() -> None:
@@ -270,11 +284,39 @@ def test_agent_registry_resolves_two_segment_opencode_model_reference() -> None:
     assert agent.can_commit is True
 
 
+def test_agent_registry_resolves_direct_nanocoder_provider_model_reference() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("nanocoder/ollama/llama3.1")
+
+    assert agent is not None
+    assert agent.cmd == "nanocoder"
+    assert agent.transport == AgentTransport.NANOCODER
+    assert agent.model_flag == "--provider ollama --model llama3.1"
+    assert agent.can_commit is True
+
+
+def test_agent_registry_resolves_direct_nanocoder_provider_reference() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("nanocoder/minimax")
+
+    assert agent is not None
+    assert agent.cmd == "nanocoder"
+    assert agent.transport == AgentTransport.NANOCODER
+    assert agent.model_flag == "--provider minimax"
+    assert agent.can_commit is True
+
+
 @pytest.mark.parametrize(
     "name",
     [
         "opencode/",
         "opencode//model",
+        "nanocoder/",
+        "nanocoder//model",
+        "nanocoder/provider/",
+        "nanocoder//",
         "claude/",
         "claude//model",
     ],

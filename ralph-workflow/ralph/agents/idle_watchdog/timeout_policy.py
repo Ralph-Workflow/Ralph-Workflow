@@ -12,6 +12,7 @@ from ralph.timeout_defaults import (
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
+    POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
     WAITING_STATUS_INTERVAL_SECONDS,
@@ -78,6 +79,16 @@ class TimeoutPolicy:
             evidence). When set, must be <= max_waiting_on_child_seconds. When None,
             the no-progress ceiling is disabled and max_waiting_on_child_seconds is
             used for all WAITING_ON_CHILD states.
+        post_tool_result_progression_seconds: When set, the watchdog fires
+            STALLED_AFTER_TOOL_RESULT if no follow-up STREAM_DELTA / OUTPUT_LINE
+            activity arrives within this many seconds of a TOOL_RESULT activity.
+            This is a NEW BEHAVIOR for direct wedge detection: pre-fix, the
+            watchdog only fired NO_OUTPUT_DEADLINE at the full
+            idle_timeout_seconds deadline, which meant a post-tool-result
+            wedge was detected in ~300s (the default idle timeout) rather
+            than ~120s (the default post-tool-result budget). When None,
+            the legacy NO_OUTPUT_DEADLINE-only behavior is preserved.
+            Must be > 0 when set.
     """
 
     idle_timeout_seconds: float | None
@@ -94,11 +105,24 @@ class TimeoutPolicy:
     max_waiting_on_child_no_progress_seconds: float | None = (
         MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
     )
+    # When set, the watchdog fires STALLED_AFTER_TOOL_RESULT if no
+    # follow-up STREAM_DELTA/OUTPUT_LINE activity arrives within this
+    # many seconds of a TOOL_RESULT activity. When None, the legacy
+    # NO_OUTPUT_DEADLINE-only behavior is preserved (the wedge is
+    # detected only at the full idle_timeout_seconds deadline). The
+    # default of 120.0s is generous enough to cover the typical 60s
+    # 95th-percentile tool-result-to-output-line latency in
+    # production while still detecting the wedge in ~120s rather
+    # than waiting for the 300s default.
+    post_tool_result_progression_seconds: float | None = (
+        POST_TOOL_RESULT_PROGRESSION_SECONDS
+    )
 
     def __post_init__(self) -> None:
         self._validate_idle_fields()
         self._validate_session_and_poll_fields()
         self._validate_waiting_status_fields()
+        self._validate_post_tool_result_progression()
 
     def _validate_idle_fields(self) -> None:
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
@@ -165,3 +189,10 @@ class TimeoutPolicy:
                     " max_waiting_on_child_seconds"
                 )
                 raise ValueError(msg)
+
+    def _validate_post_tool_result_progression(self) -> None:
+        if self.post_tool_result_progression_seconds is None:
+            return
+        if not self.post_tool_result_progression_seconds > 0:
+            msg = "post_tool_result_progression_seconds must be positive when set"
+            raise ValueError(msg)

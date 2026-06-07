@@ -1031,23 +1031,6 @@ def _git_diff(workspace_root: Path) -> str:
       commits once per dev cycle or once per individual dev iteration within a cycle.
     """
     baseline_sha = read_cycle_baseline(workspace_root)
-    if Repo is not None:
-        repo: _RepoProtocol | None = None
-        try:
-            repo = Repo(workspace_root)
-            if baseline_sha:
-                committed = _sanitize_surrogates(repo.git.diff(baseline_sha, "HEAD"))
-                uncommitted = _sanitize_surrogates(repo.git.diff("HEAD"))
-                parts = [p for p in (committed, uncommitted) if p]
-                return "\n".join(parts) if parts else "(no diff available)"
-            return _sanitize_surrogates(repo.git.diff("HEAD")) or "(no diff available)"
-        except Exception:
-            return "(no diff available)"
-        finally:
-            close = cast("Callable[[], None] | None", getattr(repo, "close", None))
-            if close is not None:
-                close()
-
     if baseline_sha:
         committed = _git_output(workspace_root, "diff", baseline_sha, "HEAD")
         uncommitted = _git_output(workspace_root, "diff", "HEAD")
@@ -1058,17 +1041,6 @@ def _git_diff(workspace_root: Path) -> str:
 
 def _pending_diff(workspace_root: Path) -> str:
     """Return the pending (staged but not committed) diff for a workspace."""
-    if Repo is not None:
-        repo: _RepoProtocol | None = None
-        try:
-            repo = Repo(workspace_root)
-            return _sanitize_surrogates(repo.git.diff("HEAD")) or "(no diff available)"
-        except Exception:
-            return "(no diff available)"
-        finally:
-            close = cast("Callable[[], None] | None", getattr(repo, "close", None))
-            if close is not None:
-                close()
     return _git_output(workspace_root, "diff", "HEAD")
 
 
@@ -1097,5 +1069,4 @@ def _commit_phase_diff(workspace_root: Path) -> str:
         diff = ""
     combined = (diff + "\n\n## Untracked files (staged by git add -A):\n" + untracked).strip()
     return combined or "(no diff available)"
-
 

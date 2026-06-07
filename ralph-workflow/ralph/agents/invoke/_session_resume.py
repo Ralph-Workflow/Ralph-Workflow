@@ -116,10 +116,36 @@ def resolve_session_resume_flag(
     return ["--session-id", session_id], session_id
 
 
+def _is_tool_availability_marker(failure_reason: str) -> bool:
+    """Return True when the failure_reason indicates a tool-availability failure.
+
+    Used by ``recovery_action_for_failure_reason`` to detect the new
+    tool-availability family (the live wire-level ``No such tool
+    available: mcp__<server>__<tool>`` error). The check is
+    case-insensitive literal-substring matching on two surfaces:
+
+    1. The exception class name is ``ToolDispatchError`` — the
+       runtime-side mirror of the live error.
+    2. The failure reason contains the substring
+       ``"No such tool available"`` (case-insensitive). This catches
+       the wire-level message format Claude Code emits.
+
+    The literal substring is preferred over a regex match for
+    performance and to match the existing
+    ``_TOOL_AVAILABILITY_SUBSTRINGS`` policy in failure_classifier.
+    """
+    if not isinstance(failure_reason, str) or not failure_reason:
+        return False
+    if failure_reason == "ToolDispatchError":
+        return True
+    return "no such tool available" in failure_reason.casefold()
+
+
 def recovery_action_for_failure_reason(
     failure_reason: str,
     *,
     has_prior_session: bool,
+    reset_tool_registry: bool = False,
 ) -> str:
     """Map a stored failure reason to a recovery action.
 
@@ -132,9 +158,31 @@ def recovery_action_for_failure_reason(
 
     - ``AgentInactivityTimeoutError`` (with a prior session) -> ``resume``
     - ``OpenCodeResumableExitError`` (with a prior session) -> ``resume``
+    - tool-availability failure (with a prior session AND
+      ``reset_tool_registry=True``) -> ``resume`` (NEW BEHAVIOR; the
+      pre-fix code returned ``fresh`` here, which made every
+      tool-availability retry re-read the prompt).
     - ``NoConversationFoundError`` family (with a prior session)
       -> ``new_session_with_id``
     - everything else -> ``fresh``
+
+    Args:
+        failure_reason: The exception class name (or wire-level error
+            substring) from the last failed attempt. Empty string
+            means "no failure recorded" (the cleared state on the
+            success path).
+        has_prior_session: True when the orchestrator has a prior
+            session id to resume (or annotate a fresh session with).
+        reset_tool_registry: NEW BEHAVIOR. When True, indicates the
+            last failure was classified as a tool-availability
+            failure (the live wire-level ``No such tool available:
+            mcp__<server>__<tool>`` error). The helper returns
+            ``'resume'`` instead of ``'fresh'`` so the next attempt
+            continues the prior session (the tool registry has been
+            rebuilt via ``RestartAwareMcpBridge.reset_tool_registry()``
+            so a fresh session is unnecessary). Defaults to False to
+            preserve the existing behavior on the pre-existing
+            branches.
     """
     if not has_prior_session:
         return "fresh"
@@ -142,6 +190,8 @@ def recovery_action_for_failure_reason(
         "AgentInactivityTimeoutError",
         "OpenCodeResumableExitError",
     }:
+        return "resume"
+    if reset_tool_registry and _is_tool_availability_marker(failure_reason):
         return "resume"
     if failure_reason == "NoConversationFoundError":
         return "new_session_with_id"

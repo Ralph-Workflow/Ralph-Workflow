@@ -14,7 +14,7 @@
 >
 > Already installed? Run **`ralph star`** to open the repo in your browser. ⭐
 
-Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
+Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode, Nanocoder, and Google Anti Gravity — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 
 ## What it does
 
@@ -31,7 +31,7 @@ The name comes from the original Ralph loop: repeat a strong prompt until the mo
 | One agent, one chat session | Multiple agents routed by phase (planning → dev → review → fix) |
 | Copy-paste between tools | Agents hand off work through the repo, not context stuffing |
 | Hit context limits halfway | Phase-based summaries + checkpoint files keep context tight |
-| Locked to one vendor | Claude + Codex + OpenCode in the same pipeline — your choice |
+| Locked to one vendor | Claude + Codex + OpenCode + Nanocoder + AGY in the same pipeline — your choice |
 | "Look at the diff" | Runnable, tested software with integration checks |
 
 [See how Ralph Workflow compares to 14 other autonomous coding tools →](https://ralphworkflow.com/compare)

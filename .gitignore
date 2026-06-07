@@ -285,3 +285,4 @@ ralph-workflow/skills-package/*.tgz
 .antigravitycli/
 
 checkpoint.json
+.nanocoder/*

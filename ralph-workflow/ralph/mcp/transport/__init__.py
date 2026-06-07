@@ -1,6 +1,6 @@
 """Public transport helpers for per-agent MCP wiring.
 
-Grouped by agent: claude, codex, opencode, agy.
+Grouped by agent: claude, codex, opencode, nanocoder, agy.
 Shared helpers (mcp.toml merging, env serialization) live in common.
 """
 
@@ -23,6 +23,10 @@ from ralph.mcp.transport.common import (
     merge_mcp_toml_into_upstreams,
     set_upstream_mcp_config,
 )
+from ralph.mcp.transport.nanocoder import (
+    build_nanocoder_mcp_config,
+    load_existing_nanocoder_upstream_servers,
+)
 from ralph.mcp.transport.opencode import (
     build_opencode_provider_config,
     merge_opencode_config_content,
@@ -30,10 +34,12 @@ from ralph.mcp.transport.opencode import (
 
 __all__ = [
     "agy_mcp_config",
+    "build_nanocoder_mcp_config",
     "build_opencode_provider_config",
     "claude_mcp_config",
     "load_existing_agy_upstream_servers",
     "load_existing_claude_upstream_servers",
+    "load_existing_nanocoder_upstream_servers",
     "mcp_toml_as_upstreams",
     "merge_mcp_toml_into_upstreams",
     "merge_opencode_config_content",

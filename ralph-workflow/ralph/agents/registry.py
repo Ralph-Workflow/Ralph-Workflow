@@ -6,6 +6,7 @@ to their executable commands and settings.
 
 from __future__ import annotations
 
+import shlex
 from copy import deepcopy
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
 
 _MIN_OPENCODE_SEGMENTS = 2
+_MIN_NANOCODER_PROVIDER_SEGMENTS = 2
 _CLAUDE_MODEL_SEGMENTS = 2
 
 if TYPE_CHECKING:
@@ -66,6 +68,13 @@ def builtin_agents() -> dict[str, AgentConfig]:
             # opencode run --session <id> resumes an existing session
             session_flag="--session {}",
             transport=AgentTransport.OPENCODE,
+        ),
+        "nanocoder": AgentConfig(
+            cmd="nanocoder",
+            output_flag=None,
+            can_commit=False,
+            json_parser=JsonParserType.GENERIC,
+            transport=AgentTransport.NANOCODER,
         ),
         "agy": AgentConfig(
             cmd="agy",
@@ -175,6 +184,7 @@ class AgentRegistry:
                 errors.append(f"Agent '{name}' has no command configured")
             allowed_no_output = (
                 AgentTransport.CLAUDE_INTERACTIVE,
+                AgentTransport.NANOCODER,
                 AgentTransport.AGY,
             )
             if config.transport not in allowed_no_output and not config.output_flag:
@@ -248,6 +258,17 @@ def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | 
             "can_commit": True,
         }
         resolved = base_config.model_copy(update=dynamic_overrides)
+    elif name.startswith("nanocoder/"):
+        if len(segments) < _MIN_NANOCODER_PROVIDER_SEGMENTS or not all(segments[1:]):
+            return None
+
+        base_config = deepcopy(builtin_agents()["nanocoder"])
+        provider, model = _normalize_nanocoder_provider_and_model(name)
+        model_flag = f"--provider {shlex.quote(provider)}"
+        if model is not None:
+            model_flag += f" --model {shlex.quote(model)}"
+        nanocoder_overrides: dict[str, object] = {"model_flag": model_flag, "can_commit": True}
+        resolved = base_config.model_copy(update=nanocoder_overrides)
     elif len(segments) == _CLAUDE_MODEL_SEGMENTS and segments[1]:
         if name.startswith("ccs/"):
             resolved = _resolve_dynamic_ccs_agent(name, ccs_defaults)
@@ -272,3 +293,10 @@ def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfi
 
 def _normalize_opencode_model_id(name: str) -> str:
     return name.removeprefix("opencode/")
+
+
+def _normalize_nanocoder_provider_and_model(name: str) -> tuple[str, str | None]:
+    parts = name.removeprefix("nanocoder/").split("/")
+    provider = parts[0]
+    model = "/".join(parts[1:]) if len(parts) > 1 else None
+    return provider, model

@@ -45,5 +45,6 @@
   "last_retry_delay_ms": 0,
   "last_agent_session_id": null,
   "last_agent_failure_reason": "",
+  "last_agent_reset_tool_registry": false,
   "session_preserve_retry_pending": false
 }

@@ -164,6 +164,18 @@ class PipelineState(_FrozenPipelineStateModel):
     # Default '' is intentional so legacy checkpoints load cleanly without
     # any migration.
     last_agent_failure_reason: str = ""
+    # NEW BEHAVIOR: tracks whether the last agent-side failure was
+    # classified as a tool-availability failure (the live wire-level
+    # `No such tool available: mcp__<server>__<tool>` error). When
+    # True, the resume-vs-create helper
+    # ``recovery_action_for_failure_reason(..., reset_tool_registry=True)``
+    # returns ``'resume'`` instead of ``'fresh'`` so the next attempt
+    # continues the prior session rather than re-reading the prompt.
+    # The field is set alongside ``last_agent_failure_reason`` in
+    # ``effect_executor._run_attempt`` and consumed by
+    # ``_invoke_agent_with_recovery``. Default False preserves the
+    # existing behavior for legacy checkpoints.
+    last_agent_reset_tool_registry: bool = False
     session_preserve_retry_pending: bool = False
 
     @model_validator(mode="after")
@@ -185,6 +197,21 @@ class PipelineState(_FrozenPipelineStateModel):
             raise RuntimeError(
                 "PipelineState.last_agent_failure_reason must be str; "
                 f"got {type(self.last_agent_failure_reason).__name__}"
+            )
+        # NEW BEHAVIOR: import-time invariant on
+        # last_agent_reset_tool_registry. The field is the input to the
+        # new ``recovery_action_for_failure_reason(..., reset_tool_registry=...)``
+        # parameter: a non-bool value (None, int, str, etc.) would
+        # silently bypass the new tool-availability recovery branch
+        # and yield a fresh session on every tool-availability
+        # failure, defeating the resume-on-tool-availability policy.
+        # Enforce with `if`/`raise RuntimeError` (NOT `assert`) so the
+        # check survives `python -O` and the deserialization path
+        # (model_validate) is covered too.
+        if not isinstance(self.last_agent_reset_tool_registry, bool):
+            raise RuntimeError(
+                "PipelineState.last_agent_reset_tool_registry must be bool; "
+                f"got {type(self.last_agent_reset_tool_registry).__name__}"
             )
         return self
 

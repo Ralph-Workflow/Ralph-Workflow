@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import tomllib
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents import invoke as invoke_module
@@ -125,3 +126,50 @@ class TestResolveInvocationRuntime:
         assert result.agent_env is None
         assert result.server_env is None
         assert result.mcp_endpoint is None
+
+    def test_nanocoder_runtime_sets_managed_mcp_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        config = AgentConfig(
+            cmd="nanocoder",
+            transport=AgentTransport.NANOCODER,
+        )
+        extra_env = {str(MCP_ENDPOINT_ENV): "http://localhost:9999/mcp"}
+
+        monkeypatch.setattr(invoke_module, "mcp_toml_as_upstreams", lambda p: [])
+        monkeypatch.setattr(invoke_module, "set_upstream_mcp_config", lambda e, u: None)
+
+        result = invoke_module.resolve_invocation_runtime(config, extra_env, Path("/tmp"))
+
+        assert result.mcp_endpoint == "http://localhost:9999/mcp"
+        assert result.agent_env is not None
+        payload = _json_object(result.agent_env["NANOCODER_MCPSERVERS"])
+        servers = cast("dict[str, dict[str, object]]", payload["mcpServers"])
+        assert servers["ralph"]["transport"] == "http"
+        assert servers["ralph"]["url"] == "http://localhost:9999/mcp"
+
+    def test_nanocoder_runtime_auto_allows_discovered_ralph_tools(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = AgentConfig(
+            cmd="nanocoder",
+            transport=AgentTransport.NANOCODER,
+        )
+        extra_env = {str(MCP_ENDPOINT_ENV): "http://localhost:9999/mcp"}
+
+        monkeypatch.setattr(invoke_module, "mcp_toml_as_upstreams", lambda p: [])
+        monkeypatch.setattr(invoke_module, "set_upstream_mcp_config", lambda e, u: None)
+        monkeypatch.setattr(
+            invoke_module,
+            "discover_http_mcp_tool_names",
+            lambda endpoint: [
+                "read_file",
+                "mcp__ralph__read_file",
+                "ralph_submit_artifact",
+            ],
+        )
+
+        result = invoke_module.resolve_invocation_runtime(config, extra_env, Path("/tmp"))
+
+        assert result.agent_env is not None
+        payload = _json_object(result.agent_env["NANOCODER_MCPSERVERS"])
+        servers = cast("dict[str, dict[str, object]]", payload["mcpServers"])
+        assert servers["ralph"]["alwaysAllow"] == ["read_file", "ralph_submit_artifact"]

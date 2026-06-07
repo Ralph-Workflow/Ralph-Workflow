@@ -57,6 +57,17 @@ def test_resume_after_inactivity_timeout_opencode_uses_session_flag() -> None:
     assert new_sid == "sid-opencode"
 
 
+def test_resume_after_inactivity_timeout_nanocoder_has_no_special_resume_flag() -> None:
+    args, new_sid = resolve_session_resume_flag(
+        AgentTransport.NANOCODER,
+        has_prior_session=True,
+        prior_session_id="sid-nanocoder",
+        recovery_action="resume",
+    )
+    assert args == ["--session-id", "sid-nanocoder"]
+    assert new_sid == "sid-nanocoder"
+
+
 def test_fresh_recovery_returns_no_args_and_none_session_id() -> None:
     args, new_sid = resolve_session_resume_flag(
         AgentTransport.CLAUDE_INTERACTIVE,
@@ -132,3 +143,13 @@ def test_resolve_session_resume_flag_uses_only_resume_for_claude_interactive() -
             recovery_action=action,
         )
         assert args[0] == "--resume", f"expected --resume, got {args[0]}"
+
+
+def test_tool_registry_recovery_empty_response_uses_resume_action() -> None:
+    action = recovery_action_for_failure_reason(
+        "Model returned an empty response with no tool calls",
+        has_prior_session=True,
+        reset_tool_registry=True,
+    )
+
+    assert action == "resume"

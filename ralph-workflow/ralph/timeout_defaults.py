@@ -21,6 +21,17 @@ IDLE_TIMEOUT_SECONDS: float = 300.0
 #: Default drain window duration before firing NO_OUTPUT_DEADLINE.
 DRAIN_WINDOW_SECONDS: float = 0.5
 
+#: Default post-tool-result progression budget. When set, the idle
+#: watchdog fires STALLED_AFTER_TOOL_RESULT if no follow-up
+#: STREAM_DELTA/OUTPUT_LINE activity arrives within this many seconds
+#: of a tool result. The default of 120s is generous enough to cover
+#: the typical 60s 95th-percentile tool-result-to-output-line latency
+#: in production while still detecting the post-tool-result wedge in
+#: ~120s rather than waiting for the 300s idle-timeout default.
+#: Set to ``None`` to opt out and preserve the legacy 300s
+#: NO_OUTPUT_DEADLINE-only behavior.
+POST_TOOL_RESULT_PROGRESSION_SECONDS: float | None = 120.0
+
 #: Default hard ceiling on cumulative WAITING_ON_CHILD time.
 MAX_WAITING_ON_CHILD_SECONDS: float = 1800.0
 

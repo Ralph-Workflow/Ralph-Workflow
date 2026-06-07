@@ -75,6 +75,9 @@ class _FakeWatchdog:
     def record_activity(self) -> None:
         return None
 
+    def record_tool_result_activity(self) -> None:
+        return None
+
     def evaluate(self, *, classify_quiet: object) -> WatchdogVerdict:
         del classify_quiet
         return WatchdogVerdict.CONTINUE

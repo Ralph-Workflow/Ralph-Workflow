@@ -23,9 +23,10 @@ from ralph.agents.invoke import (
     invoke_agent,
     resolve_invocation_runtime,
 )
+from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport, JsonParserType
-from ralph.config.models import AgentConfig
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.mcp.tools.names import (
     RALPH_MCP_SERVER_NAME,
@@ -211,6 +212,76 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
             args=("-y", "@angular/cli", "mcp"),
         ),
     )
+
+
+def test_build_command_nanocoder_uses_auto_accept_run_mode(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER)
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(workspace_path=tmp_path),
+    )
+
+    assert cmd[:4] == ["nanocoder", "--mode", "auto-accept", "run"]
+    assert cmd[-1] == "hello"
+
+
+def test_build_command_nanocoder_passes_provider_and_model_flags(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="nanocoder",
+        transport=AgentTransport.NANOCODER,
+        model_flag="--provider ollama --model llama3.1",
+    )
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(workspace_path=tmp_path),
+    )
+
+    assert cmd[:8] == [
+        "nanocoder",
+        "--mode",
+        "auto-accept",
+        "run",
+        "--provider",
+        "ollama",
+        "--model",
+        "llama3.1",
+    ]
+    assert cmd[-1] == "hello"
+
+
+def test_build_command_nanocoder_keeps_spaced_provider_as_single_argument(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    registry = AgentRegistry.from_config(UnifiedConfig())
+    config = registry.get("nanocoder/MiniMax Coding/MiniMax-M3")
+
+    assert config is not None
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(workspace_path=tmp_path),
+    )
+
+    assert cmd[:8] == [
+        "nanocoder",
+        "--mode",
+        "auto-accept",
+        "run",
+        "--provider",
+        "MiniMax Coding",
+        "--model",
+        "MiniMax-M3",
+    ]
+    assert cmd[-1] == "hello"
 
 
 def test_codex_mode_rejects_duplicate_ralph_server_name(tmp_path: Path) -> None:

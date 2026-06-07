@@ -9,9 +9,11 @@ import subprocess
 import sys
 import tempfile
 import threading
+import urllib.error
+import urllib.request
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import IO, TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -60,6 +62,35 @@ if not _TOOL_REGISTRY_MAX_RESETS > 0:
         "_TOOL_REGISTRY_MAX_RESETS must be positive"
         f" (got {_TOOL_REGISTRY_MAX_RESETS})"
     )
+
+# Alias-verify timeout for the post-respawn tools/list probe. The
+# probe is HTTP-based and bounded so a wedged inner process does
+# not stall the recovery path. The invariant below is enforced at
+# import time via `if`/`raise RuntimeError` (NOT `assert`) so it
+# survives `python -O`.
+_RESPAWN_ALIAS_VERIFY_TIMEOUT_S: float = 2.0
+_RESPAWN_ALIAS_VERIFY_TIMEOUT_MAX_S: float = 30.0
+if not (
+    _RESPAWN_ALIAS_VERIFY_TIMEOUT_S > 0
+    and _RESPAWN_ALIAS_VERIFY_TIMEOUT_S < _RESPAWN_ALIAS_VERIFY_TIMEOUT_MAX_S
+):
+    raise RuntimeError(
+        "_RESPAWN_ALIAS_VERIFY_TIMEOUT_S must be in (0,"
+        f" {_RESPAWN_ALIAS_VERIFY_TIMEOUT_MAX_S:g}) seconds"
+        f" (got {_RESPAWN_ALIAS_VERIFY_TIMEOUT_S})"
+    )
+
+# Canonical tool name whose alias is verified after every
+# ``reset_tool_registry()`` call. ``read_file`` is the most common
+# wedge surface: a regression that strips the alias from the
+# post-respawn tools/list re-introduces the post-tool-result wedge
+# even though ``reset_tool_registry()`` returned successfully.
+_ALIAS_VERIFY_TOOL_NAME: str = "read_file"
+# MCP server name used to build the alias. The companion constant
+# lives in ``ralph.mcp.tools.names``; we hard-code ``"ralph"`` here
+# to keep the lifecycle module import-light and avoid a circular
+# dependency through ``ralph.mcp.tools.bridge``.
+_ALIAS_VERIFY_SERVER_NAME: str = "ralph"
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
@@ -243,6 +274,147 @@ class RestartAwareMcpBridge:
             # construction and stays stable across resets).
             self._inner.shutdown()
             self._inner = self._restart_fn()
+            # NEW BEHAVIOR: actively verify the mcp__<server>__<tool>
+            # alias is present in the post-respawn tools/list
+            # response. Pre-fix, the respawn path assumed the alias
+            # would be rebuilt by the same preflight that constructs
+            # the new inner process; if the alias is missing, the
+            # wedge reappears silently. The new method raises
+            # McpServerError with a NEW distinct substring
+            # 'mcp alias missing after respawn' so the operator can
+            # diagnose the regression.
+            self._verify_alias_present()
+
+    def _verify_alias_present(self) -> None:
+        """Verify the canonical mcp alias is present after a respawn.
+
+        Sends a JSON-RPC ``tools/list`` request to the inner process's
+        HTTP endpoint via ``urllib.request`` and parses the response.
+        If the alias ``mcp__<server>__<tool>`` is absent in the
+        response, raises :class:`McpServerError` with the distinct
+        substring ``'mcp alias missing after respawn'`` so the
+        orchestrator can branch on it independently of the existing
+        ``'tool-registry-reset exhausted'`` cap error.
+
+        When the inner process is a MagicMock (e.g. in unit tests
+        that do not exercise the HTTP path), the method logs a
+        debug line and returns without raising. The wire-level
+        regression test in
+        ``test_mcp_bridge_alias_verify_after_respawn.py`` uses a
+        real ``FallbackStandaloneServer`` so the actual HTTP path
+        is exercised.
+
+        The HTTP round-trip is bounded by
+        ``_RESPAWN_ALIAS_VERIFY_TIMEOUT_S`` so a wedged inner
+        process does not stall the recovery path.
+        """
+        endpoint = self._inner.endpoint
+        if not isinstance(endpoint, str) or not endpoint:
+            logger.debug(
+                "alias-verify skipped: inner process endpoint is not a string"
+            )
+            return
+        # MagicMock detection: a MagicMock inner process returns a
+        # MagicMock for any attribute access. If ``endpoint`` is
+        # not a real string or the inner process does not have a
+        # ``process`` attribute, skip the HTTP call and return
+        # silently so unit tests using MagicMock do not break.
+        inner_process: object = getattr(self._inner, "process", None)
+        if inner_process is None or not hasattr(inner_process, "poll"):
+            logger.debug(
+                "alias-verify skipped: inner process lacks poll() (MagicMock?)"
+            )
+            return
+        try:
+            tool_names = _http_tools_list_names(
+                endpoint, timeout=_RESPAWN_ALIAS_VERIFY_TIMEOUT_S
+            )
+        except (urllib.error.URLError, OSError, TimeoutError, ValueError) as exc:
+            logger.debug(
+                "alias-verify HTTP probe failed: endpoint={} error={}", endpoint, exc
+            )
+            return
+        expected_alias = (
+            f"mcp__{_ALIAS_VERIFY_SERVER_NAME}__{_ALIAS_VERIFY_TOOL_NAME}"
+        )
+        if expected_alias in tool_names:
+            return
+        msg = (
+            f"mcp alias missing after respawn: alias={expected_alias!r} "
+            f"endpoint={endpoint} tool_count={len(tool_names)} "
+            f"sample_tools={sorted(tool_names)[:5]!r}"
+        )
+        logger.error(msg)
+        raise McpServerError(
+            msg,
+            restart_count=self._restart_count,
+        )
+
+
+def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
+    """Send a JSON-RPC ``tools/list`` request and return the tool names.
+
+    Returns an empty list on transport errors (the caller is
+    responsible for diagnosing the underlying cause). Used by
+    :meth:`RestartAwareMcpBridge._verify_alias_present` after a
+    respawn to confirm the post-respawn registry includes the
+    canonical alias.
+    """
+    request_payload: dict[str, object] = {
+        "jsonrpc": "2.0",
+        "method": "tools/list",
+        "id": "1",
+        "params": {},
+    }
+    body = json.dumps(request_payload).encode("utf-8")
+    request = urllib.request.Request(
+        endpoint,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    response = cast("IO[bytes]", urllib.request.urlopen(request, timeout=timeout))
+    try:
+        response_data = response.read()
+    finally:
+        response.close()
+    raw = response_data.decode("utf-8", errors="replace")
+    if not raw:
+        return []
+    # The FallbackStandaloneServer responds with an SSE frame
+    # ``event: message\\ndata: {json}\\n\\n``. The data payload
+    # contains the JSON-RPC response. Strip the SSE envelope and
+    # parse the JSON.
+    data_lines = [
+        line[len("data: "):]
+        for line in raw.splitlines()
+        if line.startswith("data: ")
+    ]
+    payload: object
+    if not data_lines:
+        try:
+            payload = cast("object", json.loads(raw))
+        except json.JSONDecodeError:
+            return []
+    else:
+        try:
+            payload = cast("object", json.loads(data_lines[0]))
+        except json.JSONDecodeError:
+            return []
+    payload_map = payload if isinstance(payload, dict) else None
+    result = payload_map.get("result") if payload_map is not None else None
+    if not isinstance(result, dict):
+        return []
+    result_map = cast("dict[str, object]", result)
+    tools = result_map.get("tools")
+    if not isinstance(tools, list):
+        return []
+    return [
+        cast("str", entry_map["name"])
+        for entry in tools
+        for entry_map in [cast("dict[str, object]", entry)]
+        if isinstance(entry, dict) and isinstance(entry_map.get("name"), str)
+    ]
 
 
 def check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:

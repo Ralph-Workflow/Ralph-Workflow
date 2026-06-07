@@ -65,6 +65,17 @@ class IdleWatchdog:
     _last_fire_reason: WatchdogFireReason | None = field(default=None, init=False)
     _last_waiting_status_at: float | None = field(default=None, init=False)
     _suspicion_announced_for_run: bool = field(default=False, init=False)
+    # Post-tool-result progression state. The watchdog tracks when a
+    # TOOL_RESULT activity was last recorded and whether we are still
+    # waiting for the follow-up STREAM_DELTA/OUTPUT_LINE activity. When
+    # ``_awaiting_post_tool_result_progression`` is True and the
+    # configured ``post_tool_result_progression_seconds`` budget elapses
+    # without a follow-up activity, the watchdog fires
+    # STALLED_AFTER_TOOL_RESULT. This is a NEW BEHAVIOR: pre-fix, the
+    # watchdog only fired NO_OUTPUT_DEADLINE at the full idle timeout,
+    # which let the post-tool-result wedge linger for ~300s.
+    _last_tool_result_at: float | None = field(default=None, init=False)
+    _awaiting_post_tool_result_progression: bool = field(default=False, init=False)
 
     def __init__(
         self,
@@ -88,6 +99,8 @@ class IdleWatchdog:
         self._last_fire_reason = None
         self._last_waiting_status_at = None
         self._suspicion_announced_for_run = False
+        self._last_tool_result_at = None
+        self._awaiting_post_tool_result_progression = False
         self._entry_corroboration: CorroborationSnapshot | None = None
         self._log = logger.bind(component="idle_watchdog")
 
@@ -110,12 +123,45 @@ class IdleWatchdog:
         Does NOT reset _cumulative_waiting_on_child_seconds. Cumulative is a true
         absolute ceiling (parallel to the session ceiling) and never decays during
         the session.
+
+        Clears the post-tool-result awaiting flag so a follow-up
+        OUTPUT_LINE/STREAM_DELTA does not appear to be the post-tool-result
+        progression activity (the flag is set by
+        ``record_tool_result_activity()`` only).
         """
         now = self._clock.monotonic()
         self._accumulate_waiting_run(now)
         self._last_activity = now
         self._in_drain_window = False
         self._drain_started_at = None
+        self._awaiting_post_tool_result_progression = False
+
+    def record_tool_result_activity(self) -> None:
+        """Record that a TOOL_RESULT activity was observed.
+
+        Sets the awaiting flag and records the timestamp. The next
+        ``evaluate()`` call checks whether a follow-up activity
+        (OUTPUT_LINE/STREAM_DELTA/TOOL_USE/LIFECYCLE) arrives within
+        the configured ``post_tool_result_progression_seconds`` budget.
+        If not, the watchdog fires STALLED_AFTER_TOOL_RESULT.
+
+        This is a NEW BEHAVIOR for direct wedge detection. The
+        existing ``pty_line_reader._handle_queued_line`` calls this
+        method AFTER ``record_activity()`` on the TOOL_RESULT branch
+        so the wedge is detected in ~120s by default (the
+        post-tool-result budget) rather than waiting for the full
+        300s idle timeout.
+
+        Does NOT reset _session_started_at (the session ceiling
+        remains absolute).
+        """
+        now = self._clock.monotonic()
+        self._accumulate_waiting_run(now)
+        self._last_activity = now
+        self._in_drain_window = False
+        self._drain_started_at = None
+        self._last_tool_result_at = now
+        self._awaiting_post_tool_result_progression = True
 
     def _accumulate_waiting_run(self, now: float) -> None:
         """Add elapsed time from the current WAITING run to the cumulative total.
@@ -292,13 +338,38 @@ class IdleWatchdog:
             return WatchdogVerdict.CONTINUE
 
         if self._in_drain_window:
-            return self._handle_drain_window(now, classify_quiet)
+            verdict = self._handle_drain_window(now, classify_quiet)
+        elif self._post_tool_result_stalled(now, idle_elapsed):
+            verdict = WatchdogVerdict.FIRE
+        else:
+            quiet_state = classify_quiet()
+            if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
+                verdict = self._handle_waiting_branch(now)
+            else:
+                verdict = self._handle_active_branch(now)
+        return verdict
 
-        quiet_state = classify_quiet()
-        if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
-            return self._handle_waiting_branch(now)
-
-        return self._handle_active_branch(now)
+    def _post_tool_result_stalled(self, now: float, idle_elapsed: float) -> bool:
+        """Return True when post-tool-result progression has stalled long enough to fire."""
+        if (
+            self._config.post_tool_result_progression_seconds is None
+            or not self._awaiting_post_tool_result_progression
+            or self._last_tool_result_at is None
+        ):
+            return False
+        since_tool_result = now - self._last_tool_result_at
+        if since_tool_result < self._config.post_tool_result_progression_seconds:
+            return False
+        self._last_fire_reason = WatchdogFireReason.STALLED_AFTER_TOOL_RESULT
+        self._log.warning(
+            "idle watchdog: FIRE reason={} since_tool_result={}s"
+            " idle_elapsed={}s cumulative_waiting={}s",
+            WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
+            round(since_tool_result, 1),
+            round(idle_elapsed, 1),
+            round(self._cumulative_waiting_on_child_seconds, 1),
+        )
+        return True
 
     def _handle_drain_window(
         self,

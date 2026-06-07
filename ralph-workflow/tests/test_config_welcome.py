@@ -213,8 +213,8 @@ def test_emit_first_run_welcome_noops_when_no_registry(
     assert "PATH" in output
 
 
-def test_welcome_fallback_path_message_includes_agy() -> None:
-    """Fallback PATH message should mention AGY alongside other supported agents."""
+def test_welcome_fallback_path_message_includes_agy_and_nanocoder() -> None:
+    """Fallback PATH message should mention AGY and Nanocoder alongside supported agents."""
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     ctx = _make_display_context_for_console(rich_console)
@@ -225,15 +225,21 @@ def test_welcome_fallback_path_message_includes_agy() -> None:
     assert "agy" in output.lower(), (
         f"Expected AGY to appear in fallback PATH message output, got: {output!r}"
     )
+    assert "nanocoder" in output.lower(), (
+        f"Expected Nanocoder to appear in fallback PATH message output, got: {output!r}"
+    )
     _assert_no_raw_markup(output)
 
 
-def test_welcome_panel_next_steps_install_step_includes_agy() -> None:
-    """Welcome-panel next steps should mention AGY in the install step."""
+def test_welcome_panel_next_steps_install_step_includes_agy_and_nanocoder() -> None:
+    """Welcome-panel next steps should mention AGY and Nanocoder in the install step."""
     output = "\n".join(welcome_panel_next_steps())
 
     assert "agy" in output.lower(), (
         f"Expected AGY to appear in welcome_panel_next_steps output, got: {output!r}"
+    )
+    assert "nanocoder" in output.lower(), (
+        f"Expected Nanocoder to appear in welcome_panel_next_steps output, got: {output!r}"
     )
 
 

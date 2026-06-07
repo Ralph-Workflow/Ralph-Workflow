@@ -11,6 +11,7 @@ class AgentTransport(StrEnum):
         CLAUDE_INTERACTIVE: Unattended interactive Claude Code transport.
         CODEX: Codex CLI compatible invocation/MCP transport.
         OPENCODE: OpenCode compatible invocation/MCP transport.
+        NANOCODER: Nanocoder CLI compatible invocation/MCP transport.
         GENERIC: No special transport support.
         AGY: Google Anti Gravity compatible invocation/MCP transport.
     """
@@ -19,5 +20,6 @@ class AgentTransport(StrEnum):
     CLAUDE_INTERACTIVE = "claude_interactive"
     CODEX = "codex"
     OPENCODE = "opencode"
+    NANOCODER = "nanocoder"
     GENERIC = "generic"
     AGY = "agy"

@@ -197,7 +197,7 @@ uv run pytest -q tests/integration/test_claude_interactive_pty_e2e.py tests/inte
 
 ## Manual interactive Claude smoke test
 
-**Not part of `make verify`** — consumes live agent tokens. Validates the interactive TUI interpreter surfaces expected semantic signals.
+**Ad hoc manual test only. Not part of `make verify`.** This command consumes live agent tokens and exists to validate real interactive-Claude behavior without polluting the normal verification flow.
 
 ```bash
 cd ralph-workflow
@@ -209,6 +209,13 @@ What it does:
 - asks `claude/haiku` to create a JavaScript todo list
 - prints a detailed report of what worked and what broke
 - uses the headless Claude contract as a guide for expected semantics (session capture, tool activity, completion signal, parser events, tmp/ artifact creation)
+
+Current failure signature to watch for:
+- the file and `smoke_test_result` artifact are created
+- but the report still says `Agent produced no output for 30s`
+- and the report still shows missing session ID, missing `declare_complete`, missing parser events, missing tool activity, or too few meaningful output lines
+
+Do not add this smoke command to `make verify` or any always-on verification path. Keep it as manual ad hoc testing for live interactive-Claude regressions only.
 
 ## Recovery tests
 

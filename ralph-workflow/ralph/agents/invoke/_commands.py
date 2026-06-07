@@ -317,6 +317,23 @@ def _build_opencode_command(
     return cmd
 
 
+def _build_nanocoder_command(
+    config: AgentConfig,
+    prompt_file: str,
+    *,
+    options: _BuildCommandOptions,
+) -> list[str]:
+    prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
+    cmd = [_agent_command_name(config), "--mode", "auto-accept", "run"]
+
+    effective_model = options.model_flag or config.model_flag
+    if effective_model:
+        cmd.extend(shlex.split(effective_model))
+
+    cmd.append(prompt_text)
+    return cmd
+
+
 def _build_codex_command(
     config: AgentConfig,
     prompt_file: str,
@@ -415,29 +432,16 @@ def _build_command(
             "Ralph MCP endpoint provided for agent without a supported transport adapter"
         )
 
-    if transport == AgentTransport.OPENCODE:
-        return _build_opencode_command(
-            config,
-            prompt_file,
-            options=build_options,
-        )
-
-    if transport == AgentTransport.CODEX:
-        return _build_codex_command(
-            config,
-            prompt_file,
-            options=build_options,
-        )
-
-    if transport == AgentTransport.CLAUDE_INTERACTIVE:
-        return _build_claude_interactive_command(
-            config,
-            prompt_file,
-            options=build_options,
-        )
-
-    if transport == AgentTransport.AGY:
-        return _build_agy_command(
+    specialized_builders = {
+        AgentTransport.OPENCODE: _build_opencode_command,
+        AgentTransport.NANOCODER: _build_nanocoder_command,
+        AgentTransport.CODEX: _build_codex_command,
+        AgentTransport.CLAUDE_INTERACTIVE: _build_claude_interactive_command,
+        AgentTransport.AGY: _build_agy_command,
+    }
+    specialized_builder = specialized_builders.get(transport)
+    if specialized_builder is not None:
+        return specialized_builder(
             config,
             prompt_file,
             options=build_options,
@@ -480,6 +484,7 @@ def _command_for_log(config: AgentConfig, cmd: list[str], prompt_file: str) -> s
         _agent_transport(config)
         in {
             AgentTransport.OPENCODE,
+            AgentTransport.NANOCODER,
             AgentTransport.CODEX,
             AgentTransport.CLAUDE,
             AgentTransport.CLAUDE_INTERACTIVE,

@@ -63,6 +63,18 @@ Why this is a good first fit:
 - lets Ralph Workflow orchestrate the agent stack you already use
 - good for teams that switch models often
 
+### Start with Nanocoder if...
+
+- `nanocoder` already works on your machine
+- you want a local-first, multi-provider coding agent surface
+- you want Ralph Workflow to manage MCP wiring around Nanocoder's documented `run` mode instead of replacing your existing setup
+
+Why this is a good first fit:
+
+- preserves an existing Nanocoder workflow instead of forcing a tool switch
+- keeps Nanocoder inside the same unattended Ralph Workflow phase workflow as the other supported built-ins
+- good when you want an opt-in alternative to OpenCode without changing Ralph Workflow's default chain choices
+
 ### Start with Google Anti Gravity if...
 
 - `agy` already works on your machine
@@ -89,7 +101,7 @@ If two agents are equally ready, prefer the one you would be happiest reviewing 
 
 ## What matters more than the agent choice
 
-For a first run, these matter more than whether you picked Claude Code, Codex, OpenCode, or Google Anti Gravity:
+For a first run, these matter more than whether you picked Claude Code, Codex, OpenCode, Nanocoder, or Google Anti Gravity:
 
 - choosing a **small real backlog task**
 - writing a **clear one-paragraph spec** in `PROMPT.md`

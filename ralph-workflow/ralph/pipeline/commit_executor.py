@@ -12,7 +12,7 @@ from loguru import logger
 
 from ralph.config.enums import Verbosity
 from ralph.display.artifact_renderer import render_commit_message
-from ralph.git.operations import create_commit, stage_all
+from ralph.git.operations import create_commit, has_uncommitted_changes, stage_all
 from ralph.git.operations import stage_files as _stage_files
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -260,7 +260,7 @@ def should_early_skip_commit(workspace_root: Path) -> bool:
     falls back to the late-skip guard in execute_commit_effect().
     """
     try:
-        return not _repo_has_commit_work(workspace_root)
+        return not has_uncommitted_changes(workspace_root)
     except Exception:
         return False
 

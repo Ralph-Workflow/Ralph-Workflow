@@ -64,6 +64,7 @@ def build_invoke_options_from_config(
         waiting_status_interval_seconds=general_config.agent_waiting_status_interval_seconds,
         suspect_waiting_on_child_seconds=general_config.agent_suspect_waiting_on_child_seconds,
         max_waiting_on_child_no_progress_seconds=general_config.agent_idle_no_progress_waiting_on_child_seconds,
+        post_tool_result_progression_seconds=general_config.agent_post_tool_result_progression_seconds,
         child_progress_ttl_seconds=general_config.agent_child_progress_ttl_seconds,
         child_heartbeat_ttl_seconds=general_config.agent_child_heartbeat_ttl_seconds,
         child_stale_label_ttl_seconds=general_config.agent_child_stale_label_ttl_seconds,
@@ -142,6 +143,11 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
                 and _base.max_waiting_on_child_no_progress_seconds <= _effective_max
             )
             else None
+        ),
+        post_tool_result_progression_seconds=(
+            opts.post_tool_result_progression_seconds
+            if opts.post_tool_result_progression_seconds is not None
+            else _base.post_tool_result_progression_seconds
         ),
     )
 

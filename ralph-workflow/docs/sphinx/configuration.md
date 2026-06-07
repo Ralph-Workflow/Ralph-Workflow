@@ -223,7 +223,7 @@ development_analysis = "analysis"
 development_commit = "commit"
 ```
 
-`agy` (Google Anti Gravity) is also a valid agent name in any chain alongside `claude`, `codex`, and `opencode`.
+`agy` (Google Anti Gravity) and `nanocoder` are also valid agent names in any chain alongside `claude`, `codex`, and `opencode`.
 
 In practice:
 
@@ -239,7 +239,9 @@ Multiple drains can point at the same chain. That lets you change agent policy w
 development = ["agy", "codex", "claude/sonnet"]
 ```
 
-Use this when your main question is **"which coding agent should Ralph Workflow try first during implementation?"** — valid agent names include `claude`, `codex`, `opencode`, and `agy`.
+Use this when your main question is **"which coding agent should Ralph Workflow try first during implementation?"** — valid agent names include `claude`, `codex`, `opencode`, `nanocoder`, and `agy`.
+
+Nanocoder also supports provider/model routing through the same direct-agent syntax used for OpenCode. For example, `nanocoder/ollama/llama3.1` resolves to a built-in Nanocoder invocation with `--provider ollama --model llama3.1`.
 
 ### Example: use a repo-local override for one project only
 

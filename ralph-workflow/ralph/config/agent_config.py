@@ -54,6 +54,7 @@ class AgentConfig(RalphBaseModel):
             "claude": AgentTransport.CLAUDE_INTERACTIVE,
             "codex": AgentTransport.CODEX,
             "opencode": AgentTransport.OPENCODE,
+            "nanocoder": AgentTransport.NANOCODER,
             "agy": AgentTransport.AGY,
         }
         command_name = self.cmd.split()[0] if self.cmd else ""

@@ -47,3 +47,10 @@ def test_explicit_transport_overrides_inference() -> None:
     )
 
     assert config.transport == AgentTransport.OPENCODE
+
+
+def test_nanocoder_cmd_infers_nanocoder_transport() -> None:
+    """AgentConfig(cmd='nanocoder') should infer AgentTransport.NANOCODER."""
+    config = AgentConfig(cmd="nanocoder", json_parser=JsonParserType.GENERIC)
+
+    assert config.transport == AgentTransport.NANOCODER

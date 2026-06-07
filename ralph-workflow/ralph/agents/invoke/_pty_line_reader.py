@@ -512,6 +512,13 @@ class PtyLineReader:
                 self._awaiting_post_tool_result_progress = False
             self._last_meaningful[0] = activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
             watchdog.record_activity()
+            # NEW BEHAVIOR: also record the post-tool-result
+            # activity so the watchdog's new direct-fire
+            # STALLED_AFTER_TOOL_RESULT path can detect the wedge
+            # in ~120s by default (the post-tool-result budget)
+            # rather than waiting for the full 300s idle timeout.
+            if activity_signal.kind == AgentActivityKind.TOOL_RESULT:
+                watchdog.record_tool_result_activity()
         else:
             self._last_meaningful[0] = False
         self._strategy.observe_line(queued_line)
