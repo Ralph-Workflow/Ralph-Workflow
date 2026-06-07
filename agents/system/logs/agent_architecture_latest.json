@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-06-07T16:09:34.469937+02:00",
+    "checked_at": "2026-06-07T17:11:00.504256+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus live artifact cross-checks",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
@@ -35,6 +35,7 @@
     "live_running_job_names": [
       "agent-architecture-watchdog",
       "codeberg-github-mirror-sync",
+      "marketing-daily",
       "system-health-monitor"
     ],
     "live_last_error_job_names": [
@@ -71,7 +72,7 @@
     {
       "severity": "medium",
       "title": "Live Gateway topology matches the current runtime state",
-      "mechanism": "Direct live cron inspection shows 20 enabled/total-visible jobs, 0 disabled jobs, 3 running jobs, and 2 live last-error jobs.",
+      "mechanism": "Direct live cron inspection shows 20 enabled/total-visible jobs, 0 disabled jobs, 4 running jobs, and 2 live last-error jobs.",
       "source_layer": "runtime cron topology",
       "root_cause": "Architecture/runtime topology remains coherent while owner-loop work is in flight.",
       "evidence_refs": [
@@ -148,7 +149,7 @@
     {
       "status": "refreshed_live_topology",
       "target": "live cron topology snapshot",
-      "change": "Refreshed the audit against the current live view: 20 enabled jobs, 0 disabled jobs, 3 running jobs, and 2 live last-error jobs.",
+      "change": "Refreshed the audit against the current live view: 20 enabled jobs, 0 disabled jobs, 4 running jobs, and 2 live last-error jobs.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json"
       ]
@@ -179,14 +180,13 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-06-07T16:04:56.899332+02:00",
+    "checked_at": "2026-06-07T17:11:13.781716+02:00",
     "verdict": "qualified_pass",
-    "previous_artifact_checked_at": "2026-06-07T16:04:56.899332+02:00",
+    "previous_artifact_checked_at": "2026-06-07T17:10:15.236784+02:00",
     "previous_artifact_verdict": "qualified_pass",
     "previous_artifact_summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable."
   },
   "what_still_needs_independent_verification": [
-    "Fresh architecture independent verification against the refreshed live topology.",
     "Fresh marketing independent pass backed by measurable primary-repo movement."
   ],
   "highest_risk_unresolved_issue": {
@@ -201,22 +201,18 @@
     "shared_market_intelligence_fresh": true,
     "marketing_independent_verdict": "fail",
     "docs_independent_verdict": "pass",
-    "architecture_verifier_status": "fail",
-    "architecture_verifier_checked_at": "2026-06-07T16:04:56.899332+02:00",
+    "architecture_verifier_status": "pass",
+    "architecture_verifier_checked_at": "2026-06-07T17:11:13.781716+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "agent-architecture-watchdog": "ok"
     },
-    "health_monitor_issues_found": 5,
+    "health_monitor_issues_found": 1,
     "health_monitor_issue_names": [
-      "marketing_independent_verification",
-      "docs_agentic_review",
-      "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git"
+      "marketing_independent_verification"
     ],
     "health_monitor_issue_categories": [
-      "marketing_independent_verification:stale_artifact",
-      "docs_agentic_review:loop_verification_fail",
-      "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git:review_followup_required"
+      "marketing_independent_verification:stale_artifact"
     ],
     "marketing_workflow_audit_timeout_seconds": 3600,
     "marketing_workflow_audit_last_duration_ms": 488968,
@@ -225,6 +221,7 @@
     "live_running_job_names": [
       "agent-architecture-watchdog",
       "codeberg-github-mirror-sync",
+      "marketing-daily",
       "system-health-monitor"
     ],
     "live_last_error_job_names": [
@@ -247,14 +244,10 @@
     "independent_architecture_verdict": "qualified_pass",
     "docs_blocker_localized": false,
     "external_watch_issue_names": [
-      "marketing_independent_verification",
-      "docs_agentic_review",
-      "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git"
+      "marketing_independent_verification"
     ],
     "external_watch_issue_categories": [
-      "marketing_independent_verification:stale_artifact",
-      "docs_agentic_review:loop_verification_fail",
-      "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git:review_followup_required"
+      "marketing_independent_verification:stale_artifact"
     ],
     "required_runtime_consumers_present": [
       "agents/marketing/distribution_lane_executor.py",
@@ -272,7 +265,7 @@
   "notes": [
     "Architecture green here means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.",
     "Persisted disabled jobs remain history only; live disabled jobs are 0.",
-    "Independent live inspection in this snapshot saw 20 live jobs, 20 enabled, 0 disabled, 3 running, and 2 live last-error jobs.",
+    "Independent live inspection in this snapshot saw 20 live jobs, 20 enabled, 0 disabled, 4 running, and 2 live last-error jobs.",
     "The remaining blocker is external marketing outcome evidence, not architecture runtime drift.",
     "No live timeout-budget repair was applied in this watchdog run."
   ]

@@ -31498,3 +31498,93 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean. README\u2192START_HERE\u2192docs/README journey is coherent, positioning is consistent across all surfaces, internal mechanics are properly contained to secondary pages, and the product story leads throughout.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with correct 'operating system for autonomous coding' tagline, explains simple Ralph-loop core as composable framework, fits/non-fits clear, Codeberg primary correctly framed, no internal plumbing in top-level story."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Mirror/primary disclaimer leads the page, minimalist first-run path, result-first evaluation framing, no artifact or handoff language."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Opens with correct product framing, routes by user intent, explicitly says 'Keep proof secondary', links only to product-framing and operator pages."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Reinforces the composable-loop-framework story without drifting into internal mechanics; routes back to START_HERE and operator docs."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Properly positioned as supporting proof (not primary pitch), evaluation order leads with working behavior before logs, demonstrates the 'result first' pattern correctly."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system cleanly follows the positioning document across all surfaces. README \u2192 START_HERE \u2192 docs/README journey is coherent, next-click pages reinforce rather than fight the framing, and no internal leakage is present.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "ralph-workflow/README.md:1-3",
+      "reason": "\"The operating system for autonomous coding\" tagline, \"free and open-source AI agent orchestrator\" in the first paragraph, and the name-origin paragraph on line 25 that explicitly positions Ralph Workflow as an improvement on generic Ralph (not collapsed into it)."
+    },
+    {
+      "path": "README.md:15-17",
+      "reason": "Core composable-loop framing with the \"not a chat window\" line and \"default workflow ships strong enough\" \u2014 exactly matches the positioning doc's \"simple at the center, powerful in composition.\""
+    },
+    {
+      "path": "START_HERE.md:6-8",
+      "reason": "Opens with the simple-core/composition/default-workflow trilogy verbatim from the positioning doc. Then immediately anchors evaluation on \"what the software does now and what checks ran,\" not logs or artifacts."
+    },
+    {
+      "path": "docs/README.md:1-5",
+      "reason": "Docs map opens with the same trilogy and line 48 explicitly says \"Keep proof secondary\" \u2014 the most disciplined anti-leakage guardrail in the whole system."
+    },
+    {
+      "path": "docs/first-task-guide.md:165-179",
+      "reason": "Honest when-it-works/when-it-doesn't section with zero hype. Engineering-practice dependency is woven into the evaluation standard rather than buried in a footnote."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

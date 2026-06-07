@@ -1,4 +1,29 @@
 
+### 2026-06-07 (Sunday) — Marketing evaluator run #19 (17:05 CEST)
+
+**Evaluator trigger:** Cron marketing-daily. Trimmed run per meta-note.
+
+**Live verification at audit time:**
+- Codeberg: 12★ (flat, 5+ weeks)
+- GitHub: 3★ (flat)
+- HN thread #48416264: 253pts/169 comments — EXPLODED from 144pts at 07:55
+- Reddit: 0 posts in June. Handoff bridge 32h stale. Can't regenerate (DDG + Brave dead)
+- All 7 external lanes: credential-blocked
+
+**🔥 CRITICAL: HN v4 handoff created.** Thread at 253pts. HorizonXP (3100+ PRs, 4-person team) asked "Have you built any tooling or products?" — direct invitation. zbrock (harness eng team) actively replying. aabdi asked about concurrent writers/merge conflicts. Created `drafts/HN_HARNESS_HANDOFF_v4.md` with Ralph-safe reply (no "Ralph" until final paragraph to avoid Wiggum Loop association). Reply targets HorizonXP's tooling question with phase-boundary architecture answer.
+
+**Actions executed:**
+1. ✅ Created HN handoff v4 (`drafts/HN_HARNESS_HANDOFF_v4.md`)
+2. ✅ Updated MARKETING_SELF_IMPROVEMENT.md (run #19, HN bridge status, thread description)
+3. ✅ Live adoption verified (flat)
+4. ✅ Notified mistlight via Matrix
+
+**Decision:** The HN v4 handoff is the highest-ROI single action available. Thread is at peak activity with a direct tooling invitation. If posted within ~5 hours (by 22:00 CEST), it's the best positioning opportunity the project has ever had.
+
+**Type:** EVALUATOR / HN_V4_HANDOFF / URGENT
+
+---
+
 ### 2026-06-07 (Sunday) — Marketing workflow audit / evaluator run #16 (08:30 CEST)
 
 **Audit trigger:** Cron marketing-workflow-audit. Full re-analysis.
