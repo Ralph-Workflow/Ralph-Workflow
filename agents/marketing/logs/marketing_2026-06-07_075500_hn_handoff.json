@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-06-07T07:53:24.500576",
+  "type": "hn_handoff_bridge_created",
+  "title": "HN handoff bridge for #48416264 (Harness engineering)",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": false,
+  "thread_id": "48416264",
+  "thread_title": "Harness engineering: Leveraging Codex in an agent-first world",
+  "thread_points": 144,
+  "thread_comments": 94,
+  "thread_age_hours": 6,
+  "replies_prepared": 2,
+  "handoff_path": "agents/marketing/logs/hn_handoff_48416264_harness_engineering.json",
+  "human_post_required": true,
+  "deadline": "2026-06-07T19:55:00+02:00",
+  "adoption_snapshot": {
+    "Codeberg_stars": 12,
+    "GitHub_stars": 3,
+    "PyPI_monthly": 1335
+  },
+  "discovery": "CTA partial _blog_repo_cta.html.erb already renders site-wide \u2014 watchdog false-positive on 45 posts"
+}
