@@ -31335,3 +31335,81 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs are well-aligned with the positioning document. The README \u2192 START_HERE \u2192 docs/README journey is coherent, top-level surfaces lead with product value (not internals), and promoted sub-pages reinforce the same framing. No hard failures detected.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (repo root)",
+      "reason": "Leads with 'operating system for autonomous coding', frames as composable loop framework, emphasizes strong default workflow, result-first evaluation ('runnable, tested software'), and honest engineering-practice dependency. No internal plumbing on the top-level surface."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Reinforces the same positioning, gives a minimal honest first-run path with task selection guidance, and explicitly avoids leading with logs or artifacts. The 'morning-after review' section operationalizes result-first evaluation."
+    },
+    {
+      "path": "docs/README.md (docs map)",
+      "reason": "Starts by restating the core positioning, then provides a clear routing switchboard. Explicitly calls out 'Keep proof secondary' and places product-framing and proof pages in their correct order. Links to the Sphinx manual as the maintained operator path."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The README \u2192 START_HERE \u2192 docs/README journey is coherent, positioned correctly, and free of internal-mechanics leakage. Every promoted page reinforces the same story instead of fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with tagline 'operating system for autonomous coding', frames as composable loop framework, emphasizes strong default workflow (start as-is, extend later), honest about engineering-practice dependency, Codeberg primary correctly labeled."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Opens with Ralph-loop core + composition framing, shortest honest first run path, task selection guidance matches 'ambitious, well-specified work', no internal plumbing language."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly tells users 'Keep proof secondary', routes by user intent, every linked page (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) reinforces the same positioning without contradiction."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Frames itself as supporting proof used after the product story is understood \u2014 exactly the right positioning for a proof page."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

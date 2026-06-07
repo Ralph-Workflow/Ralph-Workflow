@@ -1,6 +1,6 @@
 {
   "schema_version": "market-intelligence-consumption.v1",
-  "updated_at": "2026-06-07T12:07:16.738850+00:00",
+  "updated_at": "2026-06-07T13:12:43.033345+00:00",
   "shared_artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
   "runtime_proven_consumers": [
     "agents/marketing/reddit_monitor.py",
@@ -38,7 +38,7 @@
     },
     "agents/marketing/distribution_lane_executor.py": {
       "consumer": "agents/marketing/distribution_lane_executor.py",
-      "recorded_at": "2026-06-07T12:07:16.738716+00:00",
+      "recorded_at": "2026-06-07T13:12:43.033270+00:00",
       "required": false,
       "status": "loaded",
       "artifact_generated_at": "2026-06-07T08:35:00.000000",
