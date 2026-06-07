@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import json
 import subprocess
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 
 import ralph.mcp.tools.exec as exec_tool
 import ralph.mcp.tools.unsafe_exec as unsafe_exec_tool
 from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._server_state import ServerState
@@ -210,6 +213,96 @@ def test_fastmcp_exec_session_sink_receives_output_chunks_before_result(
     )
     assert isinstance(result, dict)
     assert result["isError"] is False
+
+
+def test_fallback_handler_exec_streaming_post_via_handler_seam() -> None:
+    """_handle_exec_streaming_post sends SSE notification frames before the final
+    response frame, does not set Content-Length, and restores AgentSession.tool_output_sink."""
+    session = AgentSession(
+        session_id="test-handler-seam",
+        run_id="run-seam",
+        drain="http://localhost",
+        capabilities={"ProcessExecBounded"},
+    )
+    assert session.tool_output_sink is None
+
+    final_result: dict[str, object] = {
+        "content": [{"type": "text", "text": "handler-seam-result"}],
+        "isError": False,
+    }
+
+    def _fake_handle(
+        request: JsonRpcRequest, state: ServerState
+    ) -> tuple[JsonRpcResponse, ServerState]:
+        session.stream_tool_output({"tool": "exec", "stream": "combined", "text": "seam-chunk-1"})
+        session.stream_tool_output({"tool": "exec", "stream": "combined", "text": "seam-chunk-2"})
+        return (
+            JsonRpcResponse(jsonrpc="2.0", result=final_result, msg_id=request.msg_id),
+            state,
+        )
+
+    mock_mcp = MagicMock()
+    mock_mcp._session = session
+    mock_mcp.handle_request = _fake_handle
+
+    mock_server = MagicMock()
+    mock_server.mcp_server = mock_mcp
+    mock_server.state = ServerState.RUNNING
+
+    wfile_buf = io.BytesIO()
+    sent_headers: dict[str, str] = {}
+
+    def _record_header(name: str, value: str) -> None:
+        sent_headers[name] = value
+
+    handler = object.__new__(_FallbackHttpHandler)
+    handler.wfile = wfile_buf
+    handler.send_response = lambda code: None
+    handler.send_header = _record_header
+    handler.end_headers = lambda: None
+
+    request = JsonRpcRequest(
+        jsonrpc="2.0",
+        method="tools/call",
+        params={"name": "exec", "arguments": {"command": "echo", "args": []}},
+        msg_id=77,
+    )
+
+    handler._handle_exec_streaming_post(request, mock_server)
+
+    assert session.tool_output_sink is None, "Session sink must be restored after handler returns"
+
+    assert "Content-Length" not in sent_headers, (
+        "Exec SSE streaming response must not set Content-Length"
+    )
+    assert sent_headers.get("Content-Type") == "text/event-stream"
+
+    raw = wfile_buf.getvalue().decode("utf-8")
+    frames: list[dict[str, object]] = []
+    for block in raw.split("\r\n\r\n"):
+        for line in block.splitlines():
+            if line.startswith("data: "):
+                with contextlib.suppress(json.JSONDecodeError):
+                    frames.append(json.loads(line[6:]))
+
+    notification_frames = [f for f in frames if f.get("method") == "notifications/message"]
+    response_frames = [f for f in frames if "result" in f]
+
+    assert len(notification_frames) >= 2, (
+        f"Expected ≥2 notification frames from handler seam, got {notification_frames}"
+    )
+    assert len(response_frames) >= 1, (
+        f"Expected ≥1 response frame from handler seam, got {response_frames}"
+    )
+
+    last_notif_idx = max(frames.index(f) for f in notification_frames)
+    first_resp_idx = frames.index(response_frames[0])
+    assert last_notif_idx < first_resp_idx, (
+        "All notification frames must precede the final response frame"
+    )
+
+    result_value = response_frames[0].get("result")
+    assert result_value is not None, "Final response must include inline exec result"
 
 
 def test_exec_sse_streaming_post_restores_sink_on_dispatch_error() -> None:

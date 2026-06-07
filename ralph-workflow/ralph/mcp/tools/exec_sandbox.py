@@ -225,12 +225,6 @@ class ExecSandboxManager:
         if post_bytes <= self._max_total_bytes:
             return
 
-        # If active slots exist in this process or we freed at least one path, proceed:
-        # active slots will release space naturally, and freed paths reduce usage even
-        # if OS block accounting is delayed due to other processes holding file handles.
-        if active_now or removed_paths > 0:
-            return
-
         diag = (
             f"current={post_bytes} bytes, cap={self._max_total_bytes} bytes, "
             f"removed_paths={removed_paths}, removed_bytes={removed_bytes}, "

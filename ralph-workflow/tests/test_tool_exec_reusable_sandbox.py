@@ -268,6 +268,49 @@ def test_unrecoverable_over_capacity_raises_execution_error(
 
 
 # ---------------------------------------------------------------------------
+# Over-capacity error raised even after partial removal
+# ---------------------------------------------------------------------------
+
+
+def test_over_capacity_error_raised_even_when_paths_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ExecutionError is raised even when some paths were removed but budget stays exceeded."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=tmp_path / "exec-base",
+        max_total_bytes=50,
+    )
+
+    base = tmp_path / "exec-base"
+    base.mkdir()
+
+    # Seed a real file that will be staged and removed during recovery
+    garbage = base / "garbage.bin"
+    garbage.write_bytes(b"x" * 10)
+
+    # But size reporter always returns high (simulates OS accounting delay / active slots)
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", lambda path: 200)
+
+    with (
+        pytest.raises(ExecutionError) as exc_info,
+        manager.acquire(workspace),
+    ):
+        pass
+
+    err = exc_info.value
+    assert isinstance(err, ExecutionError)
+    assert err.current_bytes is not None
+    assert err.cap_bytes is not None
+    assert err.removed_paths is not None
+    assert err.removed_bytes is not None
+    assert err.remaining_bytes is not None
+    msg = str(err)
+    assert "automatic" in msg.lower() or "reset" in msg.lower(), msg
+
+
+# ---------------------------------------------------------------------------
 # Basic reset behavior (kept from pre-existing tests)
 # ---------------------------------------------------------------------------
 

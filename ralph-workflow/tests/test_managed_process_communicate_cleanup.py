@@ -367,6 +367,94 @@ def test_timeout_kills_snapshot_descendants() -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Streaming: on_output_chunk callback
+# ---------------------------------------------------------------------------
+
+
+class _StreamingFakePopen(FakePopen):
+    """Fake Popen that returns fixed stdout/stderr bytes for chunk streaming tests."""
+
+    def __init__(self, stdout_data: bytes = b"", stderr_data: bytes = b"") -> None:
+        super().__init__(
+            pid=1,
+            state=ProcessState(returncode=None),
+            streams=ProcessStreams(
+                stdout=io.BytesIO(stdout_data),
+                stderr=io.BytesIO(stderr_data),
+            ),
+        )
+
+    def wait(self, timeout: float | None = None) -> int:
+        del timeout
+        if self._returncode is None:
+            self._returncode = 0
+        return self._returncode
+
+
+def _make_streaming_handle(
+    stdout_data: bytes = b"",
+    stderr_data: bytes = b"",
+) -> ManagedProcess:
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=lambda command, opts: _StreamingFakePopen(
+            stdout_data, stderr_data
+        ),
+        psutil=None,
+    )
+    return pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="test:stream"))
+
+
+def test_on_output_chunk_receives_stdout_bytes_before_completion() -> None:
+    """communicate_and_cleanup calls on_output_chunk with stdout bytes before returning."""
+    handle = _make_streaming_handle(stdout_data=b"hello-stdout", stderr_data=b"")
+
+    received: list[bytes] = []
+    stdout, _stderr = handle.communicate_and_cleanup(
+        output_limit_bytes=4096,
+        on_output_chunk=received.append,
+    )
+
+    assert received, "on_output_chunk must be called at least once"
+    combined = b"".join(received)
+    assert b"hello-stdout" in combined
+    assert stdout == b"hello-stdout"
+
+
+def test_on_output_chunk_receives_stderr_bytes_before_completion() -> None:
+    """communicate_and_cleanup calls on_output_chunk with stderr bytes before returning."""
+    handle = _make_streaming_handle(stdout_data=b"", stderr_data=b"hello-stderr")
+
+    received: list[bytes] = []
+    _stdout, stderr = handle.communicate_and_cleanup(
+        output_limit_bytes=4096,
+        on_output_chunk=received.append,
+    )
+
+    assert received, "on_output_chunk must be called for stderr chunks"
+    combined = b"".join(received)
+    assert b"hello-stderr" in combined
+    assert stderr == b"hello-stderr"
+
+
+def test_on_output_chunk_does_not_prevent_output_limit_error() -> None:
+    """on_output_chunk callback does not suppress ManagedProcessOutputLimitExceededError."""
+    handle = _make_streaming_handle(
+        stdout_data=b"123456789012345",
+        stderr_data=b"err-data",
+    )
+
+    received: list[bytes] = []
+    with pytest.raises(ManagedProcessOutputLimitExceededError):
+        handle.communicate_and_cleanup(
+            output_limit_bytes=8,
+            on_output_chunk=received.append,
+        )
+
+    assert received, "on_output_chunk must still be called even when limit is exceeded"
+
+
 def test_timeout_still_terminates_root(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_psutil = FakePsutil()
     handle = _make_handle(fake_psutil=fake_psutil)
