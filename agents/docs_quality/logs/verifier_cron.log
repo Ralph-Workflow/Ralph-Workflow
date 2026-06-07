@@ -30089,3 +30089,134 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Consistently strong. Every surface leads with positioning, avoids internal leakage, respects the simple-core/composable-framework story, and routes readers through a coherent README\u2192START_HERE\u2192docs/README journey. The docs map actively keeps proof secondary. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with tagline and orchestrator-first identity; no internal plumbing; comparison table is concrete; 'Who it's for' matches ambitious/well-specified framing; engineering-practice section is honest; Codeberg primary / GitHub mirror is correct."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Explicitly says 'Use this page after README and START_HERE'; routes by user intent; includes a 'Keep proof secondary' section that tells readers not to lead with proof pages. This is the strongest signal the IA is actively managed."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md",
+      "reason": "Opens by calling itself 'supporting proof... not the main product pitch' and tells readers to 'Start with the product story and operator route first'. Internalizes the positioning guardrail about not leading with output framing."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Shortest honest first run with correct product framing, concrete task guidance, and an outcome-verification section that mirrors the 'result-first' positioning. Routes to next pages 'only if you need them', reducing link anxiety."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with positioning. No hard failures detected. The README \u2192 START_HERE \u2192 docs/README journey is coherent. Promoted next-click pages reinforce the same story. Copy reads clearly without hype sludge or internal-plumbing-first framing.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with tagline and 'AI agent orchestrator' frame. Comparison table leads with what the tool does (multiple agents, repo handoff, result checks) instead of artifacts or internal plumbing. 'Who it's for' section matches positioning exactly. Engineering-practice requirements section preserves the positioning guardrail."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Opens with simple Ralph-loop core framing. 'Use the default as-is, then customize when you're ready' is direct from positioning. First page leads with 'what the software does now and what checks ran' \u2014 result-first evaluation, not log-first."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Explicitly tells users to read README and START_HERE first. Organizes routes by user intent. Includes 'Keep proof secondary' section that deliberately defers proof-oriented pages until after the product story is understood."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md",
+      "reason": "Exemplary secondary-page positioning: opens by framing itself as 'supporting proof, not the main product pitch.' Tells reader to understand the product story first. Orders evaluation by working behavior \u2192 real checks \u2192 scope \u2192 supporting artifacts. Direct implementation of positioning guardrails."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md",
+      "reason": "Opens with Ralph-loop core framing. Strengthens positioning with task-guidance content (spec template, morning-after review, honest assessment of fit). No artifact or internal-plumbing language in the lead."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is cleanly aligned with positioning. README \u2192 START_HERE \u2192 docs/README forms a coherent journey with no internal leakage, strong product-first framing, and consistent messaging across all promoted next-click pages.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md (repo-root)",
+      "reason": "Leads with 'operating system for autonomous coding' / 'AI agent orchestrator' \u2014 not artifacts, receipts, or plumbing. Simple-core/composition framing is explicit. Comparison table avoids internal jargon."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with simple-loop-core framing, Codeberg primary, result-first verification ('what the software does now and what checks ran'). No internal handoff language."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Self-aware docs map that positions itself after README+START_HERE, explicitly gates proof pages as secondary, routes by user intent, and keeps Codeberg primary."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Spec template, good/bad candidates, honest assessment section. Leads with product story, not workflow internals. Links reinforce the same positioning."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Explicitly positioned as supporting proof, not main pitch. Leads with 'what the software does now' \u2014 exactly what positioning demands for secondary evidence."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

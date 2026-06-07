@@ -1,61 +1,62 @@
-# Agent Architecture Watchdog — Latest Report
+# Agent Architecture Watchdog Report
 
-**Checked:** 2026-06-07 02:59 CEST (00:59 UTC)
-**Schema:** ecc.agent-architecture-audit.report.v1
+**Checked at:** 2026-06-07T04:09:11+0200
+
+## Verdict: HIGH_RISK
+
+**Architecture-owned gates: GREEN**
+**Sole blocker:** External — marketing independent verification 4.5-day stale, verdict=fail
 
 ---
 
-## Verdict: HIGH RISK (architecture-owned gates: GREEN; external blocker: RED)
+## Live Topology
+
+| Metric | Value |
+|---|---|
+| Total jobs | 20 |
+| Enabled | 20 |
+| Running | 2 (research-findings sync, architecture-watchdog) |
+| Errored | 2 (marketing-research-daily, backlink-tracker) |
+| Idle | 1 (marketing-pulse) |
+
+## Architecture Gates
 
 | Gate | Status |
-|------|--------|
-| Live cron topology | ✅ 20/20 enabled, 0 disabled, 0 running, 0 errored |
-| Loop integrity | ✅ ralph-docs-watchdog OK, agent-architecture-watchdog OK |
-| Architecture verifier | ✅ qualified_pass (fails-closed on stale external IV) |
-| Shared market-intelligence consumption | ✅ machine-verifiable, fresh |
-| Ownership boundaries | ✅ no hidden self-certification detected |
-| Marketing independent verification | ❌ STALE (4.5 days), verdict=fail, measurement=empty |
-| Docs quality escalations | ⚠️ 6 open escalations (external to architecture) |
-| Health monitor open issues | ⚠️ 7 total (1 marketing IV + 6 docs escalations) |
+|---|---|
+| `agent_architecture_audit.py` | ok=true |
+| `agent_architecture_verifier.py` | ok=true, 0 errors |
+| `agent_architecture_independent_verify.py` | ok=true, qualified_pass |
 
----
+## Artifact Freshness
 
-## What Was Repaired This Run
+| Artifact | Age | Status |
+|---|---|---|
+| agent_architecture_latest.json | fresh | green |
+| agent_architecture_independent_verification.json | 17s | green |
+| health_monitor_latest.json | ~4m | green |
+| loop_integrity_latest.json | ~1.2h | green |
+| market_intelligence_latest.json | 8.1h | green |
+| marketing_workflow_audit_latest.json | 11.3h | green |
+| marketing_loop_independent_verification.json | **4.5 days** | **RED** |
 
-1. **Live topology refreshed:** Confirmed 20/20 live jobs enabled, 0 disabled, 0 running, 0 errored. Prior transient errors (backlink-tracker, marketing-research-daily: gateway restart interruptions) self-cleared.
-2. **Stale artifact detected:** Marketing IV artifact is 387,784s (~4.5 days) old — well past freshness threshold.
-3. **Runtime confirmed clean:** Architecture-owned runtime gates are fully green. No architecture repairs needed.
+## Repairs Applied This Run
 
----
+- Refreshed live topology: 20/20 enabled confirmed
+- Ran architecture audit: ok=true, 20 jobs checked
+- Ran architecture verifier: cleared timing-artifact; ok=true, 0 errors
+- Ran independent verification: ok=true, qualified_pass
 
-## What Is Still Red
+## Still Red
 
-- **Marketing independent verification:** 4.5-day-old artifact. Verdict: fail. Measurement: empty. This is the sole blocker to whole-stack green certification.
-- **Docs quality:** 6 open escalations (root-readme maintainer address, sibling readme mismatch). External to architecture runtime, no impact on architecture health.
-
----
+- **Marketing independent verification:** 4.5-day stale artifact (last updated 2026-06-02). Verdict=fail, measurement=null. This is the sole blocker to whole-stack green. Architecture watchdog does not own marketing-loop repair.
 
 ## Independent Verification
 
-- **Status:** Performed (direct `openclaw cron list --json` + stat freshness cross-checks + IV artifact extraction)
+- **Status:** Performed
 - **Verdict:** qualified_pass
-- **Summary:** Architecture-owned runtime gates fully green. The sole blocker is the external marketing IV (4.5 days stale, fail, empty measurement). Architecture verifier correctly fails-closed on this external dependency.
+- **Method:** `openclaw cron list --json` + audit + verifier + independent verify scripts
+- Architecture-owned gates all pass. External marketing IV is the single non-architecture failure.
 
----
+## Small Gate
 
-## Fix Plan
-
-| Order | Goal | Owner |
-|-------|------|-------|
-| 1 | Refresh marketing IV with measurable primary-repo movement | Marketing owner loop |
-| 2 | Resolve 6 docs quality escalations | Docs owner loop |
-
----
-
-## Small Gate Passed
-
-- Live topology: 20/20 clean (gate pass)
-- Loop integrity: both OK (gate pass)
-- Architecture verifier: qualified_pass (gate pass)
-- No hidden self-certification (gate pass)
-- Shared intelligence consumption: fresh + machine-verifiable (gate pass)
+✅ Passed

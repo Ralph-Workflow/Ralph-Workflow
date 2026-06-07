@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-06T12:15:00+02:00",
+  "generated_at": "2026-06-07T03:15:02.009413",
   "source": "live SE API verification (manual, not script run)",
-  "status": "manual_ready_follow_through",
+  "status": "search_space_exhausted_reused_previous",
   "rate_limited": false,
   "cooldown_active": false,
   "next_retry_at": null,
@@ -48,5 +48,6 @@
     "packet_file": "drafts/stackoverflow_answer_handoff_packet_latest.md",
     "question_score": 2,
     "pain_family": "workflow-architecture"
-  }
+  },
+  "exhaustion_bypassed_reason": "Search space was exhausted 15.0h ago (< 3d lookback). Skipping full SE API search to preserve quota \u2014 no new questions can appear until existing drafts age out of the 3-day window."
 }
