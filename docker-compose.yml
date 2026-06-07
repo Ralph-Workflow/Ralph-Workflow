@@ -1,0 +1,23 @@
+# ── Ralph Workflow Docker Compose ────────────────────────────────────
+# One command to build and run:  docker compose up
+#
+# Places you in the Ralph shell; append a subcommand to run directly:
+#   docker compose run --rm ralph --help
+#   docker compose run --rm ralph --diagnose
+#
+# Bind-mounts:
+#   - ./ → /workspace    (your project root; put PROMPT.md here)
+#   - ~/.ralph → /root/.ralph  (agent bundles, config, state)
+
+services:
+  ralph:
+    build: .
+    image: ralph-workflow:latest
+    stdin_open: true    # docker run -i
+    tty: true           # docker run -t
+    volumes:
+      - .:/workspace
+      - ${HOME:-~}/.ralph:/root/.ralph
+    working_dir: /workspace
+    entrypoint: ["ralph"]
+    command: ["--help"]
