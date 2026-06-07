@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-06-07T18:09:00+02:00",
+  "type": "hn_handoff_v4_urgent_push",
+  "title": "HN v4 handoff urgent push — thread #48416264 deadline ~22:00 CEST",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "outcome_ready": false,
+  "thread_id": "48416264",
+  "thread_title": "Harness engineering: Leveraging Codex in an agent-first world",
+  "thread_points": 253,
+  "thread_comments": 169,
+  "handoff_path": "drafts/HN_HARNESS_HANDOFF_v4.md",
+  "target_comment": "HorizonXP tooling invite",
+  "human_post_required": true,
+  "deadline": "2026-06-07T22:00:00+02:00",
+  "matrix_notification_sent": true,
+  "matrix_message_id": "$nR7oK468g9Y3f0FnEy2Swzh0DoGdOOQDtWBQtamcoS8",
+  "adoption_snapshot": {
+    "Codeberg_stars": 12,
+    "GitHub_stars": 3,
+    "PyPI_monthly": 1335
+  },
+  "repairs_applied": [
+    "execution_board_regenerated — was stale May 25 content despite June 7 filename/symlink",
+    "urgent_matrix_push — v4 handoff deadline ~3.5h away"
+  ],
+  "next_best_lane_if_hn_posted": "curator_due_followup — window open for awesome-vibe-coding etc"
+}

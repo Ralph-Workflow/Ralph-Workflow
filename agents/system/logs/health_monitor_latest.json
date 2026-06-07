@@ -1,172 +1,36 @@
 {
-  "ts": "2026-06-07T18:04:48.028246",
+  "ts": "2026-06-07T19:03:28.134320",
   "jobs_checked": 20,
-  "issues_found": 11,
+  "issues_found": 1,
   "issues": [
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "required_text": "Status: independently verified pass",
-      "likely_cause": "Verifier artifact exists but does not show required pass contract"
-    },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 7368.29,
+      "artifact_age_minutes": 7426.95,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review",
-      "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Docs system cleanly aligned with positioning. README \u2192 START_HERE \u2192 docs/README journey is coherent, promoted next-click pages reinforce the same story, and internal plumbing stays properly subordinated to product value."
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_ralph-workflow-readme-md-lacks-the-explicit-not",
-      "category": "review_followup_required",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "ralph-workflow/README.md lacks the explicit 'not for small tweaks' anti-section that the repo-root README has \u2014 minor inconsistency, the PyPI audience should see the same non-fit clarity",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: ralph-workflow/README.md lacks the explicit 'not for small tweaks' anti-section that the repo-root README has \u2014 minor inconsistency, the PyPI audience should see the same non-fit clarity"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_json",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "last_error": "live_jobs_checked=21 expected 20; live_jobs_disabled=1 expected 0; disabled_job_names=['marketing-pulse'] expected []",
-      "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=['marketing-pulse']"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T18:04:29.479030+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_escalation",
-      "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=51",
-      "repeats_in_recent_history": 51,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_escalation",
-      "category": "escalation_required",
-      "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=57",
-      "repeats_in_recent_history": 57,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review::loop_verification_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_ralph-workflow-readme-md-lacks-the-explicit-not_escalation",
-      "category": "escalation_required",
-      "last_error": "ralph-workflow/README.md lacks the explicit 'not for small tweaks' anti-section that the repo-root README has \u2014 minor inconsistency, the PyPI audience should see the same non-fit clarity",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_ralph-workflow-readme-md-lacks-the-explicit-not:review_followup_required repeat_count=6",
-      "repeats_in_recent_history": 6,
-      "owner_domain": "docs",
-      "incident_key": "docs_agentic_review_mustFix_ralph-workflow-readme-md-lacks-the-explicit-not::review_followup_required",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_json_escalation",
-      "category": "escalation_required",
-      "last_error": "live_jobs_checked=21 expected 20; live_jobs_disabled=1 expected 0; disabled_job_names=['marketing-pulse'] expected []",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=17",
-      "repeats_in_recent_history": 17,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_json::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
-      "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T18:04:29.479030+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=88",
-      "repeats_in_recent_history": 88,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
     }
   ],
   "repairs_attempted": [
     {
-      "type": "rerun_docs_verifier",
-      "job": "docs_agentic_review",
-      "ok": true,
-      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system cleanly aligned with positioning. README \\u2192 START_HERE \\u2192 docs/README journey is coherent, promoted next-click pages reinforce the same story, and interna"
-    },
-    {
-      "type": "immediate_review_followup_owner_action_cooldown",
-      "job": "docs_agentic_review_mustFix_ralph-workflow-readme-md-lacks-the-explicit-not",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-07T16:03:56.994359+00:00"
-    },
-    {
       "type": "rerun_independent_architecture_verification",
       "job": "agent_architecture_verifier_runtime",
-      "ok": false,
+      "ok": true,
       "detail": "python3 agents/system/agent_architecture_independent_verify.py"
     },
     {
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
-      "ok": false,
-      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T18:04:29.479030+02:00\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780848272317:73\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "docs_agentic_review_mustFix_ralph-workflow-readme-md-lacks-the-explicit-not_escalation",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "owner_loop_escalation",
-      "job": "agent_architecture_json_escalation",
-      "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780848280155:74\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T19:03:19.628561+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780848282491:75\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780851802031:76\"\n}"
     }
   ]
 }
