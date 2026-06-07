@@ -16,6 +16,7 @@ import contextlib
 import os
 import shutil
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
@@ -194,39 +195,11 @@ def _prepare_interactive_claude_options(opts: InvokeOptions, config: AgentConfig
     session_id = opts.session_id or opts.initial_session_id or str(uuid4())
     sentinel_path = opts.stop_sentinel_path or _interactive_stop_sentinel_path(session_id)
     settings_json = _merge_interactive_settings_json(opts.settings_json, sentinel_path)
-    return InvokeOptions(
-        model_flag=opts.model_flag,
-        session_id=opts.session_id,
-        verbose=opts.verbose,
-        show_progress=opts.show_progress,
-        workspace_path=opts.workspace_path,
-        extra_env=opts.extra_env,
-        idle_timeout_seconds=opts.idle_timeout_seconds,
-        drain_window_seconds=opts.drain_window_seconds,
-        max_waiting_on_child_seconds=opts.max_waiting_on_child_seconds,
-        idle_poll_interval_seconds=opts.idle_poll_interval_seconds,
-        parent_exit_grace_seconds=opts.parent_exit_grace_seconds,
-        descendant_wait_timeout_seconds=opts.descendant_wait_timeout_seconds,
-        descendant_wait_poll_seconds=opts.descendant_wait_poll_seconds,
-        process_exit_wait_seconds=opts.process_exit_wait_seconds,
-        max_session_seconds=opts.max_session_seconds,
-        waiting_status_interval_seconds=opts.waiting_status_interval_seconds,
-        suspect_waiting_on_child_seconds=opts.suspect_waiting_on_child_seconds,
-        child_progress_ttl_seconds=opts.child_progress_ttl_seconds,
-        child_heartbeat_ttl_seconds=opts.child_heartbeat_ttl_seconds,
-        child_stale_label_ttl_seconds=opts.child_stale_label_ttl_seconds,
-        child_exit_reconcile_seconds=opts.child_exit_reconcile_seconds,
-        max_waiting_on_child_no_progress_seconds=opts.max_waiting_on_child_no_progress_seconds,
-        pure=opts.pure,
-        system_prompt_file=opts.system_prompt_file,
-        waiting_listener=opts.waiting_listener,
-        required_artifact=opts.required_artifact,
-        explicit_completion_seen=opts.explicit_completion_seen,
-        captured_session_id=opts.captured_session_id,
+    return replace(
+        opts,
         initial_session_id=session_id,
         settings_json=settings_json,
         stop_sentinel_path=sentinel_path,
-        permission_prompt_listener=opts.permission_prompt_listener,
     )
 
 
@@ -432,6 +405,7 @@ def resolve_invocation_runtime(
     elif transport == AgentTransport.NANOCODER:
         if endpoint is None:
             raise RuntimeError("endpoint must be set for NANOCODER transport")
+        runtime_env.setdefault("NANOCODER_TRUST_DIRECTORY", "1")
         nanocoder_mcp_servers = runtime_env.get("NANOCODER_MCPSERVERS") or _env.get(
             "NANOCODER_MCPSERVERS"
         )

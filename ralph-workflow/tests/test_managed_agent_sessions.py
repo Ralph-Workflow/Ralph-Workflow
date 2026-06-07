@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ralph.agents.invoke import AgentInvocationError
 from ralph.mcp.session_plan import SessionMcpPlan
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -232,4 +233,74 @@ def test_runtime_open_shuts_down_bridge_when_system_prompt_setup_fails(
             deps=deps,
         )
 
+    assert bridge_state["shutdown_calls"] == 1
+
+
+def test_managed_runtime_retries_post_tool_empty_response_with_same_session(
+    tmp_path: Path,
+    config_with_helper_agent: UnifiedConfig,
+) -> None:
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Describe a notes app.", encoding="utf-8")
+
+    bridge_state = {"shutdown_calls": 0, "reset_calls": 0}
+    bridge = SimpleNamespace(
+        agent_endpoint_uri=lambda: "http://127.0.0.1:9999/mcp",
+        shutdown=lambda: bridge_state.__setitem__(
+            "shutdown_calls", bridge_state["shutdown_calls"] + 1
+        ),
+        reset_tool_registry=lambda: bridge_state.__setitem__(
+            "reset_calls", bridge_state["reset_calls"] + 1
+        ),
+    )
+    calls: list[object | None] = []
+
+    failure = AgentInvocationError(
+        "claude",
+        1,
+        "Model returned an empty response with no tool calls",
+        parsed_output=[
+            '{"session_id":"sess-managed"}',
+            '{"type":"tool_result","tool":"read_file"}',
+        ],
+    )
+
+    def fake_start_mcp_server(*args: object) -> object:
+        del args
+        return bridge
+
+    def fake_invoke_agent(
+        _agent_config: object,
+        _prompt_file_path: str,
+        options: object,
+    ) -> Iterator[str]:
+        calls.append(getattr(options, "session_id", None))
+        if len(calls) == 1:
+            raise failure
+        return iter(["Recovered managed session."])
+
+    deps = cast("Any", _session_runtime()).ManagedAgentSessionDeps(
+        start_mcp_server=fake_start_mcp_server,
+        invoke_agent=fake_invoke_agent,
+        materialize_system_prompt=lambda *args: str(tmp_path / "system.md"),
+        workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
+    )
+
+    with cast("Any", _session_runtime()).ManagedAgentSessionRuntime.open(
+        config=config_with_helper_agent,
+        workspace_root=tmp_path,
+        agent_config=config_with_helper_agent.agents["prompt-helper-agent"],
+        request=cast("Any", _session_runtime()).ManagedAgentSessionRequest(
+            session_id_prefix="prompt-helper",
+            drain="standalone",
+            capabilities=frozenset({"workspace.read", "artifact.submit"}),
+            system_prompt_name="prompt-helper",
+        ),
+        deps=deps,
+    ) as runtime:
+        result = list(runtime.invoke_prompt_file(prompt_file))
+
+    assert result == ["Recovered managed session."]
+    assert calls == [None, "sess-managed"]
+    assert bridge_state["reset_calls"] == 1
     assert bridge_state["shutdown_calls"] == 1

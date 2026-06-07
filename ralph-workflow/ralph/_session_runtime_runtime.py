@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from dataclasses import replace
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
-from ralph.agents.invoke import InvokeRuntimeOptions, build_invoke_options_from_config
+from ralph.agents.invoke._direct_mcp_recovery import (
+    default_direct_mcp_retry_limit,
+    iter_with_direct_mcp_recovery,
+)
+from ralph.agents.invoke import InvokeOptions, InvokeRuntimeOptions, build_invoke_options_from_config
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
@@ -157,7 +162,28 @@ class ManagedAgentSessionRuntime:
                 required_artifact=required_artifact,
             ),
         )
-        return self._deps.invoke_agent(self._agent_config, str(prompt_file), options)
+        max_retries = default_direct_mcp_retry_limit(self._config.general.max_same_agent_retries)
+        reset_tool_registry = _reset_tool_registry_callback(self._bridge)
+        return iter_with_direct_mcp_recovery(
+            lambda session_id: self._deps.invoke_agent(
+                self._agent_config,
+                str(prompt_file),
+                _with_session_id(options, session_id),
+            ),
+            max_retries=max_retries,
+            reset_tool_registry=reset_tool_registry,
+        )
+
+
+def _with_session_id(options: InvokeOptions, session_id: str | None) -> InvokeOptions:
+    return replace(options, session_id=session_id)
+
+
+def _reset_tool_registry_callback(bridge: object) -> Callable[[], object] | None:
+    reset_tool_registry_obj: object = getattr(bridge, "reset_tool_registry", None)
+    if not callable(reset_tool_registry_obj):
+        return None
+    return cast("Callable[[], object]", reset_tool_registry_obj)
 
 
 def _resolve_session_plan(

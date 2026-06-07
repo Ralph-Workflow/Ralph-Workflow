@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import subprocess
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.git.git_run_result import GitRunResult
 from ralph.process.manager import SpawnOptions, get_process_manager
@@ -13,6 +13,14 @@ from ralph.process.manager import SpawnOptions, get_process_manager
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
+
+    class _PopenExitProtocol:
+        def __exit__(
+            self,
+            exc_type: object,
+            exc: object,
+            tb: object,
+        ) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -58,14 +66,10 @@ def run_git(
         ),
     )
     try:
-        communicate_and_cleanup = getattr(proc, "communicate_and_cleanup", None)
-        if callable(communicate_and_cleanup):
-            raw_stdout, raw_stderr = communicate_and_cleanup(
-                timeout=effective_options.timeout,
-                cleanup_grace_period_s=0.0,
-            )
-        else:
-            raw_stdout, raw_stderr = proc.communicate(timeout=effective_options.timeout)
+        raw_stdout, raw_stderr = proc.communicate_and_cleanup(
+            timeout=effective_options.timeout,
+            cleanup_grace_period_s=0.0,
+        )
         with contextlib.suppress(Exception):
             proc.poll()
         with contextlib.suppress(Exception):
@@ -74,13 +78,14 @@ def run_git(
         proc.terminate(grace_period_s=0)
         raise
     finally:
-        raw_proc = getattr(proc, "_proc", None)
+        raw_proc_obj: object = proc._proc
         for stream in (proc.stdout, proc.stderr):
             if stream is None:
                 continue
             with contextlib.suppress(Exception):
                 stream.close()
-        if raw_proc is not None and hasattr(raw_proc, "__exit__"):
+        if hasattr(raw_proc_obj, "__exit__"):
+            raw_proc = cast("_PopenExitProtocol", raw_proc_obj)
             with contextlib.suppress(Exception):
                 raw_proc.__exit__(None, None, None)
 

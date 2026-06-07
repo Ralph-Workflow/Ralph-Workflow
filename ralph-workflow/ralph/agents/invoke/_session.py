@@ -46,10 +46,38 @@ def _extract_session_id_from_line(line: str) -> str | None:
     return _find_session_id(parsed)
 
 
+def _extract_transport_session_id_from_line(line: str) -> str | None:
+    try:
+        parsed = cast("object", json.loads(line))
+    except json.JSONDecodeError:
+        stripped = line.strip()
+        for pattern in _SESSION_ID_PATTERNS:
+            match = pattern.search(stripped)
+            if match is not None:
+                return match.group(1)
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    for key in ("session_id", "sessionId"):
+        session_id = parsed.get(key)
+        if isinstance(session_id, str) and session_id:
+            return session_id
+    return None
+
+
 def extract_session_id(raw_output: list[str] | tuple[str, ...]) -> str | None:
     """Extract a nested session identifier from raw NDJSON output lines."""
     for line in raw_output:
         session_id = _extract_session_id_from_line(line)
+        if session_id:
+            return session_id
+    return None
+
+
+def extract_transport_session_id(raw_output: list[str] | tuple[str, ...]) -> str | None:
+    """Extract only top-level transport/runtime session IDs from output lines."""
+    for line in raw_output:
+        session_id = _extract_transport_session_id_from_line(line)
         if session_id:
             return session_id
     return None

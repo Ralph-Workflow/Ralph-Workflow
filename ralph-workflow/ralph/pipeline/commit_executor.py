@@ -34,8 +34,6 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.legacy_console_display import LegacyConsoleDisplay, get_display_context
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.workspace import FsWorkspace

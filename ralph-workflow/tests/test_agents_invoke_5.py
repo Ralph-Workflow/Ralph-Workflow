@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents import invoke as invoke_module
+from ralph.agents.invoke import InvokeOptions
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
@@ -141,6 +142,7 @@ class TestResolveInvocationRuntime:
 
         assert result.mcp_endpoint == "http://localhost:9999/mcp"
         assert result.agent_env is not None
+        assert result.agent_env["NANOCODER_TRUST_DIRECTORY"] == "1"
         payload = _json_object(result.agent_env["NANOCODER_MCPSERVERS"])
         servers = cast("dict[str, dict[str, object]]", payload["mcpServers"])
         assert servers["ralph"]["transport"] == "http"
@@ -178,3 +180,22 @@ class TestResolveInvocationRuntime:
             "ralph_submit_artifact",
             "mcp__ralph__ralph_submit_artifact",
         ]
+
+    def test_prepare_interactive_claude_options_preserves_new_invoke_fields(self) -> None:
+        config = AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE)
+
+        def _permission_listener(_message: str) -> None:
+            return None
+
+        options = InvokeOptions(
+            session_id="sess-existing",
+            post_tool_result_progression_seconds=12.0,
+            permission_prompt_listener=_permission_listener,
+        )
+
+        prepared = invoke_module._prepare_interactive_claude_options(options, config)
+
+        assert prepared.post_tool_result_progression_seconds == 12.0
+        assert prepared.permission_prompt_listener is _permission_listener
+        assert prepared.session_id == "sess-existing"
+        assert prepared.initial_session_id == "sess-existing"

@@ -9,9 +9,11 @@ not when it special-cases this command alone.
 
 from __future__ import annotations
 
+from collections import deque
+from dataclasses import replace
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, cast
 from uuid import uuid4
 
 from rich.panel import Panel
@@ -24,9 +26,13 @@ from ralph.agents.invoke import (
     InvokeRuntimeOptions,
     OpenCodeResumableExitError,
     build_invoke_options_from_config,
-    extract_session_id,
     invoke_agent,
 )
+from ralph.agents.invoke._direct_mcp_recovery import (
+    default_direct_mcp_retry_limit,
+    run_with_direct_mcp_recovery,
+)
+from ralph.agents.invoke._session import extract_transport_session_id
 from ralph.agents.parsers import get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.smoke_run_params import SmokeRunParams
@@ -59,6 +65,7 @@ _SMOKE_RUN_ID = "interactive-claude-smoke"
 _SMOKE_IDLE_TIMEOUT_SECONDS = 30.0
 _SMOKE_MAX_SESSION_SECONDS = 120.0
 _SMOKE_MAX_TURNS = 5
+_SMOKE_TRANSCRIPT_MAX_LINES = 400
 _MAX_MEANINGFUL_OUTPUT_LINES = 8
 _MIN_MEANINGFUL_OUTPUT_LINES = 3
 _MAX_VISIBLE_OUTPUT_LINES = 80
@@ -195,39 +202,7 @@ def _smoke_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
 
 
 def _with_session_id(options: InvokeOptions, session_id: str | None) -> InvokeOptions:
-    return InvokeOptions(
-        model_flag=options.model_flag,
-        session_id=session_id,
-        verbose=options.verbose,
-        show_progress=options.show_progress,
-        workspace_path=options.workspace_path,
-        extra_env=options.extra_env,
-        idle_timeout_seconds=options.idle_timeout_seconds,
-        drain_window_seconds=options.drain_window_seconds,
-        max_waiting_on_child_seconds=options.max_waiting_on_child_seconds,
-        idle_poll_interval_seconds=options.idle_poll_interval_seconds,
-        parent_exit_grace_seconds=options.parent_exit_grace_seconds,
-        descendant_wait_timeout_seconds=options.descendant_wait_timeout_seconds,
-        descendant_wait_poll_seconds=options.descendant_wait_poll_seconds,
-        process_exit_wait_seconds=options.process_exit_wait_seconds,
-        max_session_seconds=options.max_session_seconds,
-        waiting_status_interval_seconds=options.waiting_status_interval_seconds,
-        suspect_waiting_on_child_seconds=options.suspect_waiting_on_child_seconds,
-        child_progress_ttl_seconds=options.child_progress_ttl_seconds,
-        child_heartbeat_ttl_seconds=options.child_heartbeat_ttl_seconds,
-        child_stale_label_ttl_seconds=options.child_stale_label_ttl_seconds,
-        child_exit_reconcile_seconds=options.child_exit_reconcile_seconds,
-        max_waiting_on_child_no_progress_seconds=options.max_waiting_on_child_no_progress_seconds,
-        pure=options.pure,
-        system_prompt_file=options.system_prompt_file,
-        waiting_listener=options.waiting_listener,
-        required_artifact=options.required_artifact,
-        explicit_completion_seen=options.explicit_completion_seen,
-        captured_session_id=options.captured_session_id,
-        initial_session_id=options.initial_session_id,
-        settings_json=options.settings_json,
-        stop_sentinel_path=options.stop_sentinel_path,
-    )
+    return replace(options, session_id=session_id)
 
 
 def _execute_smoke_turns(
@@ -235,50 +210,85 @@ def _execute_smoke_turns(
     current_session_id: str | None,
 ) -> tuple[list[str], list[str], str | None, AgentInvocationError | None]:
     """Execute smoke test turns and return collected lines and state."""
-    all_lines: list[str] = []
-    live_output_lines: list[str] = []
+    all_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
+    live_output_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
     final_exception: AgentInvocationError | None = None
 
     for _attempt in range(_SMOKE_MAX_TURNS):
         raw_lines: list[str] = []
-        rendered_lines: list[str] = []
         try:
-            line_iter = invoke_agent(
-                params.config,
-                str(params.prompt_file),
-                options=_with_session_id(params.options, current_session_id),
-            )
-            display = ParallelDisplay(
-                params.display_context,
-                workspace_root=params.workspace_root,
-            )
-            stream_parsed_agent_activity(
-                line_iter,
-                parser_type=str(params.config.json_parser),
-                agent_name=params.agent_name,
-                display=display,
-                transport=params.config.transport,
-                display_context=params.display_context,
-                raw_output_sink=raw_lines,
-                rendered_output_sink=rendered_lines,
-                session_id_sink=None,
+            raw_lines, rendered_lines = run_with_direct_mcp_recovery(
+                lambda retry_session_id: _run_smoke_attempt(
+                    params,
+                    _with_session_id(params.options, retry_session_id or current_session_id),
+                ),
+                max_retries=default_direct_mcp_retry_limit(_SMOKE_MAX_TURNS - 1),
+                reset_tool_registry=_reset_tool_registry_callback(params.bridge),
+                on_retry_failure=all_lines.extend,
             )
             all_lines.extend(raw_lines)
             live_output_lines.extend(rendered_lines)
+            current_session_id = extract_transport_session_id(raw_lines) or current_session_id
+            final_exception = None
             break
         except OpenCodeResumableExitError as exc:
-            all_lines.extend(raw_lines)
-            live_output_lines.extend(rendered_lines)
-            current_session_id = exc.resumable_session_id or extract_session_id(raw_lines)
+            current_session_id = exc.resumable_session_id or extract_transport_session_id(raw_lines)
             final_exception = exc
             continue
         except AgentInvocationError as exc:
-            all_lines.extend(raw_lines or exc.parsed_output)
-            live_output_lines.extend(rendered_lines)
+            all_lines.extend(exc.parsed_output)
             final_exception = exc
             break
 
-    return all_lines, live_output_lines, current_session_id, final_exception
+    return list(all_lines), list(live_output_lines), current_session_id, final_exception
+
+
+def _run_smoke_attempt(
+    params: SmokeRunParams,
+    options: InvokeOptions,
+) -> tuple[list[str], list[str]]:
+    raw_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
+    rendered_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
+    line_iter = invoke_agent(
+        params.config,
+        str(params.prompt_file),
+        options=options,
+    )
+    display = ParallelDisplay(
+        params.display_context,
+        workspace_root=params.workspace_root,
+    )
+    try:
+        stream_parsed_agent_activity(
+            line_iter,
+            parser_type=str(params.config.json_parser),
+            agent_name=params.agent_name,
+            display=display,
+            transport=params.config.transport,
+            display_context=params.display_context,
+            raw_output_sink=raw_lines,
+            rendered_output_sink=rendered_lines,
+            session_id_sink=None,
+        )
+    except AgentInvocationError as exc:
+        raise AgentInvocationError(
+            exc.agent_name,
+            exc.returncode,
+            exc.stderr,
+            parsed_output=(raw_lines or exc.parsed_output),
+        ) from exc
+    return list(raw_lines), list(rendered_lines)
+
+
+def _reset_tool_registry_callback(
+    bridge: object | None,
+) -> Callable[[], object] | None:
+    if bridge is None:
+        return None
+    reset_tool_registry_obj: object = getattr(bridge, "reset_tool_registry", None)
+    if not callable(reset_tool_registry_obj):
+        return None
+    return cast("Callable[[], object]", reset_tool_registry_obj)
 
 
 def _detect_smoke_errors(
@@ -333,7 +343,7 @@ def _run_smoke_agent(params: SmokeRunParams) -> SmokeRunResult:
     )
 
     lines = all_lines
-    session_id = current_session_id or extract_session_id(lines)
+    session_id = current_session_id or extract_transport_session_id(lines)
     explicit_completion_seen = any("Task declared complete:" in line for line in lines)
     parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
     tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
@@ -484,35 +494,10 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
                 pure=agent_config.transport == AgentTransport.OPENCODE,
             ),
         )
-        options = InvokeOptions(
-            model_flag=options.model_flag,
-            session_id=options.session_id,
-            verbose=options.verbose,
-            show_progress=options.show_progress,
-            workspace_path=options.workspace_path,
-            extra_env=options.extra_env,
+        options = replace(
+            options,
             idle_timeout_seconds=_SMOKE_IDLE_TIMEOUT_SECONDS,
-            drain_window_seconds=options.drain_window_seconds,
-            max_waiting_on_child_seconds=options.max_waiting_on_child_seconds,
-            idle_poll_interval_seconds=options.idle_poll_interval_seconds,
-            parent_exit_grace_seconds=options.parent_exit_grace_seconds,
-            descendant_wait_timeout_seconds=options.descendant_wait_timeout_seconds,
-            descendant_wait_poll_seconds=options.descendant_wait_poll_seconds,
-            process_exit_wait_seconds=options.process_exit_wait_seconds,
             max_session_seconds=_SMOKE_MAX_SESSION_SECONDS,
-            waiting_status_interval_seconds=options.waiting_status_interval_seconds,
-            suspect_waiting_on_child_seconds=options.suspect_waiting_on_child_seconds,
-            child_progress_ttl_seconds=options.child_progress_ttl_seconds,
-            child_heartbeat_ttl_seconds=options.child_heartbeat_ttl_seconds,
-            child_stale_label_ttl_seconds=options.child_stale_label_ttl_seconds,
-            child_exit_reconcile_seconds=options.child_exit_reconcile_seconds,
-            max_waiting_on_child_no_progress_seconds=options.max_waiting_on_child_no_progress_seconds,
-            pure=options.pure,
-            system_prompt_file=options.system_prompt_file,
-            waiting_listener=options.waiting_listener,
-            required_artifact=options.required_artifact,
-            explicit_completion_seen=options.explicit_completion_seen,
-            captured_session_id=options.captured_session_id,
         )
         results = [
             _run_smoke_agent(
@@ -524,6 +509,7 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
                     output_file=output_file,
                     options=options,
                     display_context=ctx,
+                    bridge=bridge,
                 )
             )
         ]

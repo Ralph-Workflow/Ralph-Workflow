@@ -24,3 +24,4 @@ class SmokeRunParams:
     output_file: Path
     options: InvokeOptions
     display_context: DisplayContext
+    bridge: object | None = None

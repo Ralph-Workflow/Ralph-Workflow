@@ -351,13 +351,21 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
     )
     calls: list[object | None] = []
 
-    def fake_invoke_agent(_agent: object, *_args: object, options: object = None, **_kwargs: object) -> object:
+    def fake_invoke_agent(
+        _agent: object,
+        *_args: object,
+        options: object = None,
+        **_kwargs: object,
+    ) -> object:
         calls.append(getattr(options, "session_id", None))
         if len(calls) == 1:
             raise failure
-        return iter([
-            '{"artifact_type":"commit_message","content":{"type":"commit","subject":"fix: recovered after retry"}}'
-        ])
+        return iter(
+            [
+                '{"artifact_type":"commit_message","content":'
+                '{"type":"commit","subject":"fix: recovered after retry"}}'
+            ]
+        )
 
     with (
         patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
@@ -373,6 +381,141 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
     assert result.message == "fix: recovered after retry"
     assert bridge.reset_calls == 1
     assert calls == [None, "sess-post-tool"]
+
+
+def test_generate_commit_message_retries_repeated_post_tool_empty_response_until_success(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text("Generate a commit message.", encoding="utf-8")
+    display_context = make_display_context()
+
+    class _FakeBridge:
+        def __init__(self) -> None:
+            self.reset_calls = 0
+
+        def reset_tool_registry(self) -> None:
+            self.reset_calls += 1
+
+    bridge = _FakeBridge()
+    attempt_context = CommitAttemptContext(
+        repo_root=tmp_path,
+        verbose=False,
+        extra_env={},
+        bridge=bridge,
+    )
+
+    agent = AgentConfig(cmd="claude", can_commit=True, json_parser=JsonParserType.GENERIC)
+    failure = AgentInvocationError(
+        "claude",
+        1,
+        "Model returned an empty response with no tool calls",
+        parsed_output=[
+            '{"session_id":"sess-post-tool"}',
+            '{"type":"tool_result","tool":"read_file"}',
+        ],
+    )
+    calls: list[object | None] = []
+
+    def fake_invoke_agent(
+        _agent: object,
+        *_args: object,
+        options: object = None,
+        **_kwargs: object,
+    ) -> object:
+        calls.append(getattr(options, "session_id", None))
+        if len(calls) < 3:
+            raise failure
+        return iter(
+            [
+                '{"artifact_type":"commit_message","content":'
+                '{"type":"commit","subject":"fix: recovered after repeated retry"}}'
+            ]
+        )
+
+    with (
+        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
+        patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
+    ):
+        result = commit_module._generate_commit_message_with_agent(
+            agent,
+            prompt_file=str(prompt_file),
+            attempt_context=attempt_context,
+            display_context=display_context,
+        )
+
+    assert result.message == "fix: recovered after repeated retry"
+    assert bridge.reset_calls == 2
+    assert calls == [None, "sess-post-tool", "sess-post-tool"]
+
+
+def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text("Generate a commit message.", encoding="utf-8")
+    display_context = make_display_context()
+
+    class _FakeBridge:
+        def __init__(self) -> None:
+            self.reset_calls = 0
+
+        def reset_tool_registry(self) -> None:
+            self.reset_calls += 1
+
+    bridge = _FakeBridge()
+    attempt_context = CommitAttemptContext(
+        repo_root=tmp_path,
+        verbose=False,
+        extra_env={},
+        bridge=bridge,
+    )
+
+    agent = AgentConfig(cmd="claude", can_commit=True, json_parser=JsonParserType.GENERIC)
+    calls: list[object | None] = []
+
+    def fake_invoke_agent(
+        _agent: object,
+        *_args: object,
+        options: object = None,
+        **_kwargs: object,
+    ) -> object:
+        calls.append(getattr(options, "session_id", None))
+        if len(calls) == 1:
+            def _failing_iter() -> object:
+                yield '{"session_id":"sess-midstream"}'
+                yield '{"type":"tool_result","tool":"read_file"}'
+                raise AgentInvocationError(
+                    "claude",
+                    1,
+                    "Model returned an empty response with no tool calls",
+                    parsed_output=["claude tool result: read_file"],
+                )
+
+            return _failing_iter()
+        return iter(
+            [
+                '{"artifact_type":"commit_message","content":'
+                '{"type":"commit","subject":"fix: recovered after midstream retry"}}'
+            ]
+        )
+
+    with (
+        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
+        patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
+    ):
+        result = commit_module._generate_commit_message_with_agent(
+            agent,
+            prompt_file=str(prompt_file),
+            attempt_context=attempt_context,
+            display_context=display_context,
+        )
+
+    assert result.message == "fix: recovered after midstream retry"
+    assert bridge.reset_calls == 1
+    assert calls == [None, "sess-midstream"]
 
 
 def test_handle_agent_commit_generation_reports_stage_failure_without_traceback(

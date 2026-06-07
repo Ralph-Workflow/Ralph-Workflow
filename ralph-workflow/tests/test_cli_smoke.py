@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 
 from ralph.cli.commands import smoke as smoke_module
+from ralph.cli.commands.smoke_run_params import SmokeRunParams
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
@@ -207,3 +208,69 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     assert "Observed working" in output
     assert "Observed breaks" in output
     assert "No breaks observed" in output
+
+
+def test_execute_smoke_turns_retries_post_tool_empty_response_with_same_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    bridge = type(
+        "_Bridge",
+        (),
+        {"reset_tool_registry": lambda self: None},
+    )()
+    params = SmokeRunParams(
+        agent_name="claude",
+        config=config,
+        workspace_root=tmp_path,
+        prompt_file=tmp_path / "PROMPT.md",
+        output_file=tmp_path / "todo.js",
+        options=smoke_module.InvokeOptions(show_progress=False),
+        display_context=smoke_module.make_display_context(),
+        bridge=bridge,
+    )
+    calls: list[object | None] = []
+
+    failure = smoke_module.AgentInvocationError(
+        "claude",
+        1,
+        "Model returned an empty response with no tool calls",
+        parsed_output=[
+            '{"session_id":"sess-smoke"}',
+            '{"type":"tool_result","tool":"read_file"}',
+        ],
+    )
+
+    def fake_invoke_agent(
+        _config: AgentConfig,
+        _prompt_file: str,
+        *,
+        options: object = None,
+    ) -> object:
+        calls.append(getattr(options, "session_id", None))
+        if len(calls) == 1:
+            raise failure
+        return iter(
+            [
+                '{"type":"assistant","message":{"type":"message","content":'
+                '[{"type":"text","text":"Recovered smoke run."}]}}\n',
+                "Claude session ready. Session ID: sess-smoke\n",
+                "claude tool: read_file\n",
+                "Task declared complete: session_id=sess-smoke, summary=done, timestamp=1\n",
+            ]
+        )
+
+    monkeypatch.setattr(smoke_module, "invoke_agent", fake_invoke_agent)
+    lines, rendered, session_id, final_exception = smoke_module._execute_smoke_turns(params, None)
+
+    assert final_exception is None
+    assert session_id == "sess-smoke"
+    assert calls == [None, "sess-smoke"]
+    assert any('"type":"tool_result"' in line for line in lines)
+    assert any("Recovered smoke run." in line for line in lines)
+    assert any("Recovered smoke run." in line for line in rendered)

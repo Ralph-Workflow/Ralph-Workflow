@@ -25,6 +25,11 @@ from ralph.agents.invoke import (
     extract_session_id,
     invoke_agent,
 )
+from ralph.agents.invoke._direct_mcp_recovery import (
+    default_direct_mcp_retry_limit,
+    run_with_direct_mcp_recovery,
+)
+from ralph.agents.invoke._session import extract_transport_session_id
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.api.opencode import validate_local_model_support
@@ -54,7 +59,6 @@ from ralph.mcp.artifacts.commit_message import (
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import (
     McpServerExtras,
-    RestartAwareMcpBridge,
     SessionBridgeLike,
     start_mcp_server,
 )
@@ -71,9 +75,8 @@ from ralph.prompts.commit import (
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.prompts.payload_refs import sanitize_surrogates as _sanitize_surrogates
 from ralph.prompts.system_prompt import materialize_system_prompt
-from ralph.recovery.failure_classifier import FailureClassifier
-from ralph.recovery.failure_details import failure_detail_parts
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
+from ralph.recovery.failure_classifier import FailureClassifier
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -517,73 +520,87 @@ def _generate_commit_message_with_agent(
     display_context: DisplayContext,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
-    initial_attempt = invoke_commit_agent_attempt(
-        agent,
-        prompt_file=prompt_file,
-        attempt_context=attempt_context,
-        display_context=display_context,
+    reset_tool_registry = _reset_tool_registry_callback(attempt_context.bridge)
+    raw_max_retries: object = (
+        attempt_context.general_config.max_same_agent_retries
+        if attempt_context.general_config is not None
+        else None
     )
-    if initial_attempt.failure_detail:
-        failure_details.append(initial_attempt.failure_detail)
-    else:
+    max_retries = default_direct_mcp_retry_limit(raw_max_retries)
+    try:
+        initial_attempt = run_with_direct_mcp_recovery(
+            lambda session_id: invoke_commit_agent_attempt(
+                agent,
+                prompt_file=prompt_file,
+                attempt_context=attempt_context,
+                session_id=session_id,
+                display_context=display_context,
+            ),
+            max_retries=max_retries,
+            reset_tool_registry=reset_tool_registry,
+        )
+    except AgentInvocationError as exc:
+        initial_attempt = CommitAgentAttempt(
+            failure_detail=_format_agent_invocation_failure(
+                agent.cmd,
+                prompt_file,
+                exc,
+                parsed_output=_parsed_output_from_invocation_error(exc),
+            ),
+            parsed_output=_parsed_output_from_invocation_error(exc),
+            resume_session_id=extract_session_id(tuple(_parsed_output_from_invocation_error(exc))),
+        )
+    if not initial_attempt.failure_detail:
         return _finalize_commit_attempt(initial_attempt, failure_details)
+    failure_details.append(initial_attempt.failure_detail)
 
-    if initial_attempt.retryable_failure and initial_attempt.resume_session_id:
-        if initial_attempt.reset_tool_registry:
-            reset_tool_registry = getattr(attempt_context.bridge, "reset_tool_registry", None)
-            if callable(reset_tool_registry):
-                reset_tool_registry()
-        session_retry = invoke_commit_agent_attempt(
-            agent,
-            prompt_file=prompt_file,
-            attempt_context=attempt_context,
-            session_id=initial_attempt.resume_session_id,
-            display_context=display_context,
-        )
-        if session_retry.failure_detail:
+    latest_attempt = initial_attempt
+
+    if _is_missing_commit_artifact_failure(latest_attempt.failure_detail):
+        if initial_attempt.resume_session_id:
+            session_retry = invoke_commit_agent_attempt(
+                agent,
+                prompt_file=prompt_file,
+                attempt_context=attempt_context,
+                session_id=initial_attempt.resume_session_id,
+                display_context=display_context,
+            )
+            if not session_retry.failure_detail:
+                return _finalize_commit_attempt(session_retry, failure_details)
             failure_details.append(session_retry.failure_detail)
-        else:
-            return _finalize_commit_attempt(session_retry, failure_details)
+            latest_attempt = session_retry
 
-    if not _is_missing_commit_artifact_failure(initial_attempt.failure_detail):
-        return CommitAgentResult(failure_details=failure_details)
-
-    if initial_attempt.resume_session_id:
-        session_retry = invoke_commit_agent_attempt(
-            agent,
-            prompt_file=prompt_file,
-            attempt_context=attempt_context,
-            session_id=initial_attempt.resume_session_id,
-            display_context=display_context,
-        )
-        if session_retry.failure_detail:
-            failure_details.append(session_retry.failure_detail)
-        else:
-            return _finalize_commit_attempt(session_retry, failure_details)
-
-        if not _is_missing_commit_artifact_failure(session_retry.failure_detail):
-            return CommitAgentResult(failure_details=failure_details)
-
-    summary_prompt_file = write_commit_prompt_file(
-        attempt_context.repo_root,
-        _summarized_retry_prompt(
-            _read_retry_prompt_text(prompt_file),
-            initial_attempt.parsed_output,
-        ),
-    )
-    summary_retry = invoke_commit_agent_attempt(
-        agent,
-        prompt_file=summary_prompt_file,
-        attempt_context=attempt_context,
-        session_id=initial_attempt.resume_session_id,
-        display_context=display_context,
-    )
-    if summary_retry.failure_detail:
-        failure_details.append(summary_retry.failure_detail)
-    else:
-        return _finalize_commit_attempt(summary_retry, failure_details)
+        if _is_missing_commit_artifact_failure(latest_attempt.failure_detail):
+            summary_prompt_file = write_commit_prompt_file(
+                attempt_context.repo_root,
+                _summarized_retry_prompt(
+                    _read_retry_prompt_text(prompt_file),
+                    latest_attempt.parsed_output,
+                ),
+            )
+            summary_retry = invoke_commit_agent_attempt(
+                agent,
+                prompt_file=summary_prompt_file,
+                attempt_context=attempt_context,
+                session_id=initial_attempt.resume_session_id,
+                display_context=display_context,
+            )
+            if not summary_retry.failure_detail:
+                return _finalize_commit_attempt(summary_retry, failure_details)
+            failure_details.append(summary_retry.failure_detail)
 
     return CommitAgentResult(failure_details=failure_details)
+
+
+def _reset_tool_registry_callback(
+    bridge: object | None,
+) -> typing.Callable[[], object] | None:
+    if bridge is None:
+        return None
+    reset_tool_registry_obj: object = getattr(bridge, "reset_tool_registry", None)
+    if not callable(reset_tool_registry_obj):
+        return None
+    return cast("typing.Callable[[], object]", reset_tool_registry_obj)
 
 
 def _is_skip_response(text: str) -> bool:
@@ -642,6 +659,8 @@ def invoke_commit_agent_attempt(
             if parsed_output
             else None
         )
+        if classifier.reset_tool_registry:
+            raise _invocation_error_with_output(exc, parsed_output)
         return CommitAgentAttempt(
             failure_detail=_format_agent_invocation_failure(
                 agent.cmd, prompt_file, exc, parsed_output=parsed_output
@@ -661,6 +680,9 @@ def invoke_commit_agent_attempt(
             display_context=display_context,
         )
     except AgentInvocationError as exc:
+        classifier = FailureClassifier().classify(exc, phase="commit", agent=agent.cmd)
+        if classifier.reset_tool_registry:
+            raise _invocation_error_with_output(exc, _parsed_output_from_invocation_error(exc))
         return CommitAgentAttempt(
             failure_detail=_format_agent_invocation_failure(
                 agent.cmd,
@@ -922,7 +944,7 @@ def collect_commit_agent_output(
             for line in lines:
                 raw_line = str(line)
                 raw_output.append(raw_line)
-                session_id = extract_session_id((raw_line,))
+                session_id = extract_transport_session_id((raw_line,))
                 nonlocal resume_session_id
                 if session_id is not None:
                     resume_session_id = session_id
@@ -936,7 +958,11 @@ def collect_commit_agent_output(
             if verbose:
                 console.print(rendered)
     except AgentInvocationError as exc:
-        raise _invocation_error_with_output(exc, list(parsed_output)) from exc
+        raise _invocation_error_with_output(
+            exc,
+            list(parsed_output),
+            raw_output=list(raw_output),
+        ) from exc
     return list(parsed_output), list(raw_output), resume_session_id
 
 
@@ -1069,12 +1095,13 @@ def _format_metadata_value(value: object) -> str:
 def _invocation_error_with_output(
     exc: AgentInvocationError,
     parsed_output: list[str],
+    raw_output: list[str] | None = None,
 ) -> AgentInvocationError:
     return AgentInvocationError(
         exc.agent_name,
         exc.returncode,
         exc.stderr,
-        parsed_output=list(parsed_output),
+        parsed_output=list(raw_output or parsed_output),
     )
 
 
