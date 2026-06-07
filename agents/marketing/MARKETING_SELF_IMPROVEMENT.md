@@ -1,6 +1,6 @@
 # Marketing Self-Improvement Status
 
-**Last updated: 2026-06-07 07:55 CEST** (active-loop run #14 — HN harness-engineering handoff + live verification)
+**Last updated: 2026-06-07 08:00 CEST** (active-loop run #15 — watchdog CTA false-positive fix)
 
 ## Live Adoption (verified 2026-06-07 00:07 CEST)
 - **Codeberg:** 12★ (flat, 5+ weeks) — PRIMARY METRIC
@@ -94,6 +94,7 @@ Run #11 (Jun 6 18:10): HN handoff refreshed with today's thread activity (madarc
 Run #12 (Jun 7 00:15): Distribution architecture repair — compacted this file, CLAIMED execution board regeneration (NOT persisted — file unchanged on disk). HN thread still alive (126 comments).
 Run #13 (Jun 7 07:38): **Deployment + board fix** — committed/deployed CTA footers to 2 blog posts (revision 64c0060), actually regenerated execution board (was 13 days stale), verified live adoption (flat). HN window confirmed closed (147 score, 128 comments, no new engagement). Reddit deadline Jun 12 (4.5 days). All 7 external lanes still credential-blocked.
 Run #14 (Jun 7 07:55): **HN harness-engineering handoff** — discovered hot new HN thread #48416264 ("Harness engineering: Leveraging Codex in an agent-first world", 144pts/94 comments/6h). Created 2-angle handoff bridge. Discovered CTA partial already renders site-wide (watchdog false-positive on 45 posts). Verified live adoption flat (Codeberg 12★, GitHub 3★). Notified mistlight via Matrix.
+Run #15 (Jun 7 08:00): **Watchdog CTA false-positive fix** — fixed conversion_surface_watchdog.py to detect `_blog_repo_cta.html.erb` view-layer CTA and suppress cross-link penalty. Avg score corrected 10.1→12.1, 45 false-positive "WEAK_ENDING" flags eliminated. Verified HN thread still active (debating LoC-as-flex vs human-readability — perfect Ralph positioning). Committed + pushed (f682923a).
 
 ## Self-Improvement Meta-Note
 Future active-loop runs should be trimmed to: (1) live adoption delta check, (2) handoff bridge freshness, (3) notify if time-sensitive opportunity. No more novel-length entries — the diagnosis has been stable for 11+ runs and further elaboration is activity theater.
