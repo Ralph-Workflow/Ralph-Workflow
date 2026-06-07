@@ -1,41 +1,67 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-05-25T18:53:00
+Generated: 2026-06-07T12:15:00+02:00 (12:15 CEST)
 
 ## Why this board exists
-- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
-- Multiple live lanes already exist, so this board consolidates the best executable assets instead of letting them stay siloed across separate packet files.
-- Use this as the single follow-through surface during measurement holds and overlapping review windows.
+- Codeberg is still flat in the active window (12★, 5+ weeks no delta).
+- GitHub mirror 3★ (holding). PyPI ~1,300 downloads/month (0.00% star conversion).
+- All 7 external distribution lanes credential-blocked. HN/Lobsters/Reddit/Dev.to/SMTP/Apollo/PyPI — none executable from this host.
+- ⚠️ HN handoff v3 WITHDRAWN (12:15 CEST) — the andai comment referenced "Ralph Wiggum Loop" (ghuntley.com/loop anti-pattern), NOT Ralph Workflow. The run #17 misinterpretation has been corrected.
+
+## Current adoption snapshot (verified 2026-06-07 09:00 CEST)
+- **Codeberg:** 12★, 2 watchers, 2 forks, 4 open issues — PRIMARY METRIC
+- **GitHub:** 3★, 2 watchers, 0 forks — mirror only
+- **PyPI:** ~1,300 downloads/month, 49/day, version 0.8.8
+
+## HN Thread #48416264 — CORRECTED ASSESSMENT
+
+### "Harness engineering: Leveraging Codex in an agent-first world"
+- **Status:** 167pts, 107 comments, on front page (verified 12:10 CEST)
+- **Genuine relevance:** Thread debates harness architecture, agent legibility vs human readability, LoC-as-flex — all directly relevant to Ralph Workflow's positioning
+- **andai comment CORRECTION:** User "andai" wrote "Ralph Wiggum Loop" (referencing Geoffrey Huntley's ghuntley.com/loop anti-pattern article, NOT Ralph Workflow). Comment was NOT truncated. Do NOT reply to andai.
+- **Viable path:** The fallback top-level reply (harness-ownership angle) is the only viable option. Thread deadline ~20:00 CEST.
+- **If posting:** Use the fallback reply from HN_HARNESS_HANDOFF_v3.md. Do NOT post the withdrawn "golden reply."
+
+## Active handoff bridges (needs human execution)
+
+| Bridge | Status | Created | Deadline | Kill |
+|--------|--------|---------|----------|------|
+| HN harness eng | ⚠️ v3 withdrawn (false alarm corrected) | Jun 7 09:10, corrected 12:15 | ~20:00 CEST Jun 7 | 0 engagement in 7d |
+| Reddit (6 replies) | Ready, 0 human-posted | Jun 6 08:46 CEST | Jun 12 21:24 CEST | No Codeberg delta by Jun 19 |
+| StackOverflow | Draft-only (0/15 posted) | Jun 6 12:24 CEST | N/A | N/A |
+
+## Distribution lane status
+
+- **Current lane:** guard_pause (distribution_architecture_guard_pause)
+- **Release at:** 2026-06-07T13:53:24 CEST (today, ~1.5h from now)
+- **Next lane after release:** curator_due_followup (5 targets prepared at 09:00)
+- **Curator execution blocked by:** GitHub auth (needed for PR creation)
 
 ## Active review windows
-- Apollo next review: 2026-05-29T09:00:01.629178+02:00
-- Apollo launch review: 2026-06-05T09:00:01.629178+02:00
-- Short review-window congestion clears at: 2026-05-25T23:07:41
-- StackOverflow demand-capture packet was already delivered for manual placement in the current review window; do not redeliver it until a genuinely new placement path exists.
-- StackOverflow demand-capture packet is exhausted for this review window; do not redeliver it until a genuinely new placement path exists.
-- Comparison backlink packet was already manually delivered in the current review window; do not surface it again until that window expires or the prepared target set changes.
-- Directory secondary-surface repair already shipped in the current review window; do not requeue it until the documented follow-up date or the live target set changes.
+- Apollo sequence: not launched (blocked by Cloudflare/auth)
+- HN thread: viable (harness architecture angle), deadline ~20:00 CEST today
+- Reddit handoff: deadline Jun 12 — 5 days remaining
+- StackOverflow: draft-only, 0 candidates
 
-## Best executable assets still waiting
-### 1. Manual publisher outreach asset
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/primary_repo_flat_manual_review_asset_latest.md
-- Targets: ComputingForGeeks
-- Why this matters: A current Codeberg-first manual follow-through asset already exists for the active primary-repo-flat target set; use it instead of regenerating the packet.
+## Run #17 error — corrected this run
+- Run #17 (09:10 CEST): Misidentified andai's "Ralph Wiggum Loop" reference as a Ralph Workflow name-drop
+- Created HN handoff v3 with a "golden reply" that would have been brand-damaging
+- Corrected: handoff marked withdrawn, execution board updated, MARKETING_SELF_IMPROVEMENT.md corrected
+- Root cause: reading "Ralph Wiggum Loop" as truncated "Ralph Workflow" — pattern-matching without verifying the full context
 
-## Shared findings reused
-- market_intelligence_latest.json → positioning truths and comparison framing
-- adoption_metrics_latest.json → Codeberg movement remains the primary success gate
-- curator_outreach_queue_latest.json / comparison_backlink_queue_latest.json → live prepared execution queues
-- primary_repo_flat_contact_discovery_latest.json → fresh publisher-contact lane
-- apollo_sequence_status_latest.json / apollo_sequence_launch_packet_latest.md → launch-ready managed outbound state
-- stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
+## Structural fix deployed this run
+- Created `/proof` page on ralphworkflow.com — shows concrete morning-after output example
+- Addresses the #1 conversion bottleneck: "what does the output actually look like?"
 
-## Verified infrastructure state (programmatic, not fabricated)
-- **Telegraph guard**: clear
-- **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
-- **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
-- **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED
+## Blocked (need human) — ordered by ROI
+1. **Reddit PRAW API keys** — HIGHEST ROI. 5 min setup. See `agents/marketing/REDDIT_PRAW_SETUP.md`
+2. **Dev.to API key** — 5 min, unblocks second content distribution lane
+3. **HN account** — needs karma to post
+4. **SMTP credentials** — enables email outreach
+5. **Apollo.io** — Cloudflare-blocked
+6. **Search provider** — DDG dead ~12 days, Brave dead since Jun 3. Need Brave Search API or SerpAPI key.
 
-## Process rule now in force
-- Do not generate another siloed packet when one of the assets above is already current.
-- During a hold window, refresh stale packets if needed, then point back to this board instead of inventing another reset artifact.
+## Process rules now in force
+- During guard pause (until 13:53 CEST), do not run another lane selector pass.
+- When guard pause releases, the curator lane is available but blocked by GitHub auth.
+- Do not regenerate already-current handoff packets.
+- If outcomes stay flat for another audit cycle, create a new agent/lane (Principle 10).
