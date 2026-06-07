@@ -448,6 +448,7 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
     assert result.message == "fix: recovered after repeated retry"
     assert bridge.reset_calls == 2
     assert calls == [None, "sess-post-tool", "sess-post-tool"]
+    assert result.failure_details != []
 
 
 def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id(
@@ -562,3 +563,50 @@ def test_handle_agent_commit_generation_reports_stage_failure_without_traceback(
     rendered = output.getvalue()
     assert "Commit failed" in rendered
     assert "stale git lock remained active" in rendered
+
+
+def test_handle_agent_commit_generation_surfaces_recovered_retry_evidence(
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    display_context = make_display_context(
+        console=Console(file=output, force_terminal=False, color_system=None, width=120)
+    )
+    config = UnifiedConfig()
+
+    with (
+        patch("ralph.cli.commands.commit.working_tree_diff", return_value="diff --git a/x b/x"),
+        patch("ralph.cli.commands.commit.AgentRegistry.from_config", return_value=object()),
+        patch("ralph.cli.commands.commit._resolve_commit_message_agents", return_value=["claude"]),
+        patch("ralph.cli.commands.commit.resolve_workspace_scope", return_value=object()),
+        patch(
+            "ralph.cli.commands.commit.load_agents_policy_for_workspace_scope",
+            return_value=object(),
+        ),
+        patch(
+            "ralph.cli.commands.commit._generate_commit_message_with_chain",
+            return_value=CommitAgentResult(
+                message="fix: recover stale git lock",
+                failure_details=[
+                    "retryable failure recovered: "
+                    "Model returned an empty response with no tool calls"
+                ],
+            ),
+        ),
+        patch(
+            "ralph.cli.commands.commit.read_commit_message_artifact",
+            return_value="fix: recover stale git lock",
+        ),
+        patch("ralph.cli.commands.commit.render_commit_message"),
+        patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
+    ):
+        commit_module._handle_agent_commit_generation(
+            repo_root=tmp_path,
+            config=config,
+            options=commit_module.CommitPlumbingOptions(generate_commit_msg=True),
+            display_context=display_context,
+        )
+
+    rendered = output.getvalue()
+    assert "Recovered after retryable MCP/agent failures" in rendered
+    assert "Model returned an empty response with no tool calls" in rendered

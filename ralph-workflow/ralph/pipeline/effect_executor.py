@@ -100,6 +100,10 @@ _TRANSIENT_CONNECTIVITY_MARKERS = (
     "socket hang up",
 )
 
+_TURN_LIMIT_MARKERS = (
+    "conversation exceeded 50 turns",
+)
+
 _POST_TOOL_EMPTY_RESPONSE_MARKERS = (
     "empty response with no tool calls",
     "empty response",
@@ -585,22 +589,48 @@ def _failure_requires_fresh_session(exc: Exception, inactivity_error_type: type[
 def _retryable_agent_failure_reason(
     exc: Exception, inactivity_error_type: type[Exception]
 ) -> str | None:
-    if isinstance(exc, inactivity_error_type):
-        return "an inactivity timeout"
-    if type(exc).__name__ == "OpenCodeResumableExitError":
-        return "agent session exited without required completion evidence"
-    raw_details = "\n".join(_recovery_error_parts(exc))
-    if contains_casefolded_marker(_recovery_error_parts(exc), _SESSION_NOT_FOUND_SUBSTRINGS):
-        return "a stale session ID (fresh session required)"
-    details = raw_details.lower()
-    for marker in _TRANSIENT_CONNECTIVITY_MARKERS:
-        if marker in details:
-            return "a transient connectivity failure"
-    if contains_casefolded_marker(
-        _recovery_error_parts(exc), _POST_TOOL_EMPTY_RESPONSE_MARKERS
-    ) and contains_casefolded_marker(_recovery_error_parts(exc), _POST_TOOL_ACTIVITY_MARKERS):
-        return "a post-tool-result continuation failure"
+    detail_parts = _recovery_error_parts(exc)
+    primary_text = _primary_recovery_error_text(exc)
+    checks: tuple[tuple[bool, str], ...] = (
+        (isinstance(exc, inactivity_error_type), "an inactivity timeout"),
+        (
+            type(exc).__name__ == "OpenCodeResumableExitError",
+            "agent session exited without required completion evidence",
+        ),
+        (
+            contains_casefolded_marker(detail_parts, _SESSION_NOT_FOUND_SUBSTRINGS),
+            "a stale session ID (fresh session required)",
+        ),
+        (
+            contains_casefolded_marker(detail_parts, _TURN_LIMIT_MARKERS),
+            "the agent conversation turn limit",
+        ),
+        (
+            _has_transient_connectivity_signal(primary_text),
+            "a transient connectivity failure",
+        ),
+        (
+            contains_casefolded_marker(detail_parts, _POST_TOOL_EMPTY_RESPONSE_MARKERS)
+            and contains_casefolded_marker(detail_parts, _POST_TOOL_ACTIVITY_MARKERS),
+            "a post-tool-result continuation failure",
+        ),
+    )
+    for matched, reason in checks:
+        if matched:
+            return reason
     return None
+
+
+def _primary_recovery_error_text(exc: Exception) -> str:
+    stderr = cast("object", getattr(exc, "stderr", ""))
+    if isinstance(stderr, str) and stderr.strip():
+        return stderr
+    return str(exc)
+
+
+def _has_transient_connectivity_signal(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_MARKERS)
 
 
 def _recovery_error_parts(exc: Exception) -> list[str]:

@@ -359,3 +359,18 @@ def test_stream_parsed_agent_activity_session_sink_ignores_nested_tool_payload_s
     )
 
     assert seen == ["transport-session"]
+
+
+def test_stream_parsed_agent_activity_plain_tool_line_routes_to_tool_use(tmp_path: Path) -> None:
+    pd, buf = _make_display(tmp_path)
+
+    stream_parsed_agent_activity(
+        ["[plain] tool: read_file"],
+        parser_type="generic",
+        agent_name="nanocoder/minimax",
+        display=pd,
+    )
+
+    out = buf.getvalue()
+    assert "read_file" in out
+    assert "[content][activity]" not in out

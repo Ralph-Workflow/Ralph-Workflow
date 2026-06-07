@@ -3,7 +3,10 @@ from __future__ import annotations
 from contextlib import suppress
 
 from ralph.agents.invoke import AgentInvocationError
-from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recovery
+from ralph.agents.invoke._direct_mcp_recovery import (
+    iter_with_direct_mcp_recovery,
+    run_with_direct_mcp_recovery,
+)
 from ralph.agents.invoke._session import extract_session_id, extract_transport_session_id
 
 
@@ -25,7 +28,7 @@ def test_direct_mcp_recovery_ignores_nested_tool_payload_session_ids() -> None:
 
     with suppress(AgentInvocationError):
         run_with_direct_mcp_recovery(
-            _run_attempt,
+            lambda session_id, _capture: _run_attempt(session_id),
             max_retries=1,
             reset_tool_registry=lambda: None,
         )
@@ -44,3 +47,38 @@ def test_transport_session_extractor_ignores_generic_plain_text_session_assignme
     line = "assistant said session_id=fake-visible"
 
     assert extract_transport_session_id((line,)) is None
+
+
+def test_iter_direct_mcp_recovery_preserves_early_session_id_across_long_output() -> None:
+    calls: list[str | None] = []
+
+    def _run_attempt(
+        session_id: str | None,
+    ) -> list[str]:
+        calls.append(session_id)
+        if len(calls) == 1:
+            lines = ['{"session_id":"sess-early"}']
+            lines.extend(f"line-{index}" for index in range(500))
+
+            def _iter() -> object:
+                yield from lines
+                raise AgentInvocationError(
+                    "claude",
+                    1,
+                    "Model returned an empty response with no tool calls",
+                    parsed_output=['{"type":"tool_result","tool":"read_file"}'],
+                )
+
+            return _iter()
+        return ['recovered']
+
+    result = list(
+        iter_with_direct_mcp_recovery(
+            _run_attempt,
+            max_retries=1,
+            reset_tool_registry=lambda: None,
+        )
+    )
+
+    assert result[-1] == "recovered"
+    assert calls == [None, "sess-early"]

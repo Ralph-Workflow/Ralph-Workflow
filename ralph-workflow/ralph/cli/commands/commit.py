@@ -255,6 +255,14 @@ def _handle_agent_commit_generation(
     # Use the shared render_commit_message for consistent UI
     console.print(Text("\nGenerated commit message:", style="theme.status.success"))
     render_commit_message(repo_root, ctx)
+    if result.failure_details:
+        console.print(
+            Text(
+                "Recovered after retryable MCP/agent failures:",
+                style="theme.status.warning",
+            )
+        )
+        _print_commit_failure_details(result.failure_details, display_context=ctx)
 
     if apply:
         try:
@@ -505,7 +513,7 @@ def _generate_commit_message_with_chain(
             if result.skipped:
                 return CommitAgentResult(skipped=True, failure_details=failure_details)
             if result.message:
-                return CommitAgentResult(message=result.message)
+                return CommitAgentResult(message=result.message, failure_details=failure_details)
     finally:
         bridge.shutdown()
 
@@ -610,12 +618,13 @@ def _run_commit_agent_attempt_with_recovery(
 ) -> CommitAgentAttempt:
     try:
         return run_with_direct_mcp_recovery(
-            lambda retry_session_id: invoke_commit_agent_attempt(
+            lambda retry_session_id, capture_session_id: invoke_commit_agent_attempt(
                 agent,
                 prompt_file=prompt_file,
                 attempt_context=attempt_context,
                 session_id=retry_session_id or session_id,
                 display_context=display_context,
+                session_id_sink=capture_session_id,
             ),
             max_retries=max_retries,
             reset_tool_registry=_reset_tool_registry_callback(attempt_context.bridge),
@@ -646,6 +655,7 @@ def invoke_commit_agent_attempt(
     attempt_context: CommitAttemptContext,
     session_id: str | None = None,
     display_context: DisplayContext,
+    session_id_sink: typing.Callable[[str], None] | None = None,
 ) -> CommitAgentAttempt:
     """Run one commit-agent invocation attempt and return its result."""
     delete_commit_message_artifacts(attempt_context.repo_root)
@@ -710,6 +720,7 @@ def invoke_commit_agent_attempt(
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
             display_context=display_context,
+            session_id_sink=session_id_sink,
         )
     except AgentInvocationError as exc:
         classifier = FailureClassifier().classify(exc, phase="commit", agent=agent.cmd)
@@ -964,6 +975,7 @@ def collect_commit_agent_output(
     agent_name: str,
     verbose: bool,
     display_context: DisplayContext,
+    session_id_sink: typing.Callable[[str], None] | None = None,
 ) -> tuple[list[str], list[str], str | None]:
     """Consume agent output lines, returning (parsed_lines, raw_lines, resume_session_id)."""
     ctx = display_context
@@ -982,6 +994,8 @@ def collect_commit_agent_output(
                 nonlocal resume_session_id
                 if session_id is not None:
                     resume_session_id = session_id
+                    if session_id_sink is not None:
+                        session_id_sink(session_id)
                 yield raw_line
 
         for parsed_line in parser.parse(_raw_lines()):

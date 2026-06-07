@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
 from ralph.recovery.failure_classifier import FailureClassifier
 
-from ._session import extract_transport_session_id
+from ._session import extract_transport_session_id, extract_transport_session_id_from_line
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
@@ -48,7 +48,7 @@ def _retry_plan_for_agent_invocation_error(
 
 
 def run_with_direct_mcp_recovery[T](
-    run_attempt: Callable[[str | None], T],
+    run_attempt: Callable[[str | None, Callable[[str], None]], T],
     *,
     max_retries: int,
     reset_tool_registry: Callable[[], object] | None = None,
@@ -57,15 +57,21 @@ def run_with_direct_mcp_recovery[T](
     current_session_id: str | None = None
     retries_used = 0
     while True:
+        observed_session_id = current_session_id
+
+        def _capture_session_id(session_id: str) -> None:
+            nonlocal observed_session_id
+            observed_session_id = session_id
+
         try:
-            return run_attempt(current_session_id)
+            return run_attempt(current_session_id, _capture_session_id)
         except AgentInvocationError as exc:
             if reset_tool_registry is None or retries_used >= max_retries:
                 raise
             retry_plan = _retry_plan_for_agent_invocation_error(
                 exc,
                 attempt_lines=list(exc.parsed_output),
-                current_session_id=current_session_id,
+                current_session_id=observed_session_id,
             )
             if retry_plan is None:
                 raise
@@ -91,6 +97,9 @@ def iter_with_direct_mcp_recovery(
         try:
             for line in run_attempt(current_session_id):
                 attempt_lines.append(line)
+                observed_session_id = extract_transport_session_id_from_line(line)
+                if observed_session_id is not None:
+                    current_session_id = observed_session_id
                 yield line
             return
         except AgentInvocationError as exc:
@@ -116,12 +125,16 @@ def _invocation_error_with_output(
     exc: AgentInvocationError,
     attempt_lines: list[str] | deque[str],
 ) -> AgentInvocationError:
-    if attempt_lines:
+    merged_lines: list[str] = list(attempt_lines)
+    for line in exc.parsed_output:
+        if line not in merged_lines:
+            merged_lines.append(line)
+    if merged_lines:
         return AgentInvocationError(
             exc.agent_name,
             exc.returncode,
             exc.stderr,
-            parsed_output=list(attempt_lines),
+            parsed_output=merged_lines,
         )
     return exc
 

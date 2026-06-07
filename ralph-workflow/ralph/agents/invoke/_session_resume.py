@@ -192,7 +192,7 @@ def recovery_action_for_failure_reason(
         "OpenCodeResumableExitError",
     }:
         return "resume"
-    if reset_tool_registry and _is_tool_availability_marker(failure_reason):
+    if reset_tool_registry:
         return "resume"
     if failure_reason == "NoConversationFoundError":
         return "new_session_with_id"

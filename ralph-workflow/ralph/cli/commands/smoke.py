@@ -221,11 +221,13 @@ def _execute_smoke_turns(
 
         def _run_retry_attempt(
             retry_session_id: str | None,
+            capture_session_id: Callable[[str], None],
             bound_session_id: str | None = active_session_id,
         ) -> tuple[list[str], list[str]]:
             return _run_smoke_attempt(
                 params,
                 _with_session_id(params.options, retry_session_id or bound_session_id),
+                session_id_sink=capture_session_id,
             )
 
         try:
@@ -255,6 +257,8 @@ def _execute_smoke_turns(
 def _run_smoke_attempt(
     params: SmokeRunParams,
     options: InvokeOptions,
+    *,
+    session_id_sink: Callable[[str], None] | None = None,
 ) -> tuple[list[str], list[str]]:
     raw_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
     rendered_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
@@ -277,7 +281,7 @@ def _run_smoke_attempt(
             display_context=params.display_context,
             raw_output_sink=raw_lines,
             rendered_output_sink=rendered_lines,
-            session_id_sink=None,
+            session_id_sink=session_id_sink,
         )
     except AgentInvocationError as exc:
         raise AgentInvocationError(

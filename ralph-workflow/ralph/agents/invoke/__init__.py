@@ -70,7 +70,6 @@ from ralph.agents.invoke._pty_helpers import (
 from ralph.agents.invoke._pty_reader import _run_pty_and_read_lines as _run_pty_and_read_lines_impl
 from ralph.agents.invoke._session import (
     _bounded_output_lines,
-    extract_session_id,
     extract_transport_session_id,
 )
 from ralph.agents.invoke._types import (
@@ -559,6 +558,7 @@ read_lines_from_process = _read_lines_from_process
 wait_for_descendants_then_recheck = _wait_for_descendants_then_recheck
 policy_from_options = _policy_from_options
 merge_mcp_toml_into_upstreams = _merge_mcp_toml_into_upstreams
+extract_session_id = extract_transport_session_id
 
 # Re-export all public types and error classes
 __all__ = [

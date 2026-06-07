@@ -153,3 +153,13 @@ def test_tool_registry_recovery_empty_response_uses_resume_action() -> None:
     )
 
     assert action == "resume"
+
+
+def test_tool_registry_recovery_agent_invocation_error_still_uses_resume_action() -> None:
+    action = recovery_action_for_failure_reason(
+        "AgentInvocationError",
+        has_prior_session=True,
+        reset_tool_registry=True,
+    )
+
+    assert action == "resume"

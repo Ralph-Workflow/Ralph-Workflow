@@ -145,3 +145,31 @@ class TestNonResumableExceptionYieldsNoRecovery:
 
         assert plan is not None
         assert plan.session_id is None
+
+    def test_recovery_plan_does_not_mislabel_turn_limit_as_connectivity(
+        self, tmp_path: Path
+    ) -> None:
+        exc = AgentInvocationError(
+            "nanocoder",
+            1,
+            "Conversation exceeded 50 turns",
+            parsed_output=["Now let me inspect the timeout policy defaults."],
+        )
+        effect = _make_effect(prompt_file="PROMPT.md", agent_name="nanocoder")
+
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=[],
+                rendered_output=[],
+                extracted_session_id=None,
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
+        )
+
+        assert plan is not None
+        assert plan.reason == "the agent conversation turn limit"

@@ -23,6 +23,7 @@ wall-clock time per the 60s combined test budget rule.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -168,3 +169,31 @@ def test_budget_is_debited_exactly_once_per_cycle() -> None:
     # Counter is still 3 (not 4); the cap error path did not
     # increment the counter.
     assert bridge.tool_registry_resets == lifecycle_module._TOOL_REGISTRY_MAX_RESETS
+
+
+def test_bridge_reset_tool_registry_fails_closed_when_alias_probe_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inner = SimpleNamespace(
+        endpoint="http://127.0.0.1:9999/mcp",
+        process=SimpleNamespace(poll=lambda: None),
+        shutdown=lambda: None,
+    )
+    restarted = SimpleNamespace(
+        endpoint="http://127.0.0.1:9999/mcp",
+        process=SimpleNamespace(poll=lambda: None),
+        shutdown=lambda: None,
+    )
+    bridge = RestartAwareMcpBridge(
+        cast("StandaloneMcpProcess", inner),
+        restart_fn=lambda: cast("StandaloneMcpProcess", restarted),
+        restart_policy=MagicMock(max_restarts=1000),
+    )
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_http_tools_list_names",
+        lambda endpoint, *, timeout: (_ for _ in ()).throw(TimeoutError("slow-start")),
+    )
+
+    with pytest.raises(McpServerError, match="alias verify probe failed after respawn"):
+        bridge.reset_tool_registry()

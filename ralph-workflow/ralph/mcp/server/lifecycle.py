@@ -330,10 +330,15 @@ class RestartAwareMcpBridge:
                 endpoint, timeout=_RESPAWN_ALIAS_VERIFY_TIMEOUT_S
             )
         except (urllib.error.URLError, OSError, TimeoutError, ValueError) as exc:
-            logger.debug(
-                "alias-verify HTTP probe failed: endpoint={} error={}", endpoint, exc
+            msg = (
+                "mcp alias verify probe failed after respawn: "
+                f"endpoint={endpoint!r} error={exc}"
             )
-            return
+            logger.error(msg)
+            raise McpServerError(
+                msg,
+                restart_count=self._restart_count,
+            ) from exc
         expected_alias = (
             f"mcp__{_ALIAS_VERIFY_SERVER_NAME}__{_ALIAS_VERIFY_TOOL_NAME}"
         )
