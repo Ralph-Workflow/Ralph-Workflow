@@ -1,6 +1,6 @@
 # Marketing Self-Improvement Status
 
-**Last updated: 2026-06-07 09:15 CEST** (active-loop run #17 — HN andai comment hook discovered, handoff v3 created, mistlight notified)
+**Last updated: 2026-06-07 12:20 CEST** (active-loop run #18 — HN false alarm corrected, execution board regenerated, proof visual deployed, receipt lock broken)
 
 ## Live Adoption (verified 2026-06-07 09:00 CEST)
 - **Codeberg:** 12★ (flat, 5+ weeks) — PRIMARY METRIC
@@ -102,6 +102,8 @@ Run #16 (Jun 7 08:30): **Sync regression repair + Docker gap + watchdog created*
 - **SEO cannibalization regression DETECTED AND FIXED**: `sync_to_github.sh` was silently reverted to preserve full README on GitHub (undoing audit #33's mirror-notice fix). GitHub README confirmed 6,097 bytes (full content). Restored mirror-notice post-sync hook. Created `github_mirror_readme.md` (280 bytes).
 - **Created `seo_cannibalization_watchdog.py`** (weekly Sun 07:15) — the fix that audit #33 claimed to deploy but that never existed as a watchdog file. Now verifies: sync script config, last sync log, and live GitHub README size.
 - **Docker quickstart gap closed**: Dockerfile + docker-compose.yml were missing from Codeberg repo (README advertised Docker but files only in vendor). Copied + committed + pushed to Codeberg main (commit 33289640).
+
+Run #18 (Jun 7 12:15): ⚠️ **HN false alarm corrected + structural improvements** — Run #17's andai hook was a misreading: "Ralph Wiggum Loop" is a known anti-pattern from ghuntley.com/loop, NOT Ralph Workflow. Comment was NOT truncated. HN handoff v3 marked WITHDRAWN to prevent brand-damaging posting. Execution board staleness lock broken (13-day self-reinforcing receipt cycle). Board regenerated with corrected assessment. Proof visual ("morning-after output" terminal mockup) deployed to ralphworkflow.com/start. Ralph Site commit 17edf5e pushed live. All 7 external lanes still credential-blocked. Codeberg 12★ GitHub 3★ (flat).
 
 ## Self-Improvement Meta-Note
 Future active-loop runs should be trimmed to: (1) live adoption delta check, (2) handoff bridge freshness, (3) notify if time-sensitive opportunity. No more novel-length entries — the diagnosis has been stable for 11+ runs and further elaboration is activity theater.
