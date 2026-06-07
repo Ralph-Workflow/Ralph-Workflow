@@ -149,7 +149,7 @@ Default to **`openrouter/deepseek/deepseek-v4-flash`**.
 
 Use **`openrouter/deepseek/deepseek-v4-pro`** for expensive tasks: deeper strategy, ambiguous high-context ownership loops, major audits, architecture decisions, and long-form judgment-heavy work.
 
-Use **`minimax/MiniMax-M2.7-highspeed`** for clearly simple tasks:
+Use **`minimax/MiniMax-M3`** for clearly simple tasks:
 - straightforward
 - low-risk
 - low-judgment

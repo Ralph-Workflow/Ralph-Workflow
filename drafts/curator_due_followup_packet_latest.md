@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Due Follow-Up Packet
-Generated: 2026-06-07T09:00:02
+Generated: 2026-06-08T00:07:29
 
 ## Why this exists now
 - At least one curator review window is due, so the loop should follow through instead of hiding inside another measurement hold or reset.
@@ -15,8 +15,8 @@ Generated: 2026-06-07T09:00:02
 ## Live third-party proof to reuse
 - Confirmed public listings already exist; cite these instead of sounding like every submission is still pending.
 - ClaudeCodeAlternatives — https://claude-code-alternatives.com/cli-agents/ralph-workflow/ (includes both Codeberg and GitHub links) (Submitted 2026-05-24; initial POST returned HTTP 302 and an immediate second attempt said the Codeberg URL was already taken, so treat as recorded/pending until a public listing resolves.)
+- ListYourTool — https://www.listyourtool.com/tools/ralph-workflow (routes to Codeberg first) (Submitted 2026-05-23 via API; tool_id=e27adedd-3faa-432b-ab35-000a8bf66121; pending review.)
 - SaaSHub — https://saashub.com/ralph-workflow (includes both Codeberg and GitHub links)
-- ToolWise — https://toolwise.ai/tools/ralph-workflow (routes to Codeberg first) (Existing ToolWise listing already live and pointing to the primary Codeberg repo.)
 
 ## Follow up now
 ### 1. filipecalegario/awesome-vibe-coding

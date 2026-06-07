@@ -1,8 +1,13 @@
 {
-  "checked_at": "2026-06-07T20:16:35.451750+02:00",
+  "checked_at": "2026-06-08T00:45:34.696540+02:00",
   "verdict": "qualified_pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
+    {
+      "claim": "architecture report still reflects elevated overall risk, but that risk can be treated as externally blocked rather than a local escalation-design failure",
+      "status": "verified",
+      "details": "agent_architecture_latest.json reports overall_health='high_risk' while architecture-owned blockers are clear and the remaining live blocker is external to the architecture loop."
+    },
     {
       "claim": "Architecture report refresh captured the verifier repair state before fresh independent signoff.",
       "status": "verified",
@@ -36,7 +41,7 @@
     {
       "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
       "status": "verified",
-      "details": "recent_failures=11, consecutive_passes_since_last_fail=82"
+      "details": "recent_failures=11, consecutive_passes_since_last_fail=91"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -70,7 +75,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "summary": "Architecture audit refreshed with overall_health='architecture_green_external_red'."
+      "summary": "Architecture audit refreshed with overall_health='high_risk'."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
@@ -93,7 +98,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]

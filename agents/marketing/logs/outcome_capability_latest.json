@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-06-07T12:20:05.479044",
+  "timestamp": "2026-06-08T00:45:01.713599",
   "type": "outcome_capability_runner",
   "status": "skipped_regeneration_guard",
-  "reason": "Same-day distribution_action_brief already exists (841s old). Skipping to prevent draft inflation.",
-  "existing_brief": "/home/mistlight/.openclaw/workspace/drafts/2026-06-07_distribution_action_brief.md",
+  "reason": "Same-day distribution_action_brief already exists (2252s old). Skipping to prevent draft inflation.",
+  "existing_brief": "/home/mistlight/.openclaw/workspace/drafts/2026-06-08_distribution_action_brief.md",
   "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
 }

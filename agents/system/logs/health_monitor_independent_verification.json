@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-07T18:31:17.617693+02:00",
+  "checked_at": "2026-06-08T00:45:52.382229+02:00",
   "verdict": "fail",
   "summary": "Independent verification found blockers that prevent the repaired health monitor from being certified healthy.",
   "verified_repairs": [

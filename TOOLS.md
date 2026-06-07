@@ -93,7 +93,7 @@ Add whatever helps you do your job. This is your cheat sheet.
 
 - Default: `openrouter/deepseek/deepseek-v4-flash`
 - Use `openrouter/deepseek/deepseek-v4-pro` for expensive/high-judgment tasks
-- Use `minimax/MiniMax-M2.7-highspeed` for clearly straightforward, low-judgment, easy-to-verify tasks
+- Use `minimax/MiniMax-M3` for clearly straightforward, low-judgment, easy-to-verify tasks
 - If unsure, use `openrouter/deepseek/deepseek-v4-flash`
 
 ## Related

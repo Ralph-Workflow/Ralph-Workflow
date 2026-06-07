@@ -1,12 +1,36 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-06-07T09:00:02
-- Hold release at: 2026-06-07T13:53:24
-- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-06-07_marketing_execution_board.md
+Generated: 2026-06-08T00:07:29
+Hold release at: 2026-06-08T00:09:00
+**Status: EXECUTED — Run #21 at 2026-06-08T00:09 CEST**
 
-## Hard rule for the first post-hold slot
-- If the execution board is still empty after the hold clears, choose distribution_architecture_repair instead of another measurement_hold.
-- Do not regenerate or redeliver packets that are already current in this review window just to fill the slot.
-- Keep Codeberg as the canonical CTA and GitHub as mirror-only support.
+## Run #21 Outcome
+- ✅ Short review window cleared at 00:09 — verified all 4 board assets are human handoffs
+- ✅ Picked HN v5 handoff bridge as the untouched truthful lane (thread #48434312, 728pts #1 active)
+- ✅ Created handoff comment (career-reframe angle, "editor-in-chief" metaphor)
+- ✅ Pushed to mistlight via Matrix with urgency note
+- ✅ Updated MARKETING_SELF_IMPROVEMENT.md (closed v4, recorded v5)
+- ✅ Saved handoff to drafts/hn_v5_handoff_48434312.md
+- ⚠️ Star conversion gap remains chronic (14 zero-star samples, 1,335/mo → 0★)
+- ⚠️ All 4 execution board assets remain human-execution-only
+
+## Lane status after Run #21
+| Lane | Status |
+|------|--------|
+| HN v4 (#48416264) | ❌ CLOSED — deadline passed |
+| HN v5 (#48434312) | 🔥 HANDOFF LIVE — awaiting human post |
+| StackOverflow | Draft-only, human must post |
+| Curator contacts | Email/GitHub needed, no credentials |
+| Comparison backlink | GitHub auth blocked |
+| Directory repair | SaaSHub editor contact needed |
+| Star conversion | CTA at 50%, 0.00% conversion still |
+| Apollo | Inside existing review window |
+| Reddit | Handoff ready, deadline Jun 12 |
+
+## For next post-hold wake
+- If HN v5 was posted: check for engagement, potentially follow-up reply
+- If HN v5 deadline passed: another runtime repair (star conversion or SEO)
+- Do not regenerate this same handoff
+- Apollo window still closed — do not idle
 
 ## Current blocked-lane truth to preserve
 - Remaining publisher discovery is still non-runtime-sendable here and requires public-path/Telegram follow-through: ctxt.dev / Signum, AI Saying, TLDL, ComputingForGeeks.
