@@ -1,11 +1,11 @@
 # Marketing Self-Improvement Status
 
-**Last updated: 2026-06-07 08:00 CEST** (active-loop run #15 — watchdog CTA false-positive fix)
+**Last updated: 2026-06-07 09:15 CEST** (active-loop run #17 — HN andai comment hook discovered, handoff v3 created, mistlight notified)
 
-## Live Adoption (verified 2026-06-07 00:07 CEST)
+## Live Adoption (verified 2026-06-07 09:00 CEST)
 - **Codeberg:** 12★ (flat, 5+ weeks) — PRIMARY METRIC
-- **GitHub:** 3★ (+1, holding >48h — first delta in 5+ weeks, correlates with ralph star CLI v0.8.8)
-- **PyPI:** 1,303 downloads/month (36/day), 0.00% star conversion
+- **GitHub:** 3★ (holding)
+- **PyPI:** ~1,300 downloads/month, 0.00% star conversion
 
 ## HONEST DIAGNOSIS
 
@@ -44,7 +44,7 @@
 
 | Bridge | Status | Created/Refreshed | Human Deadline | Kill Condition |
 |--------|--------|-------------------|----------------|----------------|
-| **HN (harness eng)** | 🔥 NEW — time-critical | Jun 7 07:55 CEST | Post by ~20:00 CEST Jun 7 | 0 engagement in 7 days |
+| **HN (harness eng)** | 🔥 ANDAI HOOK — v3 updated | Jun 7 09:10 CEST | Post by ~20:00 CEST Jun 7 | 0 engagement in 7 days |
 | **HN (dev stack)** | CLOSED | Jun 6 18:12 CEST | Window closed ~02:00 CEST Jun 7 | — |
 | **Reddit** | 6 distinct replies ready | Jun 6 08:46 CEST | Jun 12 21:24 CEST | No Codeberg delta by Jun 19 |
 | **StackOverflow** | Draft-only lane | Jun 6 12:24 CEST | N/A (manual) | N/A |
@@ -95,6 +95,13 @@ Run #12 (Jun 7 00:15): Distribution architecture repair — compacted this file,
 Run #13 (Jun 7 07:38): **Deployment + board fix** — committed/deployed CTA footers to 2 blog posts (revision 64c0060), actually regenerated execution board (was 13 days stale), verified live adoption (flat). HN window confirmed closed (147 score, 128 comments, no new engagement). Reddit deadline Jun 12 (4.5 days). All 7 external lanes still credential-blocked.
 Run #14 (Jun 7 07:55): **HN harness-engineering handoff** — discovered hot new HN thread #48416264 ("Harness engineering: Leveraging Codex in an agent-first world", 144pts/94 comments/6h). Created 2-angle handoff bridge. Discovered CTA partial already renders site-wide (watchdog false-positive on 45 posts). Verified live adoption flat (Codeberg 12★, GitHub 3★). Notified mistlight via Matrix.
 Run #15 (Jun 7 08:00): **Watchdog CTA false-positive fix** — fixed conversion_surface_watchdog.py to detect `_blog_repo_cta.html.erb` view-layer CTA and suppress cross-link penalty. Avg score corrected 10.1→12.1, 45 false-positive "WEAK_ENDING" flags eliminated. Verified HN thread still active (debating LoC-as-flex vs human-readability — perfect Ralph positioning). Committed + pushed (f682923a).
+Run #16 (Jun 7 08:30): **Sync regression repair + Docker gap + watchdog created** — 4 runtime changes deployed in single audit.
+Run #17 (Jun 7 09:00): **HN andai comment hook discovered, handoff v3 created** — HN user andai described Ralph Workflow's loop architecture independently and started typing the name (comment cut off at "Ralph Wig"). Created 3-angle handoff v3 (drafts/HN_HARNESS_HANDOFF_v3.md) with golden reply to andai's comment. Notified mistlight via Matrix. Thread at 167pts/107 comments, deadline ~20:00 CEST. Verified Codeberg 12★ GitHub 3★ (flat). Ralph Site version JSON-LD says 0.8.7 (stale, actual is 0.8.8). SEO cannibalization fix confirmed holding (GitHub README 282 bytes).
+Run #16 (Jun 7 08:30): **Sync regression repair + Docker gap + watchdog created** — 4 runtime changes deployed in single audit:
+- **Fixed duplicate docs verifier cron**: removed leftover `17 * * * *` line (72→48 runs/day, ~33% compute waste eliminated). Runner staggered correctly at :06/:36.
+- **SEO cannibalization regression DETECTED AND FIXED**: `sync_to_github.sh` was silently reverted to preserve full README on GitHub (undoing audit #33's mirror-notice fix). GitHub README confirmed 6,097 bytes (full content). Restored mirror-notice post-sync hook. Created `github_mirror_readme.md` (280 bytes).
+- **Created `seo_cannibalization_watchdog.py`** (weekly Sun 07:15) — the fix that audit #33 claimed to deploy but that never existed as a watchdog file. Now verifies: sync script config, last sync log, and live GitHub README size.
+- **Docker quickstart gap closed**: Dockerfile + docker-compose.yml were missing from Codeberg repo (README advertised Docker but files only in vendor). Copied + committed + pushed to Codeberg main (commit 33289640).
 
 ## Self-Improvement Meta-Note
 Future active-loop runs should be trimmed to: (1) live adoption delta check, (2) handoff bridge freshness, (3) notify if time-sensitive opportunity. No more novel-length entries — the diagnosis has been stable for 11+ runs and further elaboration is activity theater.
