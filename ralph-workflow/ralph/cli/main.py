@@ -211,13 +211,25 @@ def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Comman
             standalone_mode: bool = True,
             windows_expand_args: bool = True,
         ) -> object:
-            return original_main(
-                args=_prepare_init_args(args),
-                prog_name=prog_name,
-                complete_var=complete_var,
-                standalone_mode=standalone_mode,
-                windows_expand_args=windows_expand_args,
-            )
+            try:
+                return original_main(
+                    args=_prepare_init_args(args),
+                    prog_name=prog_name,
+                    complete_var=complete_var,
+                    standalone_mode=standalone_mode,
+                    windows_expand_args=windows_expand_args,
+                )
+            except click.ClickException as exc:
+                # rich_click exceptions are not in typer's class hierarchy and
+                # therefore bypass typer's own ClickException handler, which
+                # would normally call sys.exit(e.exit_code).  Replicate it here
+                # so callers (including typer's CliRunner) see the correct exit
+                # code instead of falling through to the generic except-Exception
+                # branch that produces exit code 1.
+                if not standalone_mode:
+                    raise
+                exc.show()
+                sys.exit(exc.exit_code)
 
         _set_command_main(command, patched_main)
     return command

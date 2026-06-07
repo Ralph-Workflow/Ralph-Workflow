@@ -244,13 +244,8 @@ class ExecSandboxManager:
                 self._rmtree_with_escalation(d)
                 removed_paths += 1
 
-        # Only run du if we removed something; otherwise reuse pre_bytes as estimate
-        if removed_paths > 0:
-            post_bytes = self._path_size_bytes_via_du(self._base_dir)
-            removed_bytes = max(0, pre_bytes - post_bytes)
-        else:
-            post_bytes = pre_bytes
-            removed_bytes = 0
+        post_bytes = self._path_size_bytes_via_du(self._base_dir)
+        removed_bytes = max(0, pre_bytes - post_bytes)
 
         # Update cache so the fast path reflects the outcome
         with self._rr_lock:

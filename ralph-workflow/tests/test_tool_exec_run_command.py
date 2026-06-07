@@ -268,6 +268,54 @@ def test_run_command_first_use_leaves_under_budget_garbage_intact(tmp_path: Path
     assert small_garbage.exists(), "Under-budget garbage must not be cleaned on first use"
 
 
+def test_run_command_succeeds_when_cache_is_over_budget_but_recoverable(
+    tmp_path: Path,
+) -> None:
+    """run_command succeeds when base_dir is over budget but has reclaimable content.
+
+    Validates end-to-end that capacity recovery deletes stale workspace pools so
+    the current exec can proceed without raising an ExecutionError.
+    """
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    exec_base = tmp_path / "exec-base"
+    exec_base.mkdir()
+
+    # Create a stale workspace pool dir (16-char hex name) with content.
+    # This simulates a sandbox cache left over from an old workspace.
+    stale_pool = exec_base / "deadbeef12345678"
+    stale_pool.mkdir()
+    (stale_pool / "stale-slot").mkdir()
+    (stale_pool / "stale-slot" / "content.bin").write_bytes(b"x" * 4096)
+
+    manager = ExecSandboxManager(
+        base_dir=exec_base,
+        max_total_bytes=1,  # any existing content triggers over-budget recovery
+    )
+
+    def fake_runner(
+        command: list[str], cwd: Path, timeout_seconds: float | None
+    ) -> exec_completed_process._CompletedProcessAdapter:
+        del command, cwd, timeout_seconds
+        return exec_completed_process._CompletedProcessAdapter(
+            stdout=b"ok", stderr=b"", returncode=0
+        )
+
+    workspace = MockWorkspaceRoot(workspace_dir)
+    result = run_command(
+        "echo",
+        [],
+        workspace,
+        1000,
+        deps=ExecRunDeps(runner=fake_runner, overlay_factory=manager.acquire),
+    )
+
+    assert result.returncode == 0, (
+        "run_command must succeed when cache is over-budget but recoverable"
+    )
+    assert not stale_pool.exists(), "Stale pool must be removed during capacity recovery"
+
+
 def _make_concurrent_overlay_factory(tmp_path: Path) -> object:
     """Return a mock overlay factory that yields distinct paths without locking."""
     slot_counter = itertools.count(1)
