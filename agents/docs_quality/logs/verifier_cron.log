@@ -31114,3 +31114,91 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system cleanly follows the positioning. Every top-level surface leads with the product story (orchestrator, composable loop framework, simple core), not internal mechanics. The README \u2192 START_HERE \u2192 docs/README journey is coherent, the proof pages are correctly positioned as secondary, and the supporting pages reinforce rather than fight the main story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "ralph-workflow/README.md:177",
+      "reason": "Explicitly states the README intentionally leaves out deeper implementation details \u2014 shows the team understands the content boundary."
+    },
+    {
+      "path": "docs/README.md:48-49",
+      "reason": "The docs map has a 'Keep proof secondary' section that directly routes proof-oriented pages after the product story and operator route."
+    },
+    {
+      "path": "docs/reviewable-output.md:3-5",
+      "reason": "This page opens by explicitly positioning itself as 'supporting proof ... not the main product pitch' \u2014 exactly the right treatment for a proof page."
+    },
+    {
+      "path": "START_HERE.md:8-11",
+      "reason": "Opens with proper positioning (composable loop framework, simple core, strong default, result-first evaluation) and zero internal plumbing language."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README journey is coherent. Promoted pages reinforce a consistent product story. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "docs/README.md 'repo-root docs families' section lists contributor directories (docs/agents/, docs/code-style/, etc.) which may confuse pure end-users scanning for the next page \u2014 consider compacting or moving below the operator route"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md (root)",
+      "reason": "Leads with correct tagline, product-first framing, composable loop core, strong default workflow, explicit Codeberg-primary/GitHub-mirror, and audience fit/non-fit \u2014 all per positioning doc"
+    },
+    {
+      "path": "START_HERE.md (github-mirror)",
+      "reason": "Delivers shortest honest first run with only the right content: task selection, install, what success looks like \u2014 no internal plumbing, no artifact framing"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by user intent, keeps proof secondary, consistently self-frames as downstream of README and START_HERE \u2014 prevents link anxiety"
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Reinforces spec-driven approach, honest about fit/non-fit, includes four-criteria task selection and morning-after review \u2014 exactly the right depth for a promoted supporting page"
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Self-frames as 'supporting proof, not the main product pitch' and explicitly defers to product story and operator route \u2014 correct positioning discipline for a page about output quality"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

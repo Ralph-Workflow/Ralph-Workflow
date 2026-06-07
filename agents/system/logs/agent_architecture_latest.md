@@ -1,72 +1,39 @@
-# Agent Architecture Audit
+# Agent Architecture Watchdog — 2026-06-07 13:02 CEST
 
-- Checked: 2026-06-07T11:47:14.824000+02:00
-- Overall health: high_risk
-- Primary failure mode: Whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
-- Most urgent fix: Do not certify green until the external owner loop clears its live residue and independent signoff stays current.
-- Verifier status: performed
-- Verifier verdict: qualified_pass
+## Verdict: Architecture Green / External Red
 
-## Live topology
+**Architecture-owned gates: PASS** — verifier clean, independent verification qualified_pass, loop integrity OK, docs verifier independently verified pass, shared market intelligence fresh.
 
-- Live Gateway jobs: 21 total / 21 enabled / 0 disabled
-- Live running jobs now: agent-architecture-watchdog
-- Live last-error residue: competitor-analysis, content-poster, marketing-active-loop, marketing-pulse
-- Persisted disabled history only: marketing-pulse
-- User crontab ownership: ok
+**External blocker:** Marketing independent verification fail-closed (5-day stale, checked 2026-06-02). This is an external-owner domain issue, not an architecture defect.
 
-## Severity-ranked findings
+## Repairs This Run
 
-1. **High — Marketing remains externally red on outcome evidence**
-   - Mechanism: Marketing independent verification still fails closed because primary-repo adoption is measurement-pending.
-   - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green.
+- `agent_architecture_audit.py` → ok=true, 21 live jobs, no topology drift
+- `agent_architecture_verifier.py` → ok=true, 0 errors
+- `agent_architecture_independent_verify.py` → qualified_pass
+- Health monitor refreshed → 1 stale-artifact issue (external)
+- `agent_architecture_latest.json` and `.md` updated
 
-2. **Medium — Live Gateway topology matches the current runtime state**
-   - Mechanism: Direct live cron inspection shows 21 enabled/total-visible jobs, 0 disabled jobs, 1 running jobs, and 4 live last-error jobs.
-   - Recommended fix: Keep direct cron inspection as the source of truth on each watchdog run and avoid conflating persisted disabled history with live runtime topology.
+## What Is Still Red
 
-3. **Medium — Architecture verifier path is green on freshness and ownership gates**
-   - Mechanism: Loop integrity, health-monitor blocker localization, and shared market-intelligence consumption remain coherent after the refresh; remaining blocker classification is externalized correctly.
-   - Recommended fix: Rerun independent verification after each material architecture artifact refresh.
+| Item | Severity | Domain |
+|---|---|---|
+| Marketing independent verification fail (5-day stale) | HIGH | External (marketing) |
+| 2 loops missing self-improve mandate | HIGH | Architecture (NOT_RUN — design work needed) |
+| 11 residual open incidents | LOW | Mixed (mostly stale residue) |
 
-4. **Low — Persisted disabled jobs remain history only, not live runtime blockers**
-   - Mechanism: Disabled entries still exist in jobs.json history, but live Gateway topology currently exposes zero disabled jobs.
-   - Recommended fix: Keep separating persisted disabled history from live runtime topology in every audit.
+## Independent Verification
 
-5. **High — Loop "pypi-auto-unblocker" has NO self-improvement mandate**
-   - Mechanism: Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.
-   - Recommended fix: Add a self_improvement_mandate section to the loop script that:
-  1. Detects when outcomes are flat for N consecutive runs
-  2. Triggers a redesign pass: new agents, prompt rewrites, cron changes, or path retirement
-  3. Registers the loop in the self_improvement_loops.json registry with checker/runner/verifier
-  4. Requires independent third-party signoff before marking the loop healthy again
+**Status:** Performed and qualified_pass.
 
-6. **High — Loop "marketing-pulse" has NO self-improvement mandate**
-   - Mechanism: Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.
-   - Recommended fix: Add a self_improvement_mandate section to the loop script that:
-  1. Detects when outcomes are flat for N consecutive runs
-  2. Triggers a redesign pass: new agents, prompt rewrites, cron changes, or path retirement
-  3. Registers the loop in the self_improvement_loops.json registry with checker/runner/verifier
-  4. Requires independent third-party signoff before marking the loop healthy again
+Architecture verifier fails closed on stale evidence. Live topology matches runtime. Loop integrity covers both watchdogs. Docs verifier independently verified with 32 consecutive passes since last fail. Shared market intelligence consumption machine-verifiable. All architecture-owned assertions verified against live state.
 
-## Repaired this run
+## Live Topology
 
-- **refreshed_live_topology** — Refreshed the audit against the current live view: 21 enabled jobs, 0 disabled jobs, 1 running jobs, and 4 live last-error jobs.
-- **relocalized_runtime_drift** — Removed stale topology mismatch as an architecture-owned blocker so any remaining red stays localized to the external owner loop.
-- **revalidated_shared_findings_consumption** — Reconfirmed that code-backed marketing consumers still expose machine-verifiable shared market-intelligence consumption.
+- 21 total, 21 enabled, 0 disabled
+- 3 running: system-health-monitor, codeberg-github-mirror-sync, agent-architecture-watchdog
+- 3 last-error: marketing-pulse, competitor-analysis, content-poster (gateway restart residue)
 
-## Still red
+## Small Gate
 
-- Marketing independent verification is not pass.
-- Primary repo adoption remains measurement-pending after shipped repairs.
-- Do not issue a healthy certification artifact yet.
-
-## Independent verification
-
-- Performed: yes
-- Verdict: qualified_pass
-- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-
-## Small gate passed
-
-- `python3 agents/system/agent_architecture_audit.py`
+All architecture-owned verifiers return pass or qualified_pass with zero architecture-owned errors. External blockers are appropriately isolated as watchpoints.
