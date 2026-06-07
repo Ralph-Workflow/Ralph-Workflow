@@ -6,6 +6,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 
 from __future__ import annotations
 
+import io
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -15,10 +16,12 @@ from ralph.agents.execution_state import (
 )
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
+    AgentInvocationError,
     CompletionCheckOptions,
     OpenCodeResumableExitError,
     check_process_result,
 )
+from ralph.agents.invoke import _completion as completion_module
 from ralph.phases.required_artifacts import RequiredArtifact
 from tests.fake_handle import _FakeHandle
 
@@ -56,6 +59,41 @@ class TestCheckProcessResultCompletionSeam:
             ),
         )
         # No exception raised means explicit_complete=True → TERMINAL_COMPLETE
+
+    def test_retryable_nonzero_exit_does_not_log_terminal_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=1)
+        handle.stderr = io.StringIO("Model returned an empty response with no tool calls")
+        seen_errors: list[tuple[object, ...]] = []
+        seen_warnings: list[tuple[object, ...]] = []
+        monkeypatch.setattr(
+            completion_module.logger,
+            "error",
+            lambda *args, **kwargs: seen_errors.append(args),
+        )
+        monkeypatch.setattr(
+            completion_module.logger,
+            "warning",
+            lambda *args, **kwargs: seen_warnings.append(args),
+        )
+
+        with pytest.raises(AgentInvocationError):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                ['{"type":"tool_result","tool":"read_file"}'],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                ),
+            )
+
+        assert seen_errors == []
+        assert seen_warnings != []
 
     def test_no_artifact_requirement_still_requires_explicit_completion(
         self, tmp_path: Path

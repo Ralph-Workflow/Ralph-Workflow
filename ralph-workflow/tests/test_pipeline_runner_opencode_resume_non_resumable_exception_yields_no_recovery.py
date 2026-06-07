@@ -119,3 +119,29 @@ class TestNonResumableExceptionYieldsNoRecovery:
         assert plan is not None
         assert plan.prompt_file != "PROMPT.md"
         assert plan.session_id == "sess-post-tool"
+
+    def test_recovery_plan_ignores_nested_tool_payload_session_id(self, tmp_path: Path) -> None:
+        exc = AgentInvocationError(
+            "opencode",
+            1,
+            "Model returned an empty response with no tool calls",
+            parsed_output=['{"type":"tool_result","content":{"session_id":"tool-payload"}}'],
+        )
+        effect = _make_effect(prompt_file="PROMPT.md")
+
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=['{"type":"tool_result","content":{"session_id":"tool-payload"}}'],
+                rendered_output=[],
+                extracted_session_id=None,
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
+        )
+
+        assert plan is not None
+        assert plan.session_id is None

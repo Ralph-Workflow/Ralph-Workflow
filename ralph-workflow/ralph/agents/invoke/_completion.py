@@ -14,11 +14,13 @@ from ralph.agents.execution_state import (
     OpenCodeExecutionStrategy,
 )
 from ralph.agents.idle_watchdog import TimeoutPolicy
+from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
 from ralph.agents.invoke._errors import AgentInvocationError, OpenCodeResumableExitError
-from ralph.agents.invoke._session import _bounded_output_lines, extract_session_id
+from ralph.agents.invoke._session import _bounded_output_lines, extract_transport_session_id
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
+from ralph.recovery.failure_classifier import FailureClassifier
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -182,8 +184,7 @@ def _check_process_result(
     if returncode != 0:
         stderr_pipe = cast("IO[str] | None", getattr(handle, "stderr", None))
         stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
-        logger.error("Agent exited with code {}: {}", returncode, stderr)
-        raise AgentInvocationError(
+        exc = AgentInvocationError(
             agent_name,
             returncode,
             stderr,
@@ -194,6 +195,8 @@ def _check_process_result(
                 ),
             ),
         )
+        _log_invocation_exit(exc)
+        raise exc
 
     opts = check_options
     if (
@@ -252,7 +255,7 @@ def _check_process_result(
             )
 
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
-            session_id = opts.captured_session_id or extract_session_id(bounded_output)
+            session_id = opts.captured_session_id or extract_transport_session_id(bounded_output)
             raise OpenCodeResumableExitError(agent_name, session_id=session_id)
     elif (
         opts is not None
@@ -301,3 +304,16 @@ def _check_process_result(
                     "(no artifact, no declare_complete)"
                 ),
             )
+
+
+def _log_invocation_exit(exc: AgentInvocationError) -> None:
+    classified = FailureClassifier().classify(exc, phase="invoke", agent=exc.agent_name)
+    if classified.reset_tool_registry or classified.reset_session:
+        logger.warning(
+            "Retryable agent exit with code {}: {} [{}]",
+            exc.returncode,
+            exc.stderr,
+            summarize_retry_failure_evidence(exc.parsed_output),
+        )
+        return
+    logger.error("Agent exited with code {}: {}", exc.returncode, exc.stderr)

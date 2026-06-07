@@ -304,3 +304,51 @@ def test_managed_runtime_retries_post_tool_empty_response_with_same_session(
     assert calls == [None, "sess-managed"]
     assert bridge_state["reset_calls"] == 1
     assert bridge_state["shutdown_calls"] == 1
+
+
+def test_managed_runtime_preserves_supplied_session_id_on_first_attempt(
+    tmp_path: Path,
+    config_with_helper_agent: UnifiedConfig,
+) -> None:
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Describe a notes app.", encoding="utf-8")
+
+    bridge, bridge_state = _make_fake_bridge()
+    calls: list[object | None] = []
+
+    def fake_start_mcp_server(*args: object) -> object:
+        del args
+        return bridge
+
+    def fake_invoke_agent(
+        _agent_config: object,
+        _prompt_file_path: str,
+        options: object,
+    ) -> Iterator[str]:
+        calls.append(getattr(options, "session_id", None))
+        return iter(["ok"])
+
+    deps = cast("Any", _session_runtime()).ManagedAgentSessionDeps(
+        start_mcp_server=fake_start_mcp_server,
+        invoke_agent=fake_invoke_agent,
+        materialize_system_prompt=lambda *args: str(tmp_path / "system.md"),
+        workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
+    )
+
+    with cast("Any", _session_runtime()).ManagedAgentSessionRuntime.open(
+        config=config_with_helper_agent,
+        workspace_root=tmp_path,
+        agent_config=config_with_helper_agent.agents["prompt-helper-agent"],
+        request=cast("Any", _session_runtime()).ManagedAgentSessionRequest(
+            session_id_prefix="prompt-helper",
+            drain="standalone",
+            capabilities=frozenset({"workspace.read", "artifact.submit"}),
+            system_prompt_name="prompt-helper",
+        ),
+        deps=deps,
+    ) as runtime:
+        result = list(runtime.invoke_prompt_file(prompt_file, session_id="sess-existing"))
+
+    assert result == ["ok"]
+    assert calls == ["sess-existing"]
+    assert bridge_state["shutdown_calls"] == 1

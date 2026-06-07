@@ -10,10 +10,9 @@ not when it special-cases this command alone.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import replace
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from rich.panel import Panel
@@ -55,6 +54,8 @@ from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.config.models import AgentConfig, UnifiedConfig
 
 _SMOKE_RELATIVE_DIR = Path("tmp/interactive-claude-smoke")
@@ -216,12 +217,20 @@ def _execute_smoke_turns(
 
     for _attempt in range(_SMOKE_MAX_TURNS):
         raw_lines: list[str] = []
+        active_session_id = current_session_id
+
+        def _run_retry_attempt(
+            retry_session_id: str | None,
+            bound_session_id: str | None = active_session_id,
+        ) -> tuple[list[str], list[str]]:
+            return _run_smoke_attempt(
+                params,
+                _with_session_id(params.options, retry_session_id or bound_session_id),
+            )
+
         try:
             raw_lines, rendered_lines = run_with_direct_mcp_recovery(
-                lambda retry_session_id: _run_smoke_attempt(
-                    params,
-                    _with_session_id(params.options, retry_session_id or current_session_id),
-                ),
+                _run_retry_attempt,
                 max_retries=default_direct_mcp_retry_limit(_SMOKE_MAX_TURNS - 1),
                 reset_tool_registry=_reset_tool_registry_callback(params.bridge),
                 on_retry_failure=all_lines.extend,
@@ -275,7 +284,7 @@ def _run_smoke_attempt(
             exc.agent_name,
             exc.returncode,
             exc.stderr,
-            parsed_output=(raw_lines or exc.parsed_output),
+            parsed_output=(list(raw_lines) if raw_lines else exc.parsed_output),
         ) from exc
     return list(raw_lines), list(rendered_lines)
 
@@ -370,7 +379,7 @@ def _run_smoke_agent(params: SmokeRunParams) -> SmokeRunResult:
         file_created=params.output_file.exists(),
         session_id=session_id,
         explicit_completion_seen=explicit_completion_seen,
-        raw_line_count=len([line for line in live_output_lines if line.strip()]),
+        raw_line_count=len([line for line in lines if line.strip()]),
         parsed_event_count=parsed_event_count,
         tool_activity_seen=tool_activity_seen,
         artifact_submitted=read_smoke_test_result_artifact(params.workspace_root) is not None,

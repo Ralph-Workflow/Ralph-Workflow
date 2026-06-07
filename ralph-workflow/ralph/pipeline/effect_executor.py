@@ -16,7 +16,7 @@ from ralph.agents.invoke import (
     InvokeOptions,
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
-    extract_session_id,
+    extract_transport_session_id,
 )
 from ralph.agents.invoke._session_resume import (
     recovery_action_for_failure_reason,
@@ -336,7 +336,7 @@ def _run_attempt(
             rendered_output,
             _capture_session_id,
         )
-        final_session_id = extracted_session_id or extract_session_id(tuple(raw_output))
+        final_session_id = extracted_session_id or extract_transport_session_id(tuple(raw_output))
         if ctx.deps.set_session_id_cb is not None:
             ctx.deps.set_session_id_cb(final_session_id)
         # Success path: clear any previously recorded failure reason so
@@ -382,7 +382,7 @@ def _run_attempt(
                 raw_output=list(raw_output),
                 rendered_output=list(rendered_output),
                 extracted_session_id=(
-                    extracted_session_id or extract_session_id(tuple(raw_output))
+                    extracted_session_id or extract_transport_session_id(tuple(raw_output))
                 ),
                 inactivity_error_type=AgentInactivityTimeoutError,
             )
@@ -519,7 +519,7 @@ def _consume_attempt_output(
         for line in output_lines:
             text_line = str(line)
             raw_output.append(text_line)
-            session_id = extract_session_id((text_line,))
+            session_id = extract_transport_session_id((text_line,))
             if session_id is not None:
                 capture_session_id(session_id)
 
@@ -564,7 +564,7 @@ def _resolve_recovery_session_id(
         return extracted_session_id
     parsed_output = cast("object", getattr(exc, "parsed_output", None))
     if isinstance(parsed_output, list) and parsed_output:
-        parsed_session_id = extract_session_id(tuple(str(item) for item in parsed_output))
+        parsed_session_id = extract_transport_session_id(tuple(str(item) for item in parsed_output))
         if parsed_session_id:
             return parsed_session_id
     return None

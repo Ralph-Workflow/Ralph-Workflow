@@ -8,10 +8,25 @@ from typing import cast
 
 _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
 _TURN_BOUNDARY_MARKER = "[claude turn boundary]"
-_SESSION_ID_PATTERNS = (
+_LEGACY_SESSION_ID_PATTERNS = (
     re.compile(r"session\s+id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
+    re.compile(r"session_id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
+    re.compile(r"sessionId\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
     re.compile(r"--resume\s+([A-Za-z0-9._:-]+)"),
     re.compile(r"--session\s+([A-Za-z0-9._:-]+)"),
+)
+
+_COMPLETION_SESSION_ID_PATTERNS = (
+    re.compile(r"session_id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
+    re.compile(r"sessionId\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
+)
+
+_TRANSPORT_TEXT_SESSION_PATTERNS = (
+    re.compile(r"^Claude session ready\. Session ID:\s*([A-Za-z0-9._:-]+)$"),
+    re.compile(r"^Session ID:\s*([A-Za-z0-9._:-]+)$", re.IGNORECASE),
+    re.compile(r"^Resume this session with --resume\s+([A-Za-z0-9._:-]+)$"),
+    re.compile(r"^--resume\s+([A-Za-z0-9._:-]+)$"),
+    re.compile(r"^--session\s+([A-Za-z0-9._:-]+)$"),
 )
 
 
@@ -38,7 +53,12 @@ def _extract_session_id_from_line(line: str) -> str | None:
         parsed = cast("object", json.loads(line))
     except json.JSONDecodeError:
         stripped = line.strip()
-        for pattern in _SESSION_ID_PATTERNS:
+        if _EXPLICIT_COMPLETION_MARKER in stripped:
+            for pattern in _COMPLETION_SESSION_ID_PATTERNS:
+                match = pattern.search(stripped)
+                if match is not None:
+                    return match.group(1)
+        for pattern in _LEGACY_SESSION_ID_PATTERNS:
             match = pattern.search(stripped)
             if match is not None:
                 return match.group(1)
@@ -51,7 +71,12 @@ def _extract_transport_session_id_from_line(line: str) -> str | None:
         parsed = cast("object", json.loads(line))
     except json.JSONDecodeError:
         stripped = line.strip()
-        for pattern in _SESSION_ID_PATTERNS:
+        if _EXPLICIT_COMPLETION_MARKER in stripped:
+            for pattern in _COMPLETION_SESSION_ID_PATTERNS:
+                match = pattern.search(stripped)
+                if match is not None:
+                    return match.group(1)
+        for pattern in _TRANSPORT_TEXT_SESSION_PATTERNS:
             match = pattern.search(stripped)
             if match is not None:
                 return match.group(1)
@@ -80,6 +105,25 @@ def extract_transport_session_id(raw_output: list[str] | tuple[str, ...]) -> str
         session_id = _extract_transport_session_id_from_line(line)
         if session_id:
             return session_id
+    return None
+
+
+def extract_transport_session_id_from_line(line: str) -> str | None:
+    """Extract only top-level transport/runtime session IDs from one line."""
+    return _extract_transport_session_id_from_line(line)
+
+
+def extract_visible_tui_transport_session_id(text: str) -> str | None:
+    """Extract transport session IDs from visible TUI text only.
+
+    This intentionally excludes generic ``session_id=...`` patterns so assistant or
+    tool text cannot masquerade as transport session metadata.
+    """
+    stripped = text.strip()
+    for pattern in _TRANSPORT_TEXT_SESSION_PATTERNS:
+        match = pattern.search(stripped)
+        if match is not None:
+            return match.group(1)
     return None
 
 

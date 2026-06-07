@@ -50,7 +50,10 @@ from ralph.agents.invoke._pty_transcript import (
     find_claude_transcript_entry,
     transcript_lines_from_event,
 )
-from ralph.agents.invoke._session import _TURN_BOUNDARY_MARKER, _extract_session_id_from_line
+from ralph.agents.invoke._session import (
+    _TURN_BOUNDARY_MARKER,
+    extract_visible_tui_transport_session_id,
+)
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
     ClaudeInteractiveTranscriptParser,
 )
@@ -222,9 +225,9 @@ class PtyLineReader:
             self._lines_event.set()
 
     def _record_transcript_session_id(self, raw_line: str) -> None:
-        session_id = _extract_session_id_from_line(raw_line)
+        session_id = extract_visible_tui_transport_session_id(raw_line)
         if session_id is None:
-            session_id = _extract_session_id_from_line(_visible_tui_text(raw_line))
+            session_id = extract_visible_tui_transport_session_id(_visible_tui_text(raw_line))
         if session_id is None:
             return
         with self._transcript_session_ids_lock:

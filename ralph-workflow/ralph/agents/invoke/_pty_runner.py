@@ -28,7 +28,7 @@ from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._session import (
     _EXPLICIT_COMPLETION_MARKER,
     _bounded_output_lines,
-    _extract_session_id_from_line,
+    extract_transport_session_id_from_line,
 )
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
@@ -93,7 +93,7 @@ def run_pty_and_read_lines(
                         _EXPLICIT_COMPLETION_MARKER in stripped_line
                         or _EXPLICIT_COMPLETION_MARKER in _visible_tui_text(stripped_line)
                     )
-                    session_id = _extract_session_id_from_line(stripped_line)
+                    session_id = extract_transport_session_id_from_line(stripped_line)
                     if session_id is not None:
                         captured_session_id = session_id
                     yield line
@@ -105,7 +105,7 @@ def run_pty_and_read_lines(
                         _EXPLICIT_COMPLETION_MARKER in stripped_line
                         or _EXPLICIT_COMPLETION_MARKER in _visible_tui_text(stripped_line)
                     )
-                    session_id = _extract_session_id_from_line(stripped_line)
+                    session_id = extract_transport_session_id_from_line(stripped_line)
                     if session_id is not None:
                         captured_session_id = session_id
                     yield line

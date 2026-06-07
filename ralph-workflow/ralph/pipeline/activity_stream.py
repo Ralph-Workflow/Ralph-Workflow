@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 from loguru import logger
 from rich.text import Text
 
-from ralph.agents.invoke import extract_session_id
+from ralph.agents.invoke import extract_transport_session_id
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.config.enums import AgentTransport, Verbosity
 from ralph.display.activity_router import map_parser_type_to_kind
@@ -232,7 +232,7 @@ def stream_parsed_agent_activity(
             text = str(line)
             if raw_output_sink is not None:
                 raw_output_sink.append(text)
-            session_id = extract_session_id((text,))
+            session_id = extract_transport_session_id((text,))
             if session_id is not None and session_id_sink is not None:
                 session_id_sink(session_id)
             yield text

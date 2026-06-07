@@ -6,11 +6,18 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
+from loguru import logger
+
+from ralph.agents.invoke import (
+    InvokeOptions,
+    InvokeRuntimeOptions,
+    build_invoke_options_from_config,
+)
 from ralph.agents.invoke._direct_mcp_recovery import (
     default_direct_mcp_retry_limit,
     iter_with_direct_mcp_recovery,
+    summarize_retry_failure_evidence,
 )
-from ralph.agents.invoke import InvokeOptions, InvokeRuntimeOptions, build_invoke_options_from_config
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
@@ -164,14 +171,23 @@ class ManagedAgentSessionRuntime:
         )
         max_retries = default_direct_mcp_retry_limit(self._config.general.max_same_agent_retries)
         reset_tool_registry = _reset_tool_registry_callback(self._bridge)
-        return iter_with_direct_mcp_recovery(
-            lambda session_id: self._deps.invoke_agent(
+        base_session_id = session_id
+
+        def _invoke_with_retry_session(retry_session_id: str | None) -> Iterable[str]:
+            return self._deps.invoke_agent(
                 self._agent_config,
                 str(prompt_file),
-                _with_session_id(options, session_id),
-            ),
+                _with_session_id(options, retry_session_id or base_session_id),
+            )
+
+        return iter_with_direct_mcp_recovery(
+            _invoke_with_retry_session,
             max_retries=max_retries,
             reset_tool_registry=reset_tool_registry,
+            on_retry_failure=lambda lines: logger.warning(
+                "Retrying managed agent session after retryable failure: {}",
+                summarize_retry_failure_evidence(lines),
+            ),
         )
 
 

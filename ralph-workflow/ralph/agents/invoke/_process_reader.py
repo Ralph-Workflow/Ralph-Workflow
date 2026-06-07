@@ -32,7 +32,7 @@ from ralph.agents.invoke._errors import (
 from ralph.agents.invoke._session import (
     _EXPLICIT_COMPLETION_MARKER,
     _bounded_output_lines,
-    _extract_session_id_from_line,
+    extract_transport_session_id_from_line,
 )
 from ralph.agents.invoke._types import _AgentRunCtx, _ProcessReaderCtx
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
@@ -361,7 +361,7 @@ def _run_subprocess_and_read_lines(
                     explicit_completion_seen = explicit_completion_seen or (
                         _EXPLICIT_COMPLETION_MARKER in stripped_line
                     )
-                    session_id = _extract_session_id_from_line(stripped_line)
+                    session_id = extract_transport_session_id_from_line(stripped_line)
                     if session_id is not None:
                         captured_session_id = session_id
                     yield line
@@ -372,7 +372,7 @@ def _run_subprocess_and_read_lines(
                     explicit_completion_seen = explicit_completion_seen or (
                         _EXPLICIT_COMPLETION_MARKER in stripped_line
                     )
-                    session_id = _extract_session_id_from_line(stripped_line)
+                    session_id = extract_transport_session_id_from_line(stripped_line)
                     if session_id is not None:
                         captured_session_id = session_id
                     yield line

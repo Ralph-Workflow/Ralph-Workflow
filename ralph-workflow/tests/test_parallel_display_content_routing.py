@@ -337,3 +337,25 @@ def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_pat
     assert "[content][activity]" not in out
     assert "ralph.read_file" in out
     assert out.count("ralph.read_file") == 1
+
+
+def test_stream_parsed_agent_activity_session_sink_ignores_nested_tool_payload_session_id(
+    tmp_path: Path,
+) -> None:
+    pd, _buf = _make_display(tmp_path)
+    seen: list[str] = []
+
+    lines = [
+        json.dumps({"type": "tool_result", "content": {"session_id": "tool-payload"}}),
+        json.dumps({"session_id": "transport-session"}),
+    ]
+
+    stream_parsed_agent_activity(
+        lines,
+        parser_type="generic",
+        agent_name="claude/sonnet",
+        display=pd,
+        session_id_sink=seen.append,
+    )
+
+    assert seen == ["transport-session"]

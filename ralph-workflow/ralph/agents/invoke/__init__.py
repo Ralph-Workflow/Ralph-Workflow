@@ -68,7 +68,11 @@ from ralph.agents.invoke._pty_helpers import (
     _plan_choice_menu_response,
 )
 from ralph.agents.invoke._pty_reader import _run_pty_and_read_lines as _run_pty_and_read_lines_impl
-from ralph.agents.invoke._session import _bounded_output_lines, extract_session_id
+from ralph.agents.invoke._session import (
+    _bounded_output_lines,
+    extract_session_id,
+    extract_transport_session_id,
+)
 from ralph.agents.invoke._types import (
     InvokeOptions,
     ResolvedInvocationRuntime,
@@ -583,6 +587,7 @@ __all__ = [
     "discover_http_mcp_tool_names",
     "extract_choice_menu_state",
     "extract_session_id",
+    "extract_transport_session_id",
     "get_process_manager",
     "interactive_auto_response_for_prompt",
     "invoke_agent",

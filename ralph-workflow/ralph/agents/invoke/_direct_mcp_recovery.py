@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
 from ralph.recovery.failure_classifier import FailureClassifier
@@ -14,9 +14,8 @@ from ._session import extract_transport_session_id
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
 
-
-_T = TypeVar("_T")
 _MAX_RECOVERY_ATTEMPT_LINES = 400
+_RETRY_FAILURE_EVIDENCE_LINES = 5
 @dataclass(frozen=True)
 class _DirectMcpRetryPlan:
     session_id: str
@@ -48,13 +47,13 @@ def _retry_plan_for_agent_invocation_error(
     return _DirectMcpRetryPlan(session_id=session_id, reset_tool_registry=True)
 
 
-def run_with_direct_mcp_recovery(
-    run_attempt: "Callable[[str | None], _T]",
+def run_with_direct_mcp_recovery[T](
+    run_attempt: Callable[[str | None], T],
     *,
     max_retries: int,
-    reset_tool_registry: "Callable[[], object] | None" = None,
-    on_retry_failure: "Callable[[list[str]], object] | None" = None,
-) -> _T:
+    reset_tool_registry: Callable[[], object] | None = None,
+    on_retry_failure: Callable[[list[str]], object] | None = None,
+) -> T:
     current_session_id: str | None = None
     retries_used = 0
     while True:
@@ -79,11 +78,12 @@ def run_with_direct_mcp_recovery(
 
 
 def iter_with_direct_mcp_recovery(
-    run_attempt: "Callable[[str | None], Iterable[str]]",
+    run_attempt: Callable[[str | None], Iterable[str]],
     *,
     max_retries: int,
-    reset_tool_registry: "Callable[[], object] | None" = None,
-) -> "Iterator[str]":
+    reset_tool_registry: Callable[[], object] | None = None,
+    on_retry_failure: Callable[[list[str]], object] | None = None,
+) -> Iterator[str]:
     current_session_id: str | None = None
     retries_used = 0
     while True:
@@ -95,7 +95,7 @@ def iter_with_direct_mcp_recovery(
             return
         except AgentInvocationError as exc:
             if reset_tool_registry is None or retries_used >= max_retries:
-                raise _invocation_error_with_output(exc, attempt_lines)
+                raise _invocation_error_with_output(exc, attempt_lines) from exc
             exc_with_output = _invocation_error_with_output(exc, attempt_lines)
             retry_plan = _retry_plan_for_agent_invocation_error(
                 exc_with_output,
@@ -103,7 +103,9 @@ def iter_with_direct_mcp_recovery(
                 current_session_id=current_session_id,
             )
             if retry_plan is None:
-                raise exc_with_output
+                raise exc_with_output from exc
+            if on_retry_failure is not None:
+                on_retry_failure(list(exc_with_output.parsed_output))
             if retry_plan.reset_tool_registry:
                 reset_tool_registry()
             current_session_id = retry_plan.session_id
@@ -124,8 +126,16 @@ def _invocation_error_with_output(
     return exc
 
 
+def summarize_retry_failure_evidence(lines: list[str]) -> str:
+    meaningful = [line.strip() for line in lines if line.strip()]
+    if not meaningful:
+        return "(no output captured)"
+    return " | ".join(meaningful)
+
+
 __all__ = [
     "default_direct_mcp_retry_limit",
     "iter_with_direct_mcp_recovery",
     "run_with_direct_mcp_recovery",
+    "summarize_retry_failure_evidence",
 ]
