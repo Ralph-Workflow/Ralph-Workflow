@@ -1,7 +1,7 @@
 # Post-hold distribution re-entry contract
-Generated: 2026-06-06T09:00:02
-- Hold release at: 2026-06-06T12:06:00
-- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-06-06_marketing_execution_board.md
+Generated: 2026-06-07T09:00:02
+- Hold release at: 2026-06-07T13:53:24
+- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-06-07_marketing_execution_board.md
 
 ## Hard rule for the first post-hold slot
 - If the execution board is still empty after the hold clears, choose distribution_architecture_repair instead of another measurement_hold.
@@ -10,7 +10,7 @@ Generated: 2026-06-06T09:00:02
 
 ## Current blocked-lane truth to preserve
 - Remaining publisher discovery is still non-runtime-sendable here and requires public-path/Telegram follow-through: ctxt.dev / Signum, AI Saying, TLDL, ComputingForGeeks.
-- Manual-executable primary-repo-flat publisher targets would still be: ctxt.dev / Signum, AXME Code, WyeWorks, Bollwerk / Werkstatt, ToolChase, Beam, NxCode, TIMEWELL, AI Saying, Toolradar, Requesty, ComputingForGeeks, SOTAAZ, SitePoint, Dupple, Codersera, Codivox, Morph.
+- Manual-executable primary-repo-flat publisher targets would still be: ctxt.dev / Signum, AXME Code, WyeWorks, Bollwerk / Werkstatt, ToolChase, Beam, NxCode, TIMEWELL, AI Saying, Toolradar, Requesty, SOTAAZ, SitePoint, Dupple, Codersera, Codivox, Morph.
 - Curator/comparison/manual-contact packets that were already delivered in the current review window remain reference artifacts, not fresh actions.
 - Apollo remains inside its existing review window, so do not mistake "still measuring" for a reason to idle again.
 

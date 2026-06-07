@@ -1,6 +1,6 @@
 # Agent Architecture Audit
 
-- Checked: 2026-06-07T08:17:30.381423+02:00
+- Checked: 2026-06-07T09:29:26.447616+02:00
 - Overall health: high_risk
 - Primary failure mode: Whole-stack certification remains blocked by external owner-loop residue or a failed independent signoff.
 - Most urgent fix: Do not certify green until the external owner loop clears its live residue and independent signoff stays current.
@@ -9,11 +9,11 @@
 
 ## Live topology
 
-- Live Gateway jobs: 20 total / 20 enabled / 0 disabled
-- Live running jobs now: agent-architecture-watchdog, ralph-site-owner-loop, system-health-monitor
-- Live last-error residue: backlink-tracker, codeberg-github-mirror-sync, competitor-analysis, content-poster, marketing-active-loop, marketing-pulse, marketing-research-daily
+- Live Gateway jobs: 21 total / 21 enabled / 0 disabled
+- Live running jobs now: agent-architecture-watchdog, codeberg-github-mirror-sync, marketing-daily, system-health-monitor
+- Live last-error residue: backlink-tracker, competitor-analysis, content-poster, marketing-active-loop, marketing-pulse
 - Persisted disabled history only: marketing-pulse
-- User crontab ownership: ok
+- User crontab ownership: drift
 
 ## Severity-ranked findings
 
@@ -22,7 +22,7 @@
    - Recommended fix: Let the marketing owner loop produce fresh measurable outcome evidence, then rerun marketing independent verification before calling the whole stack green.
 
 2. **Medium — Live Gateway topology matches the current runtime state**
-   - Mechanism: Direct live cron inspection shows 20 enabled/total-visible jobs, 0 disabled jobs, 3 running jobs, and 7 live last-error jobs.
+   - Mechanism: Direct live cron inspection shows 21 enabled/total-visible jobs, 0 disabled jobs, 4 running jobs, and 5 live last-error jobs.
    - Recommended fix: Keep direct cron inspection as the source of truth on each watchdog run and avoid conflating persisted disabled history with live runtime topology.
 
 3. **Medium — Architecture verifier path is green on freshness and ownership gates**
@@ -33,7 +33,7 @@
    - Mechanism: Disabled entries still exist in jobs.json history, but live Gateway topology currently exposes zero disabled jobs.
    - Recommended fix: Keep separating persisted disabled history from live runtime topology in every audit.
 
-5. **High — Loop "marketing-pulse" has NO self-improvement mandate**
+5. **High — Loop "pypi-auto-unblocker" has NO self-improvement mandate**
    - Mechanism: Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.
    - Recommended fix: Add a self_improvement_mandate section to the loop script that:
   1. Detects when outcomes are flat for N consecutive runs
@@ -41,7 +41,7 @@
   3. Registers the loop in the self_improvement_loops.json registry with checker/runner/verifier
   4. Requires independent third-party signoff before marking the loop healthy again
 
-6. **High — Loop "pypi-auto-unblocker" has NO self-improvement mandate**
+6. **High — Loop "marketing-pulse" has NO self-improvement mandate**
    - Mechanism: Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.
    - Recommended fix: Add a self_improvement_mandate section to the loop script that:
   1. Detects when outcomes are flat for N consecutive runs
@@ -51,7 +51,7 @@
 
 ## Repaired this run
 
-- **refreshed_live_topology** — Refreshed the audit against the current live view: 20 enabled jobs, 0 disabled jobs, 3 running jobs, and 7 live last-error jobs.
+- **refreshed_live_topology** — Refreshed the audit against the current live view: 21 enabled jobs, 0 disabled jobs, 4 running jobs, and 5 live last-error jobs.
 - **relocalized_runtime_drift** — Removed stale topology mismatch as an architecture-owned blocker so any remaining red stays localized to the external owner loop.
 - **revalidated_shared_findings_consumption** — Reconfirmed that code-backed marketing consumers still expose machine-verifiable shared market-intelligence consumption.
 

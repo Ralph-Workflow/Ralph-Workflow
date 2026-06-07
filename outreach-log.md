@@ -1,4 +1,25 @@
 
+### 2026-06-07 (Sunday) — Marketing workflow audit / evaluator run #16 (08:30 CEST)
+
+**Audit trigger:** Cron marketing-workflow-audit. Full re-analysis.
+
+**Live verification at audit time:**
+- Codeberg: 12★ (flat, 5+ weeks)
+- GitHub: 3★ (flat)
+- PyPI: 1,335 downloads/month (49/day), 0.00% star conversion
+- All 7 external lanes: credential-blocked
+- HN handoff bridge #48416264: active (deadline ~20:00 CEST today)
+
+**🔴 SEO Cannibalization Regression Detected:** The `sync_to_github.sh` post-sync hook was silently reverted — now preserves full README on GitHub instead of stripping to mirror notice. GitHub README confirmed at 6,097 bytes (full content). Audit #33's fix was undone. This means Google ranks GitHub above Codeberg for brand searches again.
+
+**Runtime changes deployed:**
+1. ✅ **Fixed duplicate docs verifier cron**: removed leftover `17 * * * *` line (72→48 runs/day, ~33% compute waste)
+2. ✅ **Restored SEO cannibalization fix**: sync_to_github.sh now overwrites GitHub README with mirror notice (280 bytes). Created `github_mirror_readme.md` template.
+3. ✅ **Created `seo_cannibalization_watchdog.py`** (weekly Sun 07:15 cron): verifies sync script config, last sync log, and live GitHub README size. Detected today's regression on first run.
+4. ✅ **Closed Docker quickstart gap**: Dockerfile + docker-compose.yml were missing from Codeberg repo (README advertised Docker but files only in vendor). Copied + committed + pushed (33289640).
+5. ✅ Updated golden crontab.txt, MARKETING_SELF_IMPROVEMENT.md
+
+**🔴 HN HANDOFF DEADLINE TODAY:** Thread #48416264 expires ~20:00 CEST. Two distinct reply angles prepared. This is the best HN positioning opportunity yet — thread literally debates "LoC-as-flex" (the article's thesis), and Ralph is the agent-agnostic counter-position that no competitor fills.
 
 ### 2026-06-06 (Saturday) — Marketing workflow audit #29 / evaluator run #9 (16:49 CEST)
 

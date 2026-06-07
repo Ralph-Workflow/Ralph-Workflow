@@ -1,34 +1,25 @@
 {
-  "generated_at": "2026-06-05T04:28:14.276867+00:00",
-  "watchdog": "seo_cannibalization",
-  "status": "ok",
-  "summary": "GitHub README is mirror notice \u2014 Codeberg has unique canonical content",
-  "github_readme": {
-    "url": "https://raw.githubusercontent.com/Ralph-Workflow/Ralph-Workflow/main/README.md",
-    "status": "HTTP 200",
-    "is_mirror_notice": true,
-    "has_full_content": false,
-    "has_mirror_marker": true,
-    "chars": 830
+  "timestamp": "2026-06-07T06:28:46Z",
+  "severity": "critical",
+  "findings": [
+    "CRITICAL: sync_to_github.sh preserves full README on GitHub \u2014 Codeberg SEO is being cannibalized",
+    "Last sync preserved full README \u2014 regression confirmed",
+    "GitHub README is 6097 bytes (full README) \u2014 actively cannibalizing Codeberg SEO"
+  ],
+  "sync_script_check": {
+    "has_post_hook": false,
+    "has_mirror_notice_logic": true,
+    "preserves_full_readme": true,
+    "strips_to_mirror_notice": true,
+    "status": "healthy"
   },
-  "mirror_template_exists": true,
-  "fix_deployed": "audit_33_github_mirror_readme",
-  "fix_date": "2026-06-05",
-  "fix_mechanism": "sync_to_github.sh post-sync hook overwrites GitHub README after each Codeberg\u2192GitHub push",
-  "history": [
-    {
-      "timestamp": "2026-06-05T04:27:01.263028+00:00",
-      "status": "ok",
-      "summary": "CB wins:0 GH wins:0 neither:3 errors:0"
-    },
-    {
-      "timestamp": "2026-06-05T04:28:14.276867+00:00",
-      "status": "ok",
-      "summary": "GitHub README is mirror notice \u2014 Codeberg has unique canonical content",
-      "readme_chars": 830,
-      "mirror_marker": true,
-      "full_content": false,
-      "mirror_template_exists": true
-    }
-  ]
+  "sync_log_check": {
+    "last_sync_line": "[2026-06-07 07:42:45] Sync complete \u2014 README kept identical on both repos",
+    "preserves_readme": true,
+    "status": "preserves_full_readme"
+  },
+  "github_readme_http": 200,
+  "github_readme_bytes": 6097,
+  "action_required": true,
+  "fix_instruction": "Restore mirror-notice post-sync hook in sync_to_github.sh. The hook should overwrite GitHub README with a short mirror notice after each push to prevent Google from ranking GitHub above Codeberg."
 }

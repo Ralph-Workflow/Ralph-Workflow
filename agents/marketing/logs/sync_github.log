@@ -4513,3 +4513,38 @@
 [2026-06-07 07:42:39] Updating existing sync clone
 [2026-06-07 07:42:45] Already up to date (HEAD=a1830864e9578d8e791dc39347bf3d071f035b19)
 [2026-06-07 07:42:45] Sync complete — README kept identical on both repos
+[2026-06-07 08:39:20] Starting Codeberg -> GitHub sync
+[2026-06-07 08:39:20] Updating existing sync clone
+[2026-06-07 08:39:30] Codeberg is 1 commits ahead of GitHub, GitHub is 0 commits ahead
+[2026-06-07 08:39:30] Pushing 1 new commits to GitHub (HEAD=3328964072e53edab8e3e79376b56d1c9515f90d)
+[2026-06-07 08:39:32] Sync complete
+[2026-06-07 08:39:34] GitHub README overwritten with mirror notice (seo cannibalization prevention)
+[2026-06-07 08:40:06] Starting Codeberg -> GitHub sync
+[2026-06-07 08:40:06] Updating existing sync clone
+[2026-06-07 08:40:11] Codeberg is 0 commits ahead of GitHub, GitHub is 1 commits ahead
+[2026-06-07 08:40:11] WARNING: GitHub is 1 commits ahead of Codeberg — force-pushing Codeberg state
+[2026-06-07 08:40:12] Force sync complete
+[2026-06-07 08:40:14] GitHub README overwritten with mirror notice (seo cannibalization prevention)
+[2026-06-07 08:57:21] Starting Codeberg -> GitHub sync
+[2026-06-07 08:57:21] Updating existing sync clone
+[2026-06-07 08:57:26] In sync (Codeberg is ancestor of GitHub). GitHub has 0 extra commit(s), Codeberg has 0 unpushed commit(s).
+[2026-06-07 08:57:26] Pushing mirror state to GitHub (Codeberg HEAD=3328964072e53edab8e3e79376b56d1c9515f90d, mirror HEAD=e31b8968b713fca316059e1883b5da35695d05f9)
+[2026-06-07 08:57:29] Push complete — GitHub HEAD=e31b8968b713fca316059e1883b5da35695d05f9 (mirror notice applied)
+[2026-06-07 08:57:32] Starting Codeberg -> GitHub sync
+[2026-06-07 08:57:32] Updating existing sync clone
+[2026-06-07 08:57:36] In sync (Codeberg is ancestor of GitHub). GitHub has 1 extra commit(s), Codeberg has 0 unpushed commit(s).
+[2026-06-07 08:57:36] Pushing mirror state to GitHub (Codeberg HEAD=3328964072e53edab8e3e79376b56d1c9515f90d, mirror HEAD=d39c4e445debc6046a911e701356863ad7912c75)
+[2026-06-07 08:57:39] Push complete — GitHub HEAD=d39c4e445debc6046a911e701356863ad7912c75 (mirror notice applied)
+[2026-06-07 08:58:04] Starting Codeberg -> GitHub sync
+[2026-06-07 08:58:04] Updating existing sync clone
+[2026-06-07 08:58:07] In sync (Codeberg is ancestor of GitHub). GitHub has 1 extra commit(s), Codeberg has 0 unpushed commit(s).
+[2026-06-07 08:58:07] GitHub already at correct mirror state — nothing to do (Codeberg HEAD=3328964072e53edab8e3e79376b56d1c9515f90d)
+[2026-06-07 09:29:45] Starting Codeberg -> GitHub sync
+[2026-06-07 09:29:45] Updating existing sync clone
+[2026-06-07 09:29:50] Codeberg has 12 new commit(s) GitHub needs.
+[2026-06-07 09:29:50] Pushing mirror state to GitHub (Codeberg HEAD=d873d4a5d710bb49a4eb66776813b8a0dd20d68f, mirror HEAD=2c344d25336b16dc3dac99e748e584ceaa4fa935)
+[2026-06-07 09:29:54] Push complete — GitHub HEAD=2c344d25336b16dc3dac99e748e584ceaa4fa935 (mirror notice applied)
+[2026-06-07 09:29:56] Starting Codeberg -> GitHub sync
+[2026-06-07 09:29:56] Updating existing sync clone
+[2026-06-07 09:30:00] In sync (Codeberg is ancestor of GitHub). GitHub has 1 extra commit(s), Codeberg has 0 unpushed commit(s).
+[2026-06-07 09:30:00] GitHub already at correct mirror state — nothing to do (Codeberg HEAD=d873d4a5d710bb49a4eb66776813b8a0dd20d68f)

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-06T07:00:23.800452+00:00",
+  "generated_at": "2026-06-07T07:00:35.796615+00:00",
   "targets": [
     {
       "target": "ctxt.dev / Signum",
@@ -538,8 +538,8 @@
         },
         {
           "type": "website",
-          "value": "https://computingforgeeks.com/contact",
-          "label": "contact page"
+          "value": "https://computingforgeeks.com/choosing-the-right-work-tracking-tools-for-remote-teams",
+          "label": "website"
         },
         {
           "type": "github_issue",
@@ -557,7 +557,7 @@
           "label": "LinkedIn"
         }
       ],
-      "recommended_next_step": "public website contact path is now identified"
+      "recommended_next_step": "GitHub issue/PR path is now identified"
     },
     {
       "target": "SOTAAZ",

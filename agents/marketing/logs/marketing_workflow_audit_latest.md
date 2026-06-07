@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-06-06T16:49:24.582422
+- Generated: 2026-06-07T08:24:50.450726
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **3**
@@ -11,8 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The most recent runtime activity was curator_due_followup_packet_execution, but the latest meaningful external/replacement execution remains delta_capture_and_process_repair; do not confuse follow-through with fresh outcome-bearing distribution.
-- The active loop did execute a live marketing action recently (delta_capture_and_process_repair), so the system is still shipping output even though outcome movement is not visible yet.
+- The active loop did execute a live marketing action recently (hn_handoff_bridge_created), so the system is still shipping output even though outcome movement is not visible yet.
 
 ## What actually worked
 - No meaningful tactic produced a trustworthy win in this window.
@@ -25,7 +24,7 @@
 - Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck.
 
 ## What is low-signal
-- Recent live external action exists (delta_capture_and_process_repair), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
+- Recent live external action exists (hn_handoff_bridge_created), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.
 - Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.
 - Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template.
 
@@ -46,7 +45,7 @@
 - Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
 - GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
-- PyPI has 1303 downloads/month (36/day) — real usage signal that repo metrics don't capture.
+- PyPI has 1335 downloads/month (49/day) — real usage signal that repo metrics don't capture.
 
 ## Repair actions (execute in this run)
 - **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. All external distribution lanes are structurally blocked (no SMTP, no PyPI token, no gh auth, Apollo blocked, Reddit blocked). Owned content is saturated at 45 posts. The highest-value autonomous move is improving the existing conversion path (repo README, Docker quickstart, comparison page SEO, site copy) and surfacing the blocker-ROI summary in BLOCKER_ROI_SUMMARY.md for human handoff. Do not recommend directory confirmation — it has never produced a backlink.
@@ -61,11 +60,11 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
 
 ## Latest executed marketing action
-- Type: delta_capture_and_process_repair
-- Title: delta capture and process repair
+- Type: hn_handoff_bridge_created
+- Title: hn handoff bridge created
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-06_060600_active_loop.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-07_075500_hn_handoff.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.
@@ -93,5 +92,5 @@
 ## Shared findings artifact sync
 - Status: synced
 - Refreshed distribution lane: curator_due_followup
-- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-06-06_marketing_execution_board.md
+- Execution board: /home/mistlight/.openclaw/workspace/drafts/2026-06-07_marketing_execution_board.md
 - Outcome status: /home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json

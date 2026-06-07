@@ -1,25 +1,25 @@
 {
-  "checked_at": "2026-06-06T08:45:02.454639+02:00",
+  "checked_at": "2026-06-07T08:45:01.157036+02:00",
   "execution_board": {
     "artifact": "marketing_execution_board",
     "status": "stale",
     "issues": [
       "Stale marker: old PyPI blocker text"
     ],
-    "target": "/home/mistlight/.openclaw/workspace/drafts/2026-06-06_marketing_execution_board.md",
-    "content_date": "2026-06-06",
+    "target": "/home/mistlight/.openclaw/workspace/drafts/2026-06-07_marketing_execution_board.md",
+    "content_date": "2026-06-07",
     "content_age_days": 0
   },
   "distribution_lane_state": {
     "artifact": "distribution_lane_state",
     "status": "ok",
     "issues": [],
-    "file_mtime": "2026-06-06T08:42:26.115819",
-    "file_age_hours": 0.0,
+    "file_mtime": "2026-06-07T08:24:50.904716",
+    "file_age_hours": 0.3,
     "lane": "curator_due_followup"
   },
   "repairs_made": [
-    "Regenerated execution board \u2192 /home/mistlight/.openclaw/workspace/drafts/2026-06-06_marketing_execution_board.md (was: 2026-06-06)"
+    "Regenerated execution board \u2192 /home/mistlight/.openclaw/workspace/drafts/2026-06-07_marketing_execution_board.md (was: 2026-06-07)"
   ],
   "board_repaired": true,
   "lane_repaired": false,

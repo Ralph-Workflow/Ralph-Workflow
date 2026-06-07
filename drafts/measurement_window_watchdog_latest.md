@@ -1,12 +1,12 @@
 # Measurement Window Watchdog Report
-Generated: 2026-06-06T07:00:23.722195
+Generated: 2026-06-07T07:00:35.696168
 
 ## Summary
 - Active measurement windows: 1
-- Past-due tactics: 1
+- Past-due tactics: 0
   - Kill: 0
   - Rewrite: 0
   - Escalate: 0
-  - Wait: 1
+  - Wait: 0
 - Stuck repairs: 0
 - Apollo blocked: False

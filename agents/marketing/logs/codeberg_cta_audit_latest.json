@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-06T07:00:22.951999+00:00",
+  "generated_at": "2026-06-07T07:00:28.516943+00:00",
   "status": "fail",
-  "total_files_with_repo_links": 534,
+  "total_files_with_repo_links": 535,
   "high_severity_count": 2,
   "medium_severity_count": 11,
   "high_severity_findings": [
@@ -404,6 +404,14 @@
     {
       "path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-04_primary_repo_flat_contact_handoff_packet.md",
       "codeberg_links": 20,
+      "github_links": 0,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/drafts/HN_HANDOFF.md",
+      "codeberg_links": 2,
       "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -2218,14 +2226,6 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md",
-      "codeberg_links": 2,
-      "github_links": 2,
-      "finding_type": "ok",
-      "detail": "Codeberg-primary ordering confirmed.",
-      "severity": "none"
-    },
-    {
       "path": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_reuse_packet_latest.md",
       "codeberg_links": 4,
       "github_links": 0,
@@ -2419,7 +2419,7 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/github_mirror_readme.md",
-      "codeberg_links": 6,
+      "codeberg_links": 2,
       "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -3770,8 +3770,8 @@
       "severity": "none"
     },
     {
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
-      "codeberg_links": 2,
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/hn_handoff_48416264_harness_engineering.json",
+      "codeberg_links": 4,
       "github_links": 0,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -3820,6 +3820,14 @@
     {
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-05.json",
       "codeberg_links": 2,
+      "github_links": 2,
+      "finding_type": "ok",
+      "detail": "Codeberg-primary ordering confirmed.",
+      "severity": "none"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-06.json",
+      "codeberg_links": 4,
       "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
@@ -4083,8 +4091,8 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md",
-      "codeberg_links": 2,
-      "github_links": 0,
+      "codeberg_links": 4,
+      "github_links": 2,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"
@@ -4363,8 +4371,8 @@
     },
     {
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-local-first-beats-cloud-unattended-ai-coding.md",
-      "codeberg_links": 4,
-      "github_links": 2,
+      "codeberg_links": 6,
+      "github_links": 4,
       "finding_type": "ok",
       "detail": "Codeberg-primary ordering confirmed.",
       "severity": "none"

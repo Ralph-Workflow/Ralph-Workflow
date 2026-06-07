@@ -30785,3 +30785,156 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. Consistent framing across all surfaces, no hard failures, clear journey from README through START_HERE to docs map. The user should not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Leads with 'operating system for autonomous coding' and 'AI agent orchestrator' \u2014 no artifact/plumbing framing on first screen. Comparison table, fit/non-fit, and engineering-practice requirements all reinforce positioning."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "PyPI README also leads with correct positioning, adds the Ralph-loop origin story using improvement framing ('takes that simple, powerful idea and adds...'), and consistently presents Codeberg as primary."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "States 'Use this page after README and START_HERE' \u2014 explicit journey design. Routes users by intent, keeps proof secondary, reinforces composable-loop framing throughout."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Opens with correct positioning, guides the user through a single honest first run, avoids internal mechanics, and keeps next-click pages minimal ('Next pages only if you need them')."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independent verifier failed signoff
+CHECKER
+DOCS_QUALITY_FAIL
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [missing-file] Required docs-quality or docs surface file is missing.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [missing-file] Required docs-quality or docs surface file is missing.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md:1: [missing-file] Required docs-quality or docs surface file is missing.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/README.md:1: [missing-file] Required docs-quality or docs surface file is missing.
+
+EDITORIAL
+Traceback (most recent call last):
+  File "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_editorial_audit.py", line 368, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_editorial_audit.py", line 356, in main
+    issues = audit()
+  File "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_editorial_audit.py", line 277, in audit
+    issues.extend(require_positioning_alignment(path))
+                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_editorial_audit.py", line 220, in require_positioning_alignment
+    screen = first_screen(path)
+  File "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_editorial_audit.py", line 126, in first_screen
+    return '\n'.join(text(path).splitlines()[:lines])
+                     ~~~~^^^^^^
+  File "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_editorial_audit.py", line 122, in text
+    return path.read_text(encoding='utf-8')
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/pathlib/_local.py", line 548, in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/pathlib/_abc.py", line 632, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/pathlib/_local.py", line 539, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md'
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean. Both READMEs lead with the correct framing (operating system for autonomous coding, composable loop framework, AI agent orchestrator), avoid internal plumbing language, present clear audience fit/non-fit, and route well to START_HERE and docs. No positioning rollback detected.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "RALPH_WORKFLOW_POSITIONING.md (canonical)",
+      "reason": "Comparing the docs against this positioning reference: both READMEs preserve 'simple core \u2192 powerful composition' framing, avoid artifact/finish-receipt/merge-decision language in top-level surfaces, emphasize result-first evaluation, correctly present Codeberg as primary and GitHub as mirror, and carry the 'default first, extend later' message."
+    },
+    {
+      "path": "README.md:15-17",
+      "reason": "Leads with the Ralph-loop core (plan, build, verify) and composable-loop framing, then immediately distinguishes from chat/CLI wrappers \u2014 aligned with section 1-4 of positioning doc."
+    },
+    {
+      "path": "ralph-workflow/README.md:17-25",
+      "reason": "PyPI README adds the 'origin story' framing ('the name comes from the original Ralph loop') plus the extension plug ('default workflow ships strong enough to start with immediately; customize it later'). Both reinforced."
+    },
+    {
+      "path": "README.md:85-87",
+      "reason": "START_HERE.md is linked with clear context: 'first-run guidance \u2014 task selection, diagnosis, and a walked-through first wake-up'. The downstream journey is well-described."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean, consistent, and well-aligned with the positioning framework. No hard failures. The README \u2192 START_HERE \u2192 docs/README journey works, promoted next-click pages reinforce the same story, and the user would not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding', immediately positions as AI agent orchestrator, explains simple-core\u2192composition, has clear who-it's-for/who-it's-not, and routes to START_HERE."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Practical first-run path with task-selection guidance, spec template, morning-after review framework, and honest fit assessment. No internal plumbing. Routes to docs/README."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Intent-based routing map that explicitly tells users to keep proof secondary. Promoted pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) all reinforce the core positioning."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Thorough, honest, and practical. Concrete good/bad task examples, spec template with invariant section, five-step walkthrough. Maintains the ambitious-work / honest-review framing throughout."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

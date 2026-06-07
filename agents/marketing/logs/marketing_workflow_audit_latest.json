@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-06T16:49:24.582422",
+  "generated_at": "2026-06-07T08:24:50.450726",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 3,
@@ -17,9 +17,9 @@
     },
     {
       "platform": "PyPI",
-      "downloads_month": 1303,
-      "downloads_week": 230,
-      "downloads_day": 36,
+      "downloads_month": 1335,
+      "downloads_week": 274,
+      "downloads_day": 49,
       "total_downloads": null,
       "version": "0.8.8",
       "html_url": "https://pypi.org/project/ralph-workflow/"
@@ -58,7 +58,7 @@
       "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target.",
-      "PyPI has 1303 downloads/month (36/day) — real usage signal that repo metrics don't capture."
+      "PyPI has 1335 downloads/month (49/day) — real usage signal that repo metrics don't capture."
     ],
     "failing_signals": [
       "primary_repo_flat"
@@ -80,7 +80,7 @@
     "Repeated outreach opening: Which of the five made the most difference for your team? Worth thinking about explicitly — most teams do not name it clearly until after it becomes a bottleneck."
   ],
   "low_signal": [
-    "Recent live external action exists (delta_capture_and_process_repair), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
+    "Recent live external action exists (hn_handoff_bridge_created), but flat primary-repo movement means it is still measurement-pending, not proof that the tactic worked.",
     "Reddit remains blocked/partial from this environment, so that channel cannot produce a trustworthy execution read right now.",
     "Reddit opening repair already exists in the shared artifact /home/mistlight/.openclaw/workspace/agents/marketing/reddit_fresh_openings.md; reuse that bank when channel access returns instead of drafting another siloed template."
   ],
@@ -125,8 +125,7 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "The most recent runtime activity was curator_due_followup_packet_execution, but the latest meaningful external/replacement execution remains delta_capture_and_process_repair; do not confuse follow-through with fresh outcome-bearing distribution.",
-    "The active loop did execute a live marketing action recently (delta_capture_and_process_repair), so the system is still shipping output even though outcome movement is not visible yet."
+    "The active loop did execute a live marketing action recently (hn_handoff_bridge_created), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -159,20 +158,20 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_marketing_activity": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-06.json",
-    "type": "curator_due_followup_packet_execution",
-    "title": "Distribution lane execution: curator_due_followup",
-    "status": "prepared",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-07_075500_hn_handoff.json",
+    "type": "hn_handoff_bridge_created",
+    "title": "hn handoff bridge created",
+    "status": "executed",
     "ok": true,
-    "live_external_action": false,
-    "outcome_ready": false,
+    "live_external_action": true,
+    "outcome_ready": true,
     "warning": null,
-    "url": "/home/mistlight/.openclaw/workspace/drafts/2026-06-06_curator_due_followup_packet.md"
+    "url": null
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-06_060600_active_loop.json",
-    "type": "delta_capture_and_process_repair",
-    "title": "delta capture and process repair",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-06-07_075500_hn_handoff.json",
+    "type": "hn_handoff_bridge_created",
+    "title": "hn handoff bridge created",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
@@ -195,7 +194,7 @@
   "shared_artifact_sync": {
     "status": "synced",
     "selected_lane": "curator_due_followup",
-    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-06_marketing_execution_board.md",
+    "execution_board_path": "/home/mistlight/.openclaw/workspace/drafts/2026-06-07_marketing_execution_board.md",
     "execution_board_targets": [
       "Boss wants us to add more AI to our workflow",
       "vivy-yi/awesome-agent-orchestration",
@@ -205,6 +204,6 @@
       "SaaSHub"
     ],
     "outcome_status_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/outcome_execution_board_latest.json",
-    "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:1|action:delta_capture_and_process_repair:executed"
+    "fingerprint": "Codeberg:s0w0f0|GitHub:s0w0f0|PyPI:s0w0f0|bottleneck:distribution_and_message_to_primary_repo_conversion|repetitive:1|action:hn_handoff_bridge_created:executed"
   }
 }

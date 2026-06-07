@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Due Follow-Up Packet
-Generated: 2026-06-06T09:00:02
+Generated: 2026-06-07T09:00:02
 
 ## Why this exists now
 - At least one curator review window is due, so the loop should follow through instead of hiding inside another measurement hold or reset.

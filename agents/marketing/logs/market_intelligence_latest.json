@@ -1,5 +1,18 @@
 {
-  "generated_at": "2026-06-07T08:05:03.241369",
+  "generated_at": "2026-06-07T08:35:00.000000",
+  "daily_report": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_daily_2026-06-07.md",
+  "source_note": "Reddit blocked, HN Algolia only. See daily report for details.",
+  "hot_signals": [
+    {"topic": "Claude Code 1,400-line agent loop", "source": "laxmena.com", "date": "2026-06-03", "ralph_relevance": "critical", "action": "Architecture comparison content"},
+    {"topic": "Tmux agent babysitting hacks", "source": "Stan Angeloff blog", "date": "2026-05-29", "ralph_relevance": "critical", "action": "Reach out, narrative content"},
+    {"topic": "Uber caps AI coding spend at $1,500/mo", "source": "Simon Willison/Bloomberg", "date": "2026-06-03", "ralph_relevance": "high", "action": "Cost comparison content, HN engagement"},
+    {"topic": "Prebuilt agent configs have demand", "source": "HN 48383851", "date": "2026-06-03", "ralph_relevance": "high", "action": "TOML workflow portability content"},
+    {"topic": "Runtime/Corral/Stoneforge launches", "source": "HN multiple", "date": "2026-05-21 to 2026-06-01", "ralph_relevance": "competitive", "action": "Update competitor comparisons"}
+  ],
+  "coverage_issues": {
+    "reddit": "blocked 403",
+    "web_search": "duckduckgo bot detection"
+  },
   "source": "competitor_analysis.py",
   "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
   "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-07.md",

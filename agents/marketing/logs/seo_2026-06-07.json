@@ -1,0 +1,320 @@
+{
+  "timestamp": "2026-06-07T09:00:02.378672",
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "title": "Autonomous coding workflow \u2014 Ralph Workflow",
+      "meta_description": "Open-source autonomous coding workflow for Claude Code, Codex, and OpenCode. Hand off one task overnight and wake up to tested, reviewable code.",
+      "canonical": "https://ralphworkflow.com/",
+      "og_tags": {
+        "description": "Open-source autonomous coding workflow for Claude Code, Codex, and OpenCode. Hand off one task overnight and wake up to tested, reviewable code.",
+        "title": "Autonomous coding workflow \u2014 Ralph Workflow",
+        "type": "website",
+        "url": "https://ralphworkflow.com/",
+        "site_name": "Ralph Workflow",
+        "image": "https://ralphworkflow.com/ralph-workflow-social-card.png",
+        "image:width": "1200",
+        "image:height": "630",
+        "image:type": "image/png",
+        "image:alt": "Ralph Workflow \u2014 Open-source autonomous coding workflow orchestrator"
+      },
+      "twitter_card": "summary_large_image",
+      "json_ld": true,
+      "has_h1": true,
+      "word_count": 7100,
+      "has_nav": true,
+      "has_main": true,
+      "lang_attr": "en"
+    },
+    "robots": {
+      "status": 200,
+      "directive_count": 35,
+      "sitemap_url": "https://ralphworkflow.com/sitemap.xml"
+    },
+    "sitemap": {
+      "status": 200,
+      "url_count": 103,
+      "urls": [
+        "https://ralphworkflow.com/",
+        "https://ralphworkflow.com/start",
+        "https://ralphworkflow.com/privacy",
+        "https://ralphworkflow.com/terms",
+        "https://ralphworkflow.com/install",
+        "https://ralphworkflow.com/docs/",
+        "https://ralphworkflow.com/compare",
+        "https://ralphworkflow.com/contact",
+        "https://ralphworkflow.com/docs/advanced-artifact-configuration",
+        "https://ralphworkflow.com/docs/advanced-mcp-configuration",
+        "https://ralphworkflow.com/docs/advanced-pipeline-configuration",
+        "https://ralphworkflow.com/docs/after-your-first-run",
+        "https://ralphworkflow.com/docs/agents",
+        "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
+        "https://ralphworkflow.com/docs/ai-agent-workflow-composer",
+        "https://ralphworkflow.com/docs/ai-coding-workflow-automation",
+        "https://ralphworkflow.com/docs/bounded-autonomy-for-unattended-coding",
+        "https://ralphworkflow.com/docs/claude-code-approval-mode",
+        "https://ralphworkflow.com/docs/claude-code-automation",
+        "https://ralphworkflow.com/docs/claude-code-codex-workflow"
+      ]
+    }
+  },
+  "onpage": {
+    "score": 100,
+    "grade": "A",
+    "issues": [],
+    "recommendations": []
+  },
+  "ranks": {
+    "unattended coding agent": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI agent orchestration CLI": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "spec-driven AI agent": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI coding workflow automation": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Claude Code automation": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Claude Code unattended": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI agent workflow composer": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Ralph Workflow": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "_top_queries": [
+      {
+        "query": "ralph workflow",
+        "position": 2.0,
+        "impressions": 47,
+        "clicks": 15,
+        "ctr": 31.9
+      },
+      {
+        "query": "ralph ai",
+        "position": 8.0,
+        "impressions": 29,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph framework",
+        "position": 5.0,
+        "impressions": 19,
+        "clicks": 1,
+        "ctr": 5.3
+      },
+      {
+        "query": "ralph ai agent",
+        "position": 12.0,
+        "impressions": 11,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph git",
+        "position": 7.0,
+        "impressions": 9,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph github",
+        "position": 22.0,
+        "impressions": 8,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph orchestrator",
+        "position": 21.0,
+        "impressions": 6,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "\"ralph loop\" agent workflow",
+        "position": 7.0,
+        "impressions": 5,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "\"ralph loop\" ai workflow",
+        "position": 6,
+        "impressions": 5,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph coding",
+        "position": 22.0,
+        "impressions": 5,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph open source",
+        "position": 9.0,
+        "impressions": 5,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph prompt",
+        "position": 8.0,
+        "impressions": 5,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph software",
+        "position": 9.0,
+        "impressions": 5,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "github ralph",
+        "position": 32.0,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralf ai",
+        "position": 5.0,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ai ralph",
+        "position": 7,
+        "impressions": 2,
+        "clicks": 1,
+        "ctr": 50.0
+      },
+      {
+        "query": "\"ralph loop\" workflow",
+        "position": 6,
+        "impressions": 2,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "claude code ralph loop",
+        "position": 46.0,
+        "impressions": 2,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph claude code",
+        "position": 31,
+        "impressions": 2,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph code",
+        "position": 26.0,
+        "impressions": 2,
+        "clicks": 0,
+        "ctr": 0
+      }
+    ]
+  },
+  "backlinks": {
+    "count_approx": 0,
+    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data"
+  },
+  "domain_rating": {
+    "dr": null,
+    "status": 0
+  },
+  "competitors": {
+    "claude.ai/code": {
+      "status": 0,
+      "ok": false,
+      "title": ""
+    },
+    "cursor.com": {
+      "status": 200,
+      "ok": true,
+      "title": "Cursor: The best coding agent"
+    },
+    "github.com/features/copilot": {
+      "status": 200,
+      "ok": true,
+      "title": "GitHub Copilot \u00b7 Your AI pair programmer \u00b7 GitHub"
+    },
+    "aider.chat": {
+      "status": 200,
+      "ok": true,
+      "title": "Aider - AI Pair Programming in Your Terminal"
+    },
+    "continue.dev": {
+      "status": 200,
+      "ok": true,
+      "title": "Continue \u2022 Quality control for your software factory. | Continue"
+    }
+  },
+  "content_gap": {
+    "gaps": [],
+    "covered": [
+      "unattended coding agent",
+      "AI agent orchestration CLI",
+      "spec-driven AI agent",
+      "AI coding workflow automation",
+      "Claude Code automation",
+      "Claude Code unattended",
+      "AI agent workflow composer",
+      "Ralph Workflow"
+    ],
+    "coverage_pct": 100.0,
+    "scan_method": "homepage+sitemap",
+    "urls_scanned": 35
+  },
+  "serp": {
+    "position": null,
+    "people_also_ask": false,
+    "related_searches": false,
+    "keyword": "unattended coding agent"
+  },
+  "priority_actions": [
+    "Build backlinks: submit to directories, guest post, earn citations"
+  ]
+}

@@ -1,42 +1,98 @@
 {
-  "ts": "2026-06-07T08:16:59.918522",
-  "jobs_checked": 20,
-  "issues_found": 1,
+  "ts": "2026-06-07T09:27:43.323644",
+  "jobs_checked": 21,
+  "issues_found": 7,
   "issues": [
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_verifier",
+      "category": "artifact_contract_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
+      "required_text": "Status: independently verified pass",
+      "likely_cause": "Verifier artifact exists but does not show required pass contract"
+    },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 6780.48,
+      "artifact_age_minutes": 6851.21,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_verifier_stability",
+      "category": "loop_verification_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
+      "last_error": "latest docs verifier verdict is not pass: 'fail'",
+      "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
+      "recent_failures": 0,
+      "consecutive_passes_since_last_fail": 0
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime",
+      "category": "artifact_contract_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T09:26:38.074285+02:00\"\n}",
+      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_verifier_escalation",
+      "category": "escalation_required",
+      "last_error": "",
+      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=9",
+      "repeats_in_recent_history": 9,
+      "owner_domain": "docs",
+      "incident_key": "docs_verifier::artifact_contract_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_verifier_stability_escalation",
+      "category": "escalation_required",
+      "last_error": "latest docs verifier verdict is not pass: 'fail'",
+      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=9",
+      "repeats_in_recent_history": 9,
+      "owner_domain": "docs",
+      "incident_key": "docs_verifier_stability::loop_verification_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime_escalation",
+      "category": "escalation_required",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T09:26:38.074285+02:00\"\n}",
+      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=23",
+      "repeats_in_recent_history": 23,
+      "owner_domain": "architecture",
+      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
     }
   ],
   "repairs_attempted": [
     {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
-    },
-    {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T08:16:43.549361+02:00\"\n}"
+      "type": "rerun_docs_verifier_for_stability",
+      "job": "docs_verifier_stability",
+      "ok": false,
+      "detail": "independent verifier failed signoff\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_FAIL\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [positioning-gap] First screen must explain composition into more complex workflows.\n- /home/mistlight/.openclaw/worksp"
     },
     {
       "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_escalation",
+      "job": "docs_verifier_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780817256436:14\"\n}"
     },
     {
       "type": "owner_loop_escalation",
-      "job": "agent_architecture_verifier_runtime_escalation",
+      "job": "docs_verifier_stability_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780817258530:15\"\n}"
     }
   ]
 }

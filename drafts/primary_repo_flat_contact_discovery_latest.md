@@ -1,5 +1,5 @@
 # Ralph Workflow primary-repo-flat contact discovery
-Generated: 2026-06-06T07:00:23+00:00
+Generated: 2026-06-07T07:00:35+00:00
 
 ## Why this ran
 - Codeberg adoption is still flat in the active window.
@@ -176,12 +176,12 @@ Generated: 2026-06-06T07:00:23+00:00
 ### 13. ComputingForGeeks
 - Hook: OpenCode vs Claude Code vs Cursor: AI Coding Agents Compared (2026)
 - Article/root: https://computingforgeeks.com/opencode-vs-claude-code-vs-cursor/ / https://computingforgeeks.com/
-- Recommended next step: public website contact path is now identified
+- Recommended next step: GitHub issue/PR path is now identified
 - Suggested subject: Ralph Workflow for your next AI coding agents comparison update
 - Discovered channels:
   - about page: https://computingforgeeks.com/about
   - about page: https://computingforgeeks.com/about-us
-  - contact page: https://computingforgeeks.com/contact
+  - website: https://computingforgeeks.com/choosing-the-right-work-tracking-tools-for-remote-teams
   - GitHub issue: https://github.com/nicepkg/oh-my-openagent.git/issues/new
   - X/Twitter: https://twitter.com/jj_mutai
   - LinkedIn: https://www.linkedin.com/company/86415623
