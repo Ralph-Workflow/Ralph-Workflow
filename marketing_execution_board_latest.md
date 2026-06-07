@@ -1,1 +1,1 @@
-drafts/2026-06-01_marketing_execution_board.md
+drafts/2026-06-05_marketing_execution_board.md

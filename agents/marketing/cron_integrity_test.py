@@ -22,6 +22,17 @@ LOG_PATH = ROOT / 'agents' / 'marketing' / 'logs' / 'cron_integrity_latest.json'
 GOLDEN_CRONTAB = ROOT / 'agents' / 'marketing' / 'crontab.txt'
 MIN_MARKETING_JOBS = 8  # below this, system is degraded
 
+# Dead-job denylist — scripts that must NOT be in the live crontab.
+# These were once used but are now permanently dead due to provider shutdowns,
+# account suspensions, or other irreversible external blocks.
+# History:
+#   blind_monitor_replacement — DDG + Brave both dead since 2026-06-01, every-30-min waste
+#   reddit_monitor — Reddit IP-suspended since 2026-05-31, 403 on all endpoints
+DEAD_JOB_DENYLIST = [
+    "blind_monitor_replacement.py",
+    "reddit_monitor.py",
+]
+
 def _live_crontab_lines() -> list[str]:
     result = subprocess.run(
         ['crontab', '-l'],
@@ -51,12 +62,23 @@ def main() -> int:
     total_lines = len(lines)
     
     issues = []
+    zombie_jobs = []
     
     if total_lines < MIN_MARKETING_JOBS:
         issues.append(f"CATASTROPHIC: Only {total_lines} cron lines found (min {MIN_MARKETING_JOBS}). Crontab may be partially wiped.")
     
     if marketing_count < 6:
         issues.append(f"DEGRADED: Only {marketing_count} marketing cron jobs (expected >= 6).")
+    
+    # Check for dead/zombie jobs on the denylist
+    zombie_jobs = []
+    for line in lines:
+        for dead_script in DEAD_JOB_DENYLIST:
+            if dead_script in line:
+                zombie_jobs.append(dead_script)
+                break
+    if zombie_jobs:
+        issues.append(f"ZOMBIE: {len(zombie_jobs)} dead cron jobs still active: {', '.join(zombie_jobs)}. These produce zero-value output and drain cron cycles. Remove them from crontab.")
     
     if golden_count > 0 and total_lines < golden_count * 0.7:
         issues.append(f"MISMATCH: Live crontab has {total_lines} jobs vs golden {golden_count}.")
@@ -69,7 +91,9 @@ def main() -> int:
         "min_marketing_jobs": MIN_MARKETING_JOBS,
         "issues": issues,
         "ok": len(issues) == 0,
-        "crontab_snapshot": lines,
+        "dead_job_denylist": DEAD_JOB_DENYLIST,
+    "zombie_jobs_detected": zombie_jobs,
+    "crontab_snapshot": lines,
     }
     
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)

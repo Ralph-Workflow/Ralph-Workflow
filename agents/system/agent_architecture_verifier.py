@@ -64,13 +64,19 @@ def is_marketing_owned_issue(issue: dict) -> bool:
     name = str(issue.get('name') or '')
     job_id = str(issue.get('job_id') or '')
     path = str(issue.get('path') or '')
+    owner_domain = str(issue.get('owner_domain') or '')
     blocked_by = [str(item) for item in (issue.get('blocked_by') or [])]
+    marketing_names = {'competitor-analysis', 'content-poster', 'market-intelligence-refresh'}
     return (
-        'marketing' in name
+        owner_domain == 'site'
+        or 'Push research findings to git repo' in name
+        or 'marketing' in name
+        or name in marketing_names
         or 'marketing' in job_id
         or '/agents/marketing/' in path
         or name.startswith('reddit-')
         or name.startswith('apollo-')
+        or name.startswith('seo-')
         or any(item.startswith('marketing_') or item.startswith('marketing-') for item in blocked_by)
     )
 

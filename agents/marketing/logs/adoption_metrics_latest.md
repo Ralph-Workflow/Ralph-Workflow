@@ -1,6 +1,6 @@
 # Adoption Metrics
 
-- Timestamp: 2026-06-07T06:33:56.655775
+- Timestamp: 2026-06-07T07:13:28.272771
 
 ## Codeberg (primary)
 - Stars: 12 (+0)
@@ -13,9 +13,9 @@
 
 ## PyPI (package)
 - Version: 0.8.8
-- Downloads (last month): 1303
-- Downloads (last week): 230
-- Downloads (last day): 36
+- Downloads (last month): 1335
+- Downloads (last week): 274
+- Downloads (last day): 49
 - Total downloads: None
 - URL: https://pypi.org/project/ralph-workflow/
 
@@ -32,7 +32,7 @@
 - Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
 - GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
-- PyPI has 1303 downloads/month (36/day) — real usage signal that repo metrics don't capture.
+- PyPI has 1335 downloads/month (49/day) — real usage signal that repo metrics don't capture.
 - Failing signal: primary_repo_flat
 
 ## Next focus

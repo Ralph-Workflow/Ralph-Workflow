@@ -1,14 +1,16 @@
 # Reddit Learnings
 
-## CRITICAL STATUS — 2026-06-05 09:15 CEST
+## CRITICAL STATUS — 2026-06-05 17:15 CEST (evaluator run #3)
 
 **Reddit posting: ZERO posts in June 2026. Last logged post: approximately May 26.**
 
-- DDG search provider: fully dead (8+ days). Brave search: dead (3+ days). Reddit direct: 403 IP-blocked.
-- Reddit monitor: still finds opportunities (6 shortlisted June 4) but CANNOT post — this is compute waste.
+- DDG search provider: dead (~10 days). Brave search: dead (~3 days). Reddit direct: 403 IP-blocked.
+- Reddit monitor: found 6 opportunities on June 4 but CANNOT post — research-only mode active.
 - 7-day DDG escalation deadline (June 4 11:19 CEST) passed without resolution.
-- The system cannot self-resolve Reddit access. Path to unblock: 5-minute PRAW API key setup (see `agents/marketing/REDDIT_PRAW_SETUP.md`).
-- Until Reddit is unblocked: Reddit monitor should run research-only, and all posting crons dependent on Reddit should be paused or reduced.
+- PRAW API key setup (5 minutes, see `REDDIT_PRAW_SETUP.md`) is the only path to unblock.
+- No autonomous Reddit posting possible. All search providers / direct means exhausted.
+- Reddit monitor cron is embedded in competitor_analysis (08:00, 20:00) — running 2x/day. Acceptable cadence.
+- Evaluator run #3 actions: published Anthropic Dynamic Workflows comparison post (blog-only). No Reddit actions possible.
 
 ## New ecosystem findings — 2026-06-03 (21:19 CEST)
 

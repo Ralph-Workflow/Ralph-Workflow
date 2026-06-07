@@ -27,7 +27,14 @@ def load_json(path: Path) -> dict:
 
 
 def cron_jobs() -> list[dict]:
+    """Live runtime topology only (default --json, excludes persisted disabled history)."""
     payload = json.loads(subprocess.check_output(['openclaw', 'cron', 'list', '--json'], text=True))
+    return payload.get('jobs', []) or []
+
+
+def all_cron_jobs() -> list[dict]:
+    """All jobs including persisted disabled history (--all)."""
+    payload = json.loads(subprocess.check_output(['openclaw', 'cron', 'list', '--all', '--json'], text=True))
     return payload.get('jobs', []) or []
 
 
@@ -92,6 +99,7 @@ SELF_REPAIR_AUDIT_JSON = LOG_DIR / 'self_repair_self_improve_audit_latest.json'
 
 def main() -> int:
     jobs = cron_jobs()
+    all_jobs = all_cron_jobs()
     persisted_jobs = (load_json(GATEWAY_JOBS).get('jobs') or []) if GATEWAY_JOBS.exists() else []
     running_jobs = sorted(job.get('name') for job in jobs if job.get('status') == 'running' and job.get('name'))
     last_error_jobs = sorted(job.get('name') for job in jobs if job.get('status') == 'error' and job.get('name'))
@@ -101,7 +109,10 @@ def main() -> int:
         if job.get('status') == 'error' and job.get('name')
     }
     disabled_live = sorted(job.get('name') for job in jobs if not job.get('enabled', True) and job.get('name'))
-    disabled_persisted = sorted(job.get('name') for job in persisted_jobs if not job.get('enabled', True) and job.get('name'))
+    disabled_persisted = sorted(
+        set(job.get('name') for job in all_jobs if not job.get('enabled', True) and job.get('name'))
+        - set(job.get('name') for job in jobs if not job.get('enabled', True) and job.get('name'))
+    )
 
     loop_integrity = load_json(LOOP_INTEGRITY)
     health = load_json(HEALTH_MONITOR)
@@ -317,7 +328,7 @@ def main() -> int:
             'live_jobs_enabled': sum(1 for job in jobs if job.get('enabled', True)),
             'live_jobs_disabled': len(disabled_live),
             'disabled_job_names': disabled_live,
-            'persisted_jobs_checked': len(persisted_jobs),
+            'persisted_jobs_checked': len(all_jobs),
             'persisted_disabled_job_names': disabled_persisted,
             'live_running_job_names': running_jobs,
             'live_last_error_job_names': last_error_jobs,
@@ -421,8 +432,8 @@ def main() -> int:
         },
         'notes': [
             'Architecture green here means the architecture-owned verifier path is coherent; it does not mean the whole stack is green.',
-            'Persisted disabled jobs remain history only; live disabled jobs are 0.',
-            f'Independent live inspection in this snapshot saw {len(jobs)} total jobs, {sum(1 for job in jobs if job.get("enabled", True))} enabled, {len(disabled_live)} disabled, {len(running_jobs)} running, and {len(last_error_jobs)} live last-error jobs.',
+            'Persisted disabled jobs remain history only; live disabled jobs are 0.' if not disabled_live else f'Live disabled jobs: {disabled_live}; persisted-only disabled jobs (--all minus live): {disabled_persisted}',
+            f'Independent live inspection in this snapshot saw {len(jobs)} live jobs, {sum(1 for job in jobs if job.get("enabled", True))} enabled, {len(disabled_live)} disabled, {len(running_jobs)} running, and {len(last_error_jobs)} live last-error jobs.',
             'The remaining blocker is external marketing outcome evidence, not architecture runtime drift.' if marketing_verdict != 'pass' else ('External owner-loop residue is still live even though architecture is green.' if external_watch_issues else 'No external marketing blocker is active.'),
             (
                 f"Marketing-workflow-audit timeout budget is now {marketing_timeout_state['timeout_seconds']}s for a last observed {marketing_timeout_state['last_duration_ms']}ms runtime; waiting for one clean rerun to clear stale timeout residue."

@@ -1,6 +1,19 @@
 # Long-Term Memory
 
 ## Marketing / Social Posting
+
+### HONEST OVERDUE AUDIT (2026-06-05)
+- The marketing system ran for 3+ weeks and produced ZERO adoption movement. Codeberg: 12 stars, flat.
+- The system has an activity-theater problem: 107 Python scripts producing artifacts that feed into each other (audit → report → check → verifier → precheck) without reaching real people.
+- All 7 external distribution channels are blocked by human credentials that I never directly asked you for.
+- Self-improvement loops were self-referential — detecting problems but unable to fix the structural bottleneck.
+- **Fixed on 2026-06-05:** Removed 20+ dead cron jobs, reduced others from every 6h to daily, wrote BLOCKER_ROI_SUMMARY.md with the exact 5-minute steps you need to take.
+- THE REAL BOTTLENECK IS NOT THE CODE — it's that no one can see the 50 blog posts, 94 Telegraph articles, and well-crafted SEO content.
+- **What I need from you:** Reddit API setup (30 min) or Dev.to API key (5 min). Without one of these, everything else is wheel-spinning.
+- **Permanent personal guard added 2026-06-06:** ACTIVITY_THEATER.md + activity-theater rule in AGENTS.md. If I run any artifact-production system for 7+ consecutive days with zero real-world external impact, I must stop and escalate immediately. This is the safeguard against ever repeating the "looks like work" trap.
+
+
+## Marketing / Social Posting
 - Social media marketing posts should use the working live-browser path, not browserless/headless fallbacks.
 - Preferred Reddit posting method: local headful Chromium under Xvfb, attached through the OpenClaw `user` existing-session profile.
 - Working attach detail: Chromium should expose `~/.config/google-chrome/DevToolsActivePort` via `--remote-debugging-port=0` so OpenClaw can attach to the live session.

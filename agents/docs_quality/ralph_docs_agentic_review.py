@@ -150,6 +150,23 @@ def _extract_json_payload(text: str) -> str:
 
 
 def run_review() -> dict:
+    # Fast-pass: if docs fingerprint hasn't changed since last successful review, reuse it
+    from docs_process_state import docs_state_fingerprint
+    current_fp = docs_state_fingerprint()
+    if JSON_REPORT.exists():
+        try:
+            existing = json.loads(JSON_REPORT.read_text(encoding='utf-8'))
+            if isinstance(existing, dict) and existing.get('status') == 'pass' and existing.get('loopHealthy'):
+                existing_fp = existing.get('_fastPassFingerprint', '')
+                if existing_fp == current_fp:
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    existing['_fastPassTimestamp'] = now_iso
+                    existing['_fastPassFingerprint'] = current_fp
+                    existing['_fastPassNote'] = 'LLM pipeline skipped — fingerprint matches, docs unchanged since last successful review.'
+                    print(f'[agentic-review] FAST-PASS: fingerprint {current_fp} unchanged, reusing existing pass artifact.', file=__import__('sys').stderr)
+                    return existing
+        except Exception:
+            pass
     ensure_acpx()
     prompt_file = WORKSPACE / 'agents' / 'docs_quality' / '.agentic_review_prompt.txt'
     prompt_file.write_text(build_prompt(), encoding='utf-8')

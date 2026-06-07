@@ -1,5 +1,5 @@
 {
-  "last_triggered_at": 1780504432.4884005,
-  "last_reason_signature": "checker_exit:1",
+  "last_triggered_at": 1780769441.8968375,
+  "last_reason_signature": "verifier_not_pass|verifier_json_not_pass|process_state:incidentOpen=True|process_state:repairContinuationRequired=True|process_state:currentIncidentId=ralph-docs-incident-20260606T180952Z",
   "last_target_job": "ralph-workflow-docs-verifier-supervisor"
 }

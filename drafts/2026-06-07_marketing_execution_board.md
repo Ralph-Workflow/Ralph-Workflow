@@ -1,54 +1,24 @@
 # Ralph Workflow Marketing Execution Board
-Generated: 2026-06-07T06:11:36
+Generated: 2026-06-07T07:55:00 CEST (run #14 — HN harness-engineering handoff)
 
-## Why this board exists
-- Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
-- Multiple live lanes already exist, so this board consolidates the best executable assets instead of letting them stay siloed across separate packet files.
-- Use this as the single follow-through surface during measurement holds and overlapping review windows.
+## Live adoption (verified 07:53 CEST)
+- Codeberg: 12★ (flat, 5+ weeks)
+- GitHub: 3★ (flat, holding >48h)
+- PyPI: ~1,335 downloads/month, 0.00% star conversion
 
 ## Active review windows
-- Apollo next review: unknown
-- Apollo launch review: unknown
+- Reddit handoff deadline: Jun 12 21:24 CEST (4.5 days). 6 replies ready, 0 posted.
+- **HN #48416264 🔥: ACTIVE — "Harness engineering: Leveraging Codex in an agent-first world" (144pts, 94 comments, ~6h old).** 2-angle handoff bridge ready at `agents/marketing/logs/hn_handoff_48416264_harness_engineering.json`. Best HN opportunity yet — thread topic IS Ralph's exact positioning.
+- HN #48413629: CLOSED (no new engagement).
+- SO: exhausted, next cron Jun 10 03:15. Expected output: 0.
 
-## Best executable assets still waiting
-### 1. StackOverflow demand-capture packet
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/stackoverflow_answer_handoff_packet_latest.md
-- Targets: Boss wants us to add more AI to our workflow
-- Why this matters: Highest-intent Q&A asset already exists and should be reused before another search pass.
+## Best executable assets
+1. **HN handoff #48416264 (NEW)** — 2 distinct replies, time-critical (post by ~20:00 CEST)
+2. Reddit handoff bridge — 6 replies, deadline Jun 12
+3. Site-wide CTA partial — already renders on all blog posts (verified: `_blog_repo_cta.html.erb`)
 
-### 2. Curator manual-contact packet
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/curator_contact_handoff_packet_latest.md
-- Targets: vivy-yi/awesome-agent-orchestration
-- Why this matters: These prepared curator targets already have non-GitHub contact paths, so execution matters more than more discovery.
+## Discovery this run
+- CTA partial `_blog_repo_cta.html.erb` already renders site-wide — the 45 posts flagged by watchdog as "WEAK_ENDING" actually have CTAs from the view layer. Only 2 posts needed inline markdown CTAs (already deployed in run #13). Watchdog needs fix to check rendered output.
 
-### 3. Comparison backlink packet
-- When: Do after fresh publisher / curator contacts are sent
-- Packet: /home/mistlight/.openclaw/workspace/drafts/comparison_backlink_handoff_packet_latest.md
-- Targets: Aider, Claude Code, Conductor (Teams)
-- Why this matters: Comparison proof is already prepared and should be reused instead of redrafted.
-
-### 4. Directory secondary-surface repair packet
-- When: Do now
-- Packet: /home/mistlight/.openclaw/workspace/drafts/directory_confirmation_execution_latest.md
-- Targets: SaaSHub
-- Why this matters: A live third-party surface still routes repo intent away from Codeberg or leaves it unclear, so correcting that surface is a real adoption-moving follow-through asset.
-
-## Shared findings reused
-- market_intelligence_latest.json → positioning truths and comparison framing
-- adoption_metrics_latest.json → Codeberg movement remains the primary success gate
-- curator_outreach_queue_latest.json / comparison_backlink_queue_latest.json → live prepared execution queues
-- primary_repo_flat_contact_discovery_latest.json → fresh publisher-contact lane
-- apollo_sequence_status_latest.json / apollo_sequence_launch_packet_latest.md → launch-ready managed outbound state
-- stackoverflow_answer_handoff_packet_latest.md → high-intent Q&A demand-capture asset
-
-## Verified infrastructure state (programmatic, not fabricated)
-- **Telegraph guard**: cooldown (cooldown_active) — clears ~06:14 UTC
-- **Telegraph queue**: 0 blogs pending cross-post (dry-run discovery verified), 0 already posted
-- **Telegraph crontab**: `0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1`
-- **PyPI v0.8.8**: blocked on credentials — 1 wheel(s), 1 sdist(s), twine-check PASSED
-
-## Process rule now in force
-- Do not generate another siloed packet when one of the assets above is already current.
-- During a hold window, refresh stale packets if needed, then point back to this board instead of inventing another reset artifact.
+## Process rule (reconfirmed)
+- All 7 external lanes credential-blocked. Next run: check adoption delta, Reddit deadline proximity (4d→3d→...), any new time-sensitive opportunity.

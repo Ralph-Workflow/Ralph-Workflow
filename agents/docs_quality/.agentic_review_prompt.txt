@@ -235,7 +235,7 @@ FILE: /home/mistlight/Ralph-Workflow/README.md
 2: 
 3: > **The operating system for autonomous coding.**
 4: 
-5: ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg)
+5: ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
 6: 
 7: > Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 8: 
@@ -259,19 +259,19 @@ FILE: /home/mistlight/Ralph-Workflow/README.md
 26: | Locked to one vendor | Claude + Codex + OpenCode in the same pipeline — your choice |
 27: | "Look at the diff" | Runnable, tested software with integration checks |
 28: 
-29: ## Who it's for
+29: [See how Ralph Workflow compares to 14 other autonomous coding tools →](https://ralphworkflow.com/compare)
 30: 
-31: Developers and teams who have **ambitious, well-specified work** that's too big to babysit and too risky to trust blindly. A good first run looks like:
+31: ## Who it's for
 32: 
-33: - The fitness app you wanted to build
-34: - A major product milestone
-35: - A substantial application slice with real acceptance criteria
-36: 
-37: It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
+33: Developers and teams who have **ambitious, well-specified work** that's too big to babysit and too risky to trust blindly. A good first run looks like:
+34: 
+35: - The fitness app you wanted to build
+36: - A major product milestone
+37: - A substantial application slice with real acceptance criteria
 38: 
-39: ## Quick start
+39: It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
 40: 
-41: Write your task in `PROMPT.md` before you sleep. Ralph reads it, runs planning → development → review cycles, and produces git commits you can inspect in the morning.
+41: ## Quick start
 42: 
 43: ```
 44: $ ralph --init
@@ -279,45 +279,45 @@ FILE: /home/mistlight/Ralph-Workflow/README.md
 46: $ ralph
 47: ```
 48: 
-49: ### Docker (no Python required)
+49: Write your task in `PROMPT.md` before you sleep. Ralph reads it, runs planning → development → review cycles, and produces git commits you can inspect in the morning.
 50: 
-51: ```bash
-52: docker run --rm -it \
-53:   -v "$(pwd):/workspace" \
-54:   -v "$HOME/.ralph:/root/.ralph" \
-55:   ralphworkflow/ralph --help
-56: ```
-57: 
-58: Build from source:
+51: ### Docker (no Python required)
+52: 
+53: ```bash
+54: docker run --rm -it \
+55:   -v "$(pwd):/workspace" \
+56:   -v "$HOME/.ralph:/root/.ralph" \
+57:   ralphworkflow/ralph --help
+58: ```
 59: 
-60: ```bash
-61: git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
-62: cd Ralph-Workflow/ralph-workflow
-63: docker build -t ralph-workflow .
-64: docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
-65: ```
-66: 
-67: ### pipx (Python 3.12+)
+60: Build from source:
+61: 
+62: ```bash
+63: git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+64: cd Ralph-Workflow/ralph-workflow
+65: docker build -t ralph-workflow .
+66: docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
+67: ```
 68: 
-69: ```bash
-70: pipx install ralph-workflow
-71: ralph --init        # one-time setup: installs agent bundles and capabilities
-72: ```
-73: 
-74: Full docs at [ralphworkflow.com](https://ralphworkflow.com/docs).
+69: ### pipx (Python 3.12+)
+70: 
+71: ```bash
+72: pipx install ralph-workflow
+73: ralph --init        # one-time setup: installs agent bundles and capabilities
+74: ```
 75: 
-76: 1. Run `ralph --diagnose` to confirm healthy helpers
-77: 2. Write your task in `PROMPT.md` in your project root
-78: 3. Run `ralph`
-79: 4. Go to sleep. Wake up to finished git commits you can review
-80: 
-81: That's it. The default workflow is already strong enough to start with. Customize later when you need more control.
-82: 
-83: For first-run guidance — task selection, diagnosis, and a walked-through first wake-up — see **[START_HERE.md](START_HERE.md)**.
+76: Full docs at [ralphworkflow.com](https://ralphworkflow.com/docs).
+77: Maintainers working in-repo should use `ralph-workflow/docs/sphinx/` as the canonical
+78: source for the published manual.
+79: 
+80: 1. Run `ralph --diagnose` to confirm healthy helpers
+81: 2. Write your task in `PROMPT.md` in your project root
+82: 3. Run `ralph`
+83: 4. Go to sleep. Wake up to finished git commits you can review
 84: 
-85: ## Compared to other tools
+85: That's it. The default workflow is already strong enough to start with. Customize later when you need more control.
 86: 
-87: Ralph Workflow is compared to 14 autonomous coding tools — Claude Code, Cursor, Aider, Continue, Copilot, Hermes Agent, Conductor OSS, kodo, Symphony, and more. See the full comparison matrix and deep-dive pages at **[ralphworkflow.com/compare](https://ralphworkflow.com/compare)**.
+87: For first-run guidance — task selection, diagnosis, and a walked-through first wake-up — see **[START_HERE.md](START_HERE.md)**.
 88: 
 89: ## See it in action
 90: 
@@ -325,10 +325,10 @@ FILE: /home/mistlight/Ralph-Workflow/README.md
 92: 
 93: | Command | Output |
 94: |---|---|
-95: | `ralph --init` | Banner, capabilities, first-run setup |
-96: | `ralph --diagnose` | Agent inventory, config, MCP check |
-97: | `ralph --dry-run` | Pipeline phases and iteration plan |
-98: | ▶ **Full demo** | [![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) — watch the complete first-run flow |
+95: | `ralph --init` | [init-output.txt](docs/sphinx/_static/demo/init-output.txt) — banner, capabilities, first-run setup |
+96: | `ralph --diagnose` | [diagnose-output.txt](docs/sphinx/_static/demo/diagnose-output.txt) — agent inventory, config, MCP check |
+97: | `ralph --dry-run` | [dry-run-output.txt](docs/sphinx/_static/demo/dry-run-output.txt) — pipeline phases and iteration plan |
+98: | ▶ **Full demo** | ![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg) — watch the complete first-run flow |
 99: | ⭐ **Contribute** | `ralph contribute` — opens Codeberg in your browser so you can star the project |
 100: 
 101: These are **unedited terminal captures** from a real run — not mock-ups.
@@ -336,7 +336,7 @@ FILE: /home/mistlight/Ralph-Workflow/README.md
 103: **Built-in capabilities:**
 104: 
 105: - **Phase routing** — planning agent → development agent → review agent → fix loop
-106: - **Cost arbitrage** — use cheaper agents for planning, stronger ones for coding
+106: - **Cost-efficient model routing** — use cheaper agents for planning, stronger ones for coding
 107: - **Repo-based handoff** — agents read each other's output through the repo, not context stuffing
 108: - **Recovery + retry** — each phase can loop independently on failure
 109: - **Vendor-neutral** — your config is YAML, your agents are your choice, your code is yours
@@ -347,23 +347,21 @@ FILE: /home/mistlight/Ralph-Workflow/README.md
 114: | Page | What it covers |
 115: |---|---|
 116: | [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |
-117: | [Quickstart](https://ralphworkflow.com/docs/quickstart.html) | Write a spec and run it in 10 minutes |
-118: | [Configuration](https://ralphworkflow.com/docs/configuration.html) | Agent routing, phase policies, model selection |
-119: | [User Stories](https://ralphworkflow.com/docs/user-stories.html) | Real workflows from real runs |
+117: | [Full Docs](https://ralphworkflow.com/docs) | Quickstart, configuration, user stories, and more |
+118: 
+119: ## Engineering-practice requirements
 120: 
-121: ## Engineering-practice requirements
+121: Ralph Workflow depends on good software engineering practices — it does not replace them. You need:
 122: 
-123: Ralph Workflow depends on good software engineering practices — it does not replace them. You need:
-124: 
-125: - **Clear specs** with concrete acceptance criteria
-126: - **Meaningful tests** in your repo
-127: - **Honest review discipline** — the review agent flags issues, you decide what to do
+123: - **Clear specs** with concrete acceptance criteria
+124: - **Meaningful tests** in your repo
+125: - **Honest review discipline** — the review agent flags issues, you decide what to do
+126: 
+127: A repo without guardrails will produce results that reflect that. Plan accordingly.
 128: 
-129: A repo without guardrails will produce results that reflect that. Plan accordingly.
+129: ---
 130: 
-131: ---
-132: 
-133: *Free and open source. Runs on your machine. Ships with a default workflow strong enough for real software engineering.*
+131: *Free and open source. Runs on your machine. Ships with a default workflow strong enough for real software engineering.*
 
 FILE: /home/mistlight/Ralph-Workflow/ralph-workflow/README.md
 1: # Ralph Workflow
@@ -379,191 +377,199 @@ FILE: /home/mistlight/Ralph-Workflow/ralph-workflow/README.md
 11: 
 12: > **GitHub is the mirror. Codeberg is the primary repo.**
 13: > Inspect, star, watch, fork, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-14: 
-15: Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
+14: >
+15: > Already installed? Run **`ralph star`** to open the repo in your browser. ⭐
 16: 
-17: ## What it does
+17: Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 18: 
-19: Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and turns it into a **composable loop framework** where each phase can loop independently and hand off to the next. A single `ralph` command spawns planning, development iteration, review, and fix cycles across multiple agents, then produces finished git commits you can review in the morning.
+19: ## What it does
 20: 
-21: **This is not a chat window or a prompt tool.** It's an orchestrator that runs real engineering pipelines unattended — overnight, while you sleep. The default workflow ships strong enough to start with immediately; customize it later when you need more control.
+21: Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and turns it into a **composable loop framework** where each phase can loop independently and hand off to the next. A single `ralph` command spawns planning, development iteration, review, and fix cycles across multiple agents, then produces finished git commits you can review in the morning.
 22: 
-23: The name comes from the original Ralph loop: repeat a strong prompt until the model can make real progress. Ralph Workflow takes that simple, powerful idea and adds planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines so unattended runs keep moving and teams can review the results with confidence.
+23: **This is not a chat window or a prompt tool.** It's an orchestrator that runs real engineering pipelines unattended — overnight, while you sleep. The default workflow ships strong enough to start with immediately; customize it later when you need more control.
 24: 
-25: ## Why it's different
+25: The name comes from the original Ralph loop: repeat a strong prompt until the model can make real progress. Ralph Workflow takes that simple, powerful idea and adds planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines so unattended runs keep moving and teams can review the results with confidence.
 26: 
-27: | What most tools do | What Ralph Workflow does |
-28: |---|---|
-29: | One agent, one chat session | Multiple agents routed by phase (planning → dev → review → fix) |
-30: | Copy-paste between tools | Agents hand off work through the repo, not context stuffing |
-31: | Hit context limits halfway | Phase-based summaries + checkpoint files keep context tight |
-32: | Locked to one vendor | Claude + Codex + OpenCode in the same pipeline — your choice |
-33: | "Look at the diff" | Runnable, tested software with integration checks |
-34: 
-35: [See how Ralph Workflow compares to 14 other autonomous coding tools →](https://ralphworkflow.com/compare)
+27: ## Why it's different
+28: 
+29: | What most tools do | What Ralph Workflow does |
+30: |---|---|
+31: | One agent, one chat session | Multiple agents routed by phase (planning → dev → review → fix) |
+32: | Copy-paste between tools | Agents hand off work through the repo, not context stuffing |
+33: | Hit context limits halfway | Phase-based summaries + checkpoint files keep context tight |
+34: | Locked to one vendor | Claude + Codex + OpenCode in the same pipeline — your choice |
+35: | "Look at the diff" | Runnable, tested software with integration checks |
 36: 
-37: ## Who it's for
+37: [See how Ralph Workflow compares to 14 other autonomous coding tools →](https://ralphworkflow.com/compare)
 38: 
-39: Developers and teams who have **ambitious, well-specified work** that's too big to babysit and too risky to trust blindly.
+39: ## Who it's for
 40: 
-41: A good first run looks like:
+41: Developers and teams who have **ambitious, well-specified work** that's too big to babysit and too risky to trust blindly.
 42: 
-43: 1. **Write a spec** — what you want built, in plain English or markdown
-44: 2. **Run `ralph`** — the orchestrator plans, builds, tests, and iterates
-45: 3. **Review the PR** — come back to committed, tested code
-46: 
-47: **[Start here: your first overnight task →](https://ralphworkflow.com/start)**
+43: A good first run looks like:
+44: 
+45: 1. **Write a spec** — what you want built, in plain English or markdown
+46: 2. **Run `ralph`** — the orchestrator plans, builds, tests, and iterates
+47: 3. **Review the PR** — come back to committed, tested code
 48: 
-49: New to autonomous coding? The 4-step guide walks you through picking a task, writing a short spec, running Ralph Workflow, and judging the result honestly — all in one page. Prefer a deeper narrative? [Read the blog version →](https://ralphworkflow.com/blog/your-first-overnight-task-start-here-guide)
+49: **[Start here: your first overnight task →](https://ralphworkflow.com/start)**
 50: 
-51: Start with tasks that are easy to verify: add tests to an existing module, fix known lint failures, refactor one narrow subsystem, or update documentation backed by existing code.
+51: New to autonomous coding? The 4-step guide walks you through picking a task, writing a short spec, running Ralph Workflow, and judging the result honestly — all in one page. Prefer a deeper narrative? [Read the blog version →](https://ralphworkflow.com/blog/your-first-overnight-task-start-here-guide)
 52: 
-53: ## Install
+53: Start with a bounded, verifiable task — the kind of work you would actually merge. A good first run is 2-6 hours, has a clear boundary, and a concrete correctness check. For a strong first run, pick a task with clear acceptance criteria: "add tests to an existing module so coverage reaches 80%", "refactor one subsystem with existing tests to confirm no regressions", or "build a fitness-app slice with concrete feature checks". The common thread is a well-specified outcome you can judge honestly in the morning, not how small the task is.
 54: 
-55: ### pipx (recommended)
+55: ## Install
 56: 
-57: ```bash
-58: pipx install ralph-workflow
-59: ralph --help
-60: ```
-61: 
-62: ### PyPI
+57: ### pipx (recommended)
+58: 
+59: ```bash
+60: pipx install ralph-workflow
+61: ralph --help
+62: ```
 63: 
-64: ```bash
-65: pip install ralph-workflow
-66: ralph --help
-67: ```
-68: 
-69: ### Docker
+64: ### PyPI
+65: 
+66: ```bash
+67: pip install ralph-workflow
+68: ralph --help
+69: ```
 70: 
-71: ```bash
-72: docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralphworkflow/ralph --help
-73: ```
-74: 
-75: Build from source:
+71: ### Docker
+72: 
+73: ```bash
+74: docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralphworkflow/ralph --help
+75: ```
 76: 
-77: ```bash
-78: git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
-79: cd Ralph-Workflow/ralph-workflow
-80: docker build -t ralph-workflow .
-81: docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
-82: ```
-83: 
-84: ### From source
+77: Build from source:
+78: 
+79: ```bash
+80: git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+81: cd Ralph-Workflow/ralph-workflow
+82: docker build -t ralph-workflow .
+83: docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
+84: ```
 85: 
-86: ```bash
-87: git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
-88: cd Ralph-Workflow/ralph-workflow
-89: pip install -e .
-90: ralph --version
-91: ```
-92: 
-93: Requires Python 3.12+.
+86: ### From source
+87: 
+88: ```bash
+89: git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+90: cd Ralph-Workflow/ralph-workflow
+91: pip install -e .
+92: ralph --version
+93: ```
 94: 
-95: **[Real-task walkthrough →](https://ralphworkflow.com/blog/real-task-walkthrough-overnight-refactoring)**
+95: Requires Python 3.12+.
 96: 
-97: ## Before your first run
+97: **[Real-task walkthrough →](https://ralphworkflow.com/blog/real-task-walkthrough-overnight-refactoring)**
 98: 
-99: 1. Install the agent CLIs you want Ralph Workflow to call.
-100: 2. Authenticate those CLIs normally.
-101: 3. Pick one small, concrete task for the first run.
-102: 
-103: Ralph Workflow does not manage provider authentication or store your agent credentials. You authenticate the agent CLIs yourself first, and Ralph Workflow then invokes those tools directly and supervises the workflow, even when different phases are routed through different agent families.
+99: ## Before your first run
+100: 
+101: 1. Install the agent CLIs you want Ralph Workflow to call.
+102: 2. Authenticate those CLIs normally.
+103: 3. Pick one small, concrete task for the first run.
 104: 
-105: ## Quick start
+105: Ralph Workflow does not manage provider authentication or store your agent credentials. You authenticate the agent CLIs yourself first, and Ralph Workflow then invokes those tools directly and supervises the workflow, even when different phases are routed through different agent families.
 106: 
-107: ```bash
-108: cd /path/to/your/project
-109: ralph --init
-110: ralph --diagnose
-111: $EDITOR PROMPT.md
-112: ralph
-113: ```
-114: 
-115: What happens in that flow:
+107: ## Quick start
+108: 
+109: ```bash
+110: cd /path/to/your/project
+111: ralph --init
+112: ralph --diagnose
+113: $EDITOR PROMPT.md
+114: ralph
+115: ```
 116: 
-117: - **`ralph --init`** creates the local `.agent/` support files.
-118: - **`ralph --diagnose`** checks whether your configured agents and MCP setup are reachable.
-119: - **`PROMPT.md`** becomes the task spec for the run.
-120: - **`ralph`** directly invokes your configured agent CLIs and starts the unattended workflow.
-121: 
-122: After `ralph --init`, review the generated `.agent/` support files. If this repository needs a project-local main-config override, run `ralph --init-local-config` to create `.agent/ralph-workflow.toml`, then point the workflow at the agent CLIs you already use for planning, development, and review.
+117: What happens in that flow:
+118: 
+119: - **`ralph --init`** creates the local `.agent/` support files.
+120: - **`ralph --diagnose`** checks whether your configured agents and MCP setup are reachable.
+121: - **`PROMPT.md`** becomes the task spec for the run.
+122: - **`ralph`** directly invokes your configured agent CLIs and starts the unattended workflow.
 123: 
-124: Depth presets control iteration intensity:
+124: After `ralph --init`, review the generated `.agent/` support files. If this repository needs a project-local main-config override, run `ralph --init-local-config` to create `.agent/ralph-workflow.toml`, then point the workflow at the agent CLIs you already use for planning, development, and review.
 125: 
-126: ```bash
-127: ralph -Q     # quick: small fixes, single iteration
-128: ralph        # standard: most features and tasks
-129: ralph -T     # thorough: complex refactors, ten iterations
-130: ```
-131: 
-132: ## A fast way to tell whether Ralph Workflow fits
+126: Depth presets control iteration intensity:
+127: 
+128: ```bash
+129: ralph -Q     # quick: small fixes, single iteration
+130: ralph        # standard: most features and tasks
+131: ralph -T     # thorough: complex refactors, ten iterations
+132: ```
 133: 
-134: 1. Pick one real backlog task that is small enough to review in one sitting.
-135: 2. Write it down in `PROMPT.md` with clear acceptance criteria.
-136: 3. Run Ralph Workflow overnight.
-137: 4. Come back and ask one question: **would you merge this?**
-138: 
-139: If yes, give it a harder task next.
-140: If no, tighten the spec, checks, or task choice and run again.
-141: 
-142: If the first run teaches you something real either way, turn that result into the right public Codeberg action: star/watch the primary repo if it earned trust, or report the exact first-run friction on Codeberg if it did not.
-143: 
-144: ## What to expect from a run
+134: ## What to expect from a run
+135: 
+136: *A fast way to tell whether Ralph Workflow fits:*
+137: 
+138: 1. Pick one real backlog task that is small enough to review in one sitting.
+139: 2. Write it down in `PROMPT.md` with clear acceptance criteria.
+140: 3. Run Ralph Workflow overnight.
+141: 4. Come back and ask one question: **would you merge this?**
+142: 
+143: If yes, give it a harder task next.
+144: If no, tighten the spec, checks, or task choice and run again.
 145: 
-146: Ralph Workflow is meant to get you to a strong implementation starting point while you are away, not to replace engineering judgment.
+146: If the first run teaches you something real either way, turn that result into the right public Codeberg action: star/watch the primary repo if it earned trust, or report the exact first-run friction on Codeberg if it did not.
 147: 
-148: A good run should leave you with:
+148: Ralph Workflow is meant to get you to a strong implementation starting point while you are away, not to replace engineering judgment.
 149: 
-150: - code that compiles, tests, or clearly shows where work remains
-151: - logs and output that explain what happened
-152: - a result that is worth continuing from, not discarding and restarting
-153: 
-154: That may be a finished small task, or it may be a substantial first pass toward production on a larger one.
+150: A good run should leave you with:
+151: 
+152: - code that compiles, tests, or clearly shows where work remains
+153: - logs and output that explain what happened
+154: - a result that is worth continuing from, not discarding and restarting
 155: 
-156: ## When Ralph Workflow fits (and when it doesn't)
+156: That may be a finished small task, or it may be a substantial first pass toward production on a larger one.
 157: 
-158: **Fits:**
+158: ## When Ralph Workflow fits (and when it doesn't)
 159: 
-160: - Multi-step tasks that outgrow one prompt
-161: - Work you want to review after the fact instead of steering live
-162: - Teams that want AI execution to stay in the repo
-163: - Runs where you want to mix stronger and cheaper models by phase
-164: 
-165: **Does not fit:**
+160: **Fits:**
+161: 
+162: - Multi-step tasks that outgrow one prompt
+163: - Work you want to review after the fact instead of steering live
+164: - Teams that want AI execution to stay in the repo
+165: - Runs where you want to mix stronger and cheaper models by phase
 166: 
-167: - One-shot interactive prompts
-168: - Pair-programming sessions with constant human steering
-169: - Tiny tasks where setup overhead is not worth it
-170: - Workflows that need unpredictable mid-run human input
-171: 
-172: ## Documentation
+167: **Does not fit:**
+168: 
+169: - One-shot interactive prompts
+170: - Pair-programming sessions with constant human steering
+171: - Tiny tasks where setup overhead is not worth it
+172: - Workflows that need unpredictable mid-run human input
 173: 
-174: This README intentionally leaves out deeper implementation details and defers to the `docs/sphinx/` pages for those.
+174: ## Documentation
 175: 
-176: - **Quickstart:** [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md) — shorter repeat-use reference with commands and flags
-177: - **Getting Started:** [`docs/sphinx/getting-started.md`](docs/sphinx/getting-started.md) — fuller first-run walkthrough with task guidance
-178: - **Concepts:** [`docs/sphinx/concepts.md`](docs/sphinx/concepts.md) — terminology and mental model
-179: - **CLI Reference:** [`docs/sphinx/cli.md`](docs/sphinx/cli.md) — all flags and sub-commands
-180: - **Configuration:** [`docs/sphinx/configuration.md`](docs/sphinx/configuration.md) — config files and precedence
-181: - **Developer Reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — maintained contributor and architecture reference
-182: - **Modules Index:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — API/module entry points for deeper internals
-183: 
-184: ## Privacy & Error Reporting
+176: This README intentionally leaves out deeper implementation details and defers to the `docs/sphinx/` pages for those.
+177: 
+178: - **Quickstart:** [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md) — shorter repeat-use reference with commands and flags
+179: - **Getting Started:** [`docs/sphinx/getting-started.md`](docs/sphinx/getting-started.md) — fuller first-run walkthrough with task guidance
+180: - **Concepts:** [`docs/sphinx/concepts.md`](docs/sphinx/concepts.md) — terminology and mental model
+181: - **CLI Reference:** [`docs/sphinx/cli.md`](docs/sphinx/cli.md) — all flags and sub-commands
+182: - **Configuration:** [`docs/sphinx/configuration.md`](docs/sphinx/configuration.md) — config files and precedence
+183: - **Developer Reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — maintained contributor and architecture reference
+184: - **Modules Index:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — API/module entry points for deeper internals
 185: 
-186: Ralph Workflow sends anonymous crash reports and performance metrics to help fix bugs and improve reliability. No personal data is collected.
+186: ## Privacy & Error Reporting
 187: 
-188: Each installation generates a random 32-character identifier stored in `~/.config/ralph-workflow-user.ini`. This identifier is not tied to your name, email address, IP address, or any other personal data — it is a random string used only to distinguish different installations in crash reports. A fresh random session identifier is generated on every run.
+188: Ralph Workflow sends anonymous crash reports and performance metrics to help fix bugs and improve reliability. No personal data is collected.
 189: 
-190: To opt out: delete or rename `~/.config/ralph-workflow-user.ini`. Ralph Workflow creates a new random ID on the next run.
+190: Each installation generates a random 32-character identifier stored in `~/.config/ralph-workflow-user.ini`. This identifier is not tied to your name, email address, IP address, or any other personal data — it is a random string used only to distinguish different installations in crash reports. A fresh random session identifier is generated on every run.
 191: 
-192: ## Development and verification
+192: To opt out: delete or rename `~/.config/ralph-workflow-user.ini`. Ralph Workflow creates a new random ID on the next run.
 193: 
-194: If you are changing Ralph Workflow itself, start with [`CONTRIBUTING.md`](CONTRIBUTING.md) and run the canonical verification command before you finish:
+194: ## Community
 195: 
-196: ```bash
-197: make verify
-198: ```
+196: ⭐ **Star the project** — run `ralph star` from your terminal or visit <https://codeberg.org/RalphWorkflow/Ralph-Workflow>.
+197: 
+198: Every star helps more developers discover Ralph Workflow and drives development priority.
+199: 
+200: ## Development and verification
+201: 
+202: If you are changing Ralph Workflow itself, start with [`CONTRIBUTING.md`](CONTRIBUTING.md) and run the canonical verification command before you finish:
+203: 
+204: ```bash
+205: make verify
+206: ```
 
 FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md
 1: # Ralph Workflow
@@ -604,94 +610,98 @@ FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/REA
 36: 
 37: It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
 38: 
-39: ## Quick start
+39: > **First time?** Start with **[START_HERE.md](START_HERE.md)** — a guided first run with task selection, diagnosis, and a walked-through wake-up.
 40: 
-41: ```
-42: $ ralph --init
-43: $ $EDITOR PROMPT.md
-44: $ ralph
-45: ```
-46: 
-47: Write your task in `PROMPT.md` before you sleep. Ralph reads it, runs planning → development → review cycles, and produces git commits you can inspect in the morning.
+41: ## Quick start
+42: 
+43: ```
+44: $ ralph --init
+45: $ $EDITOR PROMPT.md
+46: $ ralph
+47: ```
 48: 
-49: ### Docker (no Python required)
+49: Write your task in `PROMPT.md` before you sleep. Ralph reads it, runs planning → development → review cycles, and produces git commits you can inspect in the morning.
 50: 
-51: ```bash
-52: docker run --rm -it \
-53:   -v "$(pwd):/workspace" \
-54:   -v "$HOME/.ralph:/root/.ralph" \
-55:   ralphworkflow/ralph --help
-56: ```
-57: 
-58: Build from source:
+51: ### Docker (no Python required)
+52: 
+53: ```bash
+54: docker run --rm -it \
+55:   -v "$(pwd):/workspace" \
+56:   -v "$HOME/.ralph:/root/.ralph" \
+57:   ralphworkflow/ralph --help
+58: ```
 59: 
-60: ```bash
-61: git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
-62: cd Ralph-Workflow/ralph-workflow
-63: docker build -t ralph-workflow .
-64: docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
-65: ```
-66: 
-67: ### pipx (Python 3.12+)
+60: Build from source:
+61: 
+62: ```bash
+63: git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+64: cd Ralph-Workflow/ralph-workflow
+65: docker build -t ralph-workflow .
+66: docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
+67: ```
 68: 
-69: ```bash
-70: pipx install ralph-workflow
-71: ralph --init        # one-time setup: installs agent bundles and capabilities
-72: ```
-73: 
-74: Full docs at [ralphworkflow.com](https://ralphworkflow.com/docs).
+69: ### pipx (Python 3.12+)
+70: 
+71: ```bash
+72: pipx install ralph-workflow
+73: ralph --init        # one-time setup: installs agent bundles and capabilities
+74: ```
 75: 
-76: 1. Run `ralph --diagnose` to confirm healthy helpers
-77: 2. Write your task in `PROMPT.md` in your project root
-78: 3. Run `ralph`
-79: 4. Go to sleep. Wake up to finished git commits you can review
-80: 
-81: That's it. The default workflow is already strong enough to start with. Customize later when you need more control.
+76: Full docs at [ralphworkflow.com](https://ralphworkflow.com/docs).
+77: 
+78: 1. Run `ralph --diagnose` to confirm healthy helpers
+79: 2. Write your task in `PROMPT.md` in your project root
+80: 3. Run `ralph`
+81: 4. Go to sleep. Wake up to finished git commits you can review
 82: 
-83: For first-run guidance — task selection, diagnosis, and a walked-through first wake-up — see **[START_HERE.md](START_HERE.md)**.
+83: That's it. The default workflow is already strong enough to start with. Customize later when you need more control.
 84: 
-85: ## See it in action
+85: For first-run guidance — task selection, diagnosis, and a walked-through first wake-up — see **[START_HERE.md](START_HERE.md)**.
 86: 
-87: Real terminal output from Ralph Workflow v0.8.8 on a fresh project:
+87: ## See it in action
 88: 
-89: | Command | Output |
-90: |---|---|
-91: | `ralph --init` | [init-output.txt](docs/sphinx/_static/demo/init-output.txt) — banner, capabilities, first-run setup |
-92: | `ralph --diagnose` | [diagnose-output.txt](docs/sphinx/_static/demo/diagnose-output.txt) — agent inventory, config, MCP check |
-93: | `ralph --dry-run` | [dry-run-output.txt](docs/sphinx/_static/demo/dry-run-output.txt) — pipeline phases and iteration plan |
-94: | ▶ **Full demo** | ![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg) — see [asciinema.org/a/JDnY0Xyh5qcgu9kd](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) |
-95: 
-96: These are **unedited terminal captures** from a real run — not mock-ups.
+89: Real terminal output from Ralph Workflow v0.8.8 on a fresh project:
+90: 
+91: | Command | Output |
+92: |---|---|
+93: | `ralph --init` | `docs/sphinx/_static/demo/init-output.txt` — banner, capabilities, first-run setup |
+94: | `ralph --diagnose` | `docs/sphinx/_static/demo/diagnose-output.txt` — agent inventory, config, MCP check |
+95: | `ralph --dry-run` | `docs/sphinx/_static/demo/dry-run-output.txt` — pipeline phases and iteration plan |
+96: | ▶ **Full demo** | [![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) — watch the complete first-run flow |
 97: 
-98: ## Built-in capabilities
+98: These are **unedited terminal captures** from a real run — not mock-ups.
 99: 
-100: - **Phase routing** — planning agent → development agent → review agent → fix loop
-101: - **Cost arbitrage** — use cheaper agents for planning, stronger ones for coding
-102: - **Repo-based handoff** — agents read each other's output through the repo, not context stuffing
-103: - **Recovery + retry** — each phase can loop independently on failure
-104: - **Vendor-neutral** — your config is YAML, your agents are your choice, your code is yours
-105: - **`ralph --diagnose`** — pre-flight health check for agents, tools, and capability bundles
-106: 
-107: ## Documentation
+100: ## Built-in capabilities
+101: 
+102: - **Phase routing** — planning agent → development agent → review agent → fix loop
+103: - **Cost-efficient model routing** — use cheaper agents for planning, stronger ones for coding
+104: - **Repo-based handoff** — agents read each other's output through the repo, not context stuffing
+105: - **Recovery + retry** — each phase can loop independently on failure
+106: - **Vendor-neutral** — your config is YAML, your agents are your choice, your code is yours
+107: - **`ralph --diagnose`** — pre-flight health check for agents, tools, and capability bundles
 108: 
-109: | Page | What it covers |
-110: |---|---|
-111: | [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |
-112: | [Full Docs](https://ralphworkflow.com/docs) | Quickstart, configuration, user stories, and more |
-113: 
-114: ## Engineering-practice requirements
-115: 
-116: Ralph Workflow depends on good software engineering practices — it does not replace them. You need:
+109: ## Documentation
+110: 
+111: | Page | What it covers |
+112: |---|---|
+113: | [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |
+114: | [Quickstart](https://ralphworkflow.com/docs/quickstart.html) | Write a spec and run it in 10 minutes |
+115: | [Configuration](https://ralphworkflow.com/docs/configuration.html) | Agent routing, phase policies, model selection |
+116: | [User Stories](https://ralphworkflow.com/docs/user-stories.html) | Real workflows from real runs |
 117: 
-118: - **Clear specs** with concrete acceptance criteria
-119: - **Meaningful tests** in your repo
-120: - **Honest review discipline** — the review agent flags issues, you decide what to do
+118: ## Engineering-practice requirements
+119: 
+120: Ralph Workflow depends on good software engineering practices — it does not replace them. You need:
 121: 
-122: A repo without guardrails will produce results that reflect that. Plan accordingly.
-123: 
-124: ---
+122: - **Clear specs** with concrete acceptance criteria
+123: - **Meaningful tests** in your repo
+124: - **Honest review discipline** — the review agent flags issues, you decide what to do
 125: 
-126: *Free and open source. Runs on your machine. Ships with a default workflow strong enough for real software engineering.*
+126: A repo without guardrails will produce results that reflect that. Plan accordingly.
+127: 
+128: ---
+129: 
+130: *Free and open source. Runs on your machine. Ships with a default workflow strong enough for real software engineering.*
 
 FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md
 1: # Start Here: Run Ralph Workflow on One Real Task

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -182,6 +183,62 @@ def _save_conversion(data: dict[str, Any]) -> None:
     STAR_CONVERSION_JSON.write_text(json.dumps(data, indent=2, default=str) + "\n", encoding="utf-8")
 
 
+def _extract_cta_text(text: str) -> str:
+    """Extract CODEBERG_STAR_CTA value, handling multi-line parenthesized strings.
+
+    The CTA is defined as:
+        CODEBERG_STAR_CTA: Final[str] = (
+            f"⭐ Star {CODEBERG_REPO} so we know you're using it — "
+            "stars drive development priority"
+        )
+    The old parser read only the first line after `=`, giving `(`.
+    """
+    # Find the assignment line
+    match = re.search(r'CODEBERG_STAR_CTA\s*:\s*Final\[str\]\s*=\s*', text)
+    if not match:
+        match = re.search(r'CODEBERG_STAR_CTA\s*=\s*', text)
+        if not match:
+            return ""
+    start = match.end()
+    rest = text[start:]
+
+    # If it's a parenthesized multi-line assignment
+    if rest.lstrip().startswith('('):
+        depth = 0
+        chars = []
+        for ch in rest:
+            if ch == '(':
+                depth += 1
+                if depth > 1:
+                    chars.append(ch)
+                continue
+            if ch == ')':
+                depth -= 1
+                if depth == 0:
+                    break
+                chars.append(ch)
+                continue
+            if depth > 0:
+                chars.append(ch)
+            elif ch not in (' ', '\n', '\t'):
+                break
+        raw = ''.join(chars).strip()
+    else:
+        # Simple single-line assignment
+        raw = rest.split('\n', 1)[0].strip()
+        # Strip optional f-prefix and surrounding quotes
+        raw = re.sub(r'^f?["\']|["\']$', '', raw.strip())
+        return re.sub(r'[\s\n]+', ' ', raw).strip()
+
+    # Multi-line path: collapse whitespace and join adjacent strings
+    cleaned = re.sub(r'[\s\n]+', ' ', raw)
+    # Extract content from f-strings and regular strings
+    parts = re.findall(r'f?"([^"]*)"', cleaned)
+    if not parts:
+        parts = re.findall(r"f?'([^']*)'", cleaned)
+    return ' '.join(parts).strip()
+
+
 def _verify_runner_cta(now: datetime) -> dict[str, Any]:
     """Verify that the in-pipeline star CTA actually works.
 
@@ -220,12 +277,8 @@ def _verify_runner_cta(now: datetime) -> dict[str, Any]:
             text = p.read_text(encoding="utf-8")
             if "CODEBERG_STAR_CTA" in text:
                 result["onboarding_import_works"] = True
-                # Extract the actual CTA message
-                for line in text.splitlines():
-                    if "CODEBERG_STAR_CTA" in line and "=" in line:
-                        cta_text = line.split("=", 1)[-1].strip().strip('"').strip("'")
-                        result["cta_text"] = cta_text[:200]
-                        break
+                # Extract the actual CTA message (handle multi-line parenthesized strings)
+                result["cta_text"] = _extract_cta_text(text)
                 break
 
     if not result["runner_cta_exists"]:
@@ -279,14 +332,23 @@ def _compute_conversion_status(
     emit_recommendation = False
     recommendation_level = "none"
 
+    # Determine the actual assessment level (truth) — separate from whether we emit
+    assessed_level = "none"
     if chronic and downloads_day >= MIN_DOWNLOADS_PER_DAY_FOR_CONCERN:
+        if zero_star_count >= CTA_WEAKNESS_DAYS_FOR_ESCALATION:
+            assessed_level = "structural"
+        elif zero_star_count >= CTA_STRENGTHENING_THRESHOLD:
+            assessed_level = "strengthen"
+    recommendation_level = assessed_level
+
+    # Decide whether to emit (interval-gated) — does NOT flatten recommendation_level
+    if assessed_level != "none":
         if last_rec is None or (now_dt - last_rec).days >= CHRONIC_RECOMMENDATION_INTERVAL_DAYS:
-            if zero_star_count >= CTA_WEAKNESS_DAYS_FOR_ESCALATION:
-                recommendation_level = "structural"
-                emit_recommendation = True
-            elif zero_star_count >= CTA_STRENGTHENING_THRESHOLD:
-                recommendation_level = "strengthen"
-                emit_recommendation = True
+            emit_recommendation = True
+        else:
+            emit_recommendation = False
+    else:
+        emit_recommendation = False
 
     return {
         "first_sample_at": previous.get("first_sample_at") or now.isoformat(),
@@ -298,6 +360,7 @@ def _compute_conversion_status(
         "emit_recommendation": emit_recommendation,
         "last_recommendation_at": now.isoformat() if emit_recommendation else previous.get("last_recommendation_at"),
         "recommendation_count": previous.get("recommendation_count", 0) + (1 if emit_recommendation else 0),
+        "suppressed_by_interval": bool(assessed_level != "none" and not emit_recommendation),
         "downloads_day": downloads_day,
         "downloads_month": downloads_month,
         "codeberg_stars": codeberg_stars,
@@ -421,9 +484,27 @@ def _update_blocker_roi_with_star_gap(
             bp.write_text(text, encoding="utf-8")
 
 
+MIN_HOURS_BETWEEN_RUNS_UNCHANGED = 6  # dedup: skip when stars flat & last run < this
+
 def main() -> int:
     now = datetime.now(timezone.utc).astimezone().replace(tzinfo=None)
     print(f"[star_conversion_agent] Running at {now.isoformat()}", flush=True)
+
+    # 0. Deduplication guard — skip when stars unchanged and last run was recent
+    # The cron fires daily at 08:30 but multiple invokers (run.py, social_proof_bootstrap,
+    # other agents) re-trigger this agent, producing 10+ samples in 31 hours of identical
+    # 12-star data. Skip and log instead of recomputing the same result.
+    previous_quick = _load_previous_conversion()
+    cur_quick = _read_adoption_md()
+    last_run_str = previous_quick.get("samples", [{}])[-1].get("at") if previous_quick.get("samples") else None
+    cur_stars = cur_quick.get("codeberg", {}).get("stars", 0)
+    prev_stars = previous_quick.get("codeberg_stars", -1)
+    if last_run_str and cur_stars == prev_stars:
+        last_run = _parse_iso_date(last_run_str)
+        if last_run and (now - last_run).total_seconds() < MIN_HOURS_BETWEEN_RUNS_UNCHANGED * 3600:
+            hours_ago = (now - last_run).total_seconds() / 3600
+            print(f"  ⏩ Skipped — stars unchanged at {cur_stars}, last run {hours_ago:.1f}h ago (< {MIN_HOURS_BETWEEN_RUNS_UNCHANGED}h dedup threshold)", flush=True)
+            return 0
 
     # 1. Read current adoption metrics
     current = _read_adoption_md()

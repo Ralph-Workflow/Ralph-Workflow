@@ -602,6 +602,13 @@ def run(
     surfaces_reachable = [a["surface"] for a in report["audit_results"] if a.get("reachable", True)]
     actions_executed = len(report["actions_taken"])
 
+    # ── ralph star CLI gate (not a CTA surface, but the highest-ROI conversion asset) ──
+    ralph_star_cli_paths = [
+        Path("/home/mistlight/Ralph-Workflow/ralph-workflow/ralph/cli/commands/star.py"),
+        Path("/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/ralph/cli/commands/star.py"),
+    ]
+    ralph_star_deployed = any(p.exists() for p in ralph_star_cli_paths)
+
     report["summary"] = {
         "total_surfaces_audited": len(report["audit_results"]),
         "surfaces_with_gaps": len(surfaces_with_gaps),
@@ -609,6 +616,7 @@ def run(
         "surfaces_reachable": len(surfaces_reachable),
         "actions_executed": actions_executed,
         "gap_surfaces": surfaces_with_gaps,
+        "ralph_star_cli_deployed": ralph_star_deployed,
     }
 
     STATUS_PATH.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

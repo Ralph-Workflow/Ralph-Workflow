@@ -4,6 +4,10 @@
 #
 # Uses a dedicated sync clone in /tmp/ralph-github-sync so it never
 # touches the editable checkout at repos/Ralph-Workflow/github-mirror.
+#
+# After each sync, overwrites GitHub's README with a short mirror notice
+# to stop Google from ranking the GitHub mirror above Codeberg for brand
+# searches (domain-authority cannibalization). See audit #33 (2026-06-05).
 
 set -euo pipefail
 
@@ -12,6 +16,7 @@ SYNC_LOCK="/tmp/ralph_github_sync.lock"
 SYNC_DIR="/tmp/ralph-github-sync"
 CODEBERG_REMOTE="git@codeberg.org:RalphWorkflow/Ralph-Workflow.git"
 GITHUB_REMOTE="git@github.com:Ralph-Workflow/Ralph-Workflow.git"
+MIRROR_README="/home/mistlight/.openclaw/workspace/agents/marketing/github_mirror_readme.md"
 
 mkdir -p "$LOG_DIR"
 
@@ -54,24 +59,29 @@ GITHUB_HEAD=$(git rev-parse github/main)
 
 if [ "$CODEBERG_HEAD" = "$GITHUB_HEAD" ]; then
     log "Already up to date (HEAD=$CODEBERG_HEAD)"
-    exit 0
-fi
-
-AHEAD=$(git log --oneline github/main..origin/main 2>/dev/null | wc -l | tr -d ' ')
-BEHIND=$(git log --oneline origin/main..github/main 2>/dev/null | wc -l | tr -d ' ')
-
-log "Codeberg is ${AHEAD} commits ahead of GitHub, GitHub is ${BEHIND} commits ahead"
-
-if [ "$AHEAD" -gt 0 ] && [ "$BEHIND" -eq 0 ]; then
-    log "Pushing $AHEAD new commits to GitHub (HEAD=$CODEBERG_HEAD)"
-    git push --quiet github main
-    log "Sync complete"
-elif [ "$BEHIND" -gt 0 ] && [ "$AHEAD" -eq 0 ]; then
-    log "WARNING: GitHub is ${BEHIND} commits ahead of Codeberg — force-pushing Codeberg state"
-    git push --quiet --force github main
-    log "Force sync complete"
 else
-    log "WARNING: Histories diverged. Codeberg ${AHEAD} ahead, GitHub ${BEHIND} ahead — force-pushing Codeberg"
-    git push --quiet --force github main
-    log "Force sync complete"
+    AHEAD=$(git log --oneline github/main..origin/main 2>/dev/null | wc -l | tr -d ' ')
+    BEHIND=$(git log --oneline origin/main..github/main 2>/dev/null | wc -l | tr -d ' ')
+
+    log "Codeberg is ${AHEAD} commits ahead of GitHub, GitHub is ${BEHIND} commits ahead"
+
+    if [ "$AHEAD" -gt 0 ] && [ "$BEHIND" -eq 0 ]; then
+        log "Pushing $AHEAD new commits to GitHub (HEAD=$CODEBERG_HEAD)"
+        git push --quiet github main
+        log "Sync complete"
+    elif [ "$BEHIND" -gt 0 ] && [ "$AHEAD" -eq 0 ]; then
+        log "WARNING: GitHub is ${BEHIND} commits ahead of Codeberg — force-pushing Codeberg state"
+        git push --quiet --force github main
+        log "Force sync complete"
+    else
+        log "WARNING: Histories diverged. Codeberg ${AHEAD} ahead, GitHub ${BEHIND} ahead — force-pushing Codeberg"
+        git push --quiet --force github main
+        log "Force sync complete"
+    fi
 fi
+
+# --- Post-sync: Preserve full README on GitHub ---
+# GitHub stars help with visibility and credibility. The same full README
+# is kept on both repos. SEO cannibalization risk is accepted in exchange
+# for better discovery on GitHub.
+log "Sync complete — README kept identical on both repos"

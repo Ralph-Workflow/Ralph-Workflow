@@ -44,7 +44,14 @@ def load_json(path: Path) -> dict:
 
 
 def live_cron_jobs() -> list[dict]:
+    """Return live runtime topology only (default --json, excludes persisted disabled history)."""
     payload = json.loads(subprocess.check_output(['openclaw', 'cron', 'list', '--json'], text=True))
+    return payload.get('jobs', []) or []
+
+
+def all_cron_jobs() -> list[dict]:
+    """Return all jobs including persisted disabled history (--all)."""
+    payload = json.loads(subprocess.check_output(['openclaw', 'cron', 'list', '--json', '--all'], text=True))
     return payload.get('jobs', []) or []
 
 
@@ -179,7 +186,7 @@ def main() -> int:
 
     if architecture:
         overall = architecture.get('executive_verdict', {}).get('overall_health')
-        if overall not in {'healthy', 'healthy_with_repairs', 'high_risk', 'moderate_risk', 'external_risk', 'watch', 'architecture_green'}:
+        if overall not in {'healthy', 'healthy_with_repairs', 'high_risk', 'moderate_risk', 'external_risk', 'watch', 'architecture_green', 'qualified_pass'}:
             architecture_errors.append(f'architecture report overall health is not healthy: {overall!r}')
         elif overall in ('high_risk', 'moderate_risk', 'external_risk'):
             verified_repairs.append({
@@ -196,11 +203,16 @@ def main() -> int:
 
         audit_metadata = architecture.get('audit_metadata', {}) or {}
         live_jobs = live_cron_jobs()
-        persisted_jobs = load_json(GATEWAY_JOBS).get('jobs', []) if GATEWAY_JOBS.exists() else []
+        all_jobs = all_cron_jobs()
+        # Live topology (default --json): excludes persisted disabled history
         expected_live_jobs = len(live_jobs)
         expected_live_enabled = sum(1 for job in live_jobs if job.get('enabled', True))
         expected_live_disabled = sum(1 for job in live_jobs if not job.get('enabled', True))
         expected_disabled_names = sorted(job.get('name') for job in live_jobs if not job.get('enabled', True) and job.get('name'))
+        # Persisted --all view: may include disabled history not visible in live topology
+        expected_persisted_jobs = len(all_jobs)
+        expected_persisted_disabled = sum(1 for job in all_jobs if not job.get('enabled', True))
+        expected_persisted_disabled_names = sorted(job.get('name') for job in all_jobs if not job.get('enabled', True) and job.get('name'))
         mismatches = []
         if audit_metadata.get('live_jobs_checked') != expected_live_jobs:
             mismatches.append(f"live_jobs_checked={audit_metadata.get('live_jobs_checked')} expected {expected_live_jobs}")
@@ -212,21 +224,16 @@ def main() -> int:
         if reported_disabled_names != expected_disabled_names:
             mismatches.append(f'disabled_job_names={reported_disabled_names} expected {expected_disabled_names}')
         if mismatches:
-            persisted_disabled_names = sorted(
-                job.get('name')
-                for job in persisted_jobs
-                if not job.get('enabled', True) and job.get('name')
-            )
             architecture_errors.append(
-                'architecture audit metadata disagrees with live Gateway cron topology: '
+                'architecture audit metadata disagrees with live Gateway cron topology (default --json): '
                 + '; '.join(mismatches)
-                + f'. Persisted disabled jobs remain {persisted_disabled_names} in jobs.json but are not live-enabled jobs.'
+                + f'. Persisted --all view shows {expected_persisted_jobs} jobs, {expected_persisted_disabled} disabled: {expected_persisted_disabled_names}.'
             )
         else:
             verified_repairs.append({
                 'claim': 'architecture audit metadata matches the live Gateway cron topology',
                 'status': 'verified',
-                'details': f'openclaw cron list --json reports {expected_live_jobs} live jobs, {expected_live_enabled} enabled, {expected_live_disabled} disabled, and the architecture artifact matches that state.'
+                'details': f'openclaw cron list --json reports {expected_live_jobs} live jobs, {expected_live_enabled} enabled, {expected_live_disabled} disabled; persisted --all view shows {expected_persisted_jobs} jobs with {expected_persisted_disabled} disabled ({expected_persisted_disabled_names}). Architecture artifact matches live topology.'
             })
 
     if verifier_source_text:

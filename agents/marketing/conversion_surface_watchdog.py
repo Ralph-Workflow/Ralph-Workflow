@@ -35,6 +35,14 @@ LOG_DIR = WORKSPACE / "agents" / "marketing" / "logs"
 WATCHDOG_LOG = LOG_DIR / "conversion_surface_watchdog_latest.json"
 WATCHDOG_REPORT = LOG_DIR / "conversion_surface_watchdog_latest.md"
 
+# View-layer CTA detection
+# The Ralph-Site Rails app renders app/views/shared/_blog_repo_cta.html.erb after every
+# blog post (see show.html.erb). This means the raw markdown doesn't need its own CTA
+# footer — the rendered page always has one. The watchdog must not penalize markdown
+# files for ending with cross-links when the view layer provides the conversion block.
+CTA_PARTIAL_PATH = WORKSPACE / "Ralph-Site" / "app" / "views" / "shared" / "_blog_repo_cta.html.erb"
+SITE_RENDERS_CTA = CTA_PARTIAL_PATH.exists()
+
 # Conversion scoring
 SCORE_THRESHOLD_AUTOFIX = 6  # Auto-fix posts scoring <= this
 MAX_AUTOFIX_PER_RUN = 5  # Don't fix more than this many posts in one run
@@ -137,16 +145,29 @@ def score_post(content: str, path: Path) -> dict:
         result["findings"].append("THIN: Only one free-use signal in final section")
 
     # 6. Ends with cross-links instead of conversion CTA? (weight: -1, more is worse)
-    # If the last 10 lines are mostly internal blog links, that's a miss
+    # If the last 10 lines are mostly internal blog links, that's a miss — BUT only
+    # if the view layer does NOT render a CTA after every post. When SITE_RENDERS_CTA
+    # is true, the rendered page always has a conversion block, so cross-links at
+    # the end of the raw markdown are not a CTA gap.
     last_10 = "\n".join(lines[-10:])
     cross_link_count = len(
         re.findall(r"\[.*?\]\(/blog/", last_10)
     )
-    result["scores"]["ends_with_crosslinks"] = -min(2, cross_link_count) if cross_link_count >= 3 else 0
-    if cross_link_count >= 3:
-        result["findings"].append(
-            f"WEAK_ENDING: Last 10 lines are {cross_link_count} cross-links — no conversion CTA"
-        )
+    if SITE_RENDERS_CTA:
+        # View layer renders CTA after every post — cross-links are fine.
+        # Still note them for transparency but don't penalize.
+        result["scores"]["ends_with_crosslinks"] = 0
+        if cross_link_count >= 3:
+            result["findings"].append(
+                f"RENDERED_CTA: Last 10 lines are {cross_link_count} cross-links "
+                f"— CTA rendered by view layer (no penalty)"
+            )
+    else:
+        result["scores"]["ends_with_crosslinks"] = -min(2, cross_link_count) if cross_link_count >= 3 else 0
+        if cross_link_count >= 3:
+            result["findings"].append(
+                f"WEAK_ENDING: Last 10 lines are {cross_link_count} cross-links — no conversion CTA"
+            )
 
     # 7. Has explicit star/watch/fork CTA? (weight: 1)
     has_star_ask = bool(re.search(r"star\s+the\s+repo|⭐|star\s+(it|the|us)", content, re.IGNORECASE))
@@ -169,21 +190,43 @@ def needs_standard_block(content: str) -> bool:
 
 
 def auto_fix_post(path: Path, content: str) -> tuple[bool, str]:
-    """Add standard conversion block to a post that needs it."""
+    """Add standard conversion block to a post that needs it.
+    
+    When SITE_RENDERS_CTA is true, the view layer already adds a CTA after every
+    blog post. In that case, we only add an inline CTA if the post content itself
+    is missing key conversion elements (pip install, first-task guide, free-use
+    language) — we don't strip trailing cross-links because the rendered CTA
+    follows naturally after them.
+    """
     if needs_standard_block(content):
         return False, content
 
-    # Find the last section break before the final paragraph
-    # Insert our conversion block before the last horizontal rule, or at the end
+    # When the site renders CTA in the view layer, don't strip cross-links.
+    # Just append the conversion block if the post is genuinely weak.
+    if SITE_RENDERS_CTA:
+        # Only add inline block if post is truly missing conversion elements,
+        # not because of cross-links at the end (which are fine with view-layer CTA).
+        # Check if this post lacks pip install, first-task guide, and free-use invite.
+        has_pip = bool(re.search(r"pip[x3]?\s+install\s+ralph", content, re.IGNORECASE))
+        has_first_task = bool(re.search(
+            r"first[- ]task[- ]guide|start[- ]here|your-first-overnight|/docs/first-task",
+            content, re.IGNORECASE))
+        has_free_use = bool(re.search(
+            r"(pick|try|run|judge|merge|wake up)", content, re.IGNORECASE))
+        if has_pip or has_first_task or has_free_use:
+            # Post already has some conversion elements; view-layer CTA covers the rest
+            return False, content
+        # Post genuinely lacks all conversion elements — append block
+        new_content = content.rstrip() + STANDARD_CONVERSION_BLOCK + "\n"
+        return True, new_content
+
+    # Legacy path: when view layer doesn't render CTA, strip trailing cross-links
+    # and replace with conversion block.
     lines = content.split("\n")
 
-    # Remove any trailing cross-link section (last section that's just blog links)
-    # Look for a pattern like "---\n\n- [Blog Post Title](...)\n- [Another](...)"
-    # and replace it with our conversion block
     cross_link_start = None
     for i in range(len(lines) - 1, max(0, len(lines) - 30), -1):
         if lines[i].strip().startswith("---"):
-            # Check if everything after this is just cross-links
             after = "\n".join(lines[i + 1 :])
             blog_links = len(re.findall(r"\[.*?\]\(/blog/", after))
             all_lines_are_content = [l.strip() for l in lines[i + 1 :] if l.strip()]
@@ -195,10 +238,8 @@ def auto_fix_post(path: Path, content: str) -> tuple[bool, str]:
                 break
 
     if cross_link_start is not None:
-        # Replace trailing cross-links with conversion block
         new_content = "\n".join(lines[:cross_link_start]) + STANDARD_CONVERSION_BLOCK + "\n"
     else:
-        # Append conversion block at end
         new_content = content.rstrip() + STANDARD_CONVERSION_BLOCK + "\n"
 
     return True, new_content

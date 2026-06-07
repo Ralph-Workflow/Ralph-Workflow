@@ -922,6 +922,35 @@ def main() -> int:
 
     previous = _load_previous_lane_state()
 
+    # ── Search-space exhaustion pre-check (2026-06-06) ──
+    # If the previous run already detected that every draft-worthy question was
+    # recently drafted (search_space_exhausted=true) AND the previous run was
+    # within RECENT_DRAFT_LOOKBACK, the question pool has not refreshed.  Skip
+    # the full search pipeline to avoid burning SE API quota on a guaranteed
+    # zero-output run.  The cron fires daily but the search space refreshes
+    # only when questions leave the lookback window (currently 3 days).
+    prev_exhausted = previous.get("search_space_exhausted", False)
+    prev_generated_at = _parse_iso_dt(previous.get("generated_at"))
+    if prev_exhausted and prev_generated_at is not None:
+        exhaustion_age = started_at - prev_generated_at
+        if exhaustion_age < RECENT_DRAFT_LOOKBACK:
+            preserved = dict(previous)
+            preserved["generated_at"] = started_at.isoformat()
+            preserved["status"] = "search_space_exhausted_reused_previous"
+            preserved["search_space_exhausted"] = True
+            preserved["exhaustion_bypassed_reason"] = (
+                f"Search space was exhausted {exhaustion_age.total_seconds()/3600:.1f}h ago "
+                f"(< {RECENT_DRAFT_LOOKBACK.days}d lookback). Skipping full SE API search "
+                f"to preserve quota — no new questions can appear until existing drafts "
+                f"age out of the {RECENT_DRAFT_LOOKBACK.days}-day window."
+            )
+            SO_LOG.write_text(json.dumps(preserved, indent=2), encoding="utf-8")
+            print(
+                f"[SO Answer Lane] Search space still exhausted (last run {exhaustion_age.total_seconds()/3600:.1f}h ago "
+                f">< {RECENT_DRAFT_LOOKBACK.days}d lookback). Skipping full pipeline to preserve SE API quota."
+            )
+            return 0
+
     # Draft cap guard (2026-05-31): halt drafting when unposted draft count ≥ SO_DRAFT_CAP.
     # Prevents infinite draft inflation when no human has ever placed a single answer.
     draft_file_paths = sorted(DRAFT_DIR.glob('so_answer_*.md'), key=lambda p: p.stat().st_mtime)

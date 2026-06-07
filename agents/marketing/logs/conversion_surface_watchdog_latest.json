@@ -1,53 +1,13 @@
 {
-  "generated_at": "2026-06-07T05:00:01.789183+00:00",
+  "generated_at": "2026-06-07T05:57:29.675194+00:00",
   "agent": "conversion_surface_watchdog",
   "repair_target": "outcome_system_underpowered",
   "total_posts": 52,
-  "avg_score": 10.1,
-  "below_threshold_count": 2,
-  "strong_posts_count": 50,
+  "avg_score": 12.1,
+  "below_threshold_count": 0,
+  "strong_posts_count": 52,
   "weak_posts_count": 0,
   "posts": [
-    {
-      "slug": "claude-code-multi-agent-overnight-postmortem",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md",
-      "lines": 80,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 0,
-        "first_task_guide": 0,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No pip/pipx install instruction",
-        "MISSING: No first-task guide link",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 6
-    },
-    {
-      "slug": "why-local-first-beats-cloud-unattended-ai-coding",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-local-first-beats-cloud-unattended-ai-coding.md",
-      "lines": 111,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 0,
-        "free_use_invite": 1,
-        "ends_with_crosslinks": -2,
-        "star_ask": 0
-      },
-      "findings": [
-        "MISSING: No first-task guide link",
-        "THIN: Only one free-use signal in final section",
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 6
-    },
     {
       "slug": "ai-coding-agent-testing-strategy",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-testing-strategy.md",
@@ -58,13 +18,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 9
+      "total_score": 11
     },
     {
       "slug": "ai-cost-model-routing-smart-agent-orchestration",
@@ -76,13 +36,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 9
+      "total_score": 11
     },
     {
       "slug": "ci-cd-pipeline-ai-coding-agent",
@@ -94,13 +54,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 9
+      "total_score": 11
     },
     {
       "slug": "codex-opencode-cline-vs-ralph-workflow-2026",
@@ -112,13 +72,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 6 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 6 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 9
+      "total_score": 11
     },
     {
       "slug": "multi-agent-orchestration-patterns",
@@ -130,13 +90,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 9
+      "total_score": 11
     },
     {
       "slug": "ralph-workflow-docker-install-container",
@@ -148,13 +108,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 9
+      "total_score": 11
     },
     {
       "slug": "ralph-workflow-in-5-minutes",
@@ -166,13 +126,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 9
+      "total_score": 11
     },
     {
       "slug": "ralph-workflow-vs-hyper-yc-p26",
@@ -184,13 +144,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 5 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 9
+      "total_score": 11
     },
     {
       "slug": "toml-workflow-configuration-guide",
@@ -202,13 +162,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 9
+      "total_score": 11
     },
     {
       "slug": "vendor-neutral-ai-coding-platform-independent-workflow",
@@ -220,13 +180,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 9
+      "total_score": 11
     },
     {
       "slug": "ai-agent-orchestration-cli-composable-alternative",
@@ -238,13 +198,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 1
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ai-agent-orchestration-landscape-gap-2026",
@@ -256,13 +216,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ai-agent-output-verification-review-checklist",
@@ -274,13 +234,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 1
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ai-agent-tool-loop-debugging-guide",
@@ -292,13 +252,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ai-coding-tools-comparison-2026",
@@ -310,13 +270,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "autonomous-ai-coding-tools-compared",
@@ -328,13 +288,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "claude-code-autonomous-mode-wrapper",
@@ -346,13 +306,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "hello-ralph-workflow",
@@ -364,13 +324,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 1
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "how-to-structure-autonomous-ai-agent-workflows-for-production-reliability",
@@ -382,13 +342,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 5 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-comparison-guide",
@@ -400,13 +360,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-vs-aider",
@@ -418,13 +378,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-vs-anthropic-dynamic-workflows",
@@ -436,13 +396,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 5 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-vs-claude-code",
@@ -454,13 +414,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-vs-conductor-oss",
@@ -472,13 +432,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 5 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-vs-conductor-teams",
@@ -490,13 +450,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-vs-continue",
@@ -508,13 +468,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-vs-cursor",
@@ -526,13 +486,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-vs-github-copilot",
@@ -544,13 +504,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-vs-hermes-agent",
@@ -562,13 +522,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 5 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "ralph-workflow-vs-nightshift",
@@ -580,13 +540,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "real-task-walkthrough-overnight-refactoring",
@@ -598,13 +558,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "safe-ai-code-execution-sandbox-isolation",
@@ -616,13 +576,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 1
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "spec-driven-ai-agent-explicit-contracts",
@@ -634,13 +594,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "spec-driven-ai-agents-why-workflow-is-the-unit-of-work",
@@ -652,13 +612,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 1
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "the-overnight-coding-agent-pattern",
@@ -670,13 +630,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 5 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "verification-patterns-for-ai-generated-code",
@@ -688,13 +648,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 2,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 1
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 5 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "your-first-overnight-task-start-here-guide",
@@ -706,13 +666,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 0
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 10
+      "total_score": 12
     },
     {
       "slug": "agentic-devtool-goldrush-yc-2026",
@@ -724,139 +684,13 @@
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
+        "ends_with_crosslinks": 0,
         "star_ask": 1
       },
       "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
       ],
-      "total_score": 11
-    },
-    {
-      "slug": "ai-coding-agent-benchmarks-real-world",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-benchmarks-real-world.md",
-      "lines": 133,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 1
-      },
-      "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 11
-    },
-    {
-      "slug": "good-vs-bad-unattended-coding-task-ai-agent",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/good-vs-bad-unattended-coding-task-ai-agent.md",
-      "lines": 152,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 1
-      },
-      "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 11
-    },
-    {
-      "slug": "how-to-run-claude-code-unattended",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-run-claude-code-unattended.md",
-      "lines": 224,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 1
-      },
-      "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 11
-    },
-    {
-      "slug": "is-ralph-workflow-right-for-your-project-decision-guide",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/is-ralph-workflow-right-for-your-project-decision-guide.md",
-      "lines": 173,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 1
-      },
-      "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 11
-    },
-    {
-      "slug": "nested-analysis-loops-catch-bugs-before-commit",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/nested-analysis-loops-catch-bugs-before-commit.md",
-      "lines": 80,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 1
-      },
-      "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 11
-    },
-    {
-      "slug": "offline-ai-coding-local-llm-guide",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/offline-ai-coding-local-llm-guide.md",
-      "lines": 84,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 1
-      },
-      "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 11
-    },
-    {
-      "slug": "why-5-projects-reinvented-same-loop-pattern",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-5-projects-reinvented-same-loop-pattern.md",
-      "lines": 119,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": -2,
-        "star_ask": 1
-      },
-      "findings": [
-        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
-      ],
-      "total_score": 11
+      "total_score": 13
     },
     {
       "slug": "ai-agent-workflow-composer-composable-pipelines",
@@ -872,6 +706,24 @@
         "star_ask": 1
       },
       "findings": [],
+      "total_score": 13
+    },
+    {
+      "slug": "ai-coding-agent-benchmarks-real-world",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-benchmarks-real-world.md",
+      "lines": 133,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
+      ],
       "total_score": 13
     },
     {
@@ -907,6 +759,22 @@
       "total_score": 13
     },
     {
+      "slug": "claude-code-multi-agent-overnight-postmortem",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md",
+      "lines": 92,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
+    },
+    {
       "slug": "debugging-failed-overnight-ai-coding-run",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/debugging-failed-overnight-ai-coding-run.md",
       "lines": 129,
@@ -920,6 +788,96 @@
         "star_ask": 1
       },
       "findings": [],
+      "total_score": 13
+    },
+    {
+      "slug": "good-vs-bad-unattended-coding-task-ai-agent",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/good-vs-bad-unattended-coding-task-ai-agent.md",
+      "lines": 152,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
+      ],
+      "total_score": 13
+    },
+    {
+      "slug": "how-to-run-claude-code-unattended",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-run-claude-code-unattended.md",
+      "lines": 224,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
+      ],
+      "total_score": 13
+    },
+    {
+      "slug": "is-ralph-workflow-right-for-your-project-decision-guide",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/is-ralph-workflow-right-for-your-project-decision-guide.md",
+      "lines": 173,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
+      ],
+      "total_score": 13
+    },
+    {
+      "slug": "nested-analysis-loops-catch-bugs-before-commit",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/nested-analysis-loops-catch-bugs-before-commit.md",
+      "lines": 80,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
+      ],
+      "total_score": 13
+    },
+    {
+      "slug": "offline-ai-coding-local-llm-guide",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/offline-ai-coding-local-llm-guide.md",
+      "lines": 84,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
+      ],
       "total_score": 13
     },
     {
@@ -937,20 +895,43 @@
       },
       "findings": [],
       "total_score": 13
-    }
-  ],
-  "auto_fixes": [
+    },
     {
-      "slug": "claude-code-multi-agent-overnight-postmortem",
-      "before_score": 6,
-      "action": "added_standard_conversion_block"
+      "slug": "why-5-projects-reinvented-same-loop-pattern",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-5-projects-reinvented-same-loop-pattern.md",
+      "lines": 119,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [
+        "RENDERED_CTA: Last 10 lines are 4 cross-links \u2014 CTA rendered by view layer (no penalty)"
+      ],
+      "total_score": 13
     },
     {
       "slug": "why-local-first-beats-cloud-unattended-ai-coding",
-      "before_score": 6,
-      "action": "added_standard_conversion_block"
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-local-first-beats-cloud-unattended-ai-coding.md",
+      "lines": 123,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": 0,
+        "star_ask": 1
+      },
+      "findings": [],
+      "total_score": 13
     }
   ],
+  "auto_fixes": [],
   "unchanged": [],
   "measurement_window_days": 14,
   "success_metric": "Codeberg stars_delta_window > 0 within 14 days",

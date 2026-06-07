@@ -1,65 +1,65 @@
 {
-  "escalated_at": "2026-06-02T09:46:38.782869+00:00",
-  "reason": "14 stale + 0 dead submissions out of 18 total directories",
-  "stale_submissions": [
+  "escalated_at": "2026-06-07T05:30:01.950605+00:00",
+  "reason": "0 stale + 14 dead submissions out of 18 total directories",
+  "stale_submissions": [],
+  "dead_submissions": [
     {
       "name": "AIToolsIndex",
-      "days_pending": 13
+      "days_pending": 18
     },
     {
       "name": "MadeWithStack",
-      "days_pending": 10
+      "days_pending": 15
     },
     {
       "name": "DevToolCenter",
-      "days_pending": 10
+      "days_pending": 15
     },
     {
       "name": "AIToolboard",
-      "days_pending": 10
+      "days_pending": 15
     },
     {
       "name": "IndieStack",
-      "days_pending": 10
+      "days_pending": 15
     },
     {
       "name": "ListYourTool",
-      "days_pending": 10
+      "days_pending": 15
     },
     {
       "name": "NavAI",
-      "days_pending": 10
+      "days_pending": 15
     },
     {
       "name": "OpenAgents",
-      "days_pending": 10
+      "days_pending": 15
     },
     {
       "name": "ToolScout",
-      "days_pending": 10
+      "days_pending": 15
     },
     {
       "name": "VBWebTools",
-      "days_pending": 10
+      "days_pending": 15
     },
     {
       "name": "TheToolify",
-      "days_pending": 10
+      "days_pending": 15
     },
     {
       "name": "Claudetory",
-      "days_pending": 9
+      "days_pending": 14
     },
     {
       "name": "ClaudeStack",
-      "days_pending": 9
+      "days_pending": 14
     },
     {
       "name": "AiAgentsDirectory",
-      "days_pending": 9
+      "days_pending": 14
     }
   ],
-  "dead_submissions": [],
   "recommended_action": "Post fresh batch of directory submissions from fresh_directory_candidates",
   "fresh_candidates_count": 10,
   "fresh_unsubmitted": [

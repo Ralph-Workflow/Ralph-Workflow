@@ -2,7 +2,7 @@
 
 ## STATUS: BLOG GENERATION FROZEN
 
-- 47 live posts in feed.json (threshold = 40)
+- 52 live posts in feed.json (threshold = 40)
 - can_publish_now() returns `False` with reason: "content saturation"
 - Both run.py and generate_content.py enforce the gate programmatically
 - SEO retrofit lane (`seo_retrofit_lane.py`) is the redirect target
