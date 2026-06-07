@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import hashlib
 import importlib.util
 import os
 import shutil
@@ -214,7 +215,12 @@ def installed_wheel_python(
     del tmp_path_factory
     cache_root = _repo_root() / "tmp" / "installed-wheel-cache" / built_wheel_path.stem
     launcher = cache_root / "bin" / "python"
-    if launcher.exists():
+
+    # Invalidate cache when wheel content changes (not just stem/version).
+    wheel_hash = hashlib.sha256(built_wheel_path.read_bytes()).hexdigest()[:16]
+    hash_marker = cache_root / ".wheel-content-hash"
+    cached_hash = hash_marker.read_text(encoding="utf-8").strip() if hash_marker.exists() else ""
+    if launcher.exists() and cached_hash == wheel_hash:
         return launcher
 
     if cache_root.exists():
@@ -233,6 +239,7 @@ def installed_wheel_python(
         encoding="utf-8",
     )
     launcher.chmod(0o755)
+    hash_marker.write_text(wheel_hash, encoding="utf-8")
     return launcher
 
 
