@@ -30699,3 +30699,89 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README forms a coherent funnel. No internal leakage, strong information hierarchy, consistent loop-healthy messaging across all surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding', frames Ralph-loop as composable framework, has clear who-it's-for/non-fit, comparison table, and engineering-practice requirements. No internal plumbing on page 1."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Front-loads positioning, explicitly gates itself as post-README/START_HERE, routes by user goal, includes 'Keep proof secondary' section, and every linked page opens with consistent positioning language."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Positions itself as supporting proof not main pitch, opens with 'after you already understand the workflow', leads with working behavior before logs \u2014 exactly the result-first hierarchy the positioning demands."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Leads with positioning ('simple Ralph-loop core... composes into complex workflows'), offers concrete good/bad task heuristics, and frames the first-run as a verdict-gathering exercise, not a feature tour."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system consistently delivers the positioning doc's story: simple Ralph-loop core, powerful in composition, strong default workflow you can use as-is. Every surface reinforces the same hierarchy \u2014 marketable top line, operational middle, proof deferred to secondary pages.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "\"Operating system for autonomous coding\" tagline + \"What it does\" section deliver the simple-core/powerful-composition/strong-default-workflow triad before any internal detail."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with the positioning triad verbatim, then delivers the shortest honest first run without ever reaching for artifact or plumbing language."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly contains a \"Keep proof secondary\" section that routes evaluators back to the product story first \u2014 the positioning doc's IA guidance implemented in the docs map itself."
+    },
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "PyPI-facing surface maintains the same story, adds practical install/fit/privacy sections without leaking internal mechanics into the top-level promise."
+    },
+    {
+      "path": "reviewable-output.md",
+      "reason": "Supporting proof page that opens by explicitly stating it is secondary to the product story \u2014 correctly framed and correctly deferred."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

@@ -1,10 +1,11 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-06-07T07:09:56
+Generated: 2026-06-07T08:24:03
 Chosen lane: **curator_due_followup**
 
 ## Why this lane
 - At least one curator outreach review window is now due, so the highest-leverage move is a concrete follow-up packet instead of another reset or measurement hold.
 - Primary Codeberg adoption is flat in the current measurement window.
+- 1 live external marketing action(s) already shipped in the last 6 hours.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Curator follow-ups are now due for 5 target(s) (filipecalegario/awesome-vibe-coding, QAInsights/awesome-ai-tools, 0xWelt/Awesome-Vibe-Coding), so the loop should not hide behind another measurement hold when real follow-through is ready.
