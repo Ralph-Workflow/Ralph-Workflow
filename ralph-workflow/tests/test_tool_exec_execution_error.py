@@ -12,7 +12,7 @@ def test_cache_full_message_describes_automatic_reset_without_internal_tool() ->
         removed_paths=3,
         removed_bytes=0,
         remaining_bytes=500,
-        diagnostics="total=500 bytes, pools=1, active_leases=1",
+        diagnostics="current=500 cap=200 removed=3 active_slots=1 attributed=300",
     )
     message = str(err)
     assert "automatic" in message.lower() or "reset" in message.lower(), (
@@ -25,4 +25,13 @@ def test_cache_full_message_describes_automatic_reset_without_internal_tool() ->
     ), "cache-full message must explain why bytes remain (active slots / permissions)"
     assert "unacquirable locks" not in message, (
         "cache-full message must not contain lock-era wording"
+    )
+    assert "Cleanup+reset" not in message, (
+        "cache-full message must not use old Cleanup+reset wording"
+    )
+    assert "cooldown" not in message.lower(), (
+        "cache-full message must not contain cooldown wording"
+    )
+    assert "active_leases" not in message, (
+        "cache-full message must not contain old lock-era active_leases field"
     )
