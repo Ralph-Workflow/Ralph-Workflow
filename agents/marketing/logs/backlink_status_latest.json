@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-06T08:30:17.150283+00:00",
+  "generated_at": "2026-06-07T08:32:52.134862+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -242,18 +242,24 @@
       "check_results": [
         {
           "url": "https://www.listyourtool.com/tools/ralph-workflow",
-          "status": 404,
-          "ok": false,
-          "error": "HTTP Error 404: Not Found"
+          "status": 200,
+          "ok": true,
+          "has_product_marker": true,
+          "negative_markers": [],
+          "transient_markers": [],
+          "has_codeberg_repo_link": true,
+          "has_github_repo_link": false,
+          "has_site_link": false,
+          "preferred_repo_target": "codeberg_primary"
         }
       ],
       "secondary_check_results": [],
-      "listing_live": false,
+      "listing_live": true,
       "secondary_live_surfaces": 0,
-      "has_codeberg_repo_link": false,
+      "has_codeberg_repo_link": true,
       "has_github_repo_link": false,
       "has_site_link": false,
-      "preferred_repo_target": "unknown",
+      "preferred_repo_target": "codeberg_primary",
       "status_note": "Submitted 2026-05-23 via API; tool_id=e27adedd-3faa-432b-ab35-000a8bf66121; pending review."
     },
     "NavAI": {
@@ -633,8 +639,8 @@
     }
   },
   "summary": {
-    "directories_with_live_listings": 3,
-    "live_listings_pointing_to_codeberg": 3,
+    "directories_with_live_listings": 4,
+    "live_listings_pointing_to_codeberg": 4,
     "live_listings_pointing_to_github_only": 0,
     "live_listings_with_unknown_repo_target": 0,
     "secondary_live_surfaces": 1,
