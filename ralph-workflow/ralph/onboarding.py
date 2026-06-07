@@ -19,6 +19,9 @@ CODEBERG_STAR_CTA: Final[str] = (
     f"⭐ Star {CODEBERG_REPO} so we know you're using it — "
     "stars drive development priority. Run `ralph star` to star from your terminal."
 )
+RUN_COMPLETION_STAR_CTA: Final[str] = (
+    f"⭐ If Ralph Workflow saved you time, star the repo: {CODEBERG_REPO}"
+)
 STARTER_PROMPT_SENTINEL: Final[str] = (
     "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
 )

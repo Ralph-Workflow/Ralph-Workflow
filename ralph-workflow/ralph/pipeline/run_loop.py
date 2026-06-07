@@ -14,6 +14,7 @@ from loguru import logger
 import ralph.pipeline.runner as _runner_module
 from ralph.config.enums import Verbosity
 from ralph.display.plain_renderer import RunStartOrientation
+from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline.legacy_console_display import (
     LegacyConsoleDisplay,
     build_default_display,
@@ -340,6 +341,11 @@ def _emit_post_loop_result(
                 exit_trigger=_exit_trigger,
                 outer_dev_iteration=_outer_dev,
             )
+            if exit_code == 0:
+                with suppress(Exception):
+                    active_display.console.print(
+                        f"\n{RUN_COMPLETION_STAR_CTA}"
+                    )
 
 
 def _build_recovery_controller(
