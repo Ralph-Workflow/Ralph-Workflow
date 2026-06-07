@@ -1,98 +1,82 @@
 {
-  "ts": "2026-06-07T09:27:43.323644",
+  "ts": "2026-06-07T10:04:04.083610",
   "jobs_checked": 21,
-  "issues_found": 7,
+  "issues_found": 5,
   "issues": [
-    {
-      "job_id": "__artifacts__",
-      "name": "docs_verifier",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
-      "required_text": "Status: independently verified pass",
-      "likely_cause": "Verifier artifact exists but does not show required pass contract"
-    },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 6851.21,
+      "artifact_age_minutes": 6887.55,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
     {
       "job_id": "__artifacts__",
-      "name": "docs_verifier_stability",
+      "name": "docs_agentic_review",
       "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
-      "last_error": "latest docs verifier verdict is not pass: 'fail'",
-      "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
-      "recent_failures": 0,
-      "consecutive_passes_since_last_fail": 0
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Docs system is well-aligned with the positioning document. No hard failures. The README \u2192 START_HERE \u2192 docs/README journey is coherent, top-level surfaces correctly lead with product story instead of internal mechanics, and the promoted next-click pages reinforce the same framing. Minor accuracy issue on the PyPI README."
     },
     {
       "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T09:26:38.074285+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
+      "name": "docs_agentic_review_mustFix_ralph-workflow-readme-md-line-47-review-the-pr-i",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "ralph-workflow/README.md line 47: \"Review the PR\" is inaccurate \u2014 Ralph produces git commits, not a PR. Should say \"review the commits\" or \"review the result.\"",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: ralph-workflow/README.md line 47: \"Review the PR\" is inaccurate \u2014 Ralph produces git commits, not a PR. Should say \"review the commits\" or \"review the result.\""
     },
     {
       "job_id": "__artifacts__",
-      "name": "docs_verifier_escalation",
+      "name": "docs_agentic_review_escalation",
       "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=9",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=9",
       "repeats_in_recent_history": 9,
       "owner_domain": "docs",
-      "incident_key": "docs_verifier::artifact_contract_fail",
+      "incident_key": "docs_agentic_review::loop_verification_fail",
       "escalation_level": "critical",
       "blocked_by": []
     },
     {
       "job_id": "__artifacts__",
-      "name": "docs_verifier_stability_escalation",
+      "name": "docs_agentic_review_mustFix_ralph-workflow-readme-md-line-47-review-the-pr-i_escalation",
       "category": "escalation_required",
-      "last_error": "latest docs verifier verdict is not pass: 'fail'",
-      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=9",
-      "repeats_in_recent_history": 9,
+      "last_error": "ralph-workflow/README.md line 47: \"Review the PR\" is inaccurate \u2014 Ralph produces git commits, not a PR. Should say \"review the commits\" or \"review the result.\"",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_ralph-workflow-readme-md-line-47-review-the-pr-i:review_followup_required repeat_count=6",
+      "repeats_in_recent_history": 6,
       "owner_domain": "docs",
-      "incident_key": "docs_verifier_stability::loop_verification_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
-      "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T09:26:38.074285+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=23",
-      "repeats_in_recent_history": 23,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
+      "incident_key": "docs_agentic_review_mustFix_ralph-workflow-readme-md-line-47-review-the-pr-i::review_followup_required",
       "escalation_level": "critical",
       "blocked_by": []
     }
   ],
   "repairs_attempted": [
     {
-      "type": "rerun_docs_verifier_for_stability",
-      "job": "docs_verifier_stability",
-      "ok": false,
-      "detail": "independent verifier failed signoff\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_FAIL\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [positioning-gap] First screen must explain composition into more complex workflows.\n- /home/mistlight/.openclaw/worksp"
+      "type": "rerun_docs_verifier",
+      "job": "docs_agentic_review",
+      "ok": true,
+      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is well-aligned with the positioning document. No hard failures. The README \\u2192 START_HERE \\u2192 docs/README journey is coherent, top-level surfaces correctly"
+    },
+    {
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "docs_agentic_review_mustFix_ralph-workflow-readme-md-line-47-review-the-pr-i",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-07T08:03:11.698149+00:00"
     },
     {
       "type": "owner_loop_escalation",
-      "job": "docs_verifier_escalation",
+      "job": "docs_agentic_review_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780817256436:14\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
-      "job": "docs_verifier_stability_escalation",
+      "job": "docs_agentic_review_mustFix_ralph-workflow-readme-md-line-47-review-the-pr-i_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780817258530:15\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     }
   ]
 }
