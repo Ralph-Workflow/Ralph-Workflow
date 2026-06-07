@@ -29951,3 +29951,141 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. README \u2192 START_HERE \u2192 docs/README forms a coherent product-first journey. No internal-process leakage on top-level surfaces. The simple-core \u2192 composable-framework \u2192 strong-default story is carried consistently across all promoted surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding', frames Ralph-loop core as composable framework, compares against chat tools (not internals), includes who-it's-for/non-fit upfront."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with simple-core + composition + strong-default-right away. Shortest honest first-run path. Clearly positioned after README, before docs map."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Self-aware switchboard page that says 'use this after README and START_HERE'. Routes by user goal. Internally includes 'Keep proof secondary' meta-instruction."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Leads with 'simple at the center, stronger in composition, useful before customization' \u2014 exact positioning language."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Opens with disclaimer that it's supporting proof, not main pitch. 'Start with the product story and operator route first' \u2014 correct hierarchy awareness."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-shaped against the positioning. The README \u2192 START_HERE \u2192 docs/README journey is coherent and reinforces the same core message at each step. Top-level surfaces consistently lead with the simple Ralph-loop core and composable orchestration, not internal plumbing or artifact framing.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Root README (line 77-78) has a maintainer-addressed note about canonical sphinx source that reads oddly in a public entry point \u2014 either drop it or wall it off with a smaller heading",
+    "Two sibling READMEs (root and ralph-workflow/) tell slightly different stories; not broken today but will drift without deduplication"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md (root)",
+      "reason": "Opens with the positioning tagline, immediately defines the product as a composable loop framework built on the Ralph-loop core, and calls out the strong default workflow before any features or plumbing"
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run. Leads with concept, not install. Sections for good/bad first tasks follow the positioning's audience-fit guidance precisely"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Serves as a true docs switchboard with explicit 'next-click only if you need it' framing. Contains a 'Keep proof secondary' section that proves intentional awareness of the positioning rules"
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Frames the product around 'simple at the center, stronger in composition' without drifting into internal plumbing language"
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Explicitly positions itself as supporting proof, not the main product pitch \u2014 exactly what the positioning requires for proof pages"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is well-aligned with positioning. The README \u2192 START_HERE \u2192 docs/README journey is coherent, primary surfaces avoid internal leakage, and promoted next-click pages reinforce the same story instead of fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with correct tagline, frames as composable loop framework, clearly targets ambitious/well-specified work, shows Codeberg primary/GitHub mirror, no artifact or internal-plumbing language on first screen."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first-run path with correct positioning DNA (simple-core, composition, default workflow, as-is first). Explicitly defers deeper pages to docs/README."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Clean docs map with explicit 'use this after README and START_HERE' guidance. Routes to positioned content, includes 'keep proof secondary' instruction."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Strong spec template, result-first morning-after review framework, honest assessment of when it works/doesn't. No internal leakage."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Explicitly frames itself as secondary/supporting evidence, not the main pitch. Evaluation order: working behavior \u2192 real checks \u2192 written scope \u2192 supporting artifacts."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-06-07T00:06:22.698689+00:00",
+  "updated_at": "2026-06-07T01:07:00.845251+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-03T11:33:59.794473+00:00",
-      "repeat_count": 208,
+      "repeat_count": 212,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -889,22 +889,54 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780790700155:42\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=208"
+        },
+        {
+          "at": "2026-06-07T00:15:36.112883+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=209"
+        },
+        {
+          "at": "2026-06-07T00:46:01.913631+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780793161877:46\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=210"
+        },
+        {
+          "at": "2026-06-07T00:46:06.040112+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780793166012:47\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=211"
+        },
+        {
+          "at": "2026-06-07T00:50:40.860077+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=212"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-07T00:04:52.319523+00:00",
+      "last_seen": "2026-06-07T00:50:07.026947+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-06-07T00:05:00.249629+00:00"
+      "closed_at": "2026-06-07T00:50:40.860092+00:00"
     },
     "marketing_independent_verification::stale_artifact": {
       "key": "marketing_independent_verification::stale_artifact",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-06-03T11:33:59.794511+00:00",
-      "repeat_count": 1178,
+      "repeat_count": 1192,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -921,7 +953,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-07T00:06:22.698649+00:00",
+      "last_seen": "2026-06-07T01:07:00.845216+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -1453,7 +1485,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-03T11:33:59.794540+00:00",
-      "repeat_count": 426,
+      "repeat_count": 432,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -3696,15 +3728,47 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T01:46:14.520909+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=426"
+        },
+        {
+          "at": "2026-06-07T00:15:30.603221+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780791330548:43\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T02:06:06.237219+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=427"
+        },
+        {
+          "at": "2026-06-07T00:46:10.152924+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780793170118:48\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T02:18:13.949507+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=429"
+        },
+        {
+          "at": "2026-06-07T00:50:54.784662+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T02:46:02.414174+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=431"
+        },
+        {
+          "at": "2026-06-07T01:06:54.131320+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780794414089:53\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T02:58:28.931581+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=432"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-07T00:04:52.319548+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T01:46:14.520909+02:00\"\n}",
+      "last_seen": "2026-06-07T01:06:43.175346+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T02:58:28.931581+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-06-07T00:05:03.025820+00:00"
+      "closed_at": "2026-06-07T01:06:54.131346+00:00"
     },
     "docs_verifier::artifact_contract_fail": {
       "key": "docs_verifier::artifact_contract_fail",
@@ -4117,7 +4181,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-06-03T16:45:20.669761+00:00",
-      "repeat_count": 88,
+      "repeat_count": 96,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4312,15 +4376,55 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=86"
+        },
+        {
+          "at": "2026-06-07T00:33:50.467061+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=89"
+        },
+        {
+          "at": "2026-06-07T00:46:05.863469+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=91"
+        },
+        {
+          "at": "2026-06-07T00:46:10.253243+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=92"
+        },
+        {
+          "at": "2026-06-07T00:46:24.790416+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=93"
+        },
+        {
+          "at": "2026-06-07T00:50:44.771479+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780793444746:50\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=95"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-06T23:45:23.770323+00:00",
+      "last_seen": "2026-06-07T00:51:02.202742+00:00",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "The docs system is well-aligned with the positioning document across all surfaces. README opens with the right tagline and product framing, START_HERE routes into a practical first-run path, docs/README provides a clean switchboard with explicit 'keep proof secondary' guidance, and all promoted next-click pages share the same simple-core/composable-loop/product-first story. No internal leakage on top-level surfaces, no drift between the three READMEs, and no stale framing in deep links.",
+      "likely_cause": "The docs system is well-shaped against the positioning. The README \u2192 START_HERE \u2192 docs/README journey is coherent and reinforces the same core message at each step. Top-level surfaces consistently lead with the simple Ralph-loop core and composable orchestration, not internal plumbing or artifact framing.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-06-06T21:31:45.164039+00:00"
+      "closed_at": "2026-06-07T00:50:44.771493+00:00"
     },
     "docs_agentic_review_mustFix_maintain-three-readme-copies-consistently-minor::review_followup_required": {
       "key": "docs_agentic_review_mustFix_maintain-three-readme-copies-consistently-minor::review_followup_required",
@@ -6398,6 +6502,132 @@
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: `github-mirror/docs/reviewable-output.md` is positioned as supporting proof (good), but its title 'What Good Ralph Workflow Output Looks Like' could accidentally invite evaluators to lead with output-review framing instead of product framing if surfaced too prominently",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
       "closed_at": "2026-06-07T00:04:52.319564+00:00"
+    },
+    "docs_agentic_review_mustFix_ralph-workflow-readme-md-documentation-links-use::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_ralph-workflow-readme-md-documentation-links-use::review_followup_required",
+      "name": "docs_agentic_review_mustFix_ralph-workflow-readme-md-documentation-links-use",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-07T00:33:17.377749+00:00",
+      "repeat_count": 2,
+      "owner_domain": "docs",
+      "escalation_level": "owner",
+      "owner_actions": [
+        {
+          "at": "2026-06-07T00:33:44.534507+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780792424475:44\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_ralph-workflow-readme-md-documentation-links-use::review_followup_required::ralph-workflow/README.md documentation links use relative paths (docs/sphinx/quickstart.md etc.) that will be broken on PyPI \u2014 replace with https://ralphworkflow.com/docs/ absolute URLs::Reviewer left unresolved required follow-up item in mustFix: ralph-workflow/README.md documentation links use relative paths (docs/sphinx/quickstart.md etc.) that will be broken on PyPI \u2014 replace with https://ralphworkflow.com/docs/ absolute URLs"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-07T00:34:03.521965+00:00",
+      "last_error": "ralph-workflow/README.md documentation links use relative paths (docs/sphinx/quickstart.md etc.) that will be broken on PyPI \u2014 replace with https://ralphworkflow.com/docs/ absolute URLs",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: ralph-workflow/README.md documentation links use relative paths (docs/sphinx/quickstart.md etc.) that will be broken on PyPI \u2014 replace with https://ralphworkflow.com/docs/ absolute URLs",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-07T00:45:18.382904+00:00"
+    },
+    "docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse::review_followup_required",
+      "name": "docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-07T00:45:18.382877+00:00",
+      "repeat_count": 6,
+      "owner_domain": "docs",
+      "escalation_level": "critical",
+      "owner_actions": [
+        {
+          "at": "2026-06-07T00:45:40.294660+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780793140221:45\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse::review_followup_required::Root README (line 77-78) has a maintainer-addressed note about canonical sphinx source that reads oddly in a public entry point \u2014 either drop it or wall it off with a smaller heading::Reviewer left unresolved required follow-up item in mustFix: Root README (line 77-78) has a maintainer-addressed note about canonical sphinx source that reads oddly in a public entry point \u2014 either drop it or wall it off with a smaller heading"
+        },
+        {
+          "at": "2026-06-07T00:46:14.391867+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse_escalation::escalation_required::Root README (line 77-78) has a maintainer-addressed note about canonical sphinx source that reads oddly in a public entry point \u2014 either drop it or wall it off with a smaller heading::Incident escalation level=owner: docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse:review_followup_required repeat_count=2"
+        },
+        {
+          "at": "2026-06-07T00:46:28.533026+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse_escalation::escalation_required::Root README (line 77-78) has a maintainer-addressed note about canonical sphinx source that reads oddly in a public entry point \u2014 either drop it or wall it off with a smaller heading::Incident escalation level=owner: docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse:review_followup_required repeat_count=3"
+        },
+        {
+          "at": "2026-06-07T00:50:47.693463+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780793447667:51\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse_escalation::escalation_required::Root README (line 77-78) has a maintainer-addressed note about canonical sphinx source that reads oddly in a public entry point \u2014 either drop it or wall it off with a smaller heading::Incident escalation level=critical: docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse:review_followup_required repeat_count=5"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-07T00:51:02.202780+00:00",
+      "last_error": "Root README (line 77-78) has a maintainer-addressed note about canonical sphinx source that reads oddly in a public entry point \u2014 either drop it or wall it off with a smaller heading",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Root README (line 77-78) has a maintainer-addressed note about canonical sphinx source that reads oddly in a public entry point \u2014 either drop it or wall it off with a smaller heading",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-07T00:50:47.693477+00:00"
+    },
+    "docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell::review_followup_required",
+      "name": "docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-07T00:45:18.382885+00:00",
+      "repeat_count": 6,
+      "owner_domain": "docs",
+      "escalation_level": "critical",
+      "owner_actions": [
+        {
+          "at": "2026-06-07T00:45:46.595105+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell::review_followup_required::Two sibling READMEs (root and ralph-workflow/) tell slightly different stories; not broken today but will drift without deduplication::Reviewer left unresolved required follow-up item in mustFix: Two sibling READMEs (root and ralph-workflow/) tell slightly different stories; not broken today but will drift without deduplication"
+        },
+        {
+          "at": "2026-06-07T00:46:19.083180+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell_escalation::escalation_required::Two sibling READMEs (root and ralph-workflow/) tell slightly different stories; not broken today but will drift without deduplication::Incident escalation level=owner: docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell:review_followup_required repeat_count=2"
+        },
+        {
+          "at": "2026-06-07T00:46:31.852813+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell_escalation::escalation_required::Two sibling READMEs (root and ralph-workflow/) tell slightly different stories; not broken today but will drift without deduplication::Incident escalation level=owner: docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell:review_followup_required repeat_count=3"
+        },
+        {
+          "at": "2026-06-07T00:50:50.768673+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780793450721:52\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell_escalation::escalation_required::Two sibling READMEs (root and ralph-workflow/) tell slightly different stories; not broken today but will drift without deduplication::Incident escalation level=critical: docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell:review_followup_required repeat_count=5"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-07T00:51:02.202784+00:00",
+      "last_error": "Two sibling READMEs (root and ralph-workflow/) tell slightly different stories; not broken today but will drift without deduplication",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Two sibling READMEs (root and ralph-workflow/) tell slightly different stories; not broken today but will drift without deduplication",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-07T00:50:50.768690+00:00"
     }
   }
 }

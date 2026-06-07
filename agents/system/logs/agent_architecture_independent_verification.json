@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-07T02:06:06.237219+02:00",
+  "checked_at": "2026-06-07T03:06:50.465239+02:00",
   "verdict": "qualified_pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
@@ -36,12 +36,12 @@
     {
       "claim": "architecture verification isolates external domain blockers as watchpoints instead of manufacturing new architecture incidents",
       "status": "verified",
-      "details": "External blockers present: marketing_independent_verification:stale_artifact"
+      "details": "External blockers present: marketing_independent_verification:stale_artifact, docs_agentic_review:loop_verification_fail, docs_agentic_review_mustFix_root-readme-line-77-78-has-a-maintainer-addresse:review_followup_required, docs_agentic_review_mustFix_two-sibling-readmes-root-and-ralph-workflow-tell:review_followup_required"
     },
     {
       "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
       "status": "verified",
-      "details": "recent_failures=3, consecutive_passes_since_last_fail=30"
+      "details": "recent_failures=3, consecutive_passes_since_last_fail=41"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -75,7 +75,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "summary": "Architecture audit refreshed with overall_health='external_risk'."
+      "summary": "Architecture audit refreshed with overall_health='high_risk'."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
@@ -83,7 +83,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Health monitor reports jobs_checked=20 and issues_found=1."
+      "summary": "Health monitor reports jobs_checked=20 and issues_found=7."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
@@ -98,7 +98,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]
