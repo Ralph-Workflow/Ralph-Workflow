@@ -274,3 +274,101 @@ def test_execute_smoke_turns_retries_post_tool_empty_response_with_same_session(
     assert any('"type":"tool_result"' in line for line in lines)
     assert any("Recovered smoke run." in line for line in lines)
     assert any("Recovered smoke run." in line for line in rendered)
+
+
+def test_execute_smoke_turns_preserves_early_session_id_across_long_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    bridge = type("_Bridge", (), {"reset_tool_registry": lambda self: None})()
+    params = SmokeRunParams(
+        agent_name="claude",
+        config=config,
+        workspace_root=tmp_path,
+        prompt_file=tmp_path / "PROMPT.md",
+        output_file=tmp_path / "todo.js",
+        options=smoke_module.InvokeOptions(show_progress=False),
+        display_context=smoke_module.make_display_context(),
+        bridge=bridge,
+    )
+    calls: list[object | None] = []
+
+    def fake_invoke_agent(
+        _config: AgentConfig,
+        _prompt_file: str,
+        *,
+        options: object = None,
+    ) -> object:
+        calls.append(getattr(options, "session_id", None))
+        if len(calls) == 1:
+            lines = ["Claude session ready. Session ID: sess-long\n"]
+            lines.extend(f"line-{index}\n" for index in range(500))
+
+            def _iter() -> object:
+                yield from lines
+                raise smoke_module.AgentInvocationError(
+                    "claude",
+                    1,
+                    "Model returned an empty response with no tool calls",
+                    parsed_output=['{"type":"tool_result","tool":"read_file"}'],
+                )
+
+            return _iter()
+        return iter(
+            [
+                "Claude session ready. Session ID: sess-long\n",
+                "Task declared complete: session_id=sess-long, summary=done, timestamp=1\n",
+            ]
+        )
+
+    monkeypatch.setattr(smoke_module, "invoke_agent", fake_invoke_agent)
+    _lines, _rendered, session_id, final_exception = smoke_module._execute_smoke_turns(params, None)
+
+    assert final_exception is None
+    assert session_id == "sess-long"
+    assert calls == [None, "sess-long"]
+
+
+def test_execute_smoke_turns_preserves_early_session_id_for_resumable_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    params = SmokeRunParams(
+        agent_name="claude",
+        config=config,
+        workspace_root=tmp_path,
+        prompt_file=tmp_path / "PROMPT.md",
+        output_file=tmp_path / "todo.js",
+        options=smoke_module.InvokeOptions(show_progress=False),
+        display_context=smoke_module.make_display_context(),
+        bridge=None,
+    )
+    calls: list[object | None] = []
+
+    def fake_run_smoke_attempt(
+        _params: object,
+        options: object,
+        *,
+        session_id_sink: object = None,
+    ) -> tuple[list[str], list[str]]:
+        calls.append(getattr(options, "session_id", None))
+        assert callable(session_id_sink)
+        session_id_sink("sess-resume")
+        raise smoke_module.OpenCodeResumableExitError("claude", session_id=None)
+
+    monkeypatch.setattr(smoke_module, "_run_smoke_attempt", fake_run_smoke_attempt)
+    _lines, _rendered, session_id, final_exception = smoke_module._execute_smoke_turns(params, None)
+
+    assert final_exception is not None
+    assert session_id == "sess-resume"
+    assert calls == [None, "sess-resume", "sess-resume", "sess-resume", "sess-resume"]

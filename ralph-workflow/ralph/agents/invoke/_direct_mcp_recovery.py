@@ -53,6 +53,7 @@ def run_with_direct_mcp_recovery[T](
     max_retries: int,
     reset_tool_registry: Callable[[], object] | None = None,
     on_retry_failure: Callable[[list[str]], object] | None = None,
+    on_session_observed: Callable[[str], object] | None = None,
 ) -> T:
     current_session_id: str | None = None
     retries_used = 0
@@ -62,10 +63,14 @@ def run_with_direct_mcp_recovery[T](
         def _capture_session_id(session_id: str) -> None:
             nonlocal observed_session_id
             observed_session_id = session_id
+            if on_session_observed is not None:
+                on_session_observed(session_id)
 
         try:
             return run_attempt(current_session_id, _capture_session_id)
         except AgentInvocationError as exc:
+            if type(exc).__name__ == "OpenCodeResumableExitError":
+                raise
             if reset_tool_registry is None or retries_used >= max_retries:
                 raise
             retry_plan = _retry_plan_for_agent_invocation_error(

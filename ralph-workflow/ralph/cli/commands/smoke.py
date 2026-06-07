@@ -218,6 +218,11 @@ def _execute_smoke_turns(
     for _attempt in range(_SMOKE_MAX_TURNS):
         raw_lines: list[str] = []
         active_session_id = current_session_id
+        observed_session_id = current_session_id
+
+        def _capture_session_id(session_id: str) -> None:
+            nonlocal observed_session_id
+            observed_session_id = session_id
 
         def _run_retry_attempt(
             retry_session_id: str | None,
@@ -236,14 +241,19 @@ def _execute_smoke_turns(
                 max_retries=default_direct_mcp_retry_limit(_SMOKE_MAX_TURNS - 1),
                 reset_tool_registry=_reset_tool_registry_callback(params.bridge),
                 on_retry_failure=all_lines.extend,
+                on_session_observed=_capture_session_id,
             )
             all_lines.extend(raw_lines)
             live_output_lines.extend(rendered_lines)
-            current_session_id = extract_transport_session_id(raw_lines) or current_session_id
+            current_session_id = observed_session_id or extract_transport_session_id(raw_lines)
             final_exception = None
             break
         except OpenCodeResumableExitError as exc:
-            current_session_id = exc.resumable_session_id or extract_transport_session_id(raw_lines)
+            current_session_id = (
+                exc.resumable_session_id
+                or observed_session_id
+                or extract_transport_session_id(raw_lines)
+            )
             final_exception = exc
             continue
         except AgentInvocationError as exc:
@@ -284,11 +294,15 @@ def _run_smoke_attempt(
             session_id_sink=session_id_sink,
         )
     except AgentInvocationError as exc:
+        merged_output = list(raw_lines)
+        for line in exc.parsed_output:
+            if line not in merged_output:
+                merged_output.append(line)
         raise AgentInvocationError(
             exc.agent_name,
             exc.returncode,
             exc.stderr,
-            parsed_output=(list(raw_lines) if raw_lines else exc.parsed_output),
+            parsed_output=merged_output if merged_output else exc.parsed_output,
         ) from exc
     return list(raw_lines), list(rendered_lines)
 
