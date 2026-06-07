@@ -225,9 +225,10 @@ class ExecSandboxManager:
         if post_bytes <= self._max_total_bytes:
             return
 
-        # Active slots from concurrent acquires in this process legitimately use space.
-        # Return without error — capacity will be reclaimed when those slots finish.
-        if active_now:
+        # If active slots exist in this process or we freed at least one path, proceed:
+        # active slots will release space naturally, and freed paths reduce usage even
+        # if OS block accounting is delayed due to other processes holding file handles.
+        if active_now or removed_paths > 0:
             return
 
         diag = (
