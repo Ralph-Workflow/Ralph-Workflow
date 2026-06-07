@@ -1,5 +1,5 @@
 # Self-Repair / Self-Improvement Audit
-- Checked: 2026-06-07T05:20:51.771358+02:00
+- Checked: 2026-06-07T06:50:49.410925+02:00
 - Loops audited: 20
 - Loops with self-repair: 18
 - Loops with self-improve: 18
@@ -8,7 +8,7 @@
 
 ## Findings (sorted by severity)
 
-### [HIGH] Loop "pypi-auto-unblocker" has NO self-improvement mandate
+### [HIGH] Loop "marketing-pulse" has NO self-improvement mandate
 **Mechanism:** Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.
 **Root cause:** Loop was created without a self-improvement mandate or a third-party verification requirement.
 **Recommended fix:** Add a self_improvement_mandate section to the loop script that:
@@ -17,7 +17,7 @@
   3. Registers the loop in the self_improvement_loops.json registry with checker/runner/verifier
   4. Requires independent third-party signoff before marking the loop healthy again
 
-### [HIGH] Loop "marketing-pulse" has NO self-improvement mandate
+### [HIGH] Loop "pypi-auto-unblocker" has NO self-improvement mandate
 **Mechanism:** Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.
 **Root cause:** Loop was created without a self-improvement mandate or a third-party verification requirement.
 **Recommended fix:** Add a self_improvement_mandate section to the loop script that:

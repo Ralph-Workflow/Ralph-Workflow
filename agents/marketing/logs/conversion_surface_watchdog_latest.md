@@ -1,21 +1,26 @@
 # Conversion Surface Watchdog — Audit Report
-Generated: 2026-06-06T05:00:01.788342+00:00
+Generated: 2026-06-07T05:00:01.789183+00:00
 
 **Status:** PASS
 
 - Total posts audited: **52**
-- Average conversion score: **10.4/13**
-- Below autofix threshold (≤6): **0**
-- Strong posts (≥8): **52**
+- Average conversion score: **10.1/13**
+- Below autofix threshold (≤6): **2**
+- Strong posts (≥8): **50**
 - Weak posts (≤4): **0**
+
+## Auto-Fixes Applied
+
+- **claude-code-multi-agent-overnight-postmortem** (score 6): added_standard_conversion_block
+- **why-local-first-beats-cloud-unattended-ai-coding** (score 6): added_standard_conversion_block
 
 ## Score Distribution
 
--  8: ██ (2)
--  9: █████████ (9)
+-  6: ██ (2)
+-  9: ██████████ (10)
 - 10: ███████████████████████████ (27)
-- 11: █████ (5)
-- 13: █████████ (9)
+- 11: ████████ (8)
+- 13: █████ (5)
 
 ## Scoring Guide
 

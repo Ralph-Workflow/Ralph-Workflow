@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-06-07T06:12:00+02:00",
+  "run_type": "active_loop",
+  "action": "star_cta_pipeline_completion",
+  "category": "conversion_surface",
+  "description": "Added RUN_COMPLETION_STAR_CTA to onboarding.py and integrated into run_loop.py _emit_post_loop_result for display after successful pipeline runs",
+  "files_changed": [
+    "ralph-workflow/ralph/onboarding.py",
+    "ralph-workflow/ralph/pipeline/run_loop.py"
+  ],
+  "commit": "a1830864e",
+  "pushed_to": [
+    "codeberg",
+    "github"
+  ],
+  "deploy_blocked": "PyPI credentials unavailable",
+  "expected_impact": "~40+ runs/day see CTA, est. 1% conversion \u2192 13 stars/month",
+  "adoption_state": {
+    "codeberg_stars": 12,
+    "github_stars": 3,
+    "pypi_downloads_month": 1303,
+    "star_conversion": "0.00%"
+  },
+  "external_lanes_status": "all 7 credential-blocked",
+  "hn_window": "closed",
+  "reddit_deadline": "2026-06-12"
+}

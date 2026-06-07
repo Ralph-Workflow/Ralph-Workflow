@@ -1,50 +1,52 @@
 {
-  "generated_at": "2026-06-06T05:00:01.788342+00:00",
+  "generated_at": "2026-06-07T05:00:01.789183+00:00",
   "agent": "conversion_surface_watchdog",
   "repair_target": "outcome_system_underpowered",
   "total_posts": 52,
-  "avg_score": 10.4,
-  "below_threshold_count": 0,
-  "strong_posts_count": 52,
+  "avg_score": 10.1,
+  "below_threshold_count": 2,
+  "strong_posts_count": 50,
   "weak_posts_count": 0,
   "posts": [
     {
       "slug": "claude-code-multi-agent-overnight-postmortem",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/claude-code-multi-agent-overnight-postmortem.md",
-      "lines": 72,
+      "lines": 80,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
         "pip_install": 0,
         "first_task_guide": 0,
         "free_use_invite": 3,
-        "ends_with_crosslinks": 0,
+        "ends_with_crosslinks": -2,
         "star_ask": 0
       },
       "findings": [
         "MISSING: No pip/pipx install instruction",
-        "MISSING: No first-task guide link"
+        "MISSING: No first-task guide link",
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
       ],
-      "total_score": 8
+      "total_score": 6
     },
     {
       "slug": "why-local-first-beats-cloud-unattended-ai-coding",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-local-first-beats-cloud-unattended-ai-coding.md",
-      "lines": 103,
+      "lines": 111,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
         "pip_install": 2,
         "first_task_guide": 0,
         "free_use_invite": 1,
-        "ends_with_crosslinks": 0,
+        "ends_with_crosslinks": -2,
         "star_ask": 0
       },
       "findings": [
         "MISSING: No first-task guide link",
-        "THIN: Only one free-use signal in final section"
+        "THIN: Only one free-use signal in final section",
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
       ],
-      "total_score": 8
+      "total_score": 6
     },
     {
       "slug": "ai-coding-agent-testing-strategy",
@@ -169,6 +171,24 @@
       },
       "findings": [
         "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 9
+    },
+    {
+      "slug": "ralph-workflow-vs-hyper-yc-p26",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-hyper-yc-p26.md",
+      "lines": 96,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 2,
+        "ends_with_crosslinks": -2,
+        "star_ask": 0
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 5 cross-links \u2014 no conversion CTA"
       ],
       "total_score": 9
     },
@@ -373,7 +393,7 @@
     {
       "slug": "ralph-workflow-comparison-guide",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-comparison-guide.md",
-      "lines": 307,
+      "lines": 309,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -695,6 +715,42 @@
       "total_score": 10
     },
     {
+      "slug": "agentic-devtool-goldrush-yc-2026",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/agentic-devtool-goldrush-yc-2026.md",
+      "lines": 128,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 1
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 11
+    },
+    {
+      "slug": "ai-coding-agent-benchmarks-real-world",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-benchmarks-real-world.md",
+      "lines": 133,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 1
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 11
+    },
+    {
       "slug": "good-vs-bad-unattended-coding-task-ai-agent",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/good-vs-bad-unattended-coding-task-ai-agent.md",
       "lines": 152,
@@ -716,6 +772,24 @@
       "slug": "how-to-run-claude-code-unattended",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/how-to-run-claude-code-unattended.md",
       "lines": 224,
+      "scores": {
+        "codeberg_link": 3,
+        "codeberg_primary": 2,
+        "pip_install": 2,
+        "first_task_guide": 2,
+        "free_use_invite": 3,
+        "ends_with_crosslinks": -2,
+        "star_ask": 1
+      },
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 11
+    },
+    {
+      "slug": "is-ralph-workflow-right-for-your-project-decision-guide",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/is-ralph-workflow-right-for-your-project-decision-guide.md",
+      "lines": 173,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -767,57 +841,27 @@
       "total_score": 11
     },
     {
-      "slug": "ralph-workflow-vs-hyper-yc-p26",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ralph-workflow-vs-hyper-yc-p26.md",
-      "lines": 89,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 2,
-        "ends_with_crosslinks": 0,
-        "star_ask": 0
-      },
-      "findings": [],
-      "total_score": 11
-    },
-    {
-      "slug": "agentic-devtool-goldrush-yc-2026",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/agentic-devtool-goldrush-yc-2026.md",
-      "lines": 121,
+      "slug": "why-5-projects-reinvented-same-loop-pattern",
+      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-5-projects-reinvented-same-loop-pattern.md",
+      "lines": 119,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
         "pip_install": 2,
         "first_task_guide": 2,
         "free_use_invite": 3,
-        "ends_with_crosslinks": 0,
+        "ends_with_crosslinks": -2,
         "star_ask": 1
       },
-      "findings": [],
-      "total_score": 13
+      "findings": [
+        "WEAK_ENDING: Last 10 lines are 4 cross-links \u2014 no conversion CTA"
+      ],
+      "total_score": 11
     },
     {
       "slug": "ai-agent-workflow-composer-composable-pipelines",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-agent-workflow-composer-composable-pipelines.md",
       "lines": 141,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": 0,
-        "star_ask": 1
-      },
-      "findings": [],
-      "total_score": 13
-    },
-    {
-      "slug": "ai-coding-agent-benchmarks-real-world",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/ai-coding-agent-benchmarks-real-world.md",
-      "lines": 128,
       "scores": {
         "codeberg_link": 3,
         "codeberg_primary": 2,
@@ -879,22 +923,6 @@
       "total_score": 13
     },
     {
-      "slug": "is-ralph-workflow-right-for-your-project-decision-guide",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/is-ralph-workflow-right-for-your-project-decision-guide.md",
-      "lines": 166,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": 0,
-        "star_ask": 1
-      },
-      "findings": [],
-      "total_score": 13
-    },
-    {
       "slug": "unattended-coding-agent-what-done-actually-means",
       "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/unattended-coding-agent-what-done-actually-means.md",
       "lines": 73,
@@ -909,25 +937,20 @@
       },
       "findings": [],
       "total_score": 13
-    },
-    {
-      "slug": "why-5-projects-reinvented-same-loop-pattern",
-      "path": "/home/mistlight/.openclaw/workspace/Ralph-Site/content/blog/why-5-projects-reinvented-same-loop-pattern.md",
-      "lines": 112,
-      "scores": {
-        "codeberg_link": 3,
-        "codeberg_primary": 2,
-        "pip_install": 2,
-        "first_task_guide": 2,
-        "free_use_invite": 3,
-        "ends_with_crosslinks": 0,
-        "star_ask": 1
-      },
-      "findings": [],
-      "total_score": 13
     }
   ],
-  "auto_fixes": [],
+  "auto_fixes": [
+    {
+      "slug": "claude-code-multi-agent-overnight-postmortem",
+      "before_score": 6,
+      "action": "added_standard_conversion_block"
+    },
+    {
+      "slug": "why-local-first-beats-cloud-unattended-ai-coding",
+      "before_score": 6,
+      "action": "added_standard_conversion_block"
+    }
+  ],
   "unchanged": [],
   "measurement_window_days": 14,
   "success_metric": "Codeberg stars_delta_window > 0 within 14 days",

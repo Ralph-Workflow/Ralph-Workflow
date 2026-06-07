@@ -1,6 +1,6 @@
 {
   "schema_version": "ecc.self-repair-self-improve-audit.v1",
-  "checked_at": "2026-06-07T05:20:51.771358+02:00",
+  "checked_at": "2026-06-07T06:50:49.410925+02:00",
   "total_loops_audited": 20,
   "loops_with_self_repair": 18,
   "loops_with_self_improve": 18,
@@ -22,18 +22,18 @@
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
-      "job": "codeberg-github-mirror-sync",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
+      "job": "agent-architecture-watchdog",
+      "script": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_audit.py",
       "has_self_repair": true,
-      "sr_detail": "idempotent_reporter_exempt",
-      "needs_self_repair": false,
+      "sr_detail": "patterns:self_?repair,health_.*monitor",
+      "needs_self_repair": true,
       "has_self_improve": true,
-      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
+      "si_detail": "patterns:self_improv,self_improv,verifier artifact",
       "needs_self_improve": true,
       "self_repair_missing": false,
       "self_improve_missing": false,
-      "job_id": "b7d74fa6-ab9b-4f66-9d03-a77c0ad7a56c",
-      "model": "minimax/MiniMax-M2.7-highspeed"
+      "job_id": "dc190b5f-f215-458b-bdce-ba36be178c80",
+      "model": "openrouter/deepseek/deepseek-v4-pro"
     },
     {
       "job": "ralph-docs-supervisor-precheck",
@@ -50,22 +50,8 @@
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
-      "job": "pypi-auto-unblocker",
-      "script": "UNKNOWN",
-      "has_self_repair": false,
-      "sr_detail": "no_script_found",
-      "needs_self_repair": false,
-      "has_self_improve": false,
-      "si_detail": "no_script_found",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": true,
-      "job_id": "f136f614-0183-464a-b064-fa3fa953ad3e",
-      "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "marketing-active-loop",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_runner.py",
+      "job": "content-generator",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/generate_content.py",
       "has_self_repair": true,
       "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
       "needs_self_repair": true,
@@ -74,8 +60,22 @@
       "needs_self_improve": true,
       "self_repair_missing": false,
       "self_improve_missing": false,
-      "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
-      "model": "openrouter/deepseek/deepseek-v4-pro"
+      "job_id": "3f549d7c-8ee5-4739-b6da-2ee5d85f29f8",
+      "model": "minimax/MiniMax-M2.7-highspeed"
+    },
+    {
+      "job": "codeberg-github-mirror-sync",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/sync_research.py",
+      "has_self_repair": true,
+      "sr_detail": "idempotent_reporter_exempt",
+      "needs_self_repair": false,
+      "has_self_improve": true,
+      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "b7d74fa6-ab9b-4f66-9d03-a77c0ad7a56c",
+      "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
       "job": "Push research findings to git repo",
@@ -103,34 +103,6 @@
       "self_repair_missing": false,
       "self_improve_missing": false,
       "job_id": "126471f7-1226-4aee-a2fe-e7ff17a28d6d",
-      "model": "minimax/MiniMax-M2.7-highspeed"
-    },
-    {
-      "job": "agent-architecture-watchdog",
-      "script": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_audit.py",
-      "has_self_repair": true,
-      "sr_detail": "patterns:self_?repair,health_.*monitor",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:self_improv,self_improv,verifier artifact",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "dc190b5f-f215-458b-bdce-ba36be178c80",
-      "model": "openrouter/deepseek/deepseek-v4-pro"
-    },
-    {
-      "job": "content-generator",
-      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/generate_content.py",
-      "has_self_repair": true,
-      "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "3f549d7c-8ee5-4739-b6da-2ee5d85f29f8",
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
@@ -260,6 +232,34 @@
       "model": "minimax/MiniMax-M2.7-highspeed"
     },
     {
+      "job": "pypi-auto-unblocker",
+      "script": "UNKNOWN",
+      "has_self_repair": false,
+      "sr_detail": "no_script_found",
+      "needs_self_repair": false,
+      "has_self_improve": false,
+      "si_detail": "no_script_found",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": true,
+      "job_id": "f136f614-0183-464a-b064-fa3fa953ad3e",
+      "model": "minimax/MiniMax-M2.7-highspeed"
+    },
+    {
+      "job": "marketing-active-loop",
+      "script": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_runner.py",
+      "has_self_repair": true,
+      "sr_detail": "patterns:self_?repair,guard_main,stale_artifact",
+      "needs_self_repair": true,
+      "has_self_improve": true,
+      "si_detail": "patterns:SELF_IMPROV,self_improv,SELF_IMPROVEMENT_MANDATE",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
+      "model": "openrouter/deepseek/deepseek-v4-pro"
+    },
+    {
       "job": "marketing-outcome-capability-runner",
       "script": "/home/mistlight/.openclaw/workspace/agents/marketing/outcome_capability_runner.py",
       "has_self_repair": true,
@@ -291,7 +291,7 @@
   "findings": [
     {
       "severity": "high",
-      "title": "Loop \"pypi-auto-unblocker\" has NO self-improvement mandate",
+      "title": "Loop \"marketing-pulse\" has NO self-improvement mandate",
       "mechanism": "Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.",
       "source_layer": "self-improvement",
       "root_cause": "Loop was created without a self-improvement mandate or a third-party verification requirement.",
@@ -301,7 +301,7 @@
     },
     {
       "severity": "high",
-      "title": "Loop \"marketing-pulse\" has NO self-improvement mandate",
+      "title": "Loop \"pypi-auto-unblocker\" has NO self-improvement mandate",
       "mechanism": "Script UNKNOWN has no self-improvement mandate. When outcomes are flat, this loop will repeat the same tactics forever without improving or redesigning its approach.",
       "source_layer": "self-improvement",
       "root_cause": "Loop was created without a self-improvement mandate or a third-party verification requirement.",
@@ -312,8 +312,8 @@
   ],
   "self_repair_missing_loops": [],
   "self_improve_missing_loops": [
-    "pypi-auto-unblocker",
-    "marketing-pulse"
+    "marketing-pulse",
+    "pypi-auto-unblocker"
   ],
   "severity_counts": {
     "critical": 0,

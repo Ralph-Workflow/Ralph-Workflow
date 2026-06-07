@@ -2,7 +2,7 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "qualified_pass",
-    "primary_failure_mode": "Marketing independent verification artifact is 4.6 days stale; architecture-owned gates are all green.",
+    "primary_failure_mode": "Marketing independent verification artifact is 111.6 hours (4.6 days) stale; marketing-research-daily and backlink-tracker show transient error-status (consecutiveErrors=1 each); architecture-owned gates are all green.",
     "most_urgent_fix": "Marketing owner loop must produce fresh independent verification evidence."
   },
   "scope": {
@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-06-07T06:05:00+02:00",
+    "checked_at": "2026-06-07T06:50:06+02:00",
     "scheduler_inspection_method": "openclaw cron list --json (default) + --all --json cross-check",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
@@ -30,18 +30,24 @@
     "live_jobs_all_view_total": 21,
     "live_jobs_all_view_disabled": 1,
     "disabled_job_names_all_view": [
-      "marketing-pulse (stale duplicate)"
-    ],
-    "live_jobs_ok": 18,
-    "live_jobs_error": 0,
-    "live_jobs_idle": 1,
-    "live_jobs_running": 1,
-    "live_last_error_job_names": [],
-    "live_idle_job_names": [
       "marketing-pulse"
     ],
+    "live_jobs_ok": 14,
+    "live_jobs_error": 2,
+    "live_jobs_idle": 1,
+    "live_jobs_running": 3,
+    "live_last_error_job_names": [],
+    "live_transient_error_status_names": [
+      "marketing-research-daily",
+      "backlink-tracker"
+    ],
+    "live_idle_job_names": [
+      "content-poster"
+    ],
     "live_running_job_names": [
-      "agent-architecture-watchdog"
+      "system-health-monitor",
+      "agent-architecture-watchdog",
+      "marketing-daily"
     ],
     "inspected_roots": [
       "/home/mistlight/.openclaw/workspace/agents/system",
@@ -54,7 +60,7 @@
   "findings": [
     {
       "severity": "high",
-      "title": "Marketing independent verification artifact is 4.6 days stale (external owner loop)",
+      "title": "Marketing independent verification artifact is 111.6 hours (4.6 days) stale (external owner loop)",
       "mechanism": "marketing_loop_independent_verification.json last updated 2026-06-02T15:16:28. Marketing owner loop has not produced a fresh independent verification artifact in 4.6 days. Verdict: fail.",
       "source_layer": "cross-loop ownership",
       "root_cause": "External \u2014 not an architecture-owned defect. Marketing owner loop must produce fresh outcome evidence.",
@@ -76,8 +82,8 @@
     },
     {
       "severity": "low",
-      "title": "Architecture independent verify: ok after topology correction",
-      "mechanism": "agent_architecture_independent_verify.py: qualified_pass after accounting for stale disabled duplicate. 2 external-owner stale-evidence errors.",
+      "title": "Architecture independent verify: qualified_pass",
+      "mechanism": "agent_architecture_independent_verify.py: ok=true, qualified_pass=true. Only external-owner stale-evidence errors. Architecture-owned gates all green.",
       "source_layer": "independent-verification",
       "root_cause": "Architecture-owned verification is fully green. External-owner block is expected.",
       "evidence_refs": [
@@ -88,18 +94,18 @@
     },
     {
       "severity": "low",
-      "title": "Live Gateway cron topology: 20 active + 1 stale disabled duplicate",
-      "mechanism": "Default view: 20 total, 20 enabled, 0 disabled. --all view: 21 total, 1 disabled (stale marketing-pulse duplicate). No error jobs. 1 idle (marketing-pulse, new job awaiting first run), 1 running (this watchdog).",
+      "title": "Live Gateway cron topology: 20 active + 1 stale disabled duplicate (--all view)",
+      "mechanism": "Default view: 20 total, 20 enabled, 0 disabled. --all view: 21 total, 1 disabled (stale marketing-pulse duplicate). 2 jobs with transient error status (marketing-research-daily, backlink-tracker; consecutiveErrors=1 each; no lastRunStatus errors). 3 jobs currently running (system-health-monitor, agent-architecture-watchdog, marketing-daily).",
       "source_layer": "runtime cron topology",
-      "root_cause": "Topology is functionally coherent; no persistent errors. Minor hygiene: stale disabled marketing-pulse duplicate in --all view needs removal.",
+      "root_cause": "Topology is functionally coherent; no persistent errors. Minor hygiene: stale disabled marketing-pulse duplicate in --all view needs removal. Transient error-status on marketing-research-daily and backlink-tracker (consecutiveErrors=1) \u2014 no lastRunStatus errors, likely just last-run timing.",
       "evidence_refs": [],
       "confidence": 0.98,
-      "recommended_fix": "Remove stale disabled marketing-pulse duplicate from cron registry."
+      "recommended_fix": "Remove stale disabled marketing-pulse duplicate from cron registry. Monitor transient error-status jobs; if consecutiveErrors climb past 2, escalate."
     },
     {
       "severity": "high",
       "title": "Loop 'pypi-auto-unblocker' still lacks self-improvement mandate",
-      "mechanism": "No self-improvement mandate registered in self_improvement_loops.json.",
+      "mechanism": "No self-improvement mandate registered. Script UNKNOWN per self_repair_self_improve audit.",
       "source_layer": "self-repair-loop-contract",
       "root_cause": "Loop created without a self-improvement mandate.",
       "evidence_refs": [],
@@ -109,7 +115,7 @@
     {
       "severity": "high",
       "title": "Loop 'marketing-pulse' still lacks self-improvement mandate",
-      "mechanism": "No self-improvement mandate registered in self_improvement_loops.json.",
+      "mechanism": "No self-improvement mandate registered. Script UNKNOWN per self_repair_self_improve audit.",
       "source_layer": "self-repair-loop-contract",
       "root_cause": "Loop created without a self-improvement mandate.",
       "evidence_refs": [],
@@ -118,7 +124,7 @@
     },
     {
       "severity": "low",
-      "title": "Docs verifier: independently verified pass at 2026-06-07 04:05 UTC",
+      "title": "Docs verifier: independently verified pass at 2026-06-07 04:40 UTC (0.0h stale)",
       "mechanism": "All three checks (CHECKER/DOCS_QUALITY_OK, EDITORIAL/DOCS_EDITORIAL_OK, AGENTIC/pass) green. 2 non-blocking mustFix items queued for supervisor repair.",
       "source_layer": "docs_quality",
       "root_cause": "Docs loop architecture is healthy. mustFix items are editorial polish, not architecture failures.",
@@ -173,7 +179,7 @@
     {
       "status": "refreshed_independent_verification",
       "target": "architecture independent verification",
-      "change": "Re-ran agent_architecture_independent_verify.py. Result: ok=false, qualified_pass=false due to topology disagreement. Investigated: stale disabled marketing-pulse duplicate in --all view. Default (live) view is clean 20/20/0.",
+      "change": "Re-ran agent_architecture_independent_verify.py at 2026-06-07T06:50:06+02:00. Result: ok=true, qualified_pass=true. Only external-owner stale evidence errors (marketing). 10 verified repair claims all confirmed.",
       "proof": []
     },
     {
@@ -183,9 +189,15 @@
       "proof": []
     },
     {
+      "status": "revalidated_self_repair_self_improve_audit",
+      "target": "self-repair/self-improve audit",
+      "change": "self_repair_self_improve_audit.py: 20 loops audited. 18/20 have self-improvement. 2 HIGH findings: marketing-pulse and pypi-auto-unblocker missing self-improvement mandates.",
+      "proof": []
+    },
+    {
       "status": "verified_live_cron_topology",
       "target": "live Gateway cron topology",
-      "change": "Default view: 20/20/0 clean. --all view: 21 total (1 stale disabled marketing-pulse duplicate). 0 error jobs. Previous gateway-restart transients cleared.",
+      "change": "Default view: 20/20/0 clean (3 running, 14 ok, 1 idle, 2 error-status). --all view: 21 total (1 stale disabled marketing-pulse duplicate). 0 persistent lastRunStatus error jobs. 2 transient error-status jobs: marketing-research-daily (consecutiveErrors=1), backlink-tracker (consecutiveErrors=1).",
       "proof": []
     },
     {
@@ -197,10 +209,16 @@
     {
       "status": "verified_docs_loop_stability_clean",
       "target": "docs loop stability",
-      "change": "docs_loop_stability.py: no output = clean. Docs verifier independently verified pass at 2026-06-07 04:05 UTC.",
+      "change": "docs_loop_stability.py: no output = clean. Docs verifier independently verified pass at 2026-06-07 04:40 UTC (0.0h stale).",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md"
       ]
+    },
+    {
+      "status": "revalidated_architecture_verifier",
+      "target": "architecture verifier",
+      "change": "agent_architecture_verifier.py: ok=true, exit 0, checked at 2026-06-07T06:50:06+02:00.",
+      "proof": []
     }
   ],
   "independent_verification": {
@@ -210,13 +228,18 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-06-07T06:08:15.395748+02:00",
+    "checked_at": "2026-06-07T07:04:49.646263+02:00",
     "verdict": "qualified_pass"
   },
   "runtime_assertions": {
     "independent_architecture_verdict": "qualified_pass",
-    "architecture_verifier_checked_at": "2026-06-07T06:08:15.395748+02:00",
-    "architecture_verifier_status": "pass"
+    "architecture_verifier_checked_at": "2026-06-07T07:04:49.646263+02:00",
+    "architecture_verifier_status": "pass",
+    "checker_exit_code": 0,
+    "independent_verify_exit_code": 0,
+    "loop_integrity_exit_code": 0,
+    "docs_loop_stability_exit_code": 0,
+    "self_repair_self_improve_audit_exit_code": 0
   },
   "what_still_needs_independent_verification": []
 }

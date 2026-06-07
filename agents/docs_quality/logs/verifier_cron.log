@@ -30479,3 +30479,133 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is healthy and coherent. Positioning is consistent across all promoted surfaces, the README \u2192 START_HERE \u2192 docs/README journey flows naturally, and proof pages are properly gated as secondary depth rather than leading content. Internal plumbing language stays confined to capabilities lists and feature tables rather than the opening pitch. The system satisfies the rubric without requiring re-work.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'the operating system for autonomous coding' tagline, leads with product story (not artifacts or plumbing), uses the 'simple core \u2192 composable loop framework' framing, and explicitly routes to START_HERE for first-run guidance."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Acts as a clean switchboard that explicitly tells users to start with the product story and keep proof secondary \u2014 directly implementing the positioning document's content-boundary rules."
+    },
+    {
+      "path": "ralph-workflow/README.md (PyPI)",
+      "reason": "Frames Ralph Workflow as a clear improvement on the original Ralph loop (line 25), includes Codeberg-primary/GitHub-mirror header, and has an honest fit/non-fit section."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Self-identifies as supporting proof rather than main pitch, leads with 'what the software does now', orders evidence by behavior \u2192 checks \u2192 scope \u2192 artifacts (correct priority)."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is already well-aligned with the positioning document. README \u2192 START_HERE \u2192 docs/README forms a coherent journey with consistent framing, no internal leakage, and strong result-first evaluation. The PyPI README is actually stronger than the root README. All promoted next-click pages reinforce the story rather than fighting it.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Root README quick-start section is slightly longer than needed and could tighten the Docker/pipx sections (they already appear in the PyPI README and the docs site)",
+    "START_HERE link in root README is at line 87 after a long quick-start section \u2014 move it higher"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "ralph-workflow/README.md",
+      "reason": "Best single-page execution of the positioning: opens with tagline, write-spec-wake-up-to-software promise, clear fit/non-fit, honest evaluation framework, depth presets, and community callout with `ralph star`"
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly positions itself after README+START_HERE, has 'Keep proof secondary' as a top-level section, and routes users cleanly without fighting the main story"
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Opens with 'supporting proof' framing, explicitly tells users to start with the product story first, then provides evaluation criteria in the right order (working behavior \u2192 checks \u2192 scope \u2192 artifacts)"
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Opens with positioning, clear good/bad task tables, honest assessment section, and 'Where to go next' pointing back to the main journey"
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Minimal, honest first-run path that avoids internal mechanics, has clear success criteria, and links to deeper docs only as needed"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is coherent, well-positioned, and follows the positioning document faithfully. README \u2192 START_HERE \u2192 docs/README forms a clear journey. Top-level pages lead with product value, not internal mechanics. Proof/secondary content is appropriately deferred. No hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding', immediately establishes composable loop framework, comparison table reinforces product story without internal leakage, explicit engineering-practice requirements section, clean journey into START_HERE.md."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run path that leads with task selection and result evaluation, not internal mechanics. 'What success looks like' section explicitly defines result-first evaluation standards."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Documentation map that explicitly keeps proof secondary ('Keep proof secondary' section), routes by user intent, and reinforces the simple-core/composable framing."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Explicitly frames itself as supporting proof not the main pitch. Orders evidence correctly (behavior > checks > scope > artifacts). Correctly positioned as secondary content."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
