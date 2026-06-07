@@ -32225,3 +32225,44 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is tightly aligned with the positioning document across all surfaces. Core framing (operating system, composable loop, strong default, result-first) is consistent from README through START_HERE through docs map through supporting pages. No internal leakage, no artifact-first language, no transcript framing on top-level surfaces. Journey is coherent with clear intent routing.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding', defines as 'AI agent orchestrator', uses 'composable loop framework' language, ships strong default, who-it's-for section correctly scopes to ambitious work, includes engineering-practice requirements, frames Codeberg as primary."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Leads with the simple-core / composable-loop / strong-default / use-as-is framing, gives concrete first-run guidance with good/bad task criteria, defines success as real results not logs."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Opens with the core positioning statement verbatim, explicitly says 'keep proof secondary', routes by user intent, defers proof pages until after product story."
+    },
+    {
+      "path": "reviewable-output.md",
+      "reason": "Correctly self-identifies as 'supporting proof' meant for after the product story, specifies evidence hierarchy (working behavior > real checks > written scope > artifacts), explicitly positions logs and transcripts as fallback."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

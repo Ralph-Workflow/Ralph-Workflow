@@ -1,19 +1,117 @@
 {
-  "ts": "2026-06-07T20:46:31.019441",
+  "ts": "2026-06-08T01:04:01.592530",
   "jobs_checked": 20,
-  "issues_found": 1,
+  "issues_found": 9,
   "issues": [
+    {
+      "job_id": "126471f7-1226-4aee-a2fe-e7ff17a28d6d",
+      "name": "repo-adoption-tracker",
+      "category": "live_error",
+      "consecutive_errors": 4,
+      "last_status": "error",
+      "last_error": "cron payload.model 'minimax/MiniMax-M3' rejected by agents.defaults.models allowlist: minimax/MiniMax-M3",
+      "timeout_seconds": 3600,
+      "last_duration_ms": 66,
+      "likely_cause": "IMMEDIATE_FAIL: script crashing early - cron payload.model 'minimax/MiniMax-M3' rejected by agents.defaults.models allowlist: minimax/MiniMa"
+    },
+    {
+      "job_id": "ff783799-2d21-45f7-bb06-eed9c46b95a6",
+      "name": "ralph-docs-supervisor-precheck",
+      "category": "error_streak",
+      "consecutive_errors": 7,
+      "last_status": "error",
+      "last_error": "cron payload.model 'minimax/MiniMax-M3' rejected by agents.defaults.models allowlist: minimax/MiniMax-M3",
+      "timeout_seconds": 900,
+      "last_duration_ms": 51,
+      "likely_cause": "IMMEDIATE_FAIL: script crashing early - cron payload.model 'minimax/MiniMax-M3' rejected by agents.defaults.models allowlist: minimax/MiniMa"
+    },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 7530.0,
+      "artifact_age_minutes": 7787.5,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review",
+      "category": "loop_verification_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Docs system aligns with positioning end-to-end. README leads with 'operating system for autonomous coding', simple-core-to-composition framing, strong default workflow, ambitious work focus, and engineering-practice honesty. START_HERE and docs/README reinforce the same journey. Promoted pages (first-task-guide, ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent) all stay on-message with no internal leakage. reviewable-output.md is correctly gated as secondary supporting proof. Codeberg-primary framing is consistent across all surfaces."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_ralph-workflow-readme-md-133-144-a-fast-way-to-t",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "ralph-workflow/README.md:133-144 'A fast way to tell whether Ralph Workflow fits' guides toward 'one real backlog task that is small enough to review in one sitting' \u2014 this is fine as cautious first-run advice but could more explicitly bridge to the 'ambitious, well-specified work' framing the positioning demands",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: ralph-workflow/README.md:133-144 'A fast way to tell whether Ralph Workflow fits' guides toward 'one real backlog task that is small enough to review in one sitting' \u2014 this is fine as cautious first-run advice but could more explicitly bridge to the 'ambitious, well-specified work' framing the positioning demands"
+    },
+    {
+      "job_id": "126471f7-1226-4aee-a2fe-e7ff17a28d6d",
+      "name": "repo-adoption-tracker_escalation",
+      "category": "escalation_required",
+      "last_error": "cron payload.model 'minimax/MiniMax-M3' rejected by agents.defaults.models allowlist: minimax/MiniMax-M3",
+      "likely_cause": "Incident escalation level=owner: repo-adoption-tracker:live_error repeat_count=2",
+      "repeats_in_recent_history": 2,
+      "owner_domain": null,
+      "incident_key": "repo-adoption-tracker::live_error",
+      "escalation_level": "owner",
+      "blocked_by": []
+    },
+    {
+      "job_id": "ff783799-2d21-45f7-bb06-eed9c46b95a6",
+      "name": "ralph-docs-supervisor-precheck_escalation",
+      "category": "escalation_required",
+      "last_error": "cron payload.model 'minimax/MiniMax-M3' rejected by agents.defaults.models allowlist: minimax/MiniMax-M3",
+      "likely_cause": "Incident escalation level=owner: ralph-docs-supervisor-precheck:error_streak repeat_count=2",
+      "repeats_in_recent_history": 2,
+      "owner_domain": "docs",
+      "incident_key": "ralph-docs-supervisor-precheck::error_streak",
+      "escalation_level": "owner",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_escalation",
+      "category": "escalation_required",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=70",
+      "repeats_in_recent_history": 70,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review::loop_verification_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_ralph-workflow-readme-md-133-144-a-fast-way-to-t_escalation",
+      "category": "escalation_required",
+      "last_error": "ralph-workflow/README.md:133-144 'A fast way to tell whether Ralph Workflow fits' guides toward 'one real backlog task that is small enough to review in one sitting' \u2014 this is fine as cautious first-run advice but could more explicitly bridge to the 'ambitious, well-specified work' framing the positioning demands",
+      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_ralph-workflow-readme-md-133-144-a-fast-way-to-t:review_followup_required repeat_count=2",
+      "repeats_in_recent_history": 2,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review_mustFix_ralph-workflow-readme-md-133-144-a-fast-way-to-t::review_followup_required",
+      "escalation_level": "owner",
+      "blocked_by": []
     }
   ],
   "repairs_attempted": [
+    {
+      "type": "rerun_docs_verifier",
+      "job": "docs_agentic_review",
+      "ok": true,
+      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system aligns with positioning end-to-end. README leads with 'operating system for autonomous coding', simple-core-to-composition framing, strong default workflow, ambit"
+    },
+    {
+      "type": "immediate_review_followup_owner_action",
+      "job": "docs_agentic_review_mustFix_ralph-workflow-readme-md-133-144-a-fast-way-to-t",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780873423743:1\"\n}"
+    },
     {
       "type": "rerun_independent_architecture_verification",
       "job": "agent_architecture_verifier_runtime",
@@ -24,13 +122,19 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T20:46:22.651802+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-08T01:03:48.899007+02:00\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780873435107:2\"\n}"
     }
   ]
 }
