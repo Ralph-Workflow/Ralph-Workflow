@@ -16,6 +16,7 @@ from ralph.pipeline.cycle_baseline import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from pathlib import Path
 
 
@@ -27,12 +28,15 @@ def _make_commit(repo: Repo, root: Path, filename: str, content: str, message: s
 
 
 @pytest.fixture()
-def git_repo(tmp_path: Path) -> tuple[Path, Repo]:
+def git_repo(tmp_path: Path) -> Generator[tuple[Path, Repo], None, None]:
     repo = Repo.init(tmp_path, initial_branch="main")
     repo.config_writer().set_value("user", "name", "Test").release()
     repo.config_writer().set_value("user", "email", "test@test.com").release()
     _make_commit(repo, tmp_path, "readme.txt", "initial", "initial commit")
-    return tmp_path, repo
+    try:
+        yield tmp_path, repo
+    finally:
+        repo.close()
 
 
 class TestRunnerCycleStartUsesForceTrue:
@@ -60,7 +64,8 @@ class TestRunnerCycleStartUsesForceTrue:
 
     def test_runner_does_not_overwrite_existing_baseline(self, git_repo: tuple[Path, Repo]) -> None:
         root, _ = git_repo
-        existing_sha = str(Repo(root).head.commit.hexsha)
+        with Repo(root) as _r:
+            existing_sha = str(_r.head.commit.hexsha)
         write_cycle_baseline(root, existing_sha, force=True)
 
         runner_module.write_start_commit_if_absent(root)

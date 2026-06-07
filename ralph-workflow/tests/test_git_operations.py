@@ -119,11 +119,13 @@ def test_has_commits_since_head_equals_baseline_returns_false(tmp_git_repo: Path
 
 def test_has_commits_since_new_commit_returns_true(tmp_git_repo: Path) -> None:
     baseline = get_head_sha(tmp_git_repo)
-    # Add a new commit
     repo = Repo(tmp_git_repo)
-    (tmp_git_repo / "extra.txt").write_text("more")
-    repo.index.add(["extra.txt"])
-    repo.index.commit("another commit")
+    try:
+        (tmp_git_repo / "extra.txt").write_text("more")
+        repo.index.add(["extra.txt"])
+        repo.index.commit("another commit")
+    finally:
+        repo.close()
     assert has_commits_since(tmp_git_repo, baseline) is True
 
 
@@ -135,8 +137,11 @@ def test_stage_all(tmp_git_repo: Path) -> None:
     stage_all(tmp_git_repo)
 
     repo = Repo(tmp_git_repo)
-    staged = repo.index.diff("HEAD")
-    assert len(staged) > 0
+    try:
+        staged = repo.index.diff("HEAD")
+        assert len(staged) > 0
+    finally:
+        repo.close()
 
 
 def test_stage_all_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
@@ -412,9 +417,11 @@ def test_merge_base() -> None:
 
 def test_push_without_remote(tmp_git_repo: Path) -> None:
     """Test that push fails gracefully without remote."""
-    # Create a new branch
     repo = Repo(tmp_git_repo)
-    repo.create_head("test-branch")
+    try:
+        repo.create_head("test-branch")
+    finally:
+        repo.close()
 
     with pytest.raises(GitOperationError):
         push(tmp_git_repo, remote="no-such-remote", branch="test-branch")

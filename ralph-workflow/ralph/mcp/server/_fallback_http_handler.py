@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from http.server import BaseHTTPRequestHandler
 from time import sleep
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._runtime_constants import DEFAULT_MOUNT_PATH
+from ralph.mcp.server.exec_sse_streaming import exec_sse_streaming_post
 
 if TYPE_CHECKING:
     from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
@@ -65,6 +67,16 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
             msg_id=data.get("id"),
         )
         server = cast("_FallbackHttpServer", self.server)
+
+        # Exec tool calls use SSE streaming: chunk notifications before final frame.
+        if (
+            request.method == "tools/call"
+            and isinstance(request.params, dict)
+            and request.params.get("name") == "exec"
+        ):
+            self._handle_exec_streaming_post(request, server)
+            return
+
         response, next_state = server.mcp_server.handle_request(request, server.state)
         server.state = next_state
         if response is None:
@@ -82,6 +94,32 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         if request.method == "initialize":
             session_id = cast("_FallbackHttpServer", self.server).mcp_server._session.session_id
         self._write_sse(encoded, 200, session_id=session_id)
+
+    def _handle_exec_streaming_post(
+        self,
+        request: JsonRpcRequest,
+        server: _FallbackHttpServer,
+    ) -> None:
+        session = server.mcp_server._session
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+
+        def _write_frame(frame: bytes) -> None:
+            with suppress(OSError):
+                self.wfile.write(frame)
+                self.wfile.flush()
+
+        server.state = exec_sse_streaming_post(
+            request,
+            session,
+            server.mcp_server.handle_request,
+            server.state,
+            write_frame=_write_frame,
+        )
 
     def log_message(self, format: str, *args: object) -> None:
         del format, args

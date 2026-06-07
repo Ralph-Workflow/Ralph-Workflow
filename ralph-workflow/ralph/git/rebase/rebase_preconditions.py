@@ -34,21 +34,24 @@ def check_rebase_preconditions(repo_root: Path | str) -> None:
         RebasePreconditionError: When the repository is not ready to rebase.
     """
     repo = _open_repo(repo_root)
-    _validate_git_state(repo)
+    try:
+        _validate_git_state(repo)
 
-    concurrent = _detect_concurrent_operation(repo)
-    if concurrent:
-        raise RebasePreconditionError(
-            f"Cannot start rebase: {concurrent.description} already in progress. "
-            "Please complete or abort the current operation first."
-        )
+        concurrent = _detect_concurrent_operation(repo)
+        if concurrent:
+            raise RebasePreconditionError(
+                f"Cannot start rebase: {concurrent.description} already in progress. "
+                "Please complete or abort the current operation first."
+            )
 
-    _ensure_git_identity(repo)
-    _ensure_clean_worktree(repo)
-    _check_shallow_clone(repo)
-    _check_worktree_conflicts(repo)
-    _check_submodule_state(repo)
-    _check_sparse_checkout_state(repo)
+        _ensure_git_identity(repo)
+        _ensure_clean_worktree(repo)
+        _check_shallow_clone(repo)
+        _check_worktree_conflicts(repo)
+        _check_submodule_state(repo)
+        _check_sparse_checkout_state(repo)
+    finally:
+        repo.close()
 
 
 def _open_repo(repo_root: Path | str) -> Repo:

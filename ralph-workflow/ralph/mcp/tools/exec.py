@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
 from ralph.mcp.tools._exec_params import ExecParams
-from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps
+from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps, OutputChunkCallback
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -29,7 +29,6 @@ from ralph.mcp.tools.coordination import (
 )
 from ralph.mcp.tools.exec_overlay import _get_workspace_exec_base
 from ralph.mcp.tools.exec_sandbox import (
-    ExecSandboxBusyError,
     ExecSandboxManager,
     _compute_sandbox_limits,
     _compute_workspace_size_bytes,
@@ -519,8 +518,6 @@ def _get_sandbox_manager(workspace_root: Path) -> ExecSandboxManager:
                     max_pool_bytes=pool,
                     max_workspace_bytes=ws_safety,
                 )
-                with contextlib.suppress(Exception):
-                    _SandboxManagerCache.instances[key].cleanup_base()
     return _SandboxManagerCache.instances[key]
 
 
@@ -534,18 +531,18 @@ def run_command(
     """Execute a subprocess in a private resettable sandbox rooted at the workspace.
 
     The *timeout_ms* budget is reserved exclusively for the subprocess execution.
-    It starts counting only after all overlay setup (cleanup, rsync, workspace
-    mirroring) is complete.  The overlay operations carry their own internal
-    timeouts (rsync: 120 s, file copy: 10 s) and are NOT charged against
-    *timeout_ms*.
+    It starts counting only after all overlay setup (capacity-gated recovery,
+    rsync, workspace mirroring) is complete.  The overlay operations carry their
+    own internal timeouts (rsync: 120 s, file copy: 10 s) and are NOT charged
+    against *timeout_ms*.
     """
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
     cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
     overlay_factory = resolved_deps.overlay_factory or _get_sandbox_manager(cwd).acquire
 
-    # Enter the overlay context.  Internally this runs cleanup_base(),
-    # _reset() (which invokes rsync / _sync_dir), and _ensure_git_isolation().
+    # Enter the overlay context: capacity-gated recovery, round-robin slot
+    # selection, _reset() (rsync / _sync_dir), _ensure_git_isolation().
     # None of that wall-clock time is charged against the subprocess timeout.
     with overlay_factory(cwd) as overlay_cwd:
         # The timeout clock for the subprocess starts here — after every
@@ -636,11 +633,10 @@ def _run_subprocess(
 def _format_exec_error(exc: Exception) -> str:
     """Format an exec error into a self-explanatory agent-actionable message.
 
-    Delegates to ``__str__`` for ``ExecutionError`` and ``ExecSandboxBusyError``
-    (which use structured templates), and wraps generic exceptions in a
-    minimal format.
+    Delegates to ``__str__`` for ``ExecutionError`` (which uses structured
+    templates), and wraps generic exceptions in a minimal format.
     """
-    if isinstance(exc, (ExecutionError, ExecSandboxBusyError)):
+    if isinstance(exc, ExecutionError):
         return str(exc)
     return f"Error: {exc}"
 
@@ -666,16 +662,62 @@ def format_exec_result(
     return text
 
 
+@runtime_checkable
+class _SessionWithStreaming(Protocol):
+    """Subset of AgentSession that supports tool output streaming."""
+
+    def stream_tool_output(self, event: dict[str, object]) -> None:
+        """Forward a streaming tool output event."""
+        ...
+
+
+def _build_effective_deps(
+    session: CoordinationSessionLike,
+    deps: ExecRunDeps | None,
+) -> ExecRunDeps | None:
+    """Compose session.stream_tool_output into deps.on_output_chunk when available."""
+    if not isinstance(session, _SessionWithStreaming):
+        return deps
+    streaming_session = session
+
+    def _session_chunk(chunk: str) -> None:
+        streaming_session.stream_tool_output({"tool": "exec", "stream": "combined", "text": chunk})
+
+    if deps is None:
+        return ExecRunDeps(on_output_chunk=_session_chunk)
+
+    existing_cb = deps.on_output_chunk
+    if existing_cb is None:
+        composed_cb: OutputChunkCallback = _session_chunk
+    else:
+
+        def composed_cb(chunk: str) -> None:
+            existing_cb(chunk)
+            _session_chunk(chunk)
+
+    return ExecRunDeps(
+        runner=deps.runner,
+        cwd_provider=deps.cwd_provider,
+        overlay_factory=deps.overlay_factory,
+        process_manager=deps.process_manager,
+        on_output_chunk=composed_cb,
+    )
+
+
 def handle_exec_command(
     session: CoordinationSessionLike,
     workspace: object,
     params: Mapping[str, object],
+    deps: ExecRunDeps | None = None,
 ) -> ToolResult:
     """Execute a bounded subprocess inside a private resettable workspace sandbox."""
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
     apply_exec_policy(parsed.command, parsed.args)
-    output = run_command(parsed.command, parsed.args, workspace, parsed.timeout_ms)
+    effective_deps = _build_effective_deps(session, deps)
+    output = run_command(
+        parsed.command, parsed.args, workspace, parsed.timeout_ms, deps=effective_deps
+    )
     return ToolResult(
         content=[
             ToolContent.text_content(
@@ -701,3 +743,4 @@ __all__ = [
     "parse_exec_params",
     "run_command",
 ]
+

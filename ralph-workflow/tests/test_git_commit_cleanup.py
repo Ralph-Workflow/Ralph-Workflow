@@ -34,18 +34,21 @@ def test_delete_file_from_repo_unstages_staged_file(tmp_git_repo: Path) -> None:
     binary.write_text("staged content")
 
     repo = Repo(tmp_git_repo)
-    repo.index.add(["staged.bin"])
-    repo.index.commit("add staged file")
+    try:
+        repo.index.add(["staged.bin"])
+        repo.index.commit("add staged file")
 
-    # Modify after commit
-    binary.write_text("modified content")
+        # Modify after commit
+        binary.write_text("modified content")
 
-    delete_file_from_repo(tmp_git_repo, "staged.bin")
+        delete_file_from_repo(tmp_git_repo, "staged.bin")
 
-    assert not binary.exists()
-    # Verify file is no longer tracked in the index
-    ls_files = repo.git.ls_files("--stage", "staged.bin")
-    assert ls_files.strip() == ""
+        assert not binary.exists()
+        # Verify file is no longer tracked in the index
+        ls_files = repo.git.ls_files("--stage", "staged.bin")
+        assert ls_files.strip() == ""
+    finally:
+        repo.close()
 
 
 def test_delete_file_from_repo_ignores_nonexistent_path(tmp_git_repo: Path) -> None:
@@ -103,8 +106,8 @@ def test_ensure_git_initialized_inits_non_repo_directory(tmp_path: Path) -> None
 
     assert (non_repo / ".git").exists()
     # Verify it's a valid git repo
-    repo = Repo(non_repo)
-    assert repo.active_branch.name in ("main", "master", "HEAD")
+    with Repo(non_repo) as repo:
+        assert repo.active_branch.name in ("main", "master", "HEAD")
 
 
 def test_ensure_git_initialized_is_noop_for_existing_repo(tmp_git_repo: Path) -> None:
@@ -113,7 +116,7 @@ def test_ensure_git_initialized_is_noop_for_existing_repo(tmp_git_repo: Path) ->
     ensure_git_initialized(tmp_git_repo)
 
     # Repo should still be valid
-    repo = Repo(tmp_git_repo)
-    assert repo.active_branch.name in ("main", "master", "HEAD")
-    # Commit should still exist
-    assert repo.head.commit.hexsha
+    with Repo(tmp_git_repo) as repo:
+        assert repo.active_branch.name in ("main", "master", "HEAD")
+        # Commit should still exist
+        assert repo.head.commit.hexsha

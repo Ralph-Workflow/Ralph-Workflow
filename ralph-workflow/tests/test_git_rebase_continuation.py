@@ -94,24 +94,27 @@ def test_continue_rebase_requires_active_rebase(tmp_git_repo: Path) -> None:
 
 def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -> str:
     repo = Repo(repo_root)
-    base_branch = repo.active_branch.name
-    conflict_file = repo_root / "conflict.txt"
+    try:
+        base_branch = repo.active_branch.name
+        conflict_file = repo_root / "conflict.txt"
 
-    conflict_file.write_text("base\n")
-    repo.index.add(["conflict.txt"])
-    repo.index.commit("add conflict file")
+        conflict_file.write_text("base\n")
+        repo.index.add(["conflict.txt"])
+        repo.index.commit("add conflict file")
 
-    repo.git.checkout("-b", feature_branch)
-    conflict_file.write_text("feature\n")
-    repo.index.add(["conflict.txt"])
-    repo.index.commit("feature change")
+        repo.git.checkout("-b", feature_branch)
+        conflict_file.write_text("feature\n")
+        repo.index.add(["conflict.txt"])
+        repo.index.commit("feature change")
 
-    repo.git.checkout(base_branch)
-    conflict_file.write_text("main\n")
-    repo.index.add(["conflict.txt"])
-    repo.index.commit("main change")
+        repo.git.checkout(base_branch)
+        conflict_file.write_text("main\n")
+        repo.index.add(["conflict.txt"])
+        repo.index.commit("main change")
 
-    repo.git.checkout(feature_branch)
+        repo.git.checkout(feature_branch)
+    finally:
+        repo.close()
     result = subprocess.run(
         ["git", "rebase", base_branch],
         cwd=str(repo_root),

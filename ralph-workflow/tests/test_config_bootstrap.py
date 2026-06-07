@@ -378,8 +378,8 @@ def test_ensure_local_configs_gitignore_covers_representative_local_paths(
     agent_dir = tmp_git_repo / ".agent"
     ensure_local_configs(agent_dir)
 
-    repo = Repo(tmp_git_repo)
-    raw = repo.git.check_ignore(*_EXPECTED_IGNORED_LOCAL_PATHS).splitlines()
+    with Repo(tmp_git_repo) as repo:
+        raw = repo.git.check_ignore(*_EXPECTED_IGNORED_LOCAL_PATHS).splitlines()
     ignored = {p.strip() for p in raw}
     missing = [p for p in _EXPECTED_IGNORED_LOCAL_PATHS if p not in ignored]
     assert not missing, f"Paths not covered by .gitignore: {missing}"

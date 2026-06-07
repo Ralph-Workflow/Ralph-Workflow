@@ -245,12 +245,12 @@ def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path
     sent to the commit agent.
     """
 
-    repo = Repo(tmp_git_repo)
-    (tmp_git_repo / "mid_cycle.py").write_text("mid = 1\n")
-    repo.index.add(["mid_cycle.py"])
-    repo.index.commit("mid-cycle commit")
-    (tmp_git_repo / "pending.py").write_text("pending = 2\n")
-    repo.index.add(["pending.py"])
+    with Repo(tmp_git_repo) as repo:
+        (tmp_git_repo / "mid_cycle.py").write_text("mid = 1\n")
+        repo.index.add(["mid_cycle.py"])
+        repo.index.commit("mid-cycle commit")
+        (tmp_git_repo / "pending.py").write_text("pending = 2\n")
+        repo.index.add(["pending.py"])
 
     diff = commit_module.working_tree_diff(tmp_git_repo)
 

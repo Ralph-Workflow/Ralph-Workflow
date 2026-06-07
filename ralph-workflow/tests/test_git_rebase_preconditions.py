@@ -37,12 +37,12 @@ def test_detects_dirty_worktree(tmp_git_repo: Path) -> None:
 def test_detects_missing_identity(tmp_git_repo: Path) -> None:
     """Missing git user configuration should be reported."""
 
-    repo = Repo(tmp_git_repo)
-    writer = repo.config_writer()
-    writer.remove_section("user")
-    writer.set_value("user", "name", "")
-    writer.set_value("user", "email", "")
-    writer.release()
+    with Repo(tmp_git_repo) as repo:
+        writer = repo.config_writer()
+        writer.remove_section("user")
+        writer.set_value("user", "name", "")
+        writer.set_value("user", "email", "")
+        writer.release()
 
     with pytest.raises(
         RebasePreconditionError,

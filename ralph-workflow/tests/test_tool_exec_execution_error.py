@@ -12,12 +12,9 @@ def test_cache_full_message_describes_automatic_reset_without_internal_tool() ->
         removed_paths=3,
         removed_bytes=0,
         remaining_bytes=500,
-        diagnostics="total=500 bytes, pools=1, active_leases=1, cooldown=no",
+        diagnostics="current=500 cap=200 removed=3 active_slots=1 attributed=300",
     )
     message = str(err)
-    assert "force_clear_workspace" not in message, (
-        "cache-full message must not reference internal force_clear_workspace"
-    )
     assert "automatic" in message.lower() or "reset" in message.lower(), (
         "cache-full message must describe automatic reset attempt"
     )
@@ -26,24 +23,15 @@ def test_cache_full_message_describes_automatic_reset_without_internal_tool() ->
         or "live" in message.lower()
         or "permission" in message.lower()
     ), "cache-full message must explain why bytes remain (active slots / permissions)"
-
-
-def test_cleanup_cooldown_message_omits_force_clear_workspace() -> None:
-    err = ExecutionError(
-        "exec cache cleanup has failed repeatedly",
-        consecutive_failures=5,
-        cooldown_remaining_s=250.0,
-        last_error="permission denied",
+    assert "unacquirable locks" not in message, (
+        "cache-full message must not contain lock-era wording"
     )
-    message = str(err)
-    assert "force_clear_workspace" not in message, (
-        "cooldown message must not reference internal force_clear_workspace"
+    assert "Cleanup+reset" not in message, (
+        "cache-full message must not use old Cleanup+reset wording"
     )
-    assert "cooldown" in message.lower() or "wait" in message.lower(), (
-        "cooldown message must explain the cooldown situation"
+    assert "cooldown" not in message.lower(), (
+        "cache-full message must not contain cooldown wording"
     )
-    assert (
-        "active" in message.lower()
-        or "live" in message.lower()
-        or "slot" in message.lower()
-    ), "cooldown message must mention active/live exec slots as a possible cause"
+    assert "active_leases" not in message, (
+        "cache-full message must not contain old lock-era active_leases field"
+    )

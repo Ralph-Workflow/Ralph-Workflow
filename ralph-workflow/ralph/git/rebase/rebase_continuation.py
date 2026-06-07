@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
@@ -16,7 +16,7 @@ from ralph.git.rebase._rebase_continuation_error import RebaseContinuationError
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 __all__ = [
     "ConflictRemainingError",
@@ -98,7 +98,10 @@ def _has_index_conflicts(repo: Repo) -> bool:
 def rebase_in_progress_at(repo_root: Path | str) -> bool:
     """Return True if a git rebase is currently in progress at ``repo_root``."""
     repo = open_repo(repo_root)
-    return rebase_in_progress_impl(repo)
+    try:
+        return rebase_in_progress_impl(repo)
+    finally:
+        _close_repo(repo)
 
 
 def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
@@ -110,25 +113,27 @@ def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
 def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> bool:
     """Return True if the rebase is complete and HEAD is a descendant of ``upstream_branch``."""
     repo = open_repo(repo_root)
-
-    if rebase_in_progress_impl(repo):
-        return False
-
     try:
-        if has_index_conflicts(repo):
+        if rebase_in_progress_impl(repo):
             return False
-    except RebaseContinuationError as exc:
-        raise RebaseVerificationError("Unable to inspect index for conflicts") from exc
 
-    if repo.head.is_detached:
-        raise RebaseVerificationError("Repository HEAD is detached")
+        try:
+            if has_index_conflicts(repo):
+                return False
+        except RebaseContinuationError as exc:
+            raise RebaseVerificationError("Unable to inspect index for conflicts") from exc
 
-    try:
-        _ = repo.commit(upstream_branch)
-    except (GitCommandError, ValueError) as exc:
-        raise RebaseVerificationError("Upstream branch is invalid") from exc
+        if repo.head.is_detached:
+            raise RebaseVerificationError("Repository HEAD is detached")
 
-    return head_is_descendant(repo_root, upstream_branch)
+        try:
+            _ = repo.commit(upstream_branch)
+        except (GitCommandError, ValueError) as exc:
+            raise RebaseVerificationError("Upstream branch is invalid") from exc
+
+        return head_is_descendant(repo_root, upstream_branch)
+    finally:
+        _close_repo(repo)
 
 
 def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None = None) -> bool:
@@ -140,12 +145,14 @@ def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None =
 def continue_rebase_at(repo_root: Path | str) -> None:
     """Resume a paused rebase at ``repo_root``, raising if conflicts remain."""
     repo = open_repo(repo_root)
+    try:
+        if not rebase_in_progress_impl(repo):
+            raise NoRebaseInProgressError("No rebase in progress")
 
-    if not rebase_in_progress_impl(repo):
-        raise NoRebaseInProgressError("No rebase in progress")
-
-    if has_index_conflicts(repo):
-        raise ConflictRemainingError("Conflicts still exist in the index")
+        if has_index_conflicts(repo):
+            raise ConflictRemainingError("Conflicts still exist in the index")
+    finally:
+        _close_repo(repo)
 
     try:
         run_git(
@@ -184,6 +191,12 @@ def _head_is_descendant(repo_root: Path | str, upstream_branch: str) -> bool:
     raise RebaseVerificationError(
         f"git merge-base failed: {result.stderr.strip() or result.stdout.strip()}"
     )
+
+
+def _close_repo(repo: Repo) -> None:
+    close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+    if callable(close):
+        close()
 
 
 open_repo = _open_repo

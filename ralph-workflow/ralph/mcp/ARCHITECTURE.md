@@ -29,8 +29,8 @@ Ralph acts as an **MCP server** when advertising tools to connected AI agents.
 | `bridge.py` | `ToolBridge` registry and `build_ralph_tool_registry` |
 | `workspace.py` | `handle_read_file`, `handle_read_multiple_files`, `handle_stat`, `handle_list_allowed_roots`, `handle_write_file`, `handle_list_directory`, `handle_search_files`, `handle_grep_files`, `handle_directory_tree`, `handle_edit_file`, `handle_append_file`, `handle_create_directory`, `handle_move_file`, `handle_copy_file`, `handle_delete_path`, `handle_read_media`, `handle_read_image`, etc. |
 | `git_read.py` | `handle_git_status`, `handle_git_diff`, `handle_git_log`, `handle_git_show` |
-| `exec.py` | `handle_exec_command`, `run_command` — bounded subprocess execution routed through the reusable sandbox pool |
-| `exec_sandbox.py` | `ExecSandboxManager` — workspace-hash keyed sandbox pool, reset-before-run slot leasing, learned pool sizing |
+| `exec.py` | `handle_exec_command`, `run_command` — bounded subprocess execution routed through the reusable sandbox pool; `_build_effective_deps` wires `session.stream_tool_output` into `on_output_chunk` for SSE streaming |
+| `exec_sandbox.py` | `ExecSandboxManager` — lock-free bounded round-robin sandbox pool: per-workspace `_next_slot_index` counter selects slot `(counter % max_slots) + 1` without filesystem locks; `_active_slots` set prevents capacity recovery from deleting live slots; cleanup runs only when `base_dir > max_total_bytes` (capacity-gated, never under budget) |
 | `artifact.py` | `handle_submit_artifact`, `handle_submit_plan_section`, `handle_finalize_plan`, etc. |
 | `coordination.py` | `handle_report_progress`, `handle_declare_complete`, `handle_coordinate`, `handle_read_env` |
 | `websearch.py` | `handle_web_search` |
