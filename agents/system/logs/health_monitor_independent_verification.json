@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-03T05:46:17.953025+02:00",
+  "checked_at": "2026-06-07T15:49:35.563436+02:00",
   "verdict": "fail",
   "summary": "Independent verification found blockers that prevent the repaired health monitor from being certified healthy.",
   "verified_repairs": [
@@ -30,7 +30,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Latest health-monitor run reports issues_found=1 and jobs_checked=26."
+      "summary": "Latest health-monitor run reports issues_found=1 and jobs_checked=20."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",

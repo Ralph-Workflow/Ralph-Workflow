@@ -31413,3 +31413,88 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is clean, coherent, and well-aligned. The README \u2192 START_HERE \u2192 docs/README journey flows naturally from positioning \u2192 first run \u2192 deeper dives. No hard failures. Every promoted secondary page reinforces rather than fights the core story.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding' (canonical tagline), immediately frames as AI agent orchestrator + composable loop framework, lands simple-core/powerful-composition contrast, and explicitly directs to START_HERE \u2014 all per positioning doc."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Correctly frames Codeberg primary/GitHub mirror upfront, leads with 'one real well-specified backlog task' and result-first evaluation, no artifact/receipt/plumbing language."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by user intent, explicitly warns 'keep proof secondary', links back to product-framing pages before operator references. The switchboard reinforces rather than fights the entry-point story."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Cleanest example of positioning discipline \u2014 opens with 'This page is supporting proof... not the main product pitch' and orders evidence (working behavior \u2192 real checks \u2192 written scope \u2192 supporting artifacts) exactly per the canonical doc's evaluation order."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs align well with positioning. README \u2192 START_HERE \u2192 docs/README journey is coherent. Secondary pages reinforce the same framing. Proof pages are properly contained. Minor gap: root README doesn't explicitly say \"improvement on Ralph\" (PyPI README does).",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Add explicit \"improvement on Ralph\" framing to root README (currently only in PyPI README)",
+    "Keep reviewable-output.md firmly positioned as secondary proof \u2014 it has the right framing today but would be the first page to drift if editors lose discipline"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md (root)",
+      "reason": "Leads with OS-for-autonomous-coding tagline, simple-core/composition framing, strong default workflow, clear audience fit/non-fit, and engineering-practice dependency. No internal leakage on first screen."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Shortest honest first run. Uses same positioning language, starts with simple-core framing, picks one real task, result-first evaluation. Exact right next step from README."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Explicitly says 'Keep proof secondary' and routes proof-oriented pages after product story. Promoted routes (first-task-guide, ai-agent-orchestration-cli, etc.) all use the same canonical framing."
+    },
+    {
+      "path": "docs/first-task-guide.md",
+      "reason": "Textbook alignment with positioning. Ambitious/well-specified task focus, spec template with invariants, real checks, morning-after review standard, honest assessment of when it works and doesn't."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}

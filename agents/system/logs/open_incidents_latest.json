@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-06-07T13:10:01.367069+00:00",
+  "updated_at": "2026-06-07T14:05:11.048928+00:00",
   "incidents": {
     "marketing_independent_verification::stale_artifact": {
       "key": "marketing_independent_verification::stale_artifact",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-06-07T05:19:48.815570+00:00",
-      "repeat_count": 149,
+      "repeat_count": 175,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -23,7 +23,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-06-07T13:10:01.367054+00:00",
+      "last_seen": "2026-06-07T14:05:11.048896+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -33,7 +33,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-07T05:19:48.815593+00:00",
-      "repeat_count": 61,
+      "repeat_count": 77,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -348,22 +348,118 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780837388624:40\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T14:48:12.270005+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=61"
+        },
+        {
+          "at": "2026-06-07T13:15:29.380970+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780838129325:41\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T15:11:31.438125+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=62"
+        },
+        {
+          "at": "2026-06-07T13:33:13.356675+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780839193321:44\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T15:15:35.673991+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=63"
+        },
+        {
+          "at": "2026-06-07T13:33:34.950013+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780839214921:48\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T15:15:35.673991+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=64"
+        },
+        {
+          "at": "2026-06-07T13:33:45.077572+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780839225049:50\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T15:33:01.974312+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=65"
+        },
+        {
+          "at": "2026-06-07T13:36:55.583788+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T15:36:26.012214+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=69"
+        },
+        {
+          "at": "2026-06-07T13:42:08.530119+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T15:38:10.027799+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=70"
+        },
+        {
+          "at": "2026-06-07T13:45:44.067330+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T15:44:21.055937+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=71"
+        },
+        {
+          "at": "2026-06-07T13:46:48.206997+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (loop_integrity_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T15:45:56.995199+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=72"
+        },
+        {
+          "at": "2026-06-07T13:49:14.249375+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T15:46:44.916217+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=73"
+        },
+        {
+          "at": "2026-06-07T14:01:59.864576+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780840919822:53\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T15:54:41.830701+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=74"
+        },
+        {
+          "at": "2026-06-07T14:04:52.574315+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T16:01:57.349541+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=75"
+        },
+        {
+          "at": "2026-06-07T14:05:05.948645+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_runtime_escalation::escalation_required::{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T16:01:57.349541+02:00\"\n}::Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=77"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-07T13:03:01.666112+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (agent_architecture_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T14:48:12.270005+02:00\"\n}",
+      "last_seen": "2026-06-07T14:04:41.004883+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T16:01:57.349541+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-06-07T13:03:08.663979+00:00"
+      "closed_at": "2026-06-07T14:05:05.948665+00:00"
     },
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-07T05:19:59.807760+00:00",
-      "repeat_count": 35,
+      "repeat_count": 44,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -518,15 +614,55 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=35"
+        },
+        {
+          "at": "2026-06-07T13:33:23.296270+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780839203252:45\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=36"
+        },
+        {
+          "at": "2026-06-07T13:33:34.133787+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780839214107:47\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=37"
+        },
+        {
+          "at": "2026-06-07T13:36:45.390187+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=41"
+        },
+        {
+          "at": "2026-06-07T13:49:11.899985+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=42"
+        },
+        {
+          "at": "2026-06-07T14:04:59.374238+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_verifier_escalation::escalation_required::::Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=44"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-07T13:09:51.454943+00:00",
+      "last_seen": "2026-06-07T14:04:41.004850+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-06-07T13:09:55.583116+00:00"
+      "closed_at": "2026-06-07T14:04:59.374254+00:00"
     },
     "shared_market_intelligence::stale_artifact": {
       "key": "shared_market_intelligence::stale_artifact",
@@ -550,7 +686,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-06-07T06:36:30.773815+00:00",
-      "repeat_count": 32,
+      "repeat_count": 45,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -689,15 +825,71 @@
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved",
           "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=31"
+        },
+        {
+          "at": "2026-06-07T13:33:05.530049+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=33"
+        },
+        {
+          "at": "2026-06-07T13:33:26.703908+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=34"
+        },
+        {
+          "at": "2026-06-07T13:33:36.893947+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=35"
+        },
+        {
+          "at": "2026-06-07T13:36:47.693125+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780839407668:51\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=39"
+        },
+        {
+          "at": "2026-06-07T14:04:29.904984+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780841069865:55\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=40"
+        },
+        {
+          "at": "2026-06-07T14:04:47.215824+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780841087183:56\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=41"
+        },
+        {
+          "at": "2026-06-07T14:05:01.501738+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780841101475:58\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_escalation::escalation_required::mustFix has unresolved entries::Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=43"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-07T12:15:40.024187+00:00",
+      "last_seen": "2026-06-07T14:05:11.048912+00:00",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "The docs system is well-aligned with the positioning document. Every promoted page opens with the same core framing (simple Ralph-loop core, composable loop framework, operating system for autonomous coding), avoids internal plumbing as the lead story, and routes readers coherently from README \u2192 START_HERE \u2192 docs/README. The supporting pages (ai-agent-orchestration-cli.md, spec-driven-ai-agent.md, unattended-coding-agent.md) reinforce rather than fight the main journey. reviewable-output.md explicitly self-frames as secondary proof. The only residual risk is that the root README's \"Built-in capabilities\" list uses terms like \"Phase routing\" and \"Repo-based handoff\" which are mildly implementation-adjacent, but they appear well below the fold in a feature-bullet context with plain-English explanations, so they do not violate the lead-story boundary.",
+      "likely_cause": "Clean pass. Every top-level surface aligns with the positioning doc. The simple-core\u2192composition\u2192default-workflow\u2192extend-later arc is preserved on every page. No internal leakage, no stale framing, no journey breaks.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-06-07T12:15:32.150574+00:00"
+      "closed_at": "2026-06-07T14:05:01.501752+00:00"
     },
     "docs_agentic_review_mustFix_pypi-readme-ralph-workflow-readme-md-lacks-a-dir::review_followup_required": {
       "key": "docs_agentic_review_mustFix_pypi-readme-ralph-workflow-readme-md-lacks-a-dir::review_followup_required",
@@ -996,9 +1188,9 @@
       "name": "agent_architecture_json",
       "category": "artifact_contract_fail",
       "first_seen": "2026-06-07T11:15:13.419774+00:00",
-      "repeat_count": 4,
+      "repeat_count": 11,
       "owner_domain": "architecture",
-      "escalation_level": "owner",
+      "escalation_level": "critical",
       "owner_actions": [
         {
           "at": "2026-06-07T12:01:16.831153+00:00",
@@ -1007,15 +1199,47 @@
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780833676795:35\"\n}",
           "outcome": "resolved",
           "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=21 expected 20; live_jobs_enabled=21 expected 20::Incident escalation level=owner: agent_architecture_json:artifact_contract_fail repeat_count=3"
+        },
+        {
+          "at": "2026-06-07T13:33:09.836776+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780839189802:43\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=None expected 20; live_jobs_enabled=None expected 20; live_jobs_disabled=None expected 0::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=5"
+        },
+        {
+          "at": "2026-06-07T13:33:32.099896+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780839212063:46\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=None expected 20; live_jobs_enabled=None expected 20; live_jobs_disabled=None expected 0::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=6"
+        },
+        {
+          "at": "2026-06-07T13:33:42.423708+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780839222393:49\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=None expected 20; live_jobs_enabled=None expected 20; live_jobs_disabled=None expected 0::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=7"
+        },
+        {
+          "at": "2026-06-07T13:36:53.013248+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "agent_architecture_json_escalation::escalation_required::live_jobs_checked=None expected 20; live_jobs_enabled=None expected 20; live_jobs_disabled=None expected 0::Incident escalation level=critical: agent_architecture_json:artifact_contract_fail repeat_count=11"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-06-07T12:01:22.084990+00:00",
-      "last_error": "live_jobs_checked=21 expected 20; live_jobs_enabled=21 expected 20",
+      "last_seen": "2026-06-07T13:36:26.647692+00:00",
+      "last_error": "live_jobs_checked=None expected 20; live_jobs_enabled=None expected 20; live_jobs_disabled=None expected 0",
       "likely_cause": "Architecture audit metadata disagrees with live Gateway cron topology. Live disabled jobs=[], persisted historical disabled jobs=['marketing-pulse']",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "closed_at": "2026-06-07T12:01:16.831171+00:00"
+      "closed_at": "2026-06-07T13:36:53.013262+00:00"
     },
     "docs_agentic_review_mustFix_no-hard-failures-minor-consideration-the-root-re::review_followup_required": {
       "key": "docs_agentic_review_mustFix_no-hard-failures-minor-consideration-the-root-re::review_followup_required",
@@ -1042,6 +1266,98 @@
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: No hard failures. Minor consideration: the root README's 'Built-in capabilities' section at line 103-110 uses 'Phase routing' and 'Repo-based handoff' \u2014 slightly internal plumbing language. While acceptable below the fold, a lighter reframe (e.g. 'Multi-agent pipeline', 'File-based context sharing') would make the paragraph more end-user-friendly.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
       "closed_at": "2026-06-07T12:32:37.077866+00:00"
+    },
+    "docs_agentic_review_mustFix_reviewable-output-md-title-and-concept-is-border::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_reviewable-output-md-title-and-concept-is-border::review_followup_required",
+      "name": "docs_agentic_review_mustFix_reviewable-output-md-title-and-concept-is-border",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-07T13:32:35.981518+00:00",
+      "repeat_count": 7,
+      "owner_domain": "docs",
+      "escalation_level": "critical",
+      "owner_actions": [
+        {
+          "at": "2026-06-07T13:32:53.701087+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780839173623:42\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_reviewable-output-md-title-and-concept-is-border::review_followup_required::reviewable-output.md title and concept is borderline process-receipt language; its secondary positioning saves it but a tighter framing like 'judging-run-quality.md' would eliminate ambiguity::Reviewer left unresolved required follow-up item in mustFix: reviewable-output.md title and concept is borderline process-receipt language; its secondary positioning saves it but a tighter framing like 'judging-run-quality.md' would eliminate ambiguity"
+        },
+        {
+          "at": "2026-06-07T13:33:29.524972+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reviewable-output-md-title-and-concept-is-border_escalation::escalation_required::reviewable-output.md title and concept is borderline process-receipt language; its secondary positioning saves it but a tighter framing like 'judging-run-quality.md' would eliminate ambiguity::Incident escalation level=owner: docs_agentic_review_mustFix_reviewable-output-md-title-and-concept-is-border:review_followup_required repeat_count=2"
+        },
+        {
+          "at": "2026-06-07T13:33:39.590334+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reviewable-output-md-title-and-concept-is-border_escalation::escalation_required::reviewable-output.md title and concept is borderline process-receipt language; its secondary positioning saves it but a tighter framing like 'judging-run-quality.md' would eliminate ambiguity::Incident escalation level=owner: docs_agentic_review_mustFix_reviewable-output-md-title-and-concept-is-border:review_followup_required repeat_count=3"
+        },
+        {
+          "at": "2026-06-07T13:36:50.547617+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780839410524:52\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_reviewable-output-md-title-and-concept-is-border_escalation::escalation_required::reviewable-output.md title and concept is borderline process-receipt language; its secondary positioning saves it but a tighter framing like 'judging-run-quality.md' would eliminate ambiguity::Incident escalation level=critical: docs_agentic_review_mustFix_reviewable-output-md-title-and-concept-is-border:review_followup_required repeat_count=7"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-07T13:36:26.647689+00:00",
+      "last_error": "reviewable-output.md title and concept is borderline process-receipt language; its secondary positioning saves it but a tighter framing like 'judging-run-quality.md' would eliminate ambiguity",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: reviewable-output.md title and concept is borderline process-receipt language; its secondary positioning saves it but a tighter framing like 'judging-run-quality.md' would eliminate ambiguity",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-07T13:36:50.547632+00:00"
+    },
+    "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git::review_followup_required",
+      "name": "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git",
+      "category": "review_followup_required",
+      "first_seen": "2026-06-07T14:04:14.552660+00:00",
+      "repeat_count": 6,
+      "owner_domain": "docs",
+      "escalation_level": "critical",
+      "owner_actions": [
+        {
+          "at": "2026-06-07T14:04:27.402463+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780841067375:54\"\n}",
+          "outcome": "no_progress",
+          "issue_signature": "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git::review_followup_required::GitHub mirror root README lacks the explicit \"GitHub is the mirror\" banner that the PyPI README carries \u2014 visitors on the mirror see only an inline annotation instead of a clear top-of-page mirror warning::Reviewer left unresolved required follow-up item in mustFix: GitHub mirror root README lacks the explicit \"GitHub is the mirror\" banner that the PyPI README carries \u2014 visitors on the mirror see only an inline annotation instead of a clear top-of-page mirror warning"
+        },
+        {
+          "at": "2026-06-07T14:04:49.804705+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780841089771:57\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git_escalation::escalation_required::GitHub mirror root README lacks the explicit \"GitHub is the mirror\" banner that the PyPI README carries \u2014 visitors on the mirror see only an inline annotation instead of a clear top-of-page mirror warning::Incident escalation level=owner: docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git:review_followup_required repeat_count=2"
+        },
+        {
+          "at": "2026-06-07T14:05:03.705047+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780841103673:59\"\n}",
+          "outcome": "resolved",
+          "issue_signature": "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git_escalation::escalation_required::GitHub mirror root README lacks the explicit \"GitHub is the mirror\" banner that the PyPI README carries \u2014 visitors on the mirror see only an inline annotation instead of a clear top-of-page mirror warning::Incident escalation level=owner: docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git:review_followup_required repeat_count=4"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-06-07T14:05:11.048919+00:00",
+      "last_error": "GitHub mirror root README lacks the explicit \"GitHub is the mirror\" banner that the PyPI README carries \u2014 visitors on the mirror see only an inline annotation instead of a clear top-of-page mirror warning",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: GitHub mirror root README lacks the explicit \"GitHub is the mirror\" banner that the PyPI README carries \u2014 visitors on the mirror see only an inline annotation instead of a clear top-of-page mirror warning",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-06-07T14:05:03.705069+00:00"
     }
   }
 }

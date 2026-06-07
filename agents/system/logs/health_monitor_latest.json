@@ -1,22 +1,104 @@
 {
-  "ts": "2026-06-07T15:10:01.367554",
+  "ts": "2026-06-07T16:05:11.053462",
   "jobs_checked": 20,
-  "issues_found": 1,
+  "issues_found": 5,
   "issues": [
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 7193.51,
+      "artifact_age_minutes": 7248.67,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review",
+      "category": "loop_verification_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Clean pass. Every top-level surface aligns with the positioning doc. The simple-core\u2192composition\u2192default-workflow\u2192extend-later arc is preserved on every page. No internal leakage, no stale framing, no journey breaks."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "GitHub mirror root README lacks the explicit \"GitHub is the mirror\" banner that the PyPI README carries \u2014 visitors on the mirror see only an inline annotation instead of a clear top-of-page mirror warning",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: GitHub mirror root README lacks the explicit \"GitHub is the mirror\" banner that the PyPI README carries \u2014 visitors on the mirror see only an inline annotation instead of a clear top-of-page mirror warning"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_escalation",
+      "category": "escalation_required",
+      "last_error": "mustFix has unresolved entries",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=45",
+      "repeats_in_recent_history": 45,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review::loop_verification_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git_escalation",
+      "category": "escalation_required",
+      "last_error": "GitHub mirror root README lacks the explicit \"GitHub is the mirror\" banner that the PyPI README carries \u2014 visitors on the mirror see only an inline annotation instead of a clear top-of-page mirror warning",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git:review_followup_required repeat_count=6",
+      "repeats_in_recent_history": 6,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git::review_followup_required",
+      "escalation_level": "critical",
+      "blocked_by": []
     }
   ],
   "repairs_attempted": [
     {
+      "type": "rerun_docs_verifier",
+      "job": "docs_agentic_review",
+      "ok": true,
+      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Clean pass. Every top-level surface aligns with the positioning doc. The simple-core\\u2192composition\\u2192default-workflow\\u2192extend-later arc is preserved on every page. "
+    },
+    {
+      "type": "immediate_review_followup_owner_action_cooldown",
+      "job": "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; cooldown_minutes=180; last_action_at=2026-06-07T14:04:27.402463+00:00"
+    },
+    {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-07T16:04:56.899332+02:00\"\n}"
+    },
+    {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780841101475:58\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_github-mirror-root-readme-lacks-the-explicit-git_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780841103673:59\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
       "ok": true,
       "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     }
