@@ -261,9 +261,11 @@ class ExecSandboxManager:
         if post_bytes <= self._max_total_bytes:
             return
 
-        # Still over budget.  Check whether active or live slots account for the remaining
-        # bytes — that is expected concurrent-use growth, not a failure.
-        if active_now or self._has_live_external_slots(active_now, current_time):
+        # Still over budget. Only suppress if active/live slot bytes can actually
+        # explain the remaining overage — presence of any live slot is not enough.
+        overage = post_bytes - self._max_total_bytes
+        attributed_bytes = self._attributed_live_slot_bytes(active_now, current_time)
+        if attributed_bytes >= overage:
             with self._rr_lock:
                 self._over_budget_due_to_live_slots = True
             return
@@ -271,7 +273,7 @@ class ExecSandboxManager:
         diag = (
             f"current={post_bytes} bytes, cap={self._max_total_bytes} bytes, "
             f"removed_paths={removed_paths}, removed_bytes={removed_bytes}, "
-            f"active_slots={len(active_now)}"
+            f"active_slots={len(active_now)}, attributed_bytes={attributed_bytes}"
         )
         raise ExecutionError(
             "exec cache still over capacity after automatic reset",
@@ -349,10 +351,14 @@ class ExecSandboxManager:
         except OSError:
             pass
 
-    def _has_live_external_slots(
+    def _attributed_live_slot_bytes(
         self, active_in_process: frozenset[Path], current_time: float
-    ) -> bool:
-        """Return True if any slot outside this process's active set has a live owner."""
+    ) -> int:
+        """Return total bytes attributable to active in-process and live external slots."""
+        total = 0
+        for slot in active_in_process:
+            if slot.exists():
+                total += self._path_size_bytes_via_du(slot)
         try:
             for pool_root in self._base_dir.iterdir():
                 if not pool_root.is_dir():
@@ -367,12 +373,12 @@ class ExecSandboxManager:
                         if slot_dir in active_in_process:
                             continue
                         if not self._slot_owner_is_dead(slot_dir, current_time):
-                            return True
+                            total += self._path_size_bytes_via_du(slot_dir)
                 except OSError:
                     continue
         except OSError:
             pass
-        return False
+        return total
 
     def cleanup_base(self) -> ExecCacheCleanupSummary:
         """Remove stale/orphaned cache entries; does not acquire filesystem locks."""

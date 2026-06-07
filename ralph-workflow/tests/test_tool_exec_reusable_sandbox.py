@@ -357,6 +357,52 @@ def test_no_error_when_active_in_process_slot_explains_overage(
 
 
 # ---------------------------------------------------------------------------
+# Over-capacity error raised when live slot does not explain the overage
+# ---------------------------------------------------------------------------
+
+
+def test_error_when_live_slot_does_not_explain_overage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ExecutionError raised when a live slot exists but its bytes do not cover the overage."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    base = tmp_path / "exec-base"
+    base.mkdir(parents=True, exist_ok=True)
+    manager = exec_sandbox.ExecSandboxManager(
+        base_dir=base,
+        max_total_bytes=50,
+    )
+
+    workspace_key = exec_sandbox._workspace_key(workspace)
+    pool_dir = base / workspace_key
+    pool_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create a slot owned by the current (live) process — tiny content
+    live_slot = pool_dir / f"slot-{workspace_key}-0099"
+    live_slot.mkdir()
+    (live_slot / ".ralph-exec-owner.json").write_text(
+        json.dumps({"pid": os.getpid()}), encoding="utf-8"
+    )
+
+    # du: return a small value for the live slot, but a large value for the base
+    # so the live-slot footprint cannot explain the full overage.
+    def size_by_path(path: Path) -> int:
+        if path == live_slot or path.is_relative_to(live_slot):
+            return 5  # Tiny: cannot explain 200-50=150 byte overage
+        return 200
+
+    monkeypatch.setattr(manager, "_path_size_bytes_via_du", size_by_path)
+
+    # Error must still be raised because 5 bytes < 150 byte overage
+    with (
+        pytest.raises(ExecutionError),
+        manager.acquire(workspace),
+    ):
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Over-capacity error raised even after partial removal
 # ---------------------------------------------------------------------------
 
