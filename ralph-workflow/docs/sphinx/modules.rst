@@ -2089,13 +2089,6 @@ ralph.git
    :members:
    :show-inheritance:
 
-ralph.git.executor
-~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.git.executor
-   :members:
-   :show-inheritance:
-
 ralph.git.hooks
 ~~~~~~~~~~~~~~~
 

@@ -44,7 +44,7 @@ def _attach_upstream_registry(bridge: ToolBridge, upstream_registry: UpstreamReg
                 description=proxied_tool.tool.description,
                 input_schema=proxied_tool.tool.input_schema,
             ),
-            required_capability=McpCapability.UPSTREAM_TOOL_USE,
+            required_capability=McpCapability.UPSTREAM_TOOL_USE.value,
         )
         handler = UpstreamProxyHandler(
             alias=proxied_tool.alias,

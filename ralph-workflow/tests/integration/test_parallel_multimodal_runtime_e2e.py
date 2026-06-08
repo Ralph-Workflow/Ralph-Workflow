@@ -106,10 +106,6 @@ def _setup_patches(
         lambda _state, *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "ralph.git.executor.GitExecutor",
-        MagicMock,
-    )
-    monkeypatch.setattr(
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory",
         lambda *args, **kwargs: MagicMock(),
     )

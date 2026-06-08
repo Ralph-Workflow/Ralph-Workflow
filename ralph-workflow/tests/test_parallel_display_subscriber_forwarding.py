@@ -9,12 +9,14 @@ from unittest.mock import MagicMock
 
 from rich.console import Console
 
-from ralph.display.activity_model import ActivityProvider
+from ralph.display.activity_model import ActivityEventKind, ActivityProvider
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+_SECOND_IDENTICAL_CALL = 2
 
 
 def _make_display(tmp_path: Path) -> tuple[ParallelDisplay, StringIO]:
@@ -167,3 +169,41 @@ def test_tool_use_pattern_forwarded(tmp_path: Path) -> None:
     assert subscriber.last_tool_name == "mcp__ralph__read_file"
     assert subscriber._active_pattern == "*.py"
     assert subscriber.last_tool_path == "src"
+
+
+def test_repeated_identical_tool_use_keeps_live_status_fresh(tmp_path: Path) -> None:
+    """End-to-end regression: when an agent calls the SAME MCP tool repeatedly, the
+    persistent [activity] status line must keep updating with a running count
+    (x2, x3) instead of freezing/hiding until 'something happens'.
+    """
+    pd, buf = _make_display(tmp_path)
+    pd.subscriber.notify(_make_mock_state(agent="opencode/minimax"))
+    buf.truncate(0)
+    buf.seek(0)
+
+    for _ in range(3):
+        pd.emit_parsed_event(
+            unit_id="u1",
+            kind=ActivityEventKind.TOOL_USE,
+            content="mcp__ralph__exec",
+            metadata={"input": {"command": "make verify"}},
+        )
+    pd.stop()
+
+    out = buf.getvalue()
+    activity_lines = [ln for ln in out.splitlines() if "[activity]" in ln]
+    assert any("x2" in ln for ln in activity_lines), f"status must refresh x2:\n{out}"
+    assert any("x3" in ln for ln in activity_lines), f"status must refresh x3:\n{out}"
+
+
+def test_subscriber_repeat_count_resets_on_different_tool(tmp_path: Path) -> None:
+    """The repeat count resets when a different tool identity is recorded."""
+    pd, _buf = _make_display(tmp_path)
+    sub = pd.subscriber
+    sub.notify(_make_mock_state())
+
+    sub.record_activity(unit_id="u1", line="exec", tool_name="exec", command="ls")
+    sub.record_activity(unit_id="u1", line="exec", tool_name="exec", command="ls")
+    assert sub._active_tool_repeat == _SECOND_IDENTICAL_CALL
+    sub.record_activity(unit_id="u1", line="read", tool_name="read_file", path="a.py")
+    assert sub._active_tool_repeat == 1

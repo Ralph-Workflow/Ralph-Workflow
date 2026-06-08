@@ -125,3 +125,45 @@ def test_activity_line_no_duplication_when_same_snapshot_repeated() -> None:
     out = buf.getvalue()
     # Only one [activity] line total across both snapshots
     assert out.count("[activity]") == 1
+
+
+def test_repeated_tool_call_keeps_status_fresh_with_count() -> None:
+    """A repeated identical tool call (new call, not a re-render) must refresh the
+    live [activity] status with a running count, never freeze/hide.
+
+    The repeat count comes from the subscriber (incremented per actual call), so a
+    higher active_tool_repeat means a NEW call of the same tool — the status must
+    update with xN rather than being suppressed by signature dedup.
+    """
+    renderer, buf = _make_renderer()
+    for n in (1, 2, 3):
+        snap = _base_snapshot(
+            active_agent="opencode/minimax",
+            active_tool="mcp__ralph__exec",
+            active_path="ralph/x.py",
+            active_tool_repeat=n,
+            last_activity_line="opencode/minimax tool: exec (path=ralph/x.py)",
+        )
+        renderer.emit_snapshot(snap)
+
+    out = buf.getvalue()
+    # The status must update on repeats with a visible count (not frozen/hidden).
+    assert "x2" in out, f"second identical call must refresh status with x2:\n{out}"
+    assert "x3" in out, f"third identical call must refresh status with x3:\n{out}"
+
+
+def test_same_repeat_count_is_still_deduplicated() -> None:
+    """A re-rendered snapshot with the SAME repeat count (no new call) is still
+    deduplicated — only an increased count (a new call) refreshes the status."""
+    renderer, buf = _make_renderer()
+    snap = _base_snapshot(
+        active_agent="opencode/minimax",
+        active_tool="mcp__ralph__exec",
+        active_path="ralph/x.py",
+        active_tool_repeat=2,
+        last_activity_line="opencode/minimax tool: exec (path=ralph/x.py)",
+    )
+    renderer.emit_snapshot(snap)
+    renderer.emit_snapshot(snap)
+    out = buf.getvalue()
+    assert out.count("[activity]") == 1, f"re-render must not duplicate:\n{out}"

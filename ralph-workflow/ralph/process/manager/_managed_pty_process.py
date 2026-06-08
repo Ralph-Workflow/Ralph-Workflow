@@ -145,4 +145,4 @@ class ManagedPtyProcess:
         self.close()
         if self._record.status not in _TERMINAL_STATUSES:
             with contextlib.suppress(Exception):
-                self._proc.wait()
+                self._proc.wait()  # mcp-timeout-ok: post-terminate cleanup reap

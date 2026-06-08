@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.display.long_content_summary import build_ai_summary, build_headline_or_placeholder
+from ralph.display.phase_status import format_elapsed_seconds
 from ralph.display.plain_renderer._activity_line_options import (
     ActivityLineOptions as _ActivityLineOptions,
 )
@@ -248,7 +249,7 @@ class PlainLogRenderer(_PlainLogRendererBase):
             err = counters.errors
         exit_part = f" exit={opts.exit_trigger}" if opts.exit_trigger is not None else ""
         suffix = (
-            f"{exit_part} (elapsed={elapsed_s}s, content_blocks={cb},"
+            f"{exit_part} (elapsed={format_elapsed_seconds(elapsed_s)}, content_blocks={cb},"
             f" thinking_blocks={tb}, tool_calls={tc},"
             f" errors={err})"
         )
@@ -397,6 +398,7 @@ class PlainLogRenderer(_PlainLogRendererBase):
         total_elapsed_s = 0.0
         if self._run_start_time is not None:
             total_elapsed_s = round(max(0.0, self._monotonic() - self._run_start_time), 1)
+        elapsed_str = format_elapsed_seconds(total_elapsed_s)
 
         is_compact = self._ctx.mode == "compact"
 
@@ -407,7 +409,7 @@ class PlainLogRenderer(_PlainLogRendererBase):
                     timestamp,
                     "MILESTONE",
                     "META",
-                    f"[run-end] {phase} | {total_elapsed_s}s{trigger_suffix}",
+                    f"[run-end] {phase} | {elapsed_str}{trigger_suffix}",
                 ),
                 markup=False,
                 highlight=False,
@@ -449,7 +451,7 @@ class PlainLogRenderer(_PlainLogRendererBase):
                 highlight=False,
                 no_wrap=True,
             )
-            phase_elapsed = f"[run-end] phase={phase} elapsed={total_elapsed_s}s"
+            phase_elapsed = f"[run-end] phase={phase} elapsed={elapsed_str}"
             if exit_trigger is not None:
                 phase_elapsed += f" exit={exit_trigger}"
             if outer_dev_iteration is not None:

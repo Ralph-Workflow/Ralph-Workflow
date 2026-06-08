@@ -53,6 +53,7 @@ class SnapshotContext:
     active_workdir: str | None = None
     active_command: str | None = None
     active_pattern: str | None = None
+    active_tool_repeat: int = 0
     last_activity_line: str | None = None
     waiting_status_line: str | None = None
     analysis_phase: str | None = None
@@ -152,6 +153,7 @@ def snapshot_from_state(
         active_workdir=effective_context.active_workdir,
         active_command=effective_context.active_command,
         active_pattern=effective_context.active_pattern,
+        active_tool_repeat=effective_context.active_tool_repeat,
         last_activity_line=effective_context.last_activity_line,
         waiting_status_line=effective_context.waiting_status_line,
         analysis_phase=effective_context.analysis_phase,

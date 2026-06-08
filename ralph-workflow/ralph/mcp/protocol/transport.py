@@ -103,7 +103,9 @@ class StdioTransport:
         proc = self._process
         if proc is None or proc.stdout is None:
             return
-        for raw_line in proc.stdout:
+        # close() terminates the child and closes stdout, unblocking this iteration
+        # (EOF); consumers read via bounded _recv_queue.get(timeout=...).
+        for raw_line in proc.stdout:  # mcp-timeout-ok: unblocked by close()
             if self._closed:
                 break
             stripped = raw_line.strip()

@@ -14,6 +14,7 @@ from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
+from ralph.timeout_defaults import PROCESS_EXIT_WAIT_SECONDS
 
 if TYPE_CHECKING:
     from _thread import LockType
@@ -503,8 +504,10 @@ class ManagedProcess:
                 with contextlib.suppress(Exception):
                     pipe.close()
         if self._record.status not in _TERMINAL_STATUSES:
+            # Bounded so teardown of a wedged child cannot hang; TimeoutExpired is
+            # suppressed and the process tree was already terminated above.
             with contextlib.suppress(Exception):
-                self._proc.wait()
+                self._proc.wait(timeout=PROCESS_EXIT_WAIT_SECONDS)
 
 
 __all__ = ["ManagedProcess"]

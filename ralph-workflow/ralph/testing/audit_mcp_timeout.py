@@ -203,6 +203,20 @@ class McpTimeoutAuditor(ast.NodeVisitor):
             )
         )
 
+    def visit_For(self, node: ast.For) -> None:
+        # A ``for line in <proc>.stdout:`` (or .stderr) is a blocking, unbounded
+        # line read over a live pipe — it cannot be interrupted by a timeout and
+        # wedges the reader on a hung child. Iterating a tuple of pipes or a
+        # ``.splitlines()`` result is fine (node.iter is a Tuple/Call, not Attribute).
+        if isinstance(node.iter, ast.Attribute) and node.iter.attr in {"stdout", "stderr"}:
+            self._add(
+                node,
+                "blocking_stream_iter",
+                f"blocking iteration over .{node.iter.attr} (use a bounded/"
+                "interruptible read, or mark if interrupted by close())",
+            )
+        self.generic_visit(node)
+
     def visit_Call(self, node: ast.Call) -> None:
         # Method calls by attribute name, receiver-agnostic (catches chained
         # receivers like spawn().communicate() that a dotted-name resolver
@@ -258,13 +272,18 @@ def audit_mcp_directory(root: Path) -> tuple[list[McpTimeoutViolation], int]:
 def _default_roots() -> list[Path]:
     """Roots audited when no explicit root is given.
 
-    Covers ``ralph/mcp`` (the MCP server thread) AND ``ralph/git`` (git invoked
-    outside the MCP layer — operations, rebase, vendor-drift checks). An unbounded
-    git call there can hang just as badly as an unbounded MCP call, so both are
-    held to the same bounded-subprocess contract.
+    Covers ``ralph/mcp`` (the MCP server thread), ``ralph/git`` (git invoked
+    outside the MCP layer — operations, rebase, vendor-drift checks), and
+    ``ralph/process/manager`` (the subprocess layer the MCP/git paths call into
+    synchronously). An unbounded call in any of these can hang the agent just as
+    badly, so all are held to the same bounded-subprocess contract.
     """
     package_root = Path(__file__).parent.parent
-    return [package_root / "mcp", package_root / "git"]
+    return [
+        package_root / "mcp",
+        package_root / "git",
+        package_root / "process" / "manager",
+    ]
 
 
 def main(argv: list[str] | None = None) -> int:

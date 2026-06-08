@@ -256,6 +256,18 @@ for i, (label, *_rest) in enumerate(_VERIFY_STEPS):
                 f"Non-test step {i} ({label!r}) must NOT be in _BUDGET_TRACKED_STEPS"
             )
 
+# (d) The bounded-subprocess (MCP timeout) audit step must be present. This guards
+# the hang-prevention contract: without it, an unbounded blocking call could be
+# reintroduced and `make verify` would no longer catch it. Uses if/raise so it
+# survives ``python -O`` (assert would be stripped).
+if not any(
+    "audit_mcp_timeout" in label for label, *_rest in _VERIFY_STEPS
+):
+    raise RuntimeError(
+        "A verify step running 'audit_mcp_timeout' must be present in _VERIFY_STEPS "
+        "(the bounded-subprocess contract cannot be silently dropped)"
+    )
+
 
 def _default_runner(
     command: str,

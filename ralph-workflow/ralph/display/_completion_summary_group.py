@@ -10,7 +10,6 @@ from rich.text import Text
 
 from ralph.display._decision_labels import DECISION_BADGE_MAP as _DECISION_LABELS
 from ralph.display.completion_summary import (
-    _BADGE_THEME_KEYS,
     _analysis_decision_summary,
     _children_persist_diagnostic_line,
     _commit_message_lines,
@@ -22,9 +21,12 @@ from ralph.display.completion_summary import (
     _review_badge_and_count,
     _review_summary_line,
     _verification_line,
+    analysis_decision_badge,
+    make_badge_text,
     style_for_role,
     style_for_terminal_failure,
 )
+from ralph.display.phase_status import format_elapsed_seconds
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -33,15 +35,6 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.snapshot import PipelineSnapshot
     from ralph.policy.models import PipelinePolicy
-
-
-def make_badge_text(badge: str, rest: str) -> Text:
-    """Build a Text object with a themed badge label followed by muted rest text."""
-    theme_key = _BADGE_THEME_KEYS.get(badge, "theme.level.info")
-    text = Text("  ")
-    text.append(f"[{badge}]", style=theme_key)
-    text.append(rest, style="theme.text.muted")
-    return text
 
 
 def _compact_decisions_items(snapshot: PipelineSnapshot) -> list[Text]:
@@ -153,13 +146,9 @@ def _wide_analysis_section(
     for phase, decision, reason in analysis_decisions:
         reason_part = f": {decision}" + (f" — {reason}" if reason else "")
         phase_title = phase.replace("_", " ").title()
-        if decision == "proceed":
-            decision_badge = "PASS"
-        elif decision == "revise":
-            decision_badge = "WARN"
-        else:
-            decision_badge = "INFO"
-        items.append(make_badge_text(decision_badge, f" {phase_title}{reason_part}"))
+        items.append(
+            make_badge_text(analysis_decision_badge(decision), f" {phase_title}{reason_part}")
+        )
     return items
 
 
@@ -170,7 +159,7 @@ def _wide_activity_section(
 ) -> list[Rule | Text]:
     items: list[Rule | Text] = [Rule("Activity Summary", style=style)]
     if options.elapsed_seconds is not None:
-        items.append(Text(f"  elapsed={round(options.elapsed_seconds, 1)}s"))
+        items.append(Text(f"  elapsed={format_elapsed_seconds(options.elapsed_seconds)}"))
     items.append(Text(f"  agent_calls={snapshot.total_agent_calls}"))
     items.append(Text(f"  content_blocks={options.content_block_count}"))
     items.append(Text(f"  thinking_blocks={options.thinking_block_count}"))
@@ -244,7 +233,7 @@ def render_completion_summary_group(
     renderables: list[Rule | Text] = [Rule(title, style=style)]
     renderables.append(Text(f"  exit={_exit_trigger_label(snapshot)}"))
     if options.elapsed_seconds is not None:
-        renderables.append(Text(f"  elapsed={options.elapsed_seconds:.1f}s"))
+        renderables.append(Text(f"  elapsed={format_elapsed_seconds(options.elapsed_seconds)}"))
 
     renderables.extend(
         _wide_plan_section(snapshot, options.pipeline_policy, options.include_context_sections)
@@ -291,7 +280,7 @@ def _render_compact_group(
     )
     title = "Pipeline Failed" if failed else "Pipeline Complete"
     title_with_elapsed = (
-        f"{title}  elapsed={options.elapsed_seconds:.1f}s"
+        f"{title}  elapsed={format_elapsed_seconds(options.elapsed_seconds)}"
         if options.elapsed_seconds is not None
         else title
     )

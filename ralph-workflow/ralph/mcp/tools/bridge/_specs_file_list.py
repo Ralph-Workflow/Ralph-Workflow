@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.tools.bridge._spec_helpers import _metadata
 from ralph.mcp.tools.bridge._tool_spec import ToolSpec
 from ralph.mcp.tools.names import (
@@ -49,7 +50,7 @@ def file_list_specs() -> list[ToolSpec]:
                     },
                     "required": ["path"],
                 },
-                required_capability="WorkspaceRead",
+                required_capability=McpCapability.WORKSPACE_READ.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_list_directory",
@@ -97,7 +98,7 @@ def file_list_specs() -> list[ToolSpec]:
                     },
                     "required": ["pattern", "path"],
                 },
-                required_capability="WorkspaceRead",
+                required_capability=McpCapability.WORKSPACE_READ.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_search_files",
@@ -174,7 +175,7 @@ def file_list_specs() -> list[ToolSpec]:
                     },
                     "required": ["pattern", "path"],
                 },
-                required_capability="WorkspaceRead",
+                required_capability=McpCapability.WORKSPACE_READ.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_grep_files",
@@ -202,7 +203,7 @@ def file_list_specs() -> list[ToolSpec]:
                     },
                     "required": ["path"],
                 },
-                required_capability="WorkspaceRead",
+                required_capability=McpCapability.WORKSPACE_READ.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_list_directory_recursive",
@@ -241,7 +242,7 @@ def file_list_specs() -> list[ToolSpec]:
                     },
                     "required": ["path"],
                 },
-                required_capability="WorkspaceRead",
+                required_capability=McpCapability.WORKSPACE_READ.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_directory_tree",

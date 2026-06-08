@@ -233,6 +233,19 @@ def _analysis_decision_summary(
     return results
 
 
+def analysis_decision_badge(decision: str) -> str:
+    """Canonical badge for a normalized analysis decision (single source of truth).
+
+    ``decision`` is the normalized label from :func:`_analysis_decision_summary`
+    ("proceed"/"revise"/other).
+    """
+    if decision == "proceed":
+        return "PASS"
+    if decision == "revise":
+        return "WARN"
+    return "INFO"
+
+
 def _exit_trigger_label(snapshot: PipelineSnapshot) -> str:
     """Return a human-readable exit trigger label derived from snapshot state."""
     return format_exit_trigger(snapshot)
@@ -362,7 +375,7 @@ def render_completion_summary(
 
     activity_parts: list[str] = []
     if opts.elapsed_seconds is not None:
-        activity_parts.append(f"elapsed={round(opts.elapsed_seconds, 1)}s")
+        activity_parts.append(f"elapsed={format_elapsed_seconds(opts.elapsed_seconds)}")
     activity_parts.append(f"content_blocks={opts.content_block_count}")
     activity_parts.append(f"thinking_blocks={opts.thinking_block_count}")
     activity_parts.append(f"tool_calls={opts.tool_call_count}")

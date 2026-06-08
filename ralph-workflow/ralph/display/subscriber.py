@@ -126,6 +126,7 @@ class PipelineSubscriber:
         self._active_workdir: str | None = None
         self._active_command: str | None = None
         self._active_pattern: str | None = None
+        self._active_tool_repeat: int = 0
         self._last_activity_line: str | None = None
         self._waiting_status_line: str | None = None
         self._analysis_phase: str | None = None
@@ -240,6 +241,15 @@ class PipelineSubscriber:
             self._invalidate_snapshot_cache_locked()
             self._active_unit_id = unit_id
             self._active_agent = agent_name or self._active_agent
+            # Snapshot the prior tool identity BEFORE applying updates so we can
+            # detect a consecutive identical call and keep the live status fresh.
+            prior_identity = (
+                self._active_tool,
+                self._active_path,
+                self._active_workdir,
+                self._active_command,
+                self._active_pattern,
+            )
             if tool_name is not None:
                 self._active_tool = tool_name
             if path:
@@ -250,6 +260,18 @@ class PipelineSubscriber:
                 self._active_command = command
             if pattern:
                 self._active_pattern = pattern
+            if tool_name is not None:
+                new_identity = (
+                    self._active_tool,
+                    self._active_path,
+                    self._active_workdir,
+                    self._active_command,
+                    self._active_pattern,
+                )
+                if new_identity == prior_identity and prior_identity[0] is not None:
+                    self._active_tool_repeat += 1
+                else:
+                    self._active_tool_repeat = 1
             # Never store bare lifecycle markers as the last activity line —
             # they carry no user payload and would overwrite a richer previous value.
             if line and not is_bare_lifecycle(line):
@@ -471,6 +493,7 @@ class PipelineSubscriber:
                 active_workdir=self._active_workdir,
                 active_command=self._active_command,
                 active_pattern=self._active_pattern,
+                active_tool_repeat=self._active_tool_repeat,
                 last_activity_line=self._last_activity_line,
                 waiting_status_line=self._waiting_status_line,
                 analysis_phase=self._analysis_phase,

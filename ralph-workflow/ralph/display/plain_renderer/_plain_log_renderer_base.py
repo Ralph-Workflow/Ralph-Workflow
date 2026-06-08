@@ -29,6 +29,10 @@ if TYPE_CHECKING:
 
     from ralph.display.snapshot import PipelineSnapshot
 
+#: A tool activity is "repeated" (coalesced with a "xN" count in the live status)
+#: starting from the second consecutive identical call.
+_MIN_COALESCE_REPEAT = 2
+
 
 class _PlainLogRendererBase:
     """Core init, helpers, and snapshot-rendering methods for PlainLogRenderer."""
@@ -58,6 +62,7 @@ class _PlainLogRendererBase:
                 str | None,
                 str | None,
                 str | None,
+                int,
             ]
             | None
         ) = None
@@ -223,15 +228,24 @@ class _PlainLogRendererBase:
         activity_parts = self._build_activity_parts(snapshot)
         structured_text = " ".join(activity_parts) if activity_parts else None
 
-        if snapshot.active_tool and snapshot.active_path:
+        # ``active_tool_repeat`` >= 2 means a NEW back-to-back call of the same tool
+        # (incremented per call by the subscriber, not per re-render). Such a repeat
+        # must refresh the live status with a count instead of being hidden — the
+        # bug where the status froze while an agent looped on one tool.
+        repeat = snapshot.active_tool_repeat
+        is_repeat = repeat >= _MIN_COALESCE_REPEAT
+
+        # Suppress the [activity] line only when it would merely duplicate the
+        # just-emitted [tool] CONT line for the SAME single call (first occurrence).
+        if not is_repeat and snapshot.active_tool and snapshot.active_path:
             tool_sig = self._last_emitted_tool_signature.get(snapshot.active_unit_id or "")
             if tool_sig is not None:
                 last_tool, last_path = tool_sig
                 if last_tool == snapshot.active_tool and last_path == snapshot.active_path:
                     return []
 
-        effective_activity_for_sig = structured_text
-
+        # The repeat count is part of the signature: a re-render with the same count
+        # is still deduplicated, but an increased count (a new call) refreshes.
         activity_signature = (
             snapshot.active_agent,
             snapshot.active_tool,
@@ -239,7 +253,8 @@ class _PlainLogRendererBase:
             snapshot.active_workdir,
             snapshot.active_command,
             snapshot.active_pattern,
-            effective_activity_for_sig,
+            structured_text,
+            repeat,
         )
         if activity_signature == self._last_activity_signature:
             return []
@@ -260,18 +275,19 @@ class _PlainLogRendererBase:
             self._emitted_empty_activity = True
             return [self._build_line(timestamp, "INFO", "META", "[activity] (no active agent yet)")]
 
+        suffix = f" (x{repeat})" if is_repeat else ""
         if snapshot.last_activity_line:
             line_text = _sanitize(snapshot.last_activity_line)
             if snapshot.active_path:
                 sanitized_path = _sanitize(snapshot.active_path)
                 if sanitized_path not in line_text:
                     line_text = f"{line_text} (path={sanitized_path})"
-            return [self._build_line(timestamp, "INFO", "META", f"[activity] {line_text}")]
+            return [self._build_line(timestamp, "INFO", "META", f"[activity] {line_text}{suffix}")]
 
         if activity_parts:
             return [
                 self._build_line(
-                    timestamp, "INFO", "META", f"[activity] {' '.join(activity_parts)}"
+                    timestamp, "INFO", "META", f"[activity] {' '.join(activity_parts)}{suffix}"
                 )
             ]
         return []

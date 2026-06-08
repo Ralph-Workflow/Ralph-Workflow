@@ -13,7 +13,11 @@ ONLY the spec-advertised capability satisfies the handler's gate.
 
 from __future__ import annotations
 
+from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp.protocol._session_drain import SessionDrain
 from ralph.mcp.protocol.session import session_has_capability
+from ralph.mcp.session_plan import default_prompt_capability_identifiers
+from ralph.mcp.tools.bridge._registry import tool_specs
 from ralph.mcp.tools.bridge._specs_artifacts import artifact_specs
 from ralph.mcp.tools.bridge._specs_git_exec import git_exec_specs
 from ralph.mcp.tools.names import (
@@ -93,3 +97,34 @@ def test_every_handler_capability_is_covered() -> None:
     }
     missing = gated - set(_HANDLER_CAPABILITY)
     assert not missing, f"gated tools missing a handler-capability assertion: {missing}"
+
+
+def _all_granted_capabilities() -> set[str]:
+    """Union of the default capabilities granted across every drain."""
+    granted: set[str] = set()
+    for drain in SessionDrain:
+        granted |= set(default_prompt_capability_identifiers(drain))
+    return granted
+
+
+def test_every_registered_tool_capability_is_satisfiable_by_some_drain() -> None:
+    """Full-coverage anti-drift guard over EVERY registered tool: each spec's
+    ``required_capability`` must be satisfiable by at least one drain's granted
+    capability set.
+
+    This catches the orphaned-capability class generally — e.g. the "GitDiffRead"
+    string that normalized to a token no granted capability matched, making
+    git_diff silently un-callable for every drain. A typo or an enum/alias gap in
+    ANY tool's required_capability fails here.
+    """
+    granted = _all_granted_capabilities()
+    specs = tool_specs(load_mcp_config(config_path=None))
+    unsatisfiable = [
+        (str(spec.metadata.definition.name), spec.metadata.required_capability)
+        for spec in specs
+        if not session_has_capability(granted, spec.metadata.required_capability)
+    ]
+    assert not unsatisfiable, (
+        "These tools advertise a required_capability that NO drain can satisfy "
+        f"(un-callable / orphaned capability): {unsatisfiable}"
+    )

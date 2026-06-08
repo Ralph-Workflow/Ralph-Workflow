@@ -52,13 +52,13 @@ class ManagedAsyncProcess:
         return self._proc.returncode
 
     async def wait(self) -> int:
-        rc = await self._proc.wait()
+        rc = await self._proc.wait()  # mcp-timeout-ok: cancellable async coroutine
         if self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return rc
 
     async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
-        stdout, stderr = await self._proc.communicate(input)
+        stdout, stderr = await self._proc.communicate(input)  # mcp-timeout-ok: async coroutine
         rc = self._proc.returncode
         if rc is not None and self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)

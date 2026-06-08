@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.tools.bridge._spec_helpers import _metadata
 from ralph.mcp.tools.bridge._tool_spec import ToolSpec
 from ralph.mcp.tools.names import (
@@ -57,7 +58,7 @@ def file_write_specs() -> list[ToolSpec]:
                     },
                     "required": ["path", "edits"],
                 },
-                required_capability="WorkspaceEdit",
+                required_capability=McpCapability.WORKSPACE_EDIT.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_edit_file",
@@ -84,7 +85,7 @@ def file_write_specs() -> list[ToolSpec]:
                     },
                     "required": ["path", "content"],
                 },
-                required_capability="WorkspaceEdit",
+                required_capability=McpCapability.WORKSPACE_EDIT.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_append_file",
@@ -106,7 +107,7 @@ def file_write_specs() -> list[ToolSpec]:
                     },
                     "required": ["path"],
                 },
-                required_capability="WorkspaceEdit",
+                required_capability=McpCapability.WORKSPACE_EDIT.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_create_directory",
@@ -139,7 +140,7 @@ def file_write_specs() -> list[ToolSpec]:
                     },
                     "required": ["src", "dest"],
                 },
-                required_capability="WorkspaceEdit",
+                required_capability=McpCapability.WORKSPACE_EDIT.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_move_file",
@@ -172,7 +173,7 @@ def file_write_specs() -> list[ToolSpec]:
                     },
                     "required": ["src", "dest"],
                 },
-                required_capability="WorkspaceEdit",
+                required_capability=McpCapability.WORKSPACE_EDIT.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_copy_file",
@@ -202,7 +203,7 @@ def file_write_specs() -> list[ToolSpec]:
                     },
                     "required": ["path"],
                 },
-                required_capability="WorkspaceDelete",
+                required_capability=McpCapability.WORKSPACE_DELETE.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_delete_path",

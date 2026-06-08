@@ -6,6 +6,13 @@ from pathlib import Path
 
 from git import GitCommandError, Repo
 
+from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
+
+#: Bound each GitPython subprocess (``repo.git.*``) so a held .git lock or a
+#: pathological filesystem cannot wedge an agent-phase setup/teardown forever.
+#: GitPython kills the git child after this many seconds.
+_GIT_OP_TIMEOUT_SECONDS = GIT_SUBPROCESS_TIMEOUT_SECONDS
+
 MARKER_FILENAME = "no_agent_commit"
 TRACK_FILENAME = "git-wrapper-dir.txt"
 HEAD_OID_FILENAME = "head-oid.txt"
@@ -115,12 +122,16 @@ def _capture_head_oid(repo: Repo, ralph_dir: Path) -> None:
 def _set_hooks_path(repo: Repo, ralph_dir: Path) -> None:
     hooks_dir = ralph_dir / HOOKS_DIR_NAME
     hooks_dir.mkdir(parents=True, exist_ok=True)
-    repo.git.config("--local", "core.hooksPath", str(hooks_dir))
+    repo.git.config(
+        "--local", "core.hooksPath", str(hooks_dir), kill_after_timeout=_GIT_OP_TIMEOUT_SECONDS
+    )
 
 
 def _read_hooks_path(repo: Repo) -> str | None:
     try:
-        value = repo.git.config("--local", "--get", "core.hooksPath")
+        value = repo.git.config(
+            "--local", "--get", "core.hooksPath", kill_after_timeout=_GIT_OP_TIMEOUT_SECONDS
+        )
     except GitCommandError as exc:
         if exc.status == 1:
             return None
@@ -154,7 +165,9 @@ def _restore_hooks_path(repo: Repo, ralph_dir: Path) -> None:
     if lines[0] == "missing":
         _unset_hooks_path(repo)
     elif lines[0] == "value" and len(lines) > 1:
-        repo.git.config("--local", "core.hooksPath", lines[1])
+        repo.git.config(
+            "--local", "core.hooksPath", lines[1], kill_after_timeout=_GIT_OP_TIMEOUT_SECONDS
+        )
 
     state_path.unlink()
 
@@ -162,7 +175,9 @@ def _restore_hooks_path(repo: Repo, ralph_dir: Path) -> None:
 def _unset_hooks_path(repo: Repo) -> None:
     missing_key_status = 5
     try:
-        repo.git.config("--local", "--unset-all", "core.hooksPath")
+        repo.git.config(
+            "--local", "--unset-all", "core.hooksPath", kill_after_timeout=_GIT_OP_TIMEOUT_SECONDS
+        )
     except GitCommandError as exc:
         if exc.status == missing_key_status:
             return

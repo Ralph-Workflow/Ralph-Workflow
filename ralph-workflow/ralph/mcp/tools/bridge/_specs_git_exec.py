@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.tools.bridge._spec_helpers import _metadata
 from ralph.mcp.tools.bridge._tool_spec import ToolSpec
 from ralph.mcp.tools.names import (
@@ -61,7 +62,7 @@ def git_exec_specs() -> list[ToolSpec]:
                     "Example: {} returns git status output."
                 ),
                 input_schema={"type": "object", "properties": {}},
-                required_capability="GitStatusRead",
+                required_capability=McpCapability.GIT_STATUS_READ.value,
             ),
             module_name="ralph.mcp.tools.git_read",
             handler_name="handle_git_status",
@@ -92,7 +93,7 @@ def git_exec_specs() -> list[ToolSpec]:
                 # Matches handle_git_diff's gate (GIT_DIFF_READ_CAPABILITY). Resolves
                 # to the git.diff_read capability (every drain holds it via the base
                 # set) through the McpCapability.GIT_DIFF_READ mapping.
-                required_capability="GitDiffRead",
+                required_capability=McpCapability.GIT_DIFF_READ.value,
             ),
             module_name="ralph.mcp.tools.git_read",
             handler_name="handle_git_diff",
@@ -119,7 +120,7 @@ def git_exec_specs() -> list[ToolSpec]:
                         },
                     },
                 },
-                required_capability="GitStatusRead",
+                required_capability=McpCapability.GIT_STATUS_READ.value,
             ),
             module_name="ralph.mcp.tools.git_read",
             handler_name="handle_git_log",
@@ -148,7 +149,7 @@ def git_exec_specs() -> list[ToolSpec]:
                     },
                     "required": ["ref"],
                 },
-                required_capability="GitStatusRead",
+                required_capability=McpCapability.GIT_STATUS_READ.value,
             ),
             module_name="ralph.mcp.tools.git_read",
             handler_name="handle_git_show",
@@ -212,7 +213,7 @@ def git_exec_specs() -> list[ToolSpec]:
                         {"required": ["argv"]},
                     ],
                 },
-                required_capability="ProcessExecBounded",
+                required_capability=McpCapability.PROCESS_EXEC_BOUNDED.value,
             ),
             module_name="ralph.mcp.tools.exec",
             handler_name="handle_exec_command",
@@ -244,7 +245,7 @@ def git_exec_specs() -> list[ToolSpec]:
                     },
                     "required": ["command"],
                 },
-                required_capability="ProcessExecUnbounded",
+                required_capability=McpCapability.PROCESS_EXEC_UNBOUNDED.value,
             ),
             module_name="ralph.mcp.tools.unsafe_exec",
             handler_name="handle_unsafe_exec",
@@ -276,7 +277,7 @@ def git_exec_specs() -> list[ToolSpec]:
                     },
                     "required": ["command"],
                 },
-                required_capability="ProcessExecUnbounded",
+                required_capability=McpCapability.PROCESS_EXEC_UNBOUNDED.value,
             ),
             module_name="ralph.mcp.tools.unsafe_exec",
             handler_name="handle_unsafe_exec",

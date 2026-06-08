@@ -44,6 +44,11 @@ class PipelineSnapshot:
     active_workdir: str | None = None
     active_command: str | None = None
     active_pattern: str | None = None
+    #: Consecutive-repeat count for the current (tool, path, …) activity. 1 on the
+    #: first call, incremented each time the SAME tool activity recurs back-to-back.
+    #: Lets the renderer keep the live status fresh (e.g. "exec (x3)") instead of
+    #: freezing when an agent repeats the same tool call.
+    active_tool_repeat: int = 0
     last_activity_line: str | None = None
     waiting_status_line: str | None = None
     analysis_phase: str | None = None

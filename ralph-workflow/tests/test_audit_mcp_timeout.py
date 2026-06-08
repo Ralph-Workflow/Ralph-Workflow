@@ -126,6 +126,33 @@ def test_wait_with_positional_timeout_is_allowed(tmp_path: Path) -> None:
     assert not _audit(tmp_path, "proc.wait(5)\n")
 
 
+# --- blocking stdout/stderr iteration ---------------------------------------
+
+
+def test_blocking_for_in_stdout_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "for line in proc.stdout:\n    pass\n")
+    assert len(v) == 1
+    assert v[0].category == "blocking_stream_iter"
+
+
+def test_blocking_for_in_stderr_is_flagged(tmp_path: Path) -> None:
+    assert _audit(tmp_path, "for line in proc.stderr:\n    pass\n")
+
+
+def test_iterating_tuple_of_streams_is_not_flagged(tmp_path: Path) -> None:
+    # Iterating a tuple of pipe objects (e.g. to close them) is not a blocking read.
+    assert not _audit(tmp_path, "for s in (proc.stdout, proc.stderr):\n    s.close()\n")
+
+
+def test_iterating_splitlines_is_not_flagged(tmp_path: Path) -> None:
+    # .splitlines() yields from an in-memory string, not a live stream.
+    assert not _audit(tmp_path, "for line in result.stdout.splitlines():\n    pass\n")
+
+
+def test_blocking_stream_iter_marker_suppresses(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "for line in proc.stdout:  # mcp-timeout-ok: x\n    pass\n")
+
+
 # --- network ----------------------------------------------------------------
 
 

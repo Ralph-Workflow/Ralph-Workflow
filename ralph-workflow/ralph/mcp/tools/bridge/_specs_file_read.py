@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.tools.bridge._spec_helpers import _metadata
 from ralph.mcp.tools.bridge._tool_spec import ToolSpec
 from ralph.mcp.tools.names import (
@@ -25,8 +26,10 @@ def file_read_specs() -> list[ToolSpec]:
                     "Optional params for partial reads: line_start (1-based), line_end (1-based), "
                     "offset (0-based byte offset), limit (byte limit), head (first N lines), "
                     "tail (last N lines). "
-                    "When partial params are used, returns JSON with path, content, total_lines, "
-                    "returned_lines, truncated. Otherwise returns plain text. "
+                    "When line/head/tail params are used, returns JSON with path, content, "
+                    "total_lines, returned_lines, truncated; when offset/limit (byte window) is "
+                    "used, returns path, content, total_bytes, returned_bytes, truncated. "
+                    "Otherwise returns plain text. "
                     'Example: {"path": "ralph-workflow/README.md"} returns the file text.'
                 ),
                 input_schema={
@@ -87,13 +90,14 @@ def file_read_specs() -> list[ToolSpec]:
                             "type": "integer",
                             "description": (
                                 "Maximum bytes for a full-file read before truncating "
-                                "(default: 5_000_000). Ignored when partial-read params are used."
+                                "(default: 5000000). Ignored when partial-read params are used."
                             ),
+                            "default": 5_000_000,
                         },
                     },
                     "required": ["path"],
                 },
-                required_capability="WorkspaceRead",
+                required_capability=McpCapability.WORKSPACE_READ.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_read_file",
@@ -132,7 +136,7 @@ def file_read_specs() -> list[ToolSpec]:
                     },
                     "required": ["path", "content"],
                 },
-                required_capability="WorkspaceWriteAny",
+                required_capability=McpCapability.WORKSPACE_WRITE_ANY.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_write_file",
@@ -157,7 +161,7 @@ def file_read_specs() -> list[ToolSpec]:
                     },
                     "required": ["paths"],
                 },
-                required_capability="WorkspaceRead",
+                required_capability=McpCapability.WORKSPACE_READ.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_read_multiple_files",
@@ -181,7 +185,7 @@ def file_read_specs() -> list[ToolSpec]:
                     },
                     "required": ["path"],
                 },
-                required_capability="WorkspaceMetadataRead",
+                required_capability=McpCapability.WORKSPACE_METADATA_READ.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_stat",
@@ -195,7 +199,7 @@ def file_read_specs() -> list[ToolSpec]:
                     "Example: {} returns the configured allowed roots."
                 ),
                 input_schema={"type": "object", "properties": {}},
-                required_capability="WorkspaceRead",
+                required_capability=McpCapability.WORKSPACE_READ.value,
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_list_allowed_roots",

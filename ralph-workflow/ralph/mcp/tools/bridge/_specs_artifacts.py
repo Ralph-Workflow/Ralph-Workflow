@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.tools.bridge._spec_helpers import (
     _EXAMPLE_PLAN_CONTENT,
@@ -62,7 +63,7 @@ def artifact_specs() -> list[ToolSpec]:
                     },
                     "required": ["artifact_type", "content"],
                 },
-                required_capability="ArtifactSubmit",
+                required_capability=McpCapability.ARTIFACT_SUBMIT.value,
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_submit_artifact",
@@ -112,6 +113,7 @@ def artifact_specs() -> list[ToolSpec]:
                                 "(default), 'append' adds to a list section "
                                 "(example values: 'replace', 'append')."
                             ),
+                            "default": "replace",
                         },
                     },
                     "required": ["section", "content"],
@@ -257,7 +259,7 @@ def artifact_specs() -> list[ToolSpec]:
                     },
                     "required": ["status"],
                 },
-                required_capability="RunReportProgress",
+                required_capability=McpCapability.RUN_REPORT_PROGRESS.value,
             ),
             module_name="ralph.mcp.tools.coordination",
             handler_name="handle_report_progress",
@@ -285,7 +287,7 @@ def artifact_specs() -> list[ToolSpec]:
                         },
                     },
                 },
-                required_capability="ArtifactSubmit",
+                required_capability=McpCapability.ARTIFACT_SUBMIT.value,
             ),
             module_name="ralph.mcp.tools.coordination",
             handler_name="handle_declare_complete",
@@ -312,7 +314,7 @@ def artifact_specs() -> list[ToolSpec]:
                     },
                     "required": ["name"],
                 },
-                required_capability="EnvRead",
+                required_capability=McpCapability.ENV_READ.value,
             ),
             module_name="ralph.mcp.tools.coordination",
             handler_name="handle_read_env",

@@ -13,18 +13,23 @@ from __future__ import annotations
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.tools import exec as exec_tool
 from ralph.mcp.tools import unsafe_exec
+from ralph.mcp.tools.artifact import _section_mode
+from ralph.mcp.tools.bridge._specs_artifacts import artifact_specs
 from ralph.mcp.tools.bridge._specs_file_list import file_list_specs
+from ralph.mcp.tools.bridge._specs_file_read import file_read_specs
 from ralph.mcp.tools.bridge._specs_git_exec import git_exec_specs
 from ralph.mcp.tools.bridge._specs_web_media import web_media_specs
 from ralph.mcp.tools.git_read import DEFAULT_LOG_COUNT
 from ralph.mcp.tools.names import (
     GIT_LOG_TOOL,
     GREP_FILES_TOOL,
+    READ_FILE_TOOL,
     SEARCH_FILES_TOOL,
+    SUBMIT_PLAN_SECTION_TOOL,
     WEB_SEARCH_TOOL,
 )
 from ralph.mcp.tools.websearch import _DEFAULT_LIMIT, MAX_LIMIT, MIN_LIMIT
-from ralph.mcp.tools.workspace._utils import _GREP_DEFAULT_LIMIT
+from ralph.mcp.tools.workspace._utils import _GREP_DEFAULT_LIMIT, FULL_READ_DEFAULT_MAX_BYTES
 
 
 def _prop(specs: list, tool: object, param: str) -> dict:
@@ -63,3 +68,14 @@ def test_exec_max_output_bytes_constants_agree() -> None:
     # agent-facing, but pin them equal so the two output caps cannot silently
     # diverge.
     assert exec_tool._MAX_OUTPUT_BYTES == unsafe_exec._MAX_OUTPUT_BYTES
+
+
+def test_read_file_max_bytes_default_matches_handler() -> None:
+    default = _prop(file_read_specs(), READ_FILE_TOOL, "max_bytes")["default"]
+    assert default == FULL_READ_DEFAULT_MAX_BYTES
+
+
+def test_submit_plan_section_mode_default_matches_handler() -> None:
+    default = _prop(artifact_specs(), SUBMIT_PLAN_SECTION_TOOL, "mode")["default"]
+    # The handler defaults an absent mode to this value.
+    assert default == _section_mode({})

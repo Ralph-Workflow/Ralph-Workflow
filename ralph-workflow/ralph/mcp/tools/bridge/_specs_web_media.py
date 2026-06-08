@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.mcp.protocol._mcp_capability import McpCapability
+from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.tools.bridge._spec_helpers import _metadata
 from ralph.mcp.tools.bridge._tool_spec import ToolSpec
 from ralph.mcp.tools.names import (
@@ -57,7 +59,7 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                         },
                         "required": ["query"],
                     },
-                    required_capability="WebSearch",
+                    required_capability=McpCapability.WEB_SEARCH.value,
                 ),
                 module_name="ralph.mcp.tools.websearch",
                 handler_name="handle_web_search",
@@ -101,7 +103,7 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                         },
                         "required": ["url"],
                     },
-                    required_capability="WebVisit",
+                    required_capability=McpCapability.WEB_VISIT.value,
                 ),
                 module_name="ralph.mcp.tools.webvisit",
                 handler_name="handle_visit_url",
@@ -143,7 +145,7 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                         },
                         "required": ["url", "output_path"],
                     },
-                    required_capability="WebDownload",
+                    required_capability=McpCapability.WEB_DOWNLOAD.value,
                 ),
                 module_name="ralph.mcp.tools.webvisit",
                 handler_name="handle_download_url",
@@ -175,7 +177,7 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                         },
                         "required": ["path"],
                     },
-                    required_capability="media.read",
+                    required_capability=Capability.MEDIA_READ.value,
                     is_multimodal=True,
                 ),
                 module_name="ralph.mcp.tools.workspace",
@@ -211,7 +213,7 @@ def web_media_specs(mcp_config: McpConfig) -> list[ToolSpec]:
                         },
                         "required": ["path"],
                     },
-                    required_capability="media.read",
+                    required_capability=Capability.MEDIA_READ.value,
                     is_multimodal=True,
                 ),
                 module_name="ralph.mcp.tools.workspace",

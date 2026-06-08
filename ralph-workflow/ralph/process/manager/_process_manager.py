@@ -542,7 +542,10 @@ class ProcessManager:
             f"Process {record.pid} graceful terminate sent, waiting {grace_period_s}s"
         )
         try:
-            rc = await asyncio.wait_for(proc.wait(), timeout=grace_period_s)
+            rc = await asyncio.wait_for(
+                proc.wait(),  # mcp-timeout-ok: wait_for-bounded
+                timeout=grace_period_s,
+            )
         except TimeoutError:
             logger.warning(
                 f"Process {record.pid} survived graceful terminate, escalating to force kill"
@@ -551,7 +554,8 @@ class ProcessManager:
                 proc.kill()
             try:
                 rc = await asyncio.wait_for(
-                    proc.wait(), timeout=self.policy.kill_followup_timeout_s
+                    proc.wait(),  # mcp-timeout-ok: wait_for-bounded
+                    timeout=self.policy.kill_followup_timeout_s,
                 )
             except TimeoutError:
                 post_liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)

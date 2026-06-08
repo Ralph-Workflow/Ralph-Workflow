@@ -248,9 +248,16 @@ def stream_parsed_agent_activity(
             display.emit_parsed_event(
                 agent_name, kind, parsed_line.content, parsed_line.metadata or {}
             )
-        elif rendered is not None:
-            emit_activity_line(display, None, rendered.plain, display_context=display_context)
-        if subscriber is not None:
+            # emit_parsed_event already records a tool_use on the display's
+            # subscriber; recording it again here would double-count the repeat
+            # counter (a single call would render "(x2)"). Record only non-tool
+            # lines here on the parallel path.
+            record_on_subscriber = parsed_line.type != "tool_use"
+        else:
+            if rendered is not None:
+                emit_activity_line(display, None, rendered.plain, display_context=display_context)
+            record_on_subscriber = True
+        if subscriber is not None and record_on_subscriber:
             _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
 
 

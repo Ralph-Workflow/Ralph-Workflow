@@ -22,13 +22,14 @@ make verify
 
 ### Bounded-subprocess contract — every MCP and git operation is bounded
 
-No operation under `ralph/mcp/` **or `ralph/git/`** may perform blocking I/O without a bounded, fail-closed timeout. An unbounded blocking call hangs the server/worker thread, starves the agent of stdout, and trips the idle watchdog — a real, diagnosed agent-hang vector (`git status` over large `vendor/` submodules; a network/credential git prompt with no timeout). With no explicit root argument, `ralph/testing/audit_mcp_timeout.py` (part of `make verify`) audits **both** `ralph/mcp/` and `ralph/git/` and statically flags, as a contract violation:
+No operation under `ralph/mcp/`, `ralph/git/`, **or `ralph/process/manager/`** may perform blocking I/O without a bounded, fail-closed timeout. An unbounded blocking call hangs the server/worker thread, starves the agent of stdout, and trips the idle watchdog — a real, diagnosed agent-hang vector (`git status` over large `vendor/` submodules; a network/credential git prompt with no timeout). With no explicit root argument, `ralph/testing/audit_mcp_timeout.py` (part of `make verify`) audits all three roots and statically flags, as a contract violation:
 
-- `subprocess.run(...)` without `timeout=`;
-- any `.communicate(...)` without `timeout=` (its first positional is `input`, not a timeout) and any `.wait()` without a timeout;
+- `subprocess.run/call/check_call/check_output(...)` without `timeout=` (resolved through `import x as y` / `from x import y` aliases, so an aliased call cannot evade the check);
+- `subprocess.getoutput`/`getstatusoutput` and `os.system` (these take no timeout — always flagged);
+- any `.communicate(...)` / `.communicate_and_cleanup(...)` without `timeout=` (their first positional is `input`, not a timeout) and any `.wait()` without a timeout;
 - network calls (`httpx.*`/`requests.*` request methods and clients, `urllib.request.urlopen`, `socket.create_connection`) without `timeout=`.
 
-It does NOT flag `subprocess.Popen(...)` or `socket.socket(...)` (they take no `timeout=`). The only escape hatch is an inline `# mcp-timeout-ok: <reason>` marker on the call line, for a genuinely unbounded-by-design call (keep it rare and justified). Subprocesses must additionally fail closed: kill the process (group) on expiry and raise a clear tool error. `ralph/git/subprocess_runner.run_git` applies a default timeout (`GIT_SUBPROCESS_TIMEOUT_SECONDS`) when a caller gives none and runs git non-interactively (`GIT_TERMINAL_PROMPT=0`) so a credential/editor/pager prompt fails fast instead of hanging.
+It does NOT flag `subprocess.Popen(...)` or `socket.socket(...)` (they take no `timeout=`), and is best-effort against deliberate obfuscation (assignment rebind, `getattr`, `importlib`). The only escape hatch is an inline `# mcp-timeout-ok: <reason>` marker on the call line, for a genuinely unbounded-by-design call (keep it rare and justified). The presence of the audit step in `make verify` is itself protected by an import-time invariant in `ralph/verify.py` (immune to `python -O`), so the contract cannot be silently dropped. Subprocesses must additionally fail closed: kill the process (group) on expiry and raise a clear tool error. `ralph/git/subprocess_runner.run_git` applies a default timeout (`GIT_SUBPROCESS_TIMEOUT_SECONDS`) when a caller gives none and runs git non-interactively (`GIT_TERMINAL_PROMPT=0`) so a credential/editor/pager prompt fails fast instead of hanging.
 
 ### Total test budget — 60 seconds, ABSOLUTE and IMMUTABLE
 
