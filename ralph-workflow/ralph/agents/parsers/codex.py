@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Final, cast
 
+from ._event_classification import is_lifecycle_event
 from .agent_output_line import AgentOutputLine
 from .text_accumulator import TextAccumulator
 
@@ -23,11 +24,6 @@ class CodexParser:
 
     _STOP_EVENT_TYPES: Final[frozenset[str]] = frozenset(
         {"turn.completed", "message_stop", "done", "stop", "response.completed"}
-    )
-
-    # Lifecycle-only events that carry no user payload — suppress silently.
-    _LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
-        {"thread.started", "turn.started", "message_start", "ping", "heartbeat", "ready"}
     )
 
     def __init__(self) -> None:
@@ -77,7 +73,7 @@ class CodexParser:
             return
 
         # Suppress known lifecycle events that carry no user payload
-        if event_type in self._LIFECYCLE_EVENT_TYPES:
+        if is_lifecycle_event(event_type):
             return
 
         handler_map = {

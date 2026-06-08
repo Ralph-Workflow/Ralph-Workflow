@@ -26,6 +26,33 @@ turning the resume path into a fresh session. Routing every builder through
 
 from __future__ import annotations
 
+from dataclasses import replace
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ralph.agents.invoke._types import InvokeOptions
+
+
+def fresh_session_options(
+    opts: InvokeOptions,
+    *,
+    prior_session_id: str | None = None,
+) -> InvokeOptions:
+    """Return a NEW ``InvokeOptions`` instance with ``session_id`` cleared.
+
+    Used by every ordinary new-phase transition so the new phase always
+    starts a fresh session, even when the prior phase recovered via
+    ``resolve_resume_session_id`` and threaded an id forward.
+
+    The ``prior_session_id`` parameter is accepted for forward
+    compatibility but MUST NOT be written back into ``session_id`` —
+    ordinary new-phase transitions are explicitly fresh.
+
+    Pure function: no side effects, no I/O, no clock reads.
+    """
+    del prior_session_id  # accepted for API forward-compatibility; never written.
+    return replace(opts, session_id=None)
+
 
 def resolve_resume_session_id(
     *,
@@ -133,6 +160,7 @@ def recovery_action_for_failure_reason(
 
 
 __all__ = [
+    "fresh_session_options",
     "recovery_action_for_failure_reason",
     "resolve_resume_session_id",
 ]

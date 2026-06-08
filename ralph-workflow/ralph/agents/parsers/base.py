@@ -7,10 +7,26 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from ._event_classification import (
+    LIFECYCLE_EVENT_TYPES,
+    LIFECYCLE_KINDS,
+    is_lifecycle_event,
+    is_lifecycle_kind,
+    is_session_metadata_event,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from .agent_output_line import AgentOutputLine
+
+__all__ = [
+    "LIFECYCLE_EVENT_TYPES",
+    "LIFECYCLE_KINDS",
+    "is_lifecycle_event",
+    "is_lifecycle_kind",
+    "is_session_metadata_event",
+]
 
 
 def _multimodal_block_summary(block: dict[str, object]) -> str | None:

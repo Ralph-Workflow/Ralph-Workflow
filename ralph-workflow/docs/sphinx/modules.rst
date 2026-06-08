@@ -856,13 +856,6 @@ ralph.pipeline.fan_out
    :members:
    :show-inheritance:
 
-ralph.pipeline.legacy_console_display
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.legacy_console_display
-   :members:
-   :show-inheritance:
-
 ralph.pipeline.phase_agent_handler
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

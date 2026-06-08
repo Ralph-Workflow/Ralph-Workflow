@@ -71,6 +71,13 @@ from ralph.agents.invoke._pty_reader import _run_pty_and_read_lines as _run_pty_
 from ralph.agents.invoke._session import (
     _bounded_output_lines,
     extract_transport_session_id,
+    extract_transport_session_id_from_line,
+    extract_visible_tui_transport_session_id,
+)
+from ralph.agents.invoke._session_resume import (
+    fresh_session_options,
+    recovery_action_for_failure_reason,
+    resolve_resume_session_id,
 )
 from ralph.agents.invoke._types import (
     InvokeOptions,
@@ -574,6 +581,9 @@ __all__ = [
     "discover_http_mcp_tool_names",
     "extract_choice_menu_state",
     "extract_transport_session_id",
+    "extract_transport_session_id_from_line",
+    "extract_visible_tui_transport_session_id",
+    "fresh_session_options",
     "get_process_manager",
     "interactive_auto_response_for_prompt",
     "invoke_agent",
@@ -584,7 +594,9 @@ __all__ = [
     "policy_from_options",
     "provider_allowed_mcp_tool_names",
     "read_lines_from_process",
+    "recovery_action_for_failure_reason",
     "resolve_invocation_runtime",
+    "resolve_resume_session_id",
     "run_pty_and_read_lines",
     "run_subprocess_and_read_lines",
     "shutil",

@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline.agent_execution_deps import AgentExecutionDeps
     from ralph.pipeline.effects import InvokeAgentEffect
-    from ralph.pipeline.legacy_console_display import LegacyConsoleDisplay
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
@@ -37,7 +36,7 @@ class _AgentInvocationCtx:
     policy_bundle: PolicyBundle | None
     waiting_listener: Callable[[object], None]
     agent_config: AgentConfig
-    display: ParallelDisplay | LegacyConsoleDisplay | None
+    display: ParallelDisplay | None
     worker_namespace: Path | None = None
     worker_artifact_dir: Path | None = None
     parallel_worker: bool = False

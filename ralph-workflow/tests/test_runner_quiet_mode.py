@@ -100,8 +100,11 @@ def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
     exit_code = runner_module.run(_config(), initial_state=state, verbosity=Verbosity.QUIET)
     assert exit_code == 0
 
-    # No ParallelDisplay should be constructed in quiet mode.
-    assert constructed_displays == []
+    # ParallelDisplay is the only display; in quiet mode it is constructed
+    # once with `is_quiet=True` so its dashboard surfaces stay silent.
+    assert len(constructed_displays) == 1
+    quiet_display = constructed_displays[0]
+    assert getattr(quiet_display, "_is_quiet", False) is True
 
     out = captured_console.export_text()
     # Dashboard header and phase-transition banner text should be absent.

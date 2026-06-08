@@ -11,6 +11,10 @@ from loguru import logger
 
 from ralph.config.enums import Verbosity
 from ralph.display.artifact_renderer import render_commit_message
+from ralph.display.parallel_display import (
+    ParallelDisplay,
+    get_display_context,
+)
 from ralph.git.operations import (
     create_commit,
     has_uncommitted_changes,
@@ -31,10 +35,8 @@ from ralph.phases.required_artifacts import (
 )
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.legacy_console_display import LegacyConsoleDisplay, get_display_context
 
 if TYPE_CHECKING:
-    from ralph.display.parallel_display import ParallelDisplay
     from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.workspace import FsWorkspace
 
@@ -64,7 +66,7 @@ if TYPE_CHECKING:
 def execute_commit_effect(
     effect: CommitEffect,
     repo_root: Path,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | None = None,
     **opts: object,
 ) -> PipelineEvent:
     """Execute a commit effect, creating or skipping a git commit."""

@@ -7,14 +7,13 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
-from ralph.pipeline.legacy_console_display import LegacyConsoleDisplay, get_display_context
+from ralph.display.parallel_display import ParallelDisplay, get_display_context
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.display.completion_summary import CompletionSummaryOptions
     from ralph.display.context import DisplayContext
-    from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.snapshot import PipelineSnapshot, SnapshotContext
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline.state import PipelineState
@@ -49,11 +48,6 @@ if TYPE_CHECKING:
         snapshot_from_state: _SnapshotFromStateFn
 
 
-def _parallel_display_cls() -> type[ParallelDisplay]:
-    module = cast("_ParallelDisplayModule", import_module("ralph.display.parallel_display"))
-    return module.ParallelDisplay
-
-
 def _load_completion_summary_module() -> _CompletionSummaryModule:
     return cast("_CompletionSummaryModule", import_module("ralph.display.completion_summary"))
 
@@ -68,13 +62,12 @@ def emit_final_summary(
     workspace_root: Path,
     *,
     subscriber: PipelineSubscriber | None = None,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | None = None,
     display_context: DisplayContext,
 ) -> None:
     """Emit an end-of-run completion summary panel."""
     try:
         cs_mod = _load_completion_summary_module()
-        parallel_display_cls = _parallel_display_cls()
         snapshot_from_state = _snapshot_from_state_func()
 
         dropped_count = 0
@@ -92,7 +85,7 @@ def emit_final_summary(
             snapshot = snapshot_from_state(state)
         pipeline_policy = subscriber.pipeline_policy if subscriber is not None else None
         ctx = get_display_context(display, display_context)
-        if isinstance(display, parallel_display_cls):
+        if isinstance(display, ParallelDisplay):
             pr = display._plain_renderer
             content_block_count: int = pr.content_blocks_count
             thinking_block_count: int = pr.thinking_blocks_count
@@ -108,9 +101,7 @@ def emit_final_summary(
         cs_opts = cs_mod.CompletionSummaryOptions(
             workspace_root=workspace_root,
             dropped_count=dropped_count,
-            include_context_sections=not (
-                isinstance(display, LegacyConsoleDisplay) or state.interrupted_by_user
-            ),
+            include_context_sections=not state.interrupted_by_user,
             content_block_count=content_block_count,
             thinking_block_count=thinking_block_count,
             tool_call_count=tool_call_count,

@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING, Protocol, cast
 from loguru import logger
 
 from ralph.config.enums import Verbosity
+from ralph.display.parallel_display import (
+    ParallelDisplay,
+    get_display_context,
+)
 from ralph.display.phase_banner import (
     show_phase_close_banner,
     show_phase_start_from_entry,
@@ -24,7 +28,6 @@ from ralph.pipeline.handoffs import (
     resolve_exhausted_analysis_bypass,
     resolve_next_phase,
 )
-from ralph.pipeline.legacy_console_display import LegacyConsoleDisplay, get_display_context
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, verbosity_rank
 from ralph.prompts.debug_dump import multimodal_sidecar_path, prompt_dump_path
 
@@ -191,7 +194,7 @@ def _bypass_transition_context(
 
 
 def _store_pending_phase_transition_metadata(
-    display: ParallelDisplay | LegacyConsoleDisplay | None,
+    display: ParallelDisplay | None,
     metadata: _PendingPhaseTransitionMetadata | None,
 ) -> None:
     if display is None:
@@ -205,7 +208,7 @@ def _store_pending_phase_transition_metadata(
 
 
 def _consume_pending_phase_transition_metadata(
-    display: ParallelDisplay | LegacyConsoleDisplay,
+    display: ParallelDisplay,
     previous_phase: str,
     current_phase: str,
 ) -> _PendingPhaseTransitionMetadata | None:
@@ -275,7 +278,7 @@ def _bypass_resolution_for_transition(
 
 
 def _record_phase_transition_metadata(
-    display: ParallelDisplay | LegacyConsoleDisplay | None,
+    display: ParallelDisplay | None,
     state: PipelineState,
     event: Event,
     next_state: PipelineState,
@@ -360,37 +363,33 @@ def _skipped_exhausted_analysis_info(
 
 
 def _build_phase_change_render_data(
-    display: ParallelDisplay | LegacyConsoleDisplay,
+    display: ParallelDisplay,
     previous_phase: str,
     state: PipelineState,
     *,
     pipeline_policy: PipelinePolicy,
 ) -> _PhaseChangeRenderData:
     elapsed = (
-        0.0 if isinstance(display, LegacyConsoleDisplay) else display.last_phase_elapsed_seconds
+        display.last_phase_elapsed_seconds
     )
     waiting_status_line = (
-        None
-        if isinstance(display, LegacyConsoleDisplay)
-        else display.subscriber.waiting_status_line
+        display.subscriber.waiting_status_line
     )
     content_blocks = 0
     thinking_blocks = 0
     tool_calls = 0
     errors = 0
-    if not isinstance(display, LegacyConsoleDisplay):
-        phase_counters = cast(
-            "_PhaseCountersProtocol | None", getattr(display, "last_phase_counters", None)
-        )
-        if phase_counters is not None:
-            content_blocks = phase_counters.content_blocks
-            thinking_blocks = phase_counters.thinking_blocks
-            tool_calls = phase_counters.tool_calls
-            errors = phase_counters.errors
+    phase_counters = cast(
+        "_PhaseCountersProtocol | None", getattr(display, "last_phase_counters", None)
+    )
+    if phase_counters is not None:
+        content_blocks = phase_counters.content_blocks
+        thinking_blocks = phase_counters.thinking_blocks
+        tool_calls = phase_counters.tool_calls
+        errors = phase_counters.errors
     artifact_outcome = ""
-    if not isinstance(display, LegacyConsoleDisplay):
-        raw_outcome = cast("str | None", getattr(display, "last_phase_artifact_outcome", None))
-        artifact_outcome = raw_outcome if raw_outcome else ""
+    raw_outcome = cast("str | None", getattr(display, "last_phase_artifact_outcome", None))
+    artifact_outcome = raw_outcome if raw_outcome else ""
     entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
     prev_phase_def = pipeline_policy.phases.get(previous_phase)
     prev_phase_role: str | None = prev_phase_def.role if prev_phase_def is not None else None
@@ -454,7 +453,7 @@ def _clear_phase_materialization_outputs(workspace: FsWorkspace, phase: str) -> 
 
 
 def _emit_phase_change_surfaces(
-    display: ParallelDisplay | LegacyConsoleDisplay,
+    display: ParallelDisplay,
     render_data: _PhaseChangeRenderData,
     *,
     display_context: DisplayContext,
@@ -462,14 +461,13 @@ def _emit_phase_change_surfaces(
     show_close_banner_fn: _ShowCloseBannerFn | None = None,
     show_transition_fn: _ShowTransitionFn | None = None,
 ) -> None:
-    phase_close_already_emitted: bool = (
-        display.phase_close_emitted
-        if not isinstance(display, LegacyConsoleDisplay) and hasattr(display, "phase_close_emitted")
-        else False
+    phase_close_already_emitted_attr: object = getattr(
+        display, "phase_close_emitted", False
     )
+    phase_close_already_emitted: bool = bool(phase_close_already_emitted_attr)
     if not phase_close_already_emitted and hasattr(display, "emit_phase_close_from_exit"):
         with suppress(Exception):
-            cast("ParallelDisplay", display).emit_phase_close_from_exit(render_data.exit_model)
+            display.emit_phase_close_from_exit(render_data.exit_model)
     _close_fn = show_close_banner_fn or show_phase_close_banner
     with suppress(Exception):
         _close_fn(
@@ -489,7 +487,7 @@ def _emit_phase_change_surfaces(
 
 
 def _emit_phase_transition_if_changed(
-    display: ParallelDisplay | LegacyConsoleDisplay,
+    display: ParallelDisplay,
     previous_phase: str,
     state: PipelineState,
     *,

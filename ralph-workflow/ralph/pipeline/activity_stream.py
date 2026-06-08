@@ -23,15 +23,15 @@ from ralph.display.artifact_renderer import (
     render_plan_artifact,
     render_review_artifact,
 )
-from ralph.phases.required_artifacts import resolve_phase_required_artifact
-from ralph.pipeline.artifact_handoff_context import ArtifactHandoffContext
-from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.legacy_console_display import (
-    LegacyConsoleDisplay,
-    emit_display_line,
+from ralph.display.parallel_display import (
+    ParallelDisplay,
+    emit_activity_line,
     get_display_context,
     subscriber_for_display,
 )
+from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.pipeline.artifact_handoff_context import ArtifactHandoffContext
+from ralph.pipeline.events import PipelineEvent
 
 if TYPE_CHECKING:
     from collections import deque
@@ -85,7 +85,7 @@ def _available_width(prefix_len: int) -> int:
 class _ArtifactRenderCtx:
     workspace_root: Path
     display_context: DisplayContext
-    display: ParallelDisplay | LegacyConsoleDisplay | None
+    display: ParallelDisplay | None
     verbosity: Verbosity
     ra: RequiredArtifact
 
@@ -94,7 +94,7 @@ def render_phase_artifact_handoff(
     phase: str,
     event: Event,
     workspace_root: Path,
-    display: ParallelDisplay | LegacyConsoleDisplay | None,
+    display: ParallelDisplay | None,
     ctx: ArtifactHandoffContext | None = None,
 ) -> None:
     """Render the artifact handoff panel after a phase completes."""
@@ -212,7 +212,7 @@ def stream_parsed_agent_activity(
     lines: Iterable[object],
     parser_type: str,
     agent_name: str,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | None = None,
     **kwargs: object,
 ) -> None:
     """Stream and render parsed agent output lines."""
@@ -249,7 +249,7 @@ def stream_parsed_agent_activity(
                 agent_name, kind, parsed_line.content, parsed_line.metadata or {}
             )
         elif rendered is not None:
-            emit_display_line(display, None, rendered, display_context)
+            emit_activity_line(display, None, rendered.plain, display_context=display_context)
         if subscriber is not None:
             _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
 

@@ -7,6 +7,7 @@ import json
 import sys
 import uuid
 from dataclasses import dataclass
+from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
@@ -14,6 +15,7 @@ from loguru import logger
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.display.context import make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.executor.process import run_process_async
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
 from ralph.mcp.artifacts.handoffs import sync_markdown_handoff
@@ -28,10 +30,6 @@ from ralph.pipeline.events import (
     PipelineEvent,
     PostFanoutVerificationEvent,
     WorkerFailedEvent,
-)
-from ralph.pipeline.legacy_console_display import (
-    LegacyConsoleDisplay,
-    _parallel_display_cls,
 )
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.parallel.mode import SameWorkspaceContext
@@ -201,17 +199,19 @@ def write_parallel_development_summary(
     sync_markdown_handoff(workspace_scope.root, "parallel_development_summary", summary)
 
 
+def _parallel_display_cls() -> type[ParallelDisplay]:
+    module = import_module("ralph.display.parallel_display")
+    return cast("type[ParallelDisplay]", module.ParallelDisplay)
+
+
 def _fan_out_display_and_subscriber(
-    display: ParallelDisplay | LegacyConsoleDisplay,
+    display: ParallelDisplay,
     pipeline_subscriber: _PipelineSubscriberLike | None,
     dashboard_subscriber: _PipelineSubscriberLike | None,
 ) -> tuple[ParallelDisplay, _PipelineSubscriberLike | None]:
     parallel_display_cls = _parallel_display_cls()
-
     if isinstance(display, parallel_display_cls):
         parallel_display = display
-    elif isinstance(display, LegacyConsoleDisplay):
-        parallel_display = parallel_display_cls(display._ctx)
     else:
         console = cast("Console | None", getattr(display, "console", None))
         parallel_display = parallel_display_cls(make_display_context(console=console))
@@ -595,7 +595,7 @@ def execute_fan_out_sync(
     *,
     effect: FanOutEffect,
     state: PipelineState,
-    display: ParallelDisplay | LegacyConsoleDisplay,
+    display: ParallelDisplay,
     **opts: object,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""

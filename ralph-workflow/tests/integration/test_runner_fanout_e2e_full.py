@@ -33,8 +33,8 @@ if TYPE_CHECKING:
     import pytest
 
 
-def _legacy_display() -> runner_module.LegacyConsoleDisplay:
-    return runner_module.LegacyConsoleDisplay(make_display_context())
+def _legacy_display() -> runner_module.ParallelDisplay:
+    return runner_module.ParallelDisplay(make_display_context())
 
 
 def _make_work_unit(uid: str) -> WorkUnit:

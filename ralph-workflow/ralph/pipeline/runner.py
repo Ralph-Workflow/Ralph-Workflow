@@ -8,7 +8,9 @@ plumbing that connects them.
 from __future__ import annotations
 
 import os
+import uuid
 from inspect import signature
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from git import InvalidGitRepositoryError, Repo
@@ -20,6 +22,11 @@ from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.config.enums import Verbosity
 from ralph.display.artifact_renderer import render_commit_message
 from ralph.display.context import install_width_refresher, make_display_context
+from ralph.display.parallel_display import (
+    ParallelDisplay,
+    emit_activity_line,
+    status_text,
+)
 from ralph.display.phase_banner import show_phase_close_banner, show_phase_transition
 from ralph.executor.process import run_process_async
 from ralph.git.operations import create_commit, stage_all
@@ -106,12 +113,6 @@ from ralph.pipeline.effects import (
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_out_sync
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
-from ralph.pipeline.legacy_console_display import (
-    LegacyConsoleDisplay,
-    emit_display_line,
-    resolve_display,
-    status_text,
-)
 from ralph.pipeline.phase_agent_handler import (
     phase_event_after_agent_run,
 )
@@ -155,12 +156,10 @@ from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
-    from pathlib import Path
     from typing import Protocol
 
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
-    from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.agent_execution_deps import (
         _CheckMcpBridgeHealthFn,
         _McpSupervisorFactory,
@@ -266,6 +265,32 @@ _VALIDATE_MCP = _default_validate_mcp
 _PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
 
 
+def resolve_display(
+    display: ParallelDisplay | None,
+    display_context: DisplayContext | None = None,
+    *,
+    is_quiet: bool = False,
+) -> ParallelDisplay:
+    """Return a usable :class:`ParallelDisplay`, constructing one if needed.
+
+    Single source of truth for resolving the active display in the
+    pipeline. If ``display`` is provided it is returned unchanged;
+    otherwise a :class:`ParallelDisplay` is built from the supplied
+    ``display_context`` (or a freshly-created one). Rich is a verified
+    required dependency (declared in ``pyproject.toml`` line 22:
+    ``rich>=13.0``), so the construction cannot fail.
+    """
+    if display is not None:
+        return display
+    resolved_ctx = display_context if display_context is not None else make_display_context()
+    return ParallelDisplay(
+        resolved_ctx,
+        workspace_root=Path.cwd(),
+        run_id=str(uuid.uuid4()),
+        is_quiet=is_quiet,
+    )
+
+
 def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     effective_validate = (
         VALIDATE_MCP if VALIDATE_MCP is not _default_validate_mcp else _VALIDATE_MCP
@@ -286,7 +311,7 @@ def _execute_effect(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     *,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
     policy_bundle: PolicyBundle | None = None,
@@ -342,7 +367,7 @@ def _execute_effect_with_optional_display(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     *,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | None = None,
     display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
@@ -367,7 +392,7 @@ def execute_effect_with_optional_display(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     *,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | None = None,
     display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
@@ -391,7 +416,7 @@ def _invoke_execute_effect_with_optional_display(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     *,
-    display: ParallelDisplay | LegacyConsoleDisplay | None,
+    display: ParallelDisplay | None,
     display_context: DisplayContext | None = None,
     verbosity: Verbosity,
     state: PipelineState,
@@ -480,7 +505,7 @@ def _run_pipeline_step(
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
-    display: ParallelDisplay | LegacyConsoleDisplay,
+    display: ParallelDisplay,
     display_context: DisplayContext,
     verbosity: Verbosity,
     registry: _RegistryLike,
@@ -618,7 +643,7 @@ def _run_pipeline_step(
         )
         for _eff in _recv_effects:
             if isinstance(_eff, ExitFailureEffect):
-                emit_display_line(
+                emit_activity_line(
                     display, None, status_text("Recovery exhausted", _eff.reason, "red")
                 )
                 return 1
@@ -667,7 +692,7 @@ def _handle_inline_effect(
     agents_policy: AgentsPolicy | None = None,
     registry: _RegistryLike | None = None,
     config: UnifiedConfig | None = None,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
 ) -> PipelineState | int | None:
@@ -762,7 +787,7 @@ def _handle_inline_effect(
         return _emit_success_exit(display)
 
     if isinstance(effect, ExitFailureEffect):
-        emit_display_line(
+        emit_activity_line(
             display,
             None,
             status_text("Recovery triggered", effect.reason, "yellow"),
@@ -783,14 +808,14 @@ def _handle_inline_effect(
     return None
 
 
-def _emit_success_exit(display: ParallelDisplay | LegacyConsoleDisplay | None) -> int:
-    emit_display_line(display, None, "[green]Pipeline completed successfully.[/green]")
+def _emit_success_exit(display: ParallelDisplay | None) -> int:
+    emit_activity_line(display, None, "[green]Pipeline completed successfully.[/green]")
     # Periodic star CTA - shown ~50% of successful runs.
     # Only fires after first-run (first-run already shows full welcome panel with star CTA).
     # Uses process-id hash to avoid deterministic spam: each user sees it ~1 in 2 runs.
     show_cta = (hash(str(os.getpid()) + str(os.getenv("USER", ""))) % 2) == 0
     if show_cta:
-        emit_display_line(display, None, f"[bold yellow]{CODEBERG_STAR_CTA}[/bold yellow]")
+        emit_activity_line(display, None, f"[bold yellow]{CODEBERG_STAR_CTA}[/bold yellow]")
     return 0
 
 
@@ -836,7 +861,7 @@ def execute_fan_out_sync(
     *,
     effect: FanOutEffect,
     state: PipelineState,
-    display: ParallelDisplay | LegacyConsoleDisplay,
+    display: ParallelDisplay,
     **opts: object,
 ) -> PipelineState:
     """Execute fan-out synchronously, forwarding current module globals as injectable overrides."""
@@ -954,7 +979,7 @@ def execute_commit_effect(
     create_commit_fn: Callable[[Path | str, str], str],
     stage_all_fn: Callable[[Path | str], None],
     repo_root: Path,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | None = None,
     **opts: object,
 ) -> PipelineEvent:
     """Execute a commit effect while preserving runner-level dependency injection hooks."""
@@ -971,7 +996,7 @@ def execute_commit_effect(
 
 
 def emit_phase_transition_if_changed(
-    display: ParallelDisplay | LegacyConsoleDisplay,
+    display: ParallelDisplay,
     previous_phase: str,
     state: PipelineState,
     *,

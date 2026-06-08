@@ -265,7 +265,7 @@ class TestPipelineRunnerLoop:
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
         display_context = make_display_context()
-        display = runner_module.LegacyConsoleDisplay(display_context)
+        display = runner_module.ParallelDisplay(display_context)
         registry = MagicMock()
         registry.get.return_value = None
 
@@ -466,7 +466,7 @@ class TestPipelineRunnerLoop:
             options=RecoveryControllerOptions(policy_bundle=bundle, cycle_cap=10)
         )
         display_context = make_display_context()
-        display = runner_module.LegacyConsoleDisplay(display_context)
+        display = runner_module.ParallelDisplay(display_context)
         registry = MagicMock()
         registry.get.return_value = None
 

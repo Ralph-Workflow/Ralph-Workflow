@@ -63,6 +63,7 @@ class ParallelDisplay:
         "_activity_router",
         "_ctx",
         "_drop_last_warned",
+        "_is_quiet",
         "_overflow_logs",
         "_overflow_warned",
         "_plain_renderer",
@@ -78,10 +79,12 @@ class ParallelDisplay:
         workspace_root: Path | None = None,
         run_id: str | None = None,
         pipeline_policy: PipelinePolicy | None = None,
+        is_quiet: bool = False,
     ) -> None:
         if not isinstance(display_context, DisplayContext):
             raise TypeError("display_context is required")
         self._ctx = display_context
+        self._is_quiet: bool = is_quiet
 
         self._plain_renderer = PlainLogRenderer(self._ctx)
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
@@ -302,11 +305,15 @@ class ParallelDisplay:
 
     def emit_run_start(self, orientation: RunStartOrientation) -> None:
         """Emit a one-time run-start orientation block at pipeline start."""
+        if self._is_quiet:
+            return
         with contextlib.suppress(Exception):
             self._plain_renderer.emit_run_start(orientation)
 
     def begin_phase(self, phase: str) -> None:
         """Start timing a new phase and reset its counters."""
+        if self._is_quiet:
+            return
         with contextlib.suppress(Exception):
             self._plain_renderer.begin_phase(phase)
 
@@ -348,6 +355,8 @@ class ParallelDisplay:
         exit_trigger: str | None = None,
     ) -> None:
         """Emit a single-line recap at the end of a phase."""
+        if self._is_quiet:
+            return
         with contextlib.suppress(Exception):
             self._plain_renderer.emit_phase_close(
                 phase,
@@ -361,6 +370,8 @@ class ParallelDisplay:
 
     def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
         """Emit a phase-close recap from a PhaseExitModel."""
+        if self._is_quiet:
+            return
         with contextlib.suppress(Exception):
             self._plain_renderer.emit_phase_close_from_exit(exit_model)
 
@@ -374,6 +385,8 @@ class ParallelDisplay:
         outer_dev_iteration: int | None = None,
     ) -> None:
         """Emit a one-time run-end orientation block at pipeline stop."""
+        if self._is_quiet:
+            return
         with contextlib.suppress(Exception):
             self._plain_renderer.emit_run_end(
                 phase=phase,
@@ -382,6 +395,11 @@ class ParallelDisplay:
                 exit_trigger=exit_trigger,
                 outer_dev_iteration=outer_dev_iteration,
             )
+
+    @property
+    def display_context(self) -> DisplayContext:
+        """Return the DisplayContext this display renders against."""
+        return self._ctx
 
     @property
     def console(self) -> Console:
@@ -402,4 +420,145 @@ class ParallelDisplay:
         self.stop()
 
 
-__all__ = ["ParallelDisplay", "strip_markup"]
+def emit_activity_line(
+    display: ParallelDisplay | None,
+    unit_id: str | None,
+    line: str,
+    display_context: DisplayContext | None = None,
+) -> None:
+    """Emit a raw activity line through the given display, or no-op if None.
+
+    Replaces the legacy `emit_display_line` helper from
+    `ralph.pipeline.legacy_console_display`. Bare lifecycle lines are
+    dropped by ParallelDisplay itself; this helper just routes the line
+    to the correct unit_id. When ``display`` is None but a
+    ``display_context`` is provided, the line is written to the
+    context's console for legacy compatibility.
+    """
+    if display is None:
+        if display_context is None:
+            return
+        console = display_context.console
+        if unit_id is None:
+            console.print(line)
+            return
+        console.print(f"[{unit_id}] {line}")
+        return
+    display.emit(unit_id, line)
+
+
+def resolve_active_display(
+    display: ParallelDisplay | None,
+    display_context: DisplayContext | None = None,
+) -> ParallelDisplay:
+    """Return the given display, constructing a ParallelDisplay from the context if needed.
+
+    The context is required when `display` is None. Rich is a required
+    dependency (declared in `pyproject.toml` line 22: `rich>=13.0`), so
+    ParallelDisplay always initialises successfully here.
+    """
+    if display is not None:
+        return display
+    if display_context is None:
+        raise TypeError("display_context is required when display is None")
+    return ParallelDisplay(display_context)
+
+
+def resolve_display(
+    display: ParallelDisplay | None,
+    display_context: DisplayContext | None = None,
+) -> ParallelDisplay:
+    """Return the given display or construct one from the context.
+
+    Single source of truth that replaces the legacy
+    ``resolve_display`` helper from
+    ``ralph.pipeline.legacy_console_display``. Pass-through for
+    non-None inputs; constructs a :class:`ParallelDisplay` from
+    the supplied context when ``display`` is ``None``.
+    """
+    if display is not None:
+        return display
+    if display_context is None:
+        raise TypeError("display_context is required when display is None")
+    return ParallelDisplay(display_context)
+
+
+def status_text(label: str, value: str, style: str) -> str:
+    """Build a styled status line as a plain string.
+
+    Replaces the legacy `status_text` helper from
+    `ralph.pipeline.legacy_console_display`. Returns plain text — the
+    caller passes it through `emit_activity_line` which uses
+    ParallelDisplay.emit (plain log routing) for rendering.
+    """
+    del style  # styling is delegated to the renderer; keep the signature stable.
+    return f"{label}: {value}"
+
+
+def build_default_display_legacy_bridge(
+    workspace_root: Path,
+    display_context: DisplayContext,
+    pipeline_policy: PipelinePolicy | None = None,
+    *,
+    is_quiet: bool = False,
+) -> ParallelDisplay:
+    """Construct the default :class:`ParallelDisplay`.
+
+    Single source of truth that replaces the legacy
+    ``build_default_display`` helper from
+    ``ralph.pipeline.legacy_console_display``. Rich is a verified
+    required dependency (declared in ``pyproject.toml`` line 22:
+    ``rich>=13.0``) so the construction cannot fail.
+    """
+    return ParallelDisplay(
+        display_context,
+        workspace_root=workspace_root,
+        run_id=str(uuid.uuid4()),
+        pipeline_policy=pipeline_policy,
+        is_quiet=is_quiet,
+    )
+
+
+def get_display_context(
+    display: object | None,
+    display_context: DisplayContext | None = None,
+) -> DisplayContext:
+    """Return the DisplayContext a caller should render against.
+
+    Single source of truth for the legacy ``get_display_context``
+    helper. The display's own context is preferred when present
+    (tries ``display_context`` first, then ``_ctx`` for
+    back-compat with fakes that store it privately); otherwise
+    the caller-provided context is used.
+    """
+    if display is not None:
+        own_context: DisplayContext | None = getattr(display, "display_context", None)
+        if own_context is None:
+            own_context = getattr(display, "_ctx", None)
+        if own_context is not None:
+            return own_context
+    if display_context is None:
+        raise TypeError("display_context is required when display is None")
+    return display_context
+
+
+def subscriber_for_display(
+    display: ParallelDisplay | None,
+) -> PipelineSubscriber | None:
+    """Return the pipeline subscriber attached to the given display, when present."""
+    if display is None:
+        return None
+    return cast("PipelineSubscriber | None", getattr(display, "subscriber", None))
+
+
+__all__ = [
+    "ParallelDisplay",
+    "build_default_display_legacy_bridge",
+    "emit_activity_line",
+    "get_display_context",
+    "resolve_active_display",
+    "resolve_display",
+    "status_text",
+    "strip_markup",
+    "subscriber_for_display",
+]

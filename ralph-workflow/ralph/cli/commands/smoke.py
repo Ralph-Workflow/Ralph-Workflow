@@ -25,13 +25,13 @@ from ralph.agents.invoke import (
     InvokeRuntimeOptions,
     OpenCodeResumableExitError,
     build_invoke_options_from_config,
+    extract_transport_session_id,
     invoke_agent,
 )
 from ralph.agents.invoke._direct_mcp_recovery import (
     default_direct_mcp_retry_limit,
     run_with_direct_mcp_recovery,
 )
-from ralph.agents.invoke._session import extract_transport_session_id
 from ralph.agents.parsers import get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.smoke_run_params import SmokeRunParams

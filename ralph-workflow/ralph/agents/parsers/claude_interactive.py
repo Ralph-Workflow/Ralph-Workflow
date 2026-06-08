@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ._event_classification import is_lifecycle_kind
 from .agent_output_line import AgentOutputLine
 from .claude_interactive_transcript_parser import ClaudeInteractiveTranscriptParser
 from .interactive_transcript_event import InteractiveTranscriptEvent
@@ -24,6 +25,8 @@ class ClaudeInteractiveParser:
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
         for raw in lines:
             for event in self._parser.feed(raw):
+                if is_lifecycle_kind(event.kind):
+                    continue
                 if event.kind == "output":
                     self._text_accumulator.buffer += event.text + "\n"
                     self._text_accumulator.raw_lines.append(raw)

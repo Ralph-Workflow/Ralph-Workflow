@@ -9,10 +9,11 @@ accumulation for streaming text responses.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, cast
 
 from ralph.display.vt_normalizer import normalize_vt_text
 
+from ._event_classification import is_lifecycle_event
 from .agent_output_line import AgentOutputLine
 from .text_accumulator import TextAccumulator
 
@@ -24,28 +25,6 @@ if TYPE_CHECKING:
 # is treated as a streaming delta and accumulated.
 # Content at or above this threshold is treated as a standalone message.
 _SHORT_CONTENT_THRESHOLD = 200
-
-# Bare JSON event type values that carry no user payload — suppress silently.
-# Only exact matches after str.lower() on the "type" field are suppressed;
-# longer strings like "starting the analysis" are never touched.
-_LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
-    {
-        "start",
-        "begin",
-        "ready",
-        "thread.started",
-        "turn.started",
-        "message_start",
-        "message_stop",
-        "heartbeat",
-        "content_block_start",
-        "content_block_stop",
-        "user",
-        "assistant",
-        "thinking",
-        "message_delta",
-    }
-)
 
 _PLAIN_TOOL_PREFIX = "[plain] tool:"
 
@@ -124,7 +103,7 @@ class GenericParser:
 
             # Suppress lifecycle-only events that carry no user payload.
             type_val = str(obj.get("type", "")).lower()
-            if type_val in _LIFECYCLE_EVENT_TYPES:
+            if is_lifecycle_event(type_val):
                 continue
 
             # Check for stop/done markers first

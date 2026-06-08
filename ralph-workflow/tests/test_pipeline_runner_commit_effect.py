@@ -161,7 +161,7 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
 def test_resolve_display_defaults_to_legacy_console_display() -> None:
     display = runner_module.resolve_display(None, make_display_context())
 
-    assert isinstance(display, runner_module.LegacyConsoleDisplay)
+    assert isinstance(display, runner_module.ParallelDisplay)
 
 
 def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_planning_entry(

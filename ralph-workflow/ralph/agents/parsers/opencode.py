@@ -5,27 +5,13 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Final, cast
 
+from ._event_classification import is_lifecycle_event
 from .agent_output_line import AgentOutputLine
 from .base import stringify_text_blocks
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-
-# Structured JSON event types that carry only lifecycle metadata — suppress silently.
-_LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
-    {
-        "thread.started",
-        "turn.started",
-        "message_start",
-        "heartbeat",
-        "ping",
-        "ready",
-        "assistant",
-        "user",
-    }
-)
 
 
 class OpenCodeParser:
@@ -73,7 +59,7 @@ class OpenCodeParser:
         event_type = str(obj.get("type", "unknown"))
 
         # Suppress lifecycle-only events that carry no user payload.
-        if event_type in _LIFECYCLE_EVENT_TYPES:
+        if is_lifecycle_event(event_type):
             return
 
         # Handle lifecycle events

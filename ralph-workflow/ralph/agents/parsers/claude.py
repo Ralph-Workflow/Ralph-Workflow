@@ -6,6 +6,7 @@ import json
 import re
 from typing import TYPE_CHECKING, Final, cast
 
+from ._event_classification import is_lifecycle_event
 from .agent_output_line import AgentOutputLine
 from .base import stringify_text_blocks
 from .text_accumulator import TextAccumulator
@@ -16,19 +17,10 @@ if TYPE_CHECKING:
 # Matches "claude" or "claude/<model>" at line start, followed by space, colon, or end.
 _CLAUDE_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^claude(?:/[^:\s]+)?(?=[ :]|$)")
 
-# Lifecycle markers emitted by Claude CLI that carry no user payload.
-# Unknown free-text after "claude/<model>: " defaults to type='text' (safe default).
-_LIFECYCLE_MARKERS: Final[frozenset[str]] = frozenset(
-    {
-        "message_delta",
-        "user",
-        "thinking",
-        "assistant",
-        "message_start",
-        "message_stop",
-        "content_block_start",
-        "content_block_stop",
-    }
+# Subset of LIFECYCLE_EVENT_TYPES used to gate the legacy top-level branch.
+# The full set is shared via _event_classification.LIFECYCLE_EVENT_TYPES.
+_CLAUDE_TOP_LEVEL_LIFECYCLE: Final[frozenset[str]] = frozenset(
+    {"message_start", "message_stop", "content_block_stop"}
 )
 
 
@@ -43,10 +35,6 @@ class ClaudeParser:
     Thinking deltas (``thinking_delta``) are accumulated separately from text
     deltas and emitted as ``type="thinking"`` lines.
     """
-
-    _LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
-        {"message_start", "message_stop", "content_block_stop"}
-    )
 
     def __init__(self) -> None:
         # Accumulators keyed by (message_id, content_block_index)
@@ -114,7 +102,7 @@ class ClaudeParser:
             return flushed
         if event_type == "content_block_stop":
             return self._flush_content_block(obj)
-        if event_type in self._LIFECYCLE_EVENT_TYPES:
+        if event_type in _CLAUDE_TOP_LEVEL_LIFECYCLE:
             return iter(())
         return None
 
@@ -208,7 +196,7 @@ class ClaudeParser:
             yield from self._parse_stream_error(event, raw)
             return
 
-        if event_type in self._LIFECYCLE_EVENT_TYPES:
+        if event_type in _CLAUDE_TOP_LEVEL_LIFECYCLE:
             return
 
         yield AgentOutputLine(type=event_type, raw=raw, metadata=event)
@@ -442,7 +430,7 @@ class ClaudeParser:
             )
 
     def _parse_plain_text_prefix(self, raw: str, text: str) -> list[AgentOutputLine]:
-        if text in _LIFECYCLE_MARKERS or text.startswith("system (status="):
+        if is_lifecycle_event(text) or text.startswith("system (status="):
             return []
         return [AgentOutputLine(type="text", content=text, raw=raw)]
 

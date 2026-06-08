@@ -80,6 +80,8 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("materialize", "PLC0415"),
     ("supervising", "PLC0415"),
     ("pytest_timeout_plugin", "PLC0415"),
+    ("_event_classification", "PLC0415"),
+    ("commit_plumbing", "UP047"),
     ("claude_interactive_transcript_parser", "PLR0911"),
     ("claude_interactive_transcript_parser", "PLR0912"),
 }

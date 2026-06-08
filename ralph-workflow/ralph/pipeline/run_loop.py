@@ -13,14 +13,14 @@ from loguru import logger
 
 import ralph.pipeline.runner as _runner_module
 from ralph.config.enums import Verbosity
-from ralph.display.plain_renderer import RunStartOrientation
-from ralph.onboarding import RUN_COMPLETION_STAR_CTA
-from ralph.pipeline.legacy_console_display import (
-    LegacyConsoleDisplay,
-    build_default_display,
-    emit_display_line,
+from ralph.display.parallel_display import (
+    ParallelDisplay,
+    build_default_display_legacy_bridge,
+    emit_activity_line,
     status_text,
 )
+from ralph.display.plain_renderer import RunStartOrientation
+from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import emit_final_summary
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
@@ -37,7 +37,6 @@ if TYPE_CHECKING:
     from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
-    from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
@@ -57,7 +56,7 @@ if TYPE_CHECKING:
             policy_bundle: PolicyBundle,
             workspace_scope: WorkspaceScope,
             config: UnifiedConfig,
-            display: ParallelDisplay | LegacyConsoleDisplay,
+            display: ParallelDisplay,
             display_context: DisplayContext,
             verbosity: Verbosity,
             registry: _RegistryLike,
@@ -102,7 +101,7 @@ class _LoopContext:
     policy_bundle: PolicyBundle
     workspace_scope: WorkspaceScope
     config: UnifiedConfig
-    active_display: ParallelDisplay | LegacyConsoleDisplay
+    active_display: ParallelDisplay
     display_context: DisplayContext
     effective_verbosity: Verbosity
     registry: _RegistryLike
@@ -193,7 +192,7 @@ def _setup_active_display(
     display_context: DisplayContext | None,
     workspace_scope: WorkspaceScope,
     policy_bundle: PolicyBundle,
-) -> tuple[ParallelDisplay | LegacyConsoleDisplay, DisplayContext, Callable[[], None]]:
+) -> tuple[ParallelDisplay, DisplayContext, Callable[[], None]]:
     """Resolve active display and display context; return (display, ctx, stop_fn)."""
     if display is not None:
         resolved_ctx = display._ctx
@@ -203,20 +202,19 @@ def _setup_active_display(
         resolved_ctx = _runner_module.make_display_context()
 
     if display is not None:
-        active: ParallelDisplay | LegacyConsoleDisplay = display
-    elif is_quiet:
-        active = LegacyConsoleDisplay(resolved_ctx)
+        active: ParallelDisplay = display
     else:
-        active = build_default_display(
+        active = build_default_display_legacy_bridge(
             workspace_scope.root,
             resolved_ctx,
-            policy_bundle,
+            policy_bundle.pipeline,
+            is_quiet=is_quiet,
         )
 
     def _stop() -> None:
         pass
 
-    if isinstance(active, LegacyConsoleDisplay) or hasattr(active, "_ctx"):
+    if hasattr(active, "_ctx"):
         ctx_holder = [active._ctx]
         _stop = _runner_module.install_width_refresher(
             ctx_holder,
@@ -267,7 +265,7 @@ def _emit_run_start(
             verbosity=verbosity_str,
             workspace_root=str(ctx.workspace_scope.root),
         )
-        cast("ParallelDisplay", ctx.active_display).emit_run_start(_orientation)
+        ctx.active_display.emit_run_start(_orientation)
 
 
 def _run_inner_loop(
@@ -316,7 +314,7 @@ def _run_inner_loop(
 
 def _emit_post_loop_result(
     state: PipelineState,
-    active_display: ParallelDisplay | LegacyConsoleDisplay,
+    active_display: ParallelDisplay,
     is_quiet: bool,
     exit_code: int,
     policy_bundle: PolicyBundle,
@@ -421,7 +419,7 @@ def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], N
 def _resolve_effective_subscriber(
     dashboard_subscriber: _PipelineSubscriberProtocol | None,
     pipeline_subscriber: _PipelineSubscriberProtocol | None,
-    active_display: ParallelDisplay | LegacyConsoleDisplay,
+    active_display: ParallelDisplay,
 ) -> _PipelineSubscriberProtocol | None:
     """Resolve which subscriber receives pipeline state change notifications."""
     effective = dashboard_subscriber or pipeline_subscriber
@@ -439,7 +437,7 @@ def _handle_keyboard_interrupt(
 ) -> int:
     """Handle KeyboardInterrupt during pipeline execution; return exit_code 130."""
     logger.warning("Interrupted by user; shutting down tracked processes.")
-    emit_display_line(
+    emit_activity_line(
         loop_ctx.active_display,
         None,
         status_text(
@@ -512,7 +510,7 @@ def _execute_with_cleanup(
                     "run", "[green]Pipeline completed successfully.[/green]"
                 )
             else:
-                emit_display_line(
+                emit_activity_line(
                     loop_ctx.active_display,
                     None,
                     status_text("Pipeline failed", state.last_error or "Unknown error", "red"),

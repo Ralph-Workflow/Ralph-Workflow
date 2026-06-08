@@ -180,6 +180,20 @@ def is_unsubmitted_artifact_failure(detail_parts: tuple[str, ...] | list[str]) -
     ) or contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS)
 
 
+def should_reset_tool_registry(exc: BaseException, *, phase: str, agent: str | None) -> bool:
+    """Return True when an invocation error indicates a tool-registry reset is needed.
+
+    Single-source-of-truth wrapper that owns the inline
+    ``FailureClassifier().classify(...).reset_tool_registry`` lookup so
+    the ``commit_plumbing`` module does not need to import or
+    construct the classifier directly. The anti-drift pin in
+    ``tests/test_no_anti_drift_regression.py`` enforces this
+    indirection.
+    """
+    classified = FailureClassifier().classify(exc, phase=phase, agent=agent)
+    return classified.reset_tool_registry
+
+
 def _is_artifact_validation_message(raw_message: str) -> bool:
     """Return True for artifact/proof validation failures with a typed recovery path."""
     artifact_validation_substrings = (

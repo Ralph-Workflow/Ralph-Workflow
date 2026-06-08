@@ -76,7 +76,7 @@ Why this is a good first fit:
 - keeps Nanocoder inside the same unattended Ralph Workflow phase workflow as the other supported built-ins
 - good when you want an opt-in alternative to OpenCode without changing Ralph Workflow's default chain choices
 
-**Known limitation — 50-turn cap:** Nanocoder's headless `run` mode (which Ralph uses) has a hardcoded limit of 50 conversation turns in `plain/conversation.js`. There is no CLI flag to raise this limit. Tasks that require more than 50 back-and-forth model/tool exchanges will hit this cap and exit with an error. The Ink (TUI) runtime has no such limit but requires a real TTY — it cannot be used headlessly via subprocess pipe. For long or complex tasks, prefer Claude Code, OpenCode, or Google Anti Gravity instead.
+**Known limitation — 50-turn cap:** Nanocoder's headless `run` mode (which Ralph Workflow uses) has a hardcoded limit of 50 conversation turns in `plain/conversation.js`. There is no CLI flag to raise this limit. Tasks that require more than 50 back-and-forth model/tool exchanges will hit this cap and exit with an error. The Ink (TUI) runtime has no such limit but requires a real TTY — it cannot be used headlessly via subprocess pipe. For long or complex tasks, prefer Claude Code, OpenCode, or Google Anti Gravity instead.
 
 ### Start with Google Anti Gravity if...
 

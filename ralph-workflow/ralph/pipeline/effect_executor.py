@@ -21,6 +21,13 @@ from ralph.agents.invoke import (
 from ralph.agents.invoke._session_resume import resolve_resume_session_id
 from ralph.config.enums import Verbosity
 from ralph.config.mcp_loader import McpConfigError
+from ralph.display.parallel_display import (
+    ParallelDisplay,
+    emit_activity_line,
+    get_display_context,
+    status_text,
+    subscriber_for_display,
+)
 from ralph.git.operations import stage_files
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
@@ -47,13 +54,6 @@ from ralph.pipeline.agent_retry_intent import (
 )
 from ralph.pipeline.commit_executor import clear_phase_output_artifacts
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.legacy_console_display import (
-    LegacyConsoleDisplay,
-    emit_display_line,
-    get_display_context,
-    status_text,
-    subscriber_for_display,
-)
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, verbosity_rank
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
@@ -114,17 +114,16 @@ def execute_agent_effect(
     **opts: object,
 ) -> PipelineEvent:
     """Execute an agent-invocation effect end-to-end, including MCP server lifecycle."""
-    display = cast("ParallelDisplay | LegacyConsoleDisplay | None", opts.get("display"))
+    display = cast("ParallelDisplay | None", opts.get("display"))
     display_context = cast("DisplayContext | None", opts.get("display_context"))
     verbosity = cast("Verbosity", opts.get("verbosity", Verbosity.VERBOSE))
     state = cast("PipelineState | None", opts.get("state"))
     policy_bundle = cast("PolicyBundle | None", opts.get("policy_bundle"))
     resolved_display_context = get_display_context(display, display_context)
-    emit_display_line(
+    emit_activity_line(
         display,
         None,
         status_text("Invoking agent", effect.agent_name, "cyan"),
-        resolved_display_context,
     )
     registry = deps.agent_registry.from_config(config)
     agent_config = registry.get(effect.agent_name)

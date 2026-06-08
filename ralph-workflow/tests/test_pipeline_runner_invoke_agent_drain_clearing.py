@@ -81,7 +81,7 @@ def _run_pipeline_step(
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
     display_context = make_display_context()
-    display = runner_module.LegacyConsoleDisplay(display_context)
+    display = runner_module.ParallelDisplay(display_context)
     registry = MagicMock()
     registry.get.return_value = None
 

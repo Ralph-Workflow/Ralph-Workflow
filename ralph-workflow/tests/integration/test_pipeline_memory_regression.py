@@ -81,7 +81,7 @@ def _install_runner_seams(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
         lambda **_kwargs: str(tmp_path / "SYSTEM_PROMPT.md"),
     )
     monkeypatch.setattr(runner_module, "build_session_mcp_plan", _build_session_mcp_plan)
-    monkeypatch.setattr(runner_module, "emit_display_line", _emit_display_line)
+    monkeypatch.setattr(runner_module, "emit_activity_line", _emit_display_line)
 
 
 def _config() -> UnifiedConfig:

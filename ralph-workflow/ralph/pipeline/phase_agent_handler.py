@@ -20,16 +20,15 @@ from ralph.display.artifact_renderer import (
     render_plan_artifact,
     render_review_artifact,
 )
+from ralph.display.parallel_display import (
+    ParallelDisplay,
+    get_display_context,
+)
 from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
 from ralph.phases import PhaseContext, handle_phase
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
-from ralph.pipeline.legacy_console_display import (
-    LegacyConsoleDisplay,
-    display_console,
-    get_display_context,
-)
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -81,7 +80,7 @@ def _phase_event_after_agent_run(
     policy_bundle: PolicyBundle,
     workspace: FsWorkspace,
     workspace_scope: WorkspaceScope | None = None,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | None = None,
     display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
@@ -95,7 +94,7 @@ def _phase_event_after_agent_run(
         agents_policy=policy_bundle.agents,
         artifacts_policy=policy_bundle.artifacts,
         config=config,
-        console=display_console(display, display_context),
+        console=get_display_context(display, display_context).console,
     )
     try:
         _hp = handle_phase_fn or handle_phase
@@ -141,7 +140,7 @@ def _phase_event_after_agent_run(
             read_latest_analysis_decision = _read_latest_analysis_decision_func()
             summary = read_latest_analysis_decision(workspace_scope.root, drain)
             if summary is not None:
-                cast("ParallelDisplay", display).emit_analysis_result(
+                display.emit_analysis_result(
                     phase=effect.phase,
                     decision=summary.decision,
                     reason=summary.reason,
@@ -156,7 +155,7 @@ def _render_phase_artifact_handoff(
     phase: str,
     event: Event,
     workspace_root: Path,
-    display: ParallelDisplay | LegacyConsoleDisplay | None,
+    display: ParallelDisplay | None,
     *,
     display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
@@ -214,7 +213,7 @@ def _render_success_artifact(
     artifact_type: str,
     workspace_root: Path,
     display_context: DisplayContext,
-    display: ParallelDisplay | LegacyConsoleDisplay | None,
+    display: ParallelDisplay | None,
     verbosity: Verbosity,
     ra: RequiredArtifact,
 ) -> None:
