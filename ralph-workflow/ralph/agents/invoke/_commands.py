@@ -328,7 +328,7 @@ def _build_nanocoder_command(
     # --dangerously-skip-permissions. ``auto-accept`` only auto-approves the
     # Ralph MCP tools advertised in the server's alwaysAllow list; nanocoder's
     # native tools (e.g. ``execute_bash``) still block on approval and wedge the
-    # agent ("Tool approval required for: execute_bash").
+    # agent ("Tool approval required for: execute_bash"). ``yolo`` auto-approves them.
     cmd = [_agent_command_name(config), "--mode", "yolo", "run"]
 
     effective_model = options.model_flag or config.model_flag

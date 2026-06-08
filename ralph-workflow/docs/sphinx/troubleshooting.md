@@ -86,6 +86,18 @@ agent run that appeared active.
 
 **Fix:** Check the watchdog log line for `reason`, `last_activity_kind`, and `resume_safe`. If the next attempt reports `No conversation found with session ID`, recovery treats it as a stale session and retries fresh within the remaining budget.
 
+## Nanocoder exits with "Conversation exceeded 50 turns"
+
+**Symptom:** A Nanocoder run fails partway through a complex task with the message `Conversation exceeded 50 turns` in the run log.
+
+**Cause:** Ralph invokes Nanocoder using its headless `plain` runtime (the lightweight, Ink-free path that auto-enables in non-TTY subprocess environments). That runtime contains a hardcoded `MAX_TURNS = 50` cap in `plain/conversation.js`. There is no CLI flag, environment variable, or config option to raise this limit. The Ink (TUI) runtime has no such cap, but it requires a real TTY and cannot be used via subprocess pipe.
+
+**Fix options:**
+
+- **Use a different agent for complex tasks.** Claude Code, OpenCode, and Google Anti Gravity do not have an equivalent per-run turn cap when invoked headlessly. If your task regularly exceeds 50 tool exchanges, route that phase to one of those agents.
+- **Break the task into smaller phases.** If Nanocoder is your only option, split the `PROMPT.md` task into steps that each complete within 50 turns. Ralph's checkpoint and phase system is designed to compose smaller phase outputs.
+- **Track the upstream issue.** The 50-turn cap is undocumented and a known Nanocoder limitation. If the Nanocoder project raises or removes this cap in a future release, Ralph Workflow will pick it up automatically — no code change needed on Ralph's side.
+
 ## `make verify` fails after editing config
 
 **Symptom:** `ruff`, `mypy`, or `pytest` fails after editing configuration or source files.

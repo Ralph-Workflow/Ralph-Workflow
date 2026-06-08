@@ -68,12 +68,15 @@ Why this is a good first fit:
 - `nanocoder` already works on your machine
 - you want a local-first, multi-provider coding agent surface
 - you want Ralph Workflow to manage MCP wiring around Nanocoder's documented `run` mode instead of replacing your existing setup
+- your tasks are **short enough to complete within 50 tool calls** (see known limitation below)
 
 Why this is a good first fit:
 
 - preserves an existing Nanocoder workflow instead of forcing a tool switch
 - keeps Nanocoder inside the same unattended Ralph Workflow phase workflow as the other supported built-ins
 - good when you want an opt-in alternative to OpenCode without changing Ralph Workflow's default chain choices
+
+**Known limitation — 50-turn cap:** Nanocoder's headless `run` mode (which Ralph uses) has a hardcoded limit of 50 conversation turns in `plain/conversation.js`. There is no CLI flag to raise this limit. Tasks that require more than 50 back-and-forth model/tool exchanges will hit this cap and exit with an error. The Ink (TUI) runtime has no such limit but requires a real TTY — it cannot be used headlessly via subprocess pipe. For long or complex tasks, prefer Claude Code, OpenCode, or Google Anti Gravity instead.
 
 ### Start with Google Anti Gravity if...
 
