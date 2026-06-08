@@ -32441,3 +32441,89 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The README \u2192 START_HERE \u2192 docs/README journey is coherent, positioning-aligned, and free of internal leakage. All promoted next-click pages reinforce the same product story. The user should not need to repeat this instruction.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Opens with 'operating system for autonomous coding,' frames simple Ralph-loop core as composable framework, emphasizes strong default workflow, and leads with runnable/tested software \u2014 all five positioning anchors hit in the first three sections."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Reinforces the simple-core/composition/product-framing, judges outcome by what the software does now and what checks ran, and routes to docs/README only when needed \u2014 no internal plumbing anywhere."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Routes by user question type, explicitly says 'Keep proof secondary,' and lists proof-oriented pages only after product/operator routes \u2014 the IA actively protects against internal leakage."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Promoted from the docs map; reinforces 'simple at the center, stronger in composition, useful before customization' without any artifact/transcript/plumbing language."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Positioned as secondary proof page, not top-level. Prioritizes working behavior > real checks > written scope > supporting artifacts \u2014 directly enforces the positioning document's evaluation order."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-aligned with the positioning document. README \u2192 START_HERE \u2192 docs/README creates a coherent journey. No top-level surface leaks internal process language as product value. Promoted next-click pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent, reviewable-output) all reinforce the same story. The 'simple core \u2192 composable \u2192 strong default' narrative is consistent across all surfaces.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding' and 'composable loop framework' before any detail. Comparison table's last row frames output as 'runnable, tested software with integration checks' \u2014 result-first, not diff-first."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Opens with the simple-loop-core framing and explicitly says 'judge the outcome by what the software does now and what checks ran.' Zero internal plumbing language in the lead."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "The docs switchboard includes an explicit 'Keep proof secondary' section that routes evaluators to the product story first. Promoted pages (ai-agent-orchestration-cli, spec-driven-ai-agent, unattended-coding-agent, reviewable-output) all reinforce positioning instead of fighting it."
+    },
+    {
+      "path": "docs/reviewable-output.md",
+      "reason": "Starts by telling the reader this is 'supporting proof, not the main product pitch' and directs them to the operator route first. The evidence hierarchy (behavior \u2192 checks \u2192 scope \u2192 logs) aligns exactly with the positioning doc's evaluation guidance."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
