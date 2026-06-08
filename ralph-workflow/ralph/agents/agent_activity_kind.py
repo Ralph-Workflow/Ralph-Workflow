@@ -11,6 +11,8 @@ class AgentActivityKind(StrEnum):
     TOOL_USE = "tool_use"
     TOOL_RESULT = "tool_result"
     LIFECYCLE = "lifecycle"
+    ERROR_LINE = "error_line"
+    PROGRESS_REPORT = "progress_report"
     CHILD_PROCESS = "child_process"
     CHILD_HEARTBEAT = "child_heartbeat"
     CHILD_PROGRESS = "child_progress"

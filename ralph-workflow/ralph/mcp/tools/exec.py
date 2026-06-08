@@ -38,7 +38,11 @@ if TYPE_CHECKING:
     from ralph.process.manager._process_manager_types import _PsutilModuleLike, _PsutilProcessLike
 
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
-DEFAULT_TIMEOUT_MS = 30_000
+# Default per-call exec timeout. Set above the 60s combined verify budget so an
+# agent running `make verify`/`make test` (or a slow git op) through exec does not
+# time out on every call. Per-call `timeout_ms` overrides this; the process tree
+# is still killed on expiry, so the server stays bounded.
+DEFAULT_TIMEOUT_MS = 90_000
 _MAX_OUTPUT_BYTES = 1 * 1024 * 1024
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
 _KILL_SIGNAL_ARG_COUNT = 2
@@ -454,7 +458,10 @@ def run_command(
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
     except subprocess.TimeoutExpired as exc:
         raise ExecutionError(
-            f"Failed to execute '{command}': timed out after {timeout_ms}ms"
+            f"Failed to execute '{command}': timed out after {timeout_ms}ms",
+            timed_out=True,
+            timeout_ms=timeout_ms,
+            suggested_timeout_ms=timeout_ms * 2 if timeout_ms > 0 else None,
         ) from exc
     except OSError as exc:
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
@@ -597,9 +604,20 @@ def handle_exec_command(
     parsed = parse_exec_params(params)
     apply_exec_policy(parsed.command, parsed.args)
     effective_deps = _build_effective_deps(session, deps)
-    output = run_command(
-        parsed.command, parsed.args, workspace, parsed.timeout_ms, deps=effective_deps
-    )
+    try:
+        output = run_command(
+            parsed.command, parsed.args, workspace, parsed.timeout_ms, deps=effective_deps
+        )
+    except ExecutionError as exc:
+        if not exc.timed_out:
+            raise
+        # A timeout EXECUTED but failed: return an actionable, non-retryable
+        # is_error result instead of letting it become a -32603 protocol error
+        # the agent reads as transient and retries forever.
+        return ToolResult(
+            content=[ToolContent.text_content(str(exc))],
+            is_error=True,
+        )
     return ToolResult(
         content=[
             ToolContent.text_content(

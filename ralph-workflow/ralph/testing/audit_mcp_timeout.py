@@ -172,36 +172,52 @@ def audit_mcp_directory(root: Path) -> tuple[list[McpTimeoutViolation], int]:
     return all_violations, files_checked
 
 
+def _default_roots() -> list[Path]:
+    """Roots audited when no explicit root is given.
+
+    Covers ``ralph/mcp`` (the MCP server thread) AND ``ralph/git`` (git invoked
+    outside the MCP layer — operations, rebase, vendor-drift checks). An unbounded
+    git call there can hang just as badly as an unbounded MCP call, so both are
+    held to the same bounded-subprocess contract.
+    """
+    package_root = Path(__file__).parent.parent
+    return [package_root / "mcp", package_root / "git"]
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Run the MCP-timeout audit and return an exit code."""
+    """Run the bounded-subprocess audit and return an exit code."""
     args = argv if argv is not None else sys.argv[1:]
-    mcp_root = Path(args[0]) if args else (Path(__file__).parent.parent / "mcp")
+    roots = [Path(args[0])] if args else _default_roots()
 
-    if not mcp_root.is_dir():
-        print(f"Error: MCP root not found: {mcp_root}", file=sys.stderr)
-        return 2
-
-    print(f"Auditing MCP timeout contract in: {mcp_root}")
+    all_violations: list[McpTimeoutViolation] = []
+    total_files = 0
+    for root in roots:
+        if not root.is_dir():
+            print(f"Error: audit root not found: {root}", file=sys.stderr)
+            return 2
+        print(f"Auditing bounded-subprocess contract in: {root}")
+        violations, files_checked = audit_mcp_directory(root)
+        all_violations.extend(violations)
+        total_files += files_checked
     print()
 
-    violations, files_checked = audit_mcp_directory(mcp_root)
-
-    if violations:
+    if all_violations:
         print(
-            f"MCP TIMEOUT CONTRACT VIOLATIONS: {len(violations)} in {files_checked} file(s)"
+            f"BOUNDED-SUBPROCESS CONTRACT VIOLATIONS: {len(all_violations)}"
+            f" in {total_files} file(s)"
         )
         print("=" * 72)
-        for v in violations:
+        for v in all_violations:
             print(f"  {v}")
         print()
         print(
-            "Every MCP operation must be bounded by a timeout and fail closed. "
+            "Every MCP/git operation must be bounded by a timeout and fail closed. "
             "Add a timeout=, or an inline '# mcp-timeout-ok: <reason>' marker if "
             "the call is genuinely unbounded by design."
         )
         return 1
 
-    print(f"No MCP timeout violations found in {files_checked} file(s).")
+    print(f"No bounded-subprocess violations found in {total_files} file(s).")
     return 0
 
 

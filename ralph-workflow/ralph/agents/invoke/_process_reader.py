@@ -54,7 +54,11 @@ if TYPE_CHECKING:
 
 _MAX_PARSED_OUTPUT_LINES = 256
 _NON_MEANINGFUL_ACTIVITY_KINDS: frozenset[AgentActivityKind] = frozenset(
-    {AgentActivityKind.LIFECYCLE}
+    {
+        AgentActivityKind.LIFECYCLE,
+        AgentActivityKind.ERROR_LINE,
+        AgentActivityKind.PROGRESS_REPORT,
+    }
 )
 _TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
     {ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED}
@@ -209,6 +213,30 @@ class _ProcessLineReader:
             diagnostic=hard_stop_diag,
         )
 
+    def _record_line_activity(self, watchdog: IdleWatchdog, queued_line: str) -> None:
+        """Classify a line and route it to the matching watchdog activity sink.
+
+        ERROR_LINE and repeated PROGRESS_REPORT lines feed the repeated-error
+        circuit breaker without resetting the idle baseline; LIFECYCLE frames
+        reset idle only; everything else is genuine forward progress.
+        """
+        activity_signal = self._strategy.classify_activity_line(queued_line)
+        if activity_signal is None:
+            self._last_activity_meaningful[0] = False
+            return
+        self._last_activity_kind = str(activity_signal.kind)
+        self._last_activity_meaningful[0] = (
+            activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
+        )
+        if activity_signal.kind == AgentActivityKind.ERROR_LINE:
+            watchdog.record_error_activity(activity_signal.raw)
+        elif activity_signal.kind == AgentActivityKind.PROGRESS_REPORT:
+            watchdog.record_progress_report(activity_signal.raw)
+        elif activity_signal.kind == AgentActivityKind.LIFECYCLE:
+            watchdog.record_lifecycle_activity()
+        else:
+            watchdog.record_activity()
+
     def _run_drain_window(
         self, watchdog: IdleWatchdog, drain_deadline: float | None
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
@@ -245,15 +273,7 @@ class _ProcessLineReader:
                         is_done = True
 
                 if queued_line is not None:
-                    activity_signal = self._strategy.classify_activity_line(queued_line)
-                    if activity_signal is not None:
-                        self._last_activity_kind = str(activity_signal.kind)
-                        self._last_activity_meaningful[0] = (
-                            activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
-                        )
-                        watchdog.record_activity()
-                    else:
-                        self._last_activity_meaningful[0] = False
+                    self._record_line_activity(watchdog, queued_line)
                     self._strategy.observe_line(queued_line)
                     yield queued_line
                     result = self._check_fire(

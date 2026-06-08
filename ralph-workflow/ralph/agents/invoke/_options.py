@@ -65,6 +65,9 @@ def build_invoke_options_from_config(
         suspect_waiting_on_child_seconds=general_config.agent_suspect_waiting_on_child_seconds,
         max_waiting_on_child_no_progress_seconds=general_config.agent_idle_no_progress_waiting_on_child_seconds,
         post_tool_result_progression_seconds=general_config.agent_post_tool_result_progression_seconds,
+        repeated_error_consecutive_threshold=general_config.agent_repeated_error_consecutive_threshold,
+        repeated_error_window_count=general_config.agent_repeated_error_window_count,
+        repeated_error_window_seconds=general_config.agent_repeated_error_window_seconds,
         child_progress_ttl_seconds=general_config.agent_child_progress_ttl_seconds,
         child_heartbeat_ttl_seconds=general_config.agent_child_heartbeat_ttl_seconds,
         child_stale_label_ttl_seconds=general_config.agent_child_stale_label_ttl_seconds,
@@ -148,6 +151,21 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             opts.post_tool_result_progression_seconds
             if opts.post_tool_result_progression_seconds is not None
             else _base.post_tool_result_progression_seconds
+        ),
+        repeated_error_consecutive_threshold=(
+            opts.repeated_error_consecutive_threshold
+            if opts.repeated_error_consecutive_threshold is not None
+            else _base.repeated_error_consecutive_threshold
+        ),
+        repeated_error_window_count=(
+            opts.repeated_error_window_count
+            if opts.repeated_error_window_count is not None
+            else _base.repeated_error_window_count
+        ),
+        repeated_error_window_seconds=(
+            opts.repeated_error_window_seconds
+            if opts.repeated_error_window_seconds is not None
+            else _base.repeated_error_window_seconds
         ),
     )
 

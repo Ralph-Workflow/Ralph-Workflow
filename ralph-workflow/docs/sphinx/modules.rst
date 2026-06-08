@@ -1303,6 +1303,13 @@ ralph.agents.idle_watchdog.idle_watchdog
    :members:
    :show-inheritance:
 
+ralph.agents.idle_watchdog.repetition_tracker
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.idle_watchdog.repetition_tracker
+   :members:
+   :show-inheritance:
+
 ralph.agents.idle_watchdog.timeout_policy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -13,8 +14,10 @@ from ralph.mcp.tools.coordination import (
     ToolContent,
 )
 from ralph.mcp.tools.exec import (
+    DEFAULT_TIMEOUT_MS,
     ExecRunDeps,
     handle_exec_command,
+    parse_exec_params,
 )
 from tests.mock_session import MockSession
 from tests.mock_workspace_root import MockWorkspaceRoot
@@ -77,6 +80,41 @@ class TestHandleExecCommand:
 
         with pytest.raises(CapabilityDeniedError):
             handle_exec_command(session, workspace, params)
+
+    def test_exec_timeout_returns_actionable_is_error_result_not_exception(
+        self, tmp_path: Path
+    ) -> None:
+        """A timed-out exec must come back as an is_error ToolResult (not a raised
+        ExecutionError that the MCP server turns into a -32603 protocol error the
+        agent retries forever). The message must be actionable and non-retryable."""
+
+        def _timeout_runner(
+            command: list[str], cwd: object, timeout_seconds: float | None
+        ) -> exec_completed_process._CompletedProcessAdapter:
+            del cwd
+            raise subprocess.TimeoutExpired(cmd=command, timeout=timeout_seconds or 30.0)
+
+        session = MockSession({"ProcessExecBounded"})
+        workspace = MockWorkspaceRoot(tmp_path)
+        params: dict[str, object] = {"command": "echo", "args": [], "timeout_ms": 5000}
+
+        result = handle_exec_command(
+            session, workspace, params, deps=ExecRunDeps(runner=_timeout_runner)
+        )
+
+        assert result.is_error is True
+        content = result.content[0]
+        assert isinstance(content, ToolContent)
+        text = content.text.lower()
+        assert "timed out" in text
+        assert "timeout_ms" in text
+        assert "do not retry" in text
+
+    def test_exec_default_timeout_exceeds_verify_budget(self) -> None:
+        """The exec default must exceed the 60s combined verify budget so an agent
+        running verification through exec does not time out on every call."""
+        assert DEFAULT_TIMEOUT_MS > 60_000
+        assert parse_exec_params({"command": "make"}).timeout_ms > 60_000
 
     def test_exec_returns_error_on_nonzero_exit(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

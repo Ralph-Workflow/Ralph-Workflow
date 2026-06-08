@@ -14,6 +14,7 @@ class WatchdogFireReason(StrEnum):
 
     NO_OUTPUT_DEADLINE = "no_output_deadline"
     STALLED_AFTER_TOOL_RESULT = "stalled_after_tool_result"
+    REPEATED_ERROR_LOOP = "repeated_error_loop"
     CHILDREN_PERSIST_TOO_LONG = "children_persist_too_long"
     SESSION_CEILING_EXCEEDED = "session_ceiling_exceeded"
     PROCESS_EXIT_HANG = "process_exit_hang"

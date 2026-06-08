@@ -9,10 +9,12 @@ from ralph.process.child_liveness import classify_child_snapshot
 from ._helpers import (
     _AGENT_LABEL_PREFIX,
     _classify_opencode_child_signal,
+    _error_output_signal,
     _evidence_precedence,
     _non_blank_output_signal,
     _os_descendant_state,
     _probe_check_quiet,
+    _progress_report_signal,
     _route_opencode_line_to_registry,
 )
 from .agent_execution_state import AgentExecutionState
@@ -64,6 +66,12 @@ class OpenCodeExecutionStrategy:
         signal = _classify_opencode_child_signal(line)
         if signal is not None:
             return signal
+        progress_signal = _progress_report_signal(line)
+        if progress_signal is not None:
+            return progress_signal
+        error_signal = _error_output_signal(line)
+        if error_signal is not None:
+            return error_signal
         return _non_blank_output_signal(line)
 
     def observe_line(self, line: str) -> None:

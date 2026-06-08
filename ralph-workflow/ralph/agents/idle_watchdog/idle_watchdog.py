@@ -11,6 +11,7 @@ from ralph.agents.execution_state import AgentExecutionState
 from ralph.process.child_liveness import AliveBy
 
 from .corroboration_snapshot import CorroborationSnapshot, WaitingCorroborator
+from .repetition_tracker import RepetitionTracker
 from .waiting_status_event import WaitingStatusEvent, WaitingStatusListener
 from .waiting_status_kind import WaitingStatusKind
 from .watchdog_fire_reason import WatchdogFireReason
@@ -102,6 +103,13 @@ class IdleWatchdog:
         self._last_tool_result_at = None
         self._awaiting_post_tool_result_progression = False
         self._entry_corroboration: CorroborationSnapshot | None = None
+        self._repetition_tracker = RepetitionTracker(
+            clock,
+            consecutive_threshold=config.repeated_error_consecutive_threshold,
+            window_count=config.repeated_error_window_count,
+            window_seconds=config.repeated_error_window_seconds,
+        )
+        self._last_progress_fingerprint: str | None = None
         self._log = logger.bind(component="idle_watchdog")
 
     @property
@@ -136,7 +144,56 @@ class IdleWatchdog:
         OUTPUT_LINE/STREAM_DELTA does not appear to be the post-tool-result
         progression activity (the flag is set by
         ``record_tool_result_activity()`` only).
+
+        Counts as genuine forward progress for the repeated-error circuit
+        breaker: it resets the repetition streak so an error loop only fires
+        when the agent is NOT making real progress.
         """
+        self._reset_idle_baseline()
+        self._repetition_tracker.note_progress()
+
+    def record_lifecycle_activity(self) -> None:
+        """Record cosmetic, non-meaningful activity (e.g. lifecycle frames).
+
+        Resets the idle baseline exactly like ``record_activity()`` so the
+        agent is not declared idle, but does NOT reset the repeated-error
+        circuit breaker: cosmetic output interleaved between identical errors
+        must not mask a wedged retry loop.
+        """
+        self._reset_idle_baseline()
+
+    def record_error_activity(self, message: str) -> None:
+        """Record an error/repeat line for the repeated-error circuit breaker.
+
+        Deliberately does NOT reset the idle baseline: a stream of identical
+        errors must still let the idle deadline advance (so a silent-after-errors
+        agent is also caught), while the repeated-error rule catches a fast retry
+        storm well before the idle timeout. The cumulative WAITING_ON_CHILD run is
+        still flushed for bookkeeping parity.
+        """
+        now = self._clock.monotonic()
+        self._accumulate_waiting_run(now)
+        self._repetition_tracker.note_error(message)
+
+    def record_progress_report(self, message: str) -> None:
+        """Record an explicit ``report_progress`` heartbeat from the agent.
+
+        A report that REPEATS the previous status (same fingerprint) is a cosmetic
+        heartbeat: it feeds the repeated-error circuit breaker and does NOT reset
+        the idle baseline, so an agent narrating "still stuck" forever can no
+        longer keep itself alive. A report whose status CHANGES is treated as
+        genuine forward progress (resets the idle baseline and the streak).
+        """
+        fingerprint = RepetitionTracker.fingerprint(message)
+        if fingerprint == self._last_progress_fingerprint:
+            now = self._clock.monotonic()
+            self._accumulate_waiting_run(now)
+            self._repetition_tracker.note_error(message)
+            return
+        self._last_progress_fingerprint = fingerprint
+        self.record_activity()
+
+    def _reset_idle_baseline(self) -> None:
         now = self._clock.monotonic()
         self._accumulate_waiting_run(now)
         self._last_activity = now
@@ -170,6 +227,7 @@ class IdleWatchdog:
         self._drain_started_at = None
         self._last_tool_result_at = now
         self._awaiting_post_tool_result_progression = True
+        self._repetition_tracker.note_progress()
 
     def _accumulate_waiting_run(self, now: float) -> None:
         """Add elapsed time from the current WAITING run to the cumulative total.
@@ -335,6 +393,17 @@ class IdleWatchdog:
                     round(self._cumulative_waiting_on_child_seconds, 1),
                 )
                 return WatchdogVerdict.FIRE
+
+        if self._repetition_tracker.tripped():
+            self._last_fire_reason = WatchdogFireReason.REPEATED_ERROR_LOOP
+            idle_elapsed = now - self._last_activity
+            self._log.warning(
+                "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s",
+                WatchdogFireReason.REPEATED_ERROR_LOOP,
+                round(idle_elapsed, 1),
+                round(self._cumulative_waiting_on_child_seconds, 1),
+            )
+            return WatchdogVerdict.FIRE
 
         if self._config.idle_timeout_seconds is None:
             return WatchdogVerdict.CONTINUE

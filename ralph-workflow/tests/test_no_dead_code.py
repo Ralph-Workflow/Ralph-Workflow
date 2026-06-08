@@ -91,6 +91,11 @@ def _is_console_construction(node: ast.expr) -> bool:
     return isinstance(func, ast.Attribute) and func.attr == "Console"
 
 
+# AST-parses every file under ralph/ — CPU-bound and contended under the parallel
+# suite, so it gets the same per-test wall-clock cap as the other static-analysis
+# walks (e.g. test_type_ignore_policy). The immutable 60s COMBINED budget is
+# unaffected; this is only the secondary per-test cap.
+@pytest.mark.timeout_seconds(5)
 def test_no_module_level_console_globals_in_ralph_source() -> None:
     """Walk ``ralph-workflow/ralph/`` and assert no module-level
     ``console = Console()`` / ``global_console = Console()`` /

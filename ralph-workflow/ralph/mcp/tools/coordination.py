@@ -78,11 +78,18 @@ def _write_completion_sentinel(
     Path(sentinel_abspath).write_text(payload, encoding="utf-8")
 
 
+#: Stable machine-readable marker appended to every progress report. The idle
+#: watchdog's activity classifier keys on this to route repeated progress reports
+#: into the repeated-error circuit breaker (so a cosmetic "still stuck" heartbeat
+#: cannot keep a wedged agent alive forever). Keep it in sync with any consumer.
+PROGRESS_PIPELINE_MARKER = "[Progress event emitted to pipeline]"
+
+
 def format_progress_text(status: str, note: str, timestamp: int) -> str:
     """Build the progress report response text."""
     return (
         f"Progress reported: status='{status}', note='{note}', timestamp={timestamp}\n"
-        "[Progress event emitted to pipeline]"
+        f"{PROGRESS_PIPELINE_MARKER}"
     )
 
 
@@ -200,6 +207,7 @@ def read_env_value(env: dict[str, str] | os._Environ[str], name: str) -> str:
 __all__ = [
     "ARTIFACT_SUBMIT_CAPABILITY",
     "ENV_READ_CAPABILITY",
+    "PROGRESS_PIPELINE_MARKER",
     "RUN_REPORT_PROGRESS_CAPABILITY",
     "CapabilityDeniedError",
     "ContentBlock",

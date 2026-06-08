@@ -47,6 +47,13 @@ class _IdleStreamTimeoutError(RuntimeError):
                 f"Agent produced no follow-up output for {duration} after receiving a tool result"
                 f" (last_tool={tool_name})"
             )
+        elif reason == WatchdogFireReason.REPEATED_ERROR_LOOP:
+            fingerprint = diagnostic.get("error_fingerprint") if diagnostic else None
+            detail = f" (last error: {fingerprint})" if fingerprint else ""
+            msg = (
+                "Agent repeated the same error without making forward progress"
+                f"{detail}; aborting the retry loop"
+            )
         else:
             msg = f"Agent produced no output for {timeout_seconds:.0f}s"
         super().__init__(msg)

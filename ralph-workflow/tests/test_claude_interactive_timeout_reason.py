@@ -75,6 +75,15 @@ class _FakeWatchdog:
     def record_activity(self) -> None:
         return None
 
+    def record_lifecycle_activity(self) -> None:
+        return None
+
+    def record_error_activity(self, message: str) -> None:
+        del message
+
+    def record_progress_report(self, message: str) -> None:
+        del message
+
     def record_tool_result_activity(self) -> None:
         return None
 

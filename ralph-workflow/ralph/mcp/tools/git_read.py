@@ -98,7 +98,8 @@ def run_git_command(
         output = git_runner(["git", *args], _workspace_root(workspace, cwd_provider=cwd_provider))
     except subprocess.TimeoutExpired as exc:
         raise ExecutionError(
-            f"git command timed out after {exc.timeout:g}s: {' '.join(args)}"
+            f"git command timed out after {exc.timeout:g}s: {' '.join(args)}",
+            timed_out=True,
         ) from exc
     except FileNotFoundError as exc:
         raise ExecutionError(f"Failed to execute git: {exc}") from exc
@@ -129,7 +130,8 @@ def run_git_command_lenient(
         output = git_runner(["git", *args], _workspace_root(workspace, cwd_provider=cwd_provider))
     except subprocess.TimeoutExpired as exc:
         raise ExecutionError(
-            f"git command timed out after {exc.timeout:g}s: {' '.join(args)}"
+            f"git command timed out after {exc.timeout:g}s: {' '.join(args)}",
+            timed_out=True,
         ) from exc
     except FileNotFoundError as exc:
         raise ExecutionError(f"Failed to execute git: {exc}") from exc
@@ -164,6 +166,24 @@ def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedPr
     return subprocess.CompletedProcess(command, returncode, stdout or b"", stderr or b"")
 
 
+def _git_read_result(produce: Callable[[], str]) -> ToolResult:
+    """Run a git read and wrap its output, converting a timeout into an
+    actionable, non-retryable is_error result (NOT a propagated -32603)."""
+    try:
+        output = produce()
+    except ExecutionError as exc:
+        if not exc.timed_out:
+            raise
+        message = (
+            f"{exc}\n"
+            "This is expected for large vendor/ submodules or a held .git lock."
+            " Re-issuing the identical call will time out again — narrow the command,"
+            " exclude large submodules, or retry later. Do not retry unchanged."
+        )
+        return ToolResult(content=[ToolContent.text_content(message)], is_error=True)
+    return ToolResult(content=[ToolContent.text_content(output)], is_error=False)
+
+
 def handle_git_status(
     session: CoordinationSessionLike,
     workspace: object,
@@ -171,8 +191,7 @@ def handle_git_status(
 ) -> ToolResult:
     """Read the git status of the workspace."""
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git status")
-    output = run_git_command(workspace, ["status"])
-    return ToolResult(content=[ToolContent.text_content(output)], is_error=False)
+    return _git_read_result(lambda: run_git_command(workspace, ["status"]))
 
 
 def handle_git_diff(
@@ -183,8 +202,7 @@ def handle_git_diff(
     """Read the git diff of the workspace."""
     require_capability(session, GIT_DIFF_READ_CAPABILITY, "Git diff")
     parsed = parse_git_diff_params(params)
-    output = run_git_command_lenient(workspace, ["diff", *parsed.args])
-    return ToolResult(content=[ToolContent.text_content(output)], is_error=False)
+    return _git_read_result(lambda: run_git_command_lenient(workspace, ["diff", *parsed.args]))
 
 
 def handle_git_log(
@@ -195,8 +213,9 @@ def handle_git_log(
     """Read the git commit log."""
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git log")
     parsed = parse_git_log_params(params)
-    output = run_git_command(workspace, ["log", f"-{parsed.count}", "--oneline"])
-    return ToolResult(content=[ToolContent.text_content(output)], is_error=False)
+    return _git_read_result(
+        lambda: run_git_command(workspace, ["log", f"-{parsed.count}", "--oneline"])
+    )
 
 
 def handle_git_show(
@@ -207,8 +226,7 @@ def handle_git_show(
     """Show a git object by ref."""
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git show")
     parsed = parse_git_show_params(params)
-    output = run_git_command(workspace, ["show", parsed.git_ref])
-    return ToolResult(content=[ToolContent.text_content(output)], is_error=False)
+    return _git_read_result(lambda: run_git_command(workspace, ["show", parsed.git_ref]))
 
 
 __all__ = [

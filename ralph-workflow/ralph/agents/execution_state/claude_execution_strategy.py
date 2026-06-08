@@ -7,7 +7,11 @@ from typing import cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 
-from ._helpers import _classify_claude_json_object, _classify_claude_prefixed_line
+from ._helpers import (
+    _classify_claude_json_object,
+    _classify_claude_prefixed_line,
+    _progress_report_signal,
+)
 from .generic_execution_strategy import GenericExecutionStrategy
 
 
@@ -22,6 +26,10 @@ class ClaudeExecutionStrategy(GenericExecutionStrategy):
         prefixed_signal = _classify_claude_prefixed_line(stripped)
         if prefixed_signal is not None:
             return prefixed_signal
+
+        progress_signal = _progress_report_signal(line)
+        if progress_signal is not None:
+            return progress_signal
 
         try:
             parsed = cast("object", json.loads(stripped, strict=False))

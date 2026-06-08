@@ -503,25 +503,41 @@ class PtyLineReader:
         activity_signal = self._strategy.classify_activity_line(queued_line)
         if activity_signal is not None:
             self._last_activity_kind = activity_signal.kind
-            if activity_signal.kind == AgentActivityKind.TOOL_USE:
-                self._awaiting_post_tool_result_progress = False
-                raw = activity_signal.raw.strip()
-                self._last_tool_use_name = raw.split(":", 1)[-1].strip() if ":" in raw else raw
-            elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
-                self._awaiting_post_tool_result_progress = True
-                self._last_tool_result_at = self._clock.monotonic()
-                self._last_tool_result_excerpt = activity_signal.raw.strip()[:200]
-            elif activity_signal.kind == AgentActivityKind.OUTPUT_LINE:
-                self._awaiting_post_tool_result_progress = False
             self._last_meaningful[0] = activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
-            watchdog.record_activity()
-            # NEW BEHAVIOR: also record the post-tool-result
-            # activity so the watchdog's new direct-fire
-            # STALLED_AFTER_TOOL_RESULT path can detect the wedge
-            # in ~120s by default (the post-tool-result budget)
-            # rather than waiting for the full 300s idle timeout.
-            if activity_signal.kind == AgentActivityKind.TOOL_RESULT:
-                watchdog.record_tool_result_activity()
+            if activity_signal.kind == AgentActivityKind.ERROR_LINE:
+                # Repeated identical errors must not reset the idle baseline or
+                # the repetition streak's progress counter; they feed the
+                # repeated-error circuit breaker instead.
+                watchdog.record_error_activity(activity_signal.raw)
+            elif activity_signal.kind == AgentActivityKind.PROGRESS_REPORT:
+                # Repeated identical progress heartbeats feed the breaker; a
+                # changed status counts as genuine progress (handled inside).
+                watchdog.record_progress_report(activity_signal.raw)
+            elif activity_signal.kind == AgentActivityKind.LIFECYCLE:
+                # Cosmetic frames keep the agent off the idle deadline but do
+                # NOT count as forward progress for the circuit breaker.
+                watchdog.record_lifecycle_activity()
+            else:
+                if activity_signal.kind == AgentActivityKind.TOOL_USE:
+                    self._awaiting_post_tool_result_progress = False
+                    raw = activity_signal.raw.strip()
+                    self._last_tool_use_name = (
+                        raw.split(":", 1)[-1].strip() if ":" in raw else raw
+                    )
+                elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
+                    self._awaiting_post_tool_result_progress = True
+                    self._last_tool_result_at = self._clock.monotonic()
+                    self._last_tool_result_excerpt = activity_signal.raw.strip()[:200]
+                elif activity_signal.kind == AgentActivityKind.OUTPUT_LINE:
+                    self._awaiting_post_tool_result_progress = False
+                watchdog.record_activity()
+                # NEW BEHAVIOR: also record the post-tool-result
+                # activity so the watchdog's new direct-fire
+                # STALLED_AFTER_TOOL_RESULT path can detect the wedge
+                # in ~120s by default (the post-tool-result budget)
+                # rather than waiting for the full 300s idle timeout.
+                if activity_signal.kind == AgentActivityKind.TOOL_RESULT:
+                    watchdog.record_tool_result_activity()
         else:
             self._last_meaningful[0] = False
         self._strategy.observe_line(queued_line)

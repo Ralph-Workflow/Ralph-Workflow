@@ -17,11 +17,16 @@ from ralph.timeout_defaults import (
     DRAIN_WINDOW_SECONDS,
     IDLE_POLL_INTERVAL_SECONDS,
     IDLE_TIMEOUT_SECONDS,
+    MAX_SESSION_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
     POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
+    REPEATED_ERROR_CONSECUTIVE_THRESHOLD,
+    REPEATED_ERROR_WINDOW_COUNT,
+    REPEATED_ERROR_WINDOW_SECONDS,
+    SESSION_SOFT_WRAPUP_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
     WAITING_STATUS_INTERVAL_SECONDS,
 )
@@ -112,12 +117,48 @@ class GeneralConfig(RalphBaseModel):
         ),
     )
     agent_max_session_seconds: float | None = Field(
-        default=None,
+        default=MAX_SESSION_SECONDS,
         gt=0.0,
         description=(
-            "Absolute wall-clock ceiling in seconds for the entire agent session."
-            " Activity cannot reset this ceiling. Must be >= agent_idle_timeout_seconds"
-            " when set."
+            "Absolute wall-clock ceiling in seconds for the entire agent session"
+            " (hard force-cut). Activity cannot reset this ceiling. Must be >="
+            " agent_idle_timeout_seconds when set. Set to None to disable."
+        ),
+    )
+    agent_session_soft_wrapup_seconds: float | None = Field(
+        default=SESSION_SOFT_WRAPUP_SECONDS,
+        gt=0.0,
+        description=(
+            "Soft wrap-up threshold in seconds. Once a single invocation has run"
+            " this long, MCP tool results carry a 'finish up and call declare_complete"
+            " soon' banner so the agent winds down before the hard"
+            " agent_max_session_seconds force-cut. Must be < agent_max_session_seconds"
+            " when both are set. Set to None to disable the nag."
+        ),
+    )
+    agent_repeated_error_consecutive_threshold: int | None = Field(
+        default=REPEATED_ERROR_CONSECUTIVE_THRESHOLD,
+        gt=0,
+        description=(
+            "Repeated-error circuit breaker: abort after this many consecutive"
+            " identical error fingerprints with no forward progress. The breaker is"
+            " always active by default; raise this to loosen it."
+        ),
+    )
+    agent_repeated_error_window_count: int | None = Field(
+        default=REPEATED_ERROR_WINDOW_COUNT,
+        gt=0,
+        description=(
+            "Repeated-error circuit breaker: abort after this many occurrences of one"
+            " error fingerprint within agent_repeated_error_window_seconds. Raise to"
+            " loosen the window rule."
+        ),
+    )
+    agent_repeated_error_window_seconds: float | None = Field(
+        default=REPEATED_ERROR_WINDOW_SECONDS,
+        gt=0.0,
+        description=(
+            "Rolling window in seconds for agent_repeated_error_window_count."
         ),
     )
     agent_waiting_status_interval_seconds: float = Field(
@@ -202,6 +243,17 @@ class GeneralConfig(RalphBaseModel):
             msg = (
                 "agent_max_session_seconds must be >= agent_idle_timeout_seconds"
                 f" (got {self.agent_max_session_seconds} < {self.agent_idle_timeout_seconds})"
+            )
+            raise ValueError(msg)
+        if (
+            self.agent_session_soft_wrapup_seconds is not None
+            and self.agent_max_session_seconds is not None
+            and self.agent_session_soft_wrapup_seconds >= self.agent_max_session_seconds
+        ):
+            msg = (
+                "agent_session_soft_wrapup_seconds must be < agent_max_session_seconds"
+                f" (got {self.agent_session_soft_wrapup_seconds}"
+                f" >= {self.agent_max_session_seconds})"
             )
             raise ValueError(msg)
         if (

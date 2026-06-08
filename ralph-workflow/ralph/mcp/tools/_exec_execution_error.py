@@ -25,6 +25,10 @@ class ExecutionError(ToolError):
         # Workspace-limit fields
         workspace_bytes: int | None = None,
         max_workspace_bytes: int | None = None,
+        # Timeout fields
+        timed_out: bool = False,
+        timeout_ms: int | None = None,
+        suggested_timeout_ms: int | None = None,
         # Diagnostics summary line
         diagnostics: str | None = None,
     ) -> None:
@@ -36,10 +40,17 @@ class ExecutionError(ToolError):
         self.remaining_bytes = remaining_bytes
         self.workspace_bytes = workspace_bytes
         self.max_workspace_bytes = max_workspace_bytes
+        self.timed_out = timed_out
+        self.timeout_ms = timeout_ms
+        self.suggested_timeout_ms = suggested_timeout_ms
         self.diagnostics = diagnostics
 
     def __str__(self) -> str:
         """Render the appropriate structured template based on populated fields."""
+        # Timeout template
+        if self.timed_out:
+            return self._render_timeout()
+
         # Cache-full template
         if self.current_bytes is not None and self.cap_bytes is not None:
             return self._render_cache_full()
@@ -53,6 +64,27 @@ class ExecutionError(ToolError):
         if self.diagnostics:
             return f"{base}\n  Diagnostics: {self.diagnostics}"
         return base
+
+    def _render_timeout(self) -> str:
+        ms = self.timeout_ms if self.timeout_ms is not None else "?"
+        lines: list[str] = [f"Command timed out after {ms}ms (process killed)."]
+        lines.append(
+            "This is expected for long-running commands. Re-issuing the IDENTICAL call"
+            " will time out again."
+        )
+        if self.suggested_timeout_ms is not None:
+            lines.append(
+                f"To proceed: pass a larger timeout_ms (e.g. {self.suggested_timeout_ms})"
+                " or run a shorter command. Do not retry unchanged."
+            )
+        else:
+            lines.append(
+                "To proceed: pass a larger timeout_ms or run a shorter command."
+                " Do not retry unchanged."
+            )
+        if self.diagnostics:
+            lines.append(f"  Diagnostics: {self.diagnostics}")
+        return "\n".join(lines)
 
     def _render_cache_full(self) -> str:
         lines: list[str] = ["Error: Exec cache exceeds capacity after automatic reset"]

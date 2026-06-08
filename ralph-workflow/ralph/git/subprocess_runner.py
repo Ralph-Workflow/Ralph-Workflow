@@ -3,12 +3,27 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from ralph.git.git_run_result import GitRunResult
 from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
+
+#: Non-interactive git environment baseline. Ensures git never blocks on a
+#: credential prompt, a pager, or an editor — so a missing credential or network
+#: failure fails fast instead of hanging the process forever (a real agent-hang
+#: vector for any network git op). Merged into the parent environment for every
+#: ``run_git`` call; caller-supplied env still takes precedence.
+_GIT_BATCH_MODE_ENV: dict[str, str] = {
+    "GIT_TERMINAL_PROMPT": "0",
+    "GCM_INTERACTIVE": "Never",
+    "GIT_EDITOR": ":",
+    "GIT_SEQUENCE_EDITOR": ":",
+    "GIT_PAGER": "cat",
+}
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -54,11 +69,23 @@ def run_git(
     phase = effective_options.phase
     effective_label = f"phase:{phase}:git:{label}" if phase is not None else label
     cmd = ("git", *args)
+    # Fail closed: bound every git call with a default timeout when the caller
+    # gives none, and always run git non-interactively so it cannot hang on a
+    # credential/editor/pager prompt.
+    effective_timeout = (
+        effective_options.timeout
+        if effective_options.timeout is not None
+        else GIT_SUBPROCESS_TIMEOUT_SECONDS
+    )
+    spawn_env = dict(os.environ)
+    spawn_env.update(_GIT_BATCH_MODE_ENV)
+    if effective_options.env is not None:
+        spawn_env.update(effective_options.env)
     proc = get_process_manager().spawn(
         cmd,
         SpawnOptions(
             cwd=str(cwd) if cwd else None,
-            env=dict(effective_options.env) if effective_options.env is not None else None,
+            env=spawn_env,
             stdout=subprocess.PIPE if effective_options.capture_output else None,
             stderr=subprocess.PIPE if effective_options.capture_output else None,
             label=effective_label,
@@ -67,7 +94,7 @@ def run_git(
     )
     try:
         raw_stdout, raw_stderr = proc.communicate_and_cleanup(
-            timeout=effective_options.timeout,
+            timeout=effective_timeout,
             cleanup_grace_period_s=0.0,
         )
         with contextlib.suppress(Exception):

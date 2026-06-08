@@ -35,8 +35,36 @@ POST_TOOL_RESULT_PROGRESSION_SECONDS: float | None = 120.0
 #: Default hard ceiling on cumulative WAITING_ON_CHILD time.
 MAX_WAITING_ON_CHILD_SECONDS: float = 1800.0
 
-#: Default absolute session wall-clock ceiling. None means disabled.
-MAX_SESSION_SECONDS: float | None = None
+#: Default absolute session wall-clock ceiling (hard force-cut). None disables it.
+#: Set to 55 minutes so a runaway single invocation cannot run unbounded (the
+#: incident that motivated this ran ~5 hours). The soft wrap-up nag fires earlier
+#: (see ``SESSION_SOFT_WRAPUP_SECONDS``), leaving a margin under the nominal 1h
+#: budget. Per-invocation and config-overridable; recovery continues after a cut.
+MAX_SESSION_SECONDS: float | None = 3300.0
+
+#: Soft wrap-up threshold: once a single invocation has run this long, MCP tool
+#: results carry a "finish up / declare_complete soon" banner so the agent winds
+#: down before the hard ``MAX_SESSION_SECONDS`` force-cut. None disables the nag.
+SESSION_SOFT_WRAPUP_SECONDS: float | None = 3000.0
+
+#: Repeated-error circuit breaker: fire after this many consecutive identical
+#: error fingerprints with no intervening forward progress. None disables the rule.
+REPEATED_ERROR_CONSECUTIVE_THRESHOLD: int | None = 5
+
+#: Repeated-error circuit breaker: fire after this many occurrences of one error
+#: fingerprint within ``REPEATED_ERROR_WINDOW_SECONDS`` (catches loops that
+#: interleave cosmetic output). None disables the rule.
+REPEATED_ERROR_WINDOW_COUNT: int | None = 8
+
+#: Rolling window for ``REPEATED_ERROR_WINDOW_COUNT``. None disables the window rule.
+REPEATED_ERROR_WINDOW_SECONDS: float | None = 600.0
+
+#: Default bound for git subprocesses invoked via ``ralph.git.subprocess_runner.run_git``
+#: when a caller does not specify an explicit timeout. Git is run in non-interactive
+#: (batch) mode so a network/credential prompt fails fast rather than hanging; this
+#: ceiling is the backstop for a slow-but-non-blocking op (e.g. status over large
+#: vendor submodules). The process tree is killed on expiry.
+GIT_SUBPROCESS_TIMEOUT_SECONDS: float = 120.0
 
 #: Default poll interval for the read loop.
 IDLE_POLL_INTERVAL_SECONDS: float = 0.05

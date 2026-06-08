@@ -16,6 +16,8 @@ from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.mcp.protocol.session import AgentSession
     from ralph.mcp.server._json_rpc_request import JsonRpcRequest
     from ralph.mcp.tools.bridge import ToolBridge
@@ -128,12 +130,17 @@ class McpServer:
         registry: ToolBridge,
         *,
         expose_mcp_aliases: bool = True,
+        wrapup_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._session = session
         self._workspace = workspace
         self._registry = registry
         self._client_capabilities: set[str] | None = None
         self._expose_mcp_aliases = expose_mcp_aliases
+        # Optional graduated-session nag: returns a wrap-up banner once the
+        # invocation passes the soft threshold, else None. Appended to every
+        # tool result so the agent winds down before the hard force-cut.
+        self._wrapup_provider = wrapup_provider
 
     def handle_request(
         self, request: JsonRpcRequest, state: ServerState
@@ -405,10 +412,25 @@ class McpServer:
         to_dict = cast("_ToDict | None", getattr(raw_result, "to_dict", None))
         payload_source = to_dict() if callable(to_dict) else raw_result
         payload = self._build_tools_call_payload(payload_source)
+        self._maybe_append_wrapup_notice(payload)
         return (
             JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
             ServerState.RUNNING,
         )
+
+    def _maybe_append_wrapup_notice(self, payload: dict[str, object]) -> None:
+        """Append the graduated-session wrap-up banner to a tool result, if due."""
+        if self._wrapup_provider is None:
+            return
+        notice = self._wrapup_provider()
+        if not notice:
+            return
+        content = payload.get("content")
+        block = {"type": "text", "text": notice}
+        if isinstance(content, list):
+            cast("list[object]", content).append(block)
+        else:
+            payload["content"] = [block]
 
     def _build_tools_call_payload(self, payload_source: object) -> dict[str, object]:
         if isinstance(payload_source, dict):

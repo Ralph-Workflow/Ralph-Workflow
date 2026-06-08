@@ -40,8 +40,10 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, create_model
 
 from ralph import __version__
+from ralph.agents.system_clock import SystemClock
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
+from ralph.mcp.protocol.env import MAX_SESSION_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server._fallback_standalone_server import _FallbackStandaloneServer
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
@@ -53,6 +55,7 @@ from ralph.mcp.server._runtime_constants import (
     DEFAULT_TRANSPORT,
 )
 from ralph.mcp.server._server_state import ServerState
+from ralph.mcp.server._session_wrapup import SessionWrapupBudget
 from ralph.mcp.server._standalone_http_server import _StandaloneHttpServer
 from ralph.mcp.server.runtime_session import FileBackedSession, session_from_env
 from ralph.mcp.tools.bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
@@ -65,6 +68,7 @@ from ralph.mcp.upstream.config import (
     load_upstream_tool_catalog,
 )
 from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECONDS
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -325,7 +329,38 @@ def build_standalone_http_server(
         )
     else:
         logger.info("MCP server started with {n} built-in tools", n=n_builtin)
-    return _StandaloneHttpServer(host, port, McpServer(effective_session, workspace, registry))
+    server = McpServer(
+        effective_session,
+        workspace,
+        registry,
+        wrapup_provider=_session_wrapup_provider(),
+    )
+    return _StandaloneHttpServer(host, port, server)
+
+
+def _env_float(name: str, default: float | None) -> float | None:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _session_wrapup_provider() -> Callable[[], str | None]:
+    """Build the graduated-session wrap-up nag provider from env (or defaults).
+
+    The standalone MCP server starts per agent invocation, so process-start is a
+    sound proxy for invocation-start. ``RALPH_SESSION_SOFT_WRAPUP_SECONDS`` and
+    ``RALPH_MAX_SESSION_SECONDS`` override the built-in graduated defaults.
+    """
+    budget = SessionWrapupBudget(
+        SystemClock(),
+        soft_seconds=_env_float(SESSION_SOFT_WRAPUP_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS),
+        hard_seconds=_env_float(MAX_SESSION_SECONDS_ENV, MAX_SESSION_SECONDS),
+    )
+    return budget.notice
 
 
 def _all_capability_values() -> set[str]:
@@ -431,9 +466,15 @@ def build_fastmcp_server(
         mcp_config=mcp_cfg,
     )
     if fastmcp_cls is None or tool_cls is None:
+        fallback_server = McpServer(
+            effective_session,
+            workspace,
+            registry,
+            wrapup_provider=_session_wrapup_provider(),
+        )
         return cast(
             "FastMcpServerLike",
-            FallbackStandaloneServer(host, port, McpServer(effective_session, workspace, registry)),
+            FallbackStandaloneServer(host, port, fallback_server),
         )
     tools = cast(
         "list[ToolClass]",

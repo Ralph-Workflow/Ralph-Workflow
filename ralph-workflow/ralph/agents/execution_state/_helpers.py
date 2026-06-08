@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.mcp.tools.coordination import PROGRESS_PIPELINE_MARKER
 from ralph.process.child_liveness import classify_child_snapshot
 
 from .agent_execution_state import AgentExecutionState
@@ -37,6 +39,101 @@ def _non_blank_output_signal(line: str) -> AgentActivitySignal | None:
     if not line.strip():
         return None
     return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=line)
+
+
+def _error_message_from_error_field(obj: dict[str, object]) -> str:
+    """Extract a stable error message from a top-level ``error`` event object.
+
+    Handles ``error`` as a dict (``error.message``/``error.name``), a bare string
+    (``error`` is the message), or a top-level ``message`` fallback.
+    """
+    error_obj = obj.get("error")
+    if isinstance(error_obj, dict):
+        inner = cast("dict[str, object]", error_obj)
+        return str(inner.get("message", inner.get("name", "unknown error")))
+    if isinstance(error_obj, str) and error_obj:
+        return error_obj
+    return str(obj.get("message", "unknown error"))
+
+
+def _tool_state_error_message(obj: dict[str, object]) -> str | None:
+    """Extract the error message from an opencode tool event whose state errored.
+
+    An MCP tool-call failure surfaces NOT as a top-level ``{"type":"error"}`` line
+    but as a ``tool_use``/``tool_result`` line whose ``part.state.status`` is
+    ``"error"`` (mirrors ``OpenCodeParser._parse_tool_use``). Returns the error
+    string, or None when the line is not a tool-state error.
+    """
+    part = obj.get("part")
+    if not isinstance(part, dict):
+        return None
+    state = cast("dict[str, object]", part).get("state")
+    if not isinstance(state, dict):
+        return None
+    state_dict = cast("dict[str, object]", state)
+    if str(state_dict.get("status", "")) != "error":
+        return None
+    return str(state_dict.get("error", "tool error"))
+
+
+def _error_output_signal(line: str) -> AgentActivitySignal | None:
+    """Return an ERROR_LINE signal when the line is a JSON error event.
+
+    Covers BOTH shapes an opencode error can take so the repeated-error circuit
+    breaker sees the retry storm regardless of wire form:
+
+    - a top-level ``{"type":"error", ...}`` event, and
+    - a ``tool_use``/``tool_result`` event whose ``part.state.status == "error"``
+      (how an MCP tool-call failure such as ``MCP error -32001: Request timed
+      out`` actually surfaces).
+
+    The signal's ``raw`` carries the extracted error message (not the full JSON
+    envelope) so fingerprinting is stable across occurrences. Returns None for
+    non-error or non-JSON lines so callers fall through to normal classification.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+    try:
+        parsed = cast("object", json.loads(stripped, strict=False))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    obj = cast("dict[str, object]", parsed)
+    event_type = str(obj.get("type", ""))
+    if event_type == "error":
+        return AgentActivitySignal(
+            AgentActivityKind.ERROR_LINE, raw=_error_message_from_error_field(obj)
+        )
+    if event_type in {"tool_use", "tool_result"}:
+        tool_error = _tool_state_error_message(obj)
+        if tool_error is not None:
+            return AgentActivitySignal(AgentActivityKind.ERROR_LINE, raw=tool_error)
+    return None
+
+
+_PROGRESS_STATUS = re.compile(r"status='([^']*)'")
+_PROGRESS_NOTE = re.compile(r"note='([^']*)'")
+
+
+def _progress_report_signal(line: str) -> AgentActivitySignal | None:
+    """Return a PROGRESS_REPORT signal when the line echoes a report_progress result.
+
+    Detected by the stable ``PROGRESS_PIPELINE_MARKER`` the coordination tool
+    appends. The signal's ``raw`` carries only ``status``/``note`` (not the
+    per-call timestamp) so the watchdog can tell a repeated cosmetic heartbeat
+    from a genuinely changed status. Returns None for non-progress lines.
+    """
+    if PROGRESS_PIPELINE_MARKER not in line:
+        return None
+    status_match = _PROGRESS_STATUS.search(line)
+    note_match = _PROGRESS_NOTE.search(line)
+    status = status_match.group(1) if status_match else ""
+    note = note_match.group(1) if note_match else ""
+    return AgentActivitySignal(
+        AgentActivityKind.PROGRESS_REPORT, raw=f"status={status} note={note}"
+    )
 
 
 _OPENCODE_CHILD_SPAWN_TYPES = frozenset({"child_started", "child.spawned"})

@@ -14,6 +14,9 @@ from ralph.timeout_defaults import (
     PARENT_EXIT_GRACE_SECONDS,
     POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
+    REPEATED_ERROR_CONSECUTIVE_THRESHOLD,
+    REPEATED_ERROR_WINDOW_COUNT,
+    REPEATED_ERROR_WINDOW_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
     WAITING_STATUS_INTERVAL_SECONDS,
 )
@@ -117,12 +120,22 @@ class TimeoutPolicy:
     post_tool_result_progression_seconds: float | None = (
         POST_TOOL_RESULT_PROGRESSION_SECONDS
     )
+    # Repeated-error circuit breaker thresholds. The watchdog fires
+    # REPEATED_ERROR_LOOP when an agent re-emits the same error fingerprint
+    # either ``repeated_error_consecutive_threshold`` times in a row with no
+    # intervening forward progress, or ``repeated_error_window_count`` times
+    # within ``repeated_error_window_seconds``. Each rule is independently
+    # disablable by setting its threshold to None.
+    repeated_error_consecutive_threshold: int | None = REPEATED_ERROR_CONSECUTIVE_THRESHOLD
+    repeated_error_window_count: int | None = REPEATED_ERROR_WINDOW_COUNT
+    repeated_error_window_seconds: float | None = REPEATED_ERROR_WINDOW_SECONDS
 
     def __post_init__(self) -> None:
         self._validate_idle_fields()
         self._validate_session_and_poll_fields()
         self._validate_waiting_status_fields()
         self._validate_post_tool_result_progression()
+        self._validate_repeated_error_fields()
 
     def _validate_idle_fields(self) -> None:
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
@@ -195,4 +208,24 @@ class TimeoutPolicy:
             return
         if not self.post_tool_result_progression_seconds > 0:
             msg = "post_tool_result_progression_seconds must be positive when set"
+            raise ValueError(msg)
+
+    def _validate_repeated_error_fields(self) -> None:
+        if (
+            self.repeated_error_consecutive_threshold is not None
+            and self.repeated_error_consecutive_threshold <= 0
+        ):
+            msg = "repeated_error_consecutive_threshold must be positive when set"
+            raise ValueError(msg)
+        if (
+            self.repeated_error_window_count is not None
+            and self.repeated_error_window_count <= 0
+        ):
+            msg = "repeated_error_window_count must be positive when set"
+            raise ValueError(msg)
+        if (
+            self.repeated_error_window_seconds is not None
+            and self.repeated_error_window_seconds <= 0
+        ):
+            msg = "repeated_error_window_seconds must be positive when set"
             raise ValueError(msg)

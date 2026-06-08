@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ._helpers import _non_blank_output_signal
+from ._helpers import (
+    _error_output_signal,
+    _non_blank_output_signal,
+    _progress_report_signal,
+)
 from .agent_execution_state import AgentExecutionState
 
 if TYPE_CHECKING:
@@ -31,8 +35,16 @@ class GenericExecutionStrategy:
 
         Generic transports treat any non-blank line as activity while rejecting
         whitespace-only heartbeats so a process cannot evade the idle deadline
-        without emitting meaningful provider output.
+        without emitting meaningful provider output. JSON error events are
+        classified as ERROR_LINE so the repeated-error circuit breaker can detect
+        a wedged retry loop.
         """
+        progress_signal = _progress_report_signal(line)
+        if progress_signal is not None:
+            return progress_signal
+        error_signal = _error_output_signal(line)
+        if error_signal is not None:
+            return error_signal
         return _non_blank_output_signal(line)
 
     def classify_quiet(
