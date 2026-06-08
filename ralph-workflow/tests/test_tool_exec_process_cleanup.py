@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import itertools
 import os
-from contextlib import nullcontext
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -47,10 +46,7 @@ class TestExecProcessCleanupUnit:
             ["-c", "pass"],
             tmp_path,
             5_000,
-            deps=ExecRunDeps(
-                process_manager=pm,
-                overlay_factory=lambda _root: nullcontext(tmp_path),
-            ),
+            deps=ExecRunDeps(process_manager=pm),
         )
 
         assert live_child._killed
@@ -74,10 +70,7 @@ class TestExecProcessCleanupUnit:
             ["-c", "pass"],
             tmp_path,
             5_000,
-            deps=ExecRunDeps(
-                process_manager=pm,
-                overlay_factory=lambda _root: nullcontext(tmp_path),
-            ),
+            deps=ExecRunDeps(process_manager=pm),
         )
 
         assert grandchild._killed, "Windows BFS must recursively kill grandchildren"

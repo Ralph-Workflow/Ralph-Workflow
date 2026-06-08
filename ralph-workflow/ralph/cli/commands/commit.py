@@ -64,7 +64,7 @@ from ralph.mcp.server.lifecycle import (
 )
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
-from ralph.phases.required_artifacts import RequiredArtifact
+from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.prompts.commit import (
@@ -76,7 +76,7 @@ from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.prompts.payload_refs import sanitize_surrogates as _sanitize_surrogates
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
-from ralph.recovery.failure_classifier import FailureClassifier
+from ralph.recovery.failure_classifier import FailureClassifier, is_unsubmitted_artifact_failure
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -577,6 +577,7 @@ def _generate_commit_message_with_agent(
                 _summarized_retry_prompt(
                     _read_retry_prompt_text(prompt_file),
                     latest_attempt.parsed_output,
+                    agent,
                 ),
             )
             summary_retry = _run_commit_agent_attempt_with_recovery(
@@ -787,7 +788,10 @@ def _finalize_commit_attempt(
 
 
 def _is_missing_commit_artifact_failure(detail: str) -> bool:
-    return _MISSING_COMMIT_ARTIFACT_REASON in detail
+    # An empty / no-tool-call exit submitted nothing, so it is the same
+    # "unsubmitted artifact" condition the pipeline recovers from — route it to
+    # the shared detector instead of only matching the clean-exit string.
+    return _MISSING_COMMIT_ARTIFACT_REASON in detail or is_unsubmitted_artifact_failure((detail,))
 
 
 def _recover_commit_message_from_output(
@@ -851,44 +855,29 @@ def _extract_commit_payload_from_artifact_wrapper(
         return None
 
 
-def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str]) -> str:
-    output_lines = "\n".join(parsed_output[-12:]) if parsed_output else "(no output captured)"
-    example_content: dict[str, str] = {
-        "type": "commit",
-        "subject": "type(scope): description",
-    }
+def _summarized_retry_prompt(
+    base_prompt: str, parsed_output: list[str], agent: AgentConfig
+) -> str:
+    """Commit's resubmit prompt — built by the SAME `build_retry_hint` the pipeline
+    phase gates use, so the artifact-missing retry guidance cannot drift between
+    the commit command and the pipeline. Only the commit-specific example payload
+    and submit-tool name are supplied here.
+    """
+    required = _commit_required_artifact()
     example_arguments: dict[str, str] = {
-        "artifact_type": "commit_message",
-        "content": json.dumps(example_content),
+        "artifact_type": required.artifact_type,
+        "content": json.dumps({"type": "commit", "subject": "type(scope): description"}),
     }
-    example_payload = json.dumps(example_arguments)
-    return (
-        f"{base_prompt}\n\n"
-        "RETRY CONTEXT:\n"
-        "Previous attempt failed to submit the required commit_message artifact.\n"
-        "Treat the prior conversational output as a failure, not as permission "
-        "to ask the user a question.\n"
-        "Do not repeat the mistake. Submit the artifact now.\n"
-        'Call the submit-artifact MCP tool with artifact_type="commit_message" '
-        "and put the commit payload in the content field as a JSON string.\n"
-        "Example MCP arguments:\n"
-        f"{example_payload}\n"
-        "If the submit-artifact MCP tool is still unavailable, write the raw commit payload JSON "
-        "to .agent/tmp/commit_message.json instead.\n"
-        "Write only the inner payload object, such as "
-        '{"type":"commit","subject":"fix(scope): message"}, without artifact metadata.\n'
-        "Do not use content_path for this retry.\n"
-        "Do not use Bash, python, tee, printf, shell redirection, or any file-writing path "
-        "other than writing .agent/tmp/commit_message.json directly.\n"
-        "Message quality mistakes to avoid:\n"
-        "- Bad: chore: update files -> Good: feat(mcp): add structured commit retries\n"
-        "- Bad: fix: stuff -> Good: fix(parser): preserve prefixed transcript lines\n"
-        "- Use chore only for repo maintenance, not meaningful code changes.\n"
-        "- Omit the scope when the change spans multiple subsystems.\n"
-        "- Include a body when the why is not obvious from the subject alone.\n"
-        "Previous output summary:\n"
-        f"{output_lines}\n"
+    tool_names = _submit_artifact_tool_names_for_transport(agent.transport)
+    hint = build_retry_hint(
+        required.phase,
+        _MISSING_COMMIT_ARTIFACT_REASON,
+        registry={required.phase: required},
+        prior_output=parsed_output,
+        submit_tool_name=tool_names[0] if tool_names else None,
+        example_payload=json.dumps(example_arguments),
     )
+    return f"{base_prompt}\n\n{hint}"
 
 
 def _read_retry_prompt_text(prompt_file: str) -> str:

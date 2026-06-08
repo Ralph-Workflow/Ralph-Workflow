@@ -114,6 +114,14 @@ class IdleWatchdog:
         """Cumulative seconds spent in WAITING_ON_CHILD state across all runs."""
         return self._cumulative_waiting_on_child_seconds
 
+    def idle_elapsed_seconds(self, now: float) -> float:
+        """Seconds since the last recorded activity (the idle duration).
+
+        Public accessor so callers (e.g. the process-reader fire log) can report
+        a meaningful idle-elapsed value instead of the raw monotonic clock.
+        """
+        return now - self._last_activity
+
     def record_activity(self) -> None:
         """Record that the agent produced output; resets idle/drain/child state.
 

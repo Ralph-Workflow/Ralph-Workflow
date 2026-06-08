@@ -1,7 +1,7 @@
 """MCP exec tool handler.
 
-Ports the Rust MCP `exec` tool so agents can execute bounded subprocesses
-inside a resettable private sandbox slot after capability checks and policy filtering.
+Executes bounded subprocesses directly in the workspace after capability checks
+and blacklist policy filtering.
 """
 
 from __future__ import annotations
@@ -11,9 +11,8 @@ import os
 import shlex
 import signal
 import subprocess
-import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
@@ -26,13 +25,6 @@ from ralph.mcp.tools.coordination import (
     ToolContent,
     ToolResult,
     require_capability,
-)
-from ralph.mcp.tools.exec_overlay import _get_workspace_exec_base
-from ralph.mcp.tools.exec_sandbox import (
-    ExecSandboxManager,
-    _compute_sandbox_limits,
-    _compute_workspace_size_bytes,
-    _workspace_key,
 )
 from ralph.process.manager import SpawnOptions, get_process_manager
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
@@ -62,7 +54,6 @@ _BLACKLIST_DESCRIPTIONS = {
     "privilege_escalation": "privilege escalation",
     "destructive_system": "destructive system operation",
     "network_exfiltration": "network/exfiltration",
-    "package_manager": "package manager",
     "container_escape": "container/VM escape",
     "multi_file_operation": "multi-file operation",
 }
@@ -74,7 +65,6 @@ _DESTRUCTIVE_SYSTEM_COMMANDS = {"shutdown", "reboot", "halt", "poweroff", "killa
 _NETWORK_TUNNEL_COMMANDS = {"nc", "ncat", "netcat", "socat"}
 _REMOTE_NETWORK_COMMANDS = {"ssh", "scp", "rsync"}
 _CONTAINER_COMMANDS = {"docker", "podman", "chroot", "nsenter", "unshare"}
-_PACKAGE_MANAGERS = {"apt", "yum", "dnf", "pacman", "brew"}
 
 
 @runtime_checkable
@@ -174,7 +164,6 @@ def check_command(command: str, args: list[str]) -> str | None:
         check_privilege_escalation,
         check_destructive_system,
         check_network_exfiltration,
-        check_package_manager,
         check_container_escape,
         check_multi_file_operation,
     ):
@@ -291,47 +280,6 @@ def _is_external_url(arg: str) -> bool:
     return lower.startswith("http://") or lower.startswith("https://") or "://" in lower
 
 
-def check_package_manager(command: str, args: list[str]) -> str | None:
-    """Return a denial reason if the command invokes a package manager install."""
-    key = _command_key(command)
-    args_lower = _lower_args(args)
-    desc = _description("package_manager")
-
-    if key in _PACKAGE_MANAGERS and any(
-        flag in args_lower for flag in ("install", "update", "upgrade", "remove", "-s", "--sync")
-    ):
-        return (
-            f"Command '{command}' with install/update is blacklisted: {desc} "
-            "operations require Ralph's approval"
-        )
-
-    if (
-        key in {"pip", "pip3"}
-        and "install" in args_lower
-        and any(flag in args_lower for flag in ("--user", "-g", "--global"))
-    ):
-        return (
-            f"Command '{key} install --user/-g' is blacklisted: {desc} operations "
-            "require Ralph's approval"
-        )
-
-    if key == "npm" and "install" in args_lower and "-g" in args_lower:
-        return (
-            f"Command 'npm install -g' is blacklisted: {desc} operations require Ralph's approval"
-        )
-
-    if key == "cargo" and args_lower and args_lower[0] == "install":
-        return f"Command 'cargo install' is blacklisted: {desc} operations require Ralph's approval"
-
-    if key == "gem" and "install" in args_lower and "--user-install" not in args_lower:
-        return (
-            "Command 'gem install' (global) is blacklisted: "
-            f"{desc} operations require Ralph's approval"
-        )
-
-    return None
-
-
 def check_container_escape(command: str, _args: list[str]) -> str | None:
     """Return a denial reason if the command could escape container isolation."""
     key = _command_key(command)
@@ -435,31 +383,9 @@ def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) 
     return cwd_provider()
 
 
-def _rewrite_env_path(value: str, source_root: str, overlay_root: str, os_name: str) -> str:
-    if not source_root:
-        return value
-    if os_name != "nt":
-        return value.replace(source_root, overlay_root)
-
-    value_lower = value.lower()
-    source_root_lower = source_root.lower()
-    rewritten = value
-    while True:
-        idx = value_lower.find(source_root_lower)
-        if idx < 0:
-            return rewritten
-        rewritten = rewritten[:idx] + overlay_root + rewritten[idx + len(source_root) :]
-        value_lower = rewritten.lower()
-
-
-def _child_process_env(workspace_root: Path, cwd: Path) -> dict[str, str]:
-    source_root = str(workspace_root)
-    overlay_root = str(cwd)
-    env = {
-        key: _rewrite_env_path(value, source_root, overlay_root, os.name)
-        for key, value in os.environ.items()
-    }
-    env["PWD"] = overlay_root
+def _child_env(cwd: Path) -> dict[str, str]:
+    env = dict(os.environ)
+    env["PWD"] = str(cwd)
     env.pop("OLDPWD", None)
     return env
 
@@ -499,28 +425,6 @@ def _cleanup_exec_orphans(pgid: int, root_pid: int, psutil_mod: _PsutilModuleLik
         _kill_orphan_tree_windows(root_pid, psutil_mod)
 
 
-class _SandboxManagerCache:
-    instances: ClassVar[dict[str, ExecSandboxManager]] = {}
-    lock: ClassVar[threading.Lock] = threading.Lock()
-
-
-def _get_sandbox_manager(workspace_root: Path) -> ExecSandboxManager:
-    key = _workspace_key(workspace_root)
-    if key not in _SandboxManagerCache.instances:
-        with _SandboxManagerCache.lock:
-            if key not in _SandboxManagerCache.instances:
-                sandbox_base = _get_workspace_exec_base(workspace_root)
-                workspace_size = _compute_workspace_size_bytes(workspace_root)
-                total, pool, ws_safety = _compute_sandbox_limits(workspace_size)
-                _SandboxManagerCache.instances[key] = ExecSandboxManager(
-                    base_dir=sandbox_base,
-                    max_total_bytes=total,
-                    max_pool_bytes=pool,
-                    max_workspace_bytes=ws_safety,
-                )
-    return _SandboxManagerCache.instances[key]
-
-
 def run_command(
     command: str,
     args: list[str],
@@ -528,59 +432,38 @@ def run_command(
     timeout_ms: int,
     deps: ExecRunDeps | None = None,
 ) -> _CompletedProcessAdapter:
-    """Execute a subprocess in a private resettable sandbox rooted at the workspace.
-
-    The *timeout_ms* budget is reserved exclusively for the subprocess execution.
-    It starts counting only after all overlay setup (capacity-gated recovery,
-    rsync, workspace mirroring) is complete.  The overlay operations carry their
-    own internal timeouts (rsync: 120 s, file copy: 10 s) and are NOT charged
-    against *timeout_ms*.
-    """
+    """Execute a subprocess directly in the workspace root after blacklist checks."""
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
     cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
-    overlay_factory = resolved_deps.overlay_factory or _get_sandbox_manager(cwd).acquire
+    timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
 
-    # Enter the overlay context: capacity-gated recovery, round-robin slot
-    # selection, _reset() (rsync / _sync_dir), _ensure_git_isolation().
-    # None of that wall-clock time is charged against the subprocess timeout.
-    with overlay_factory(cwd) as overlay_cwd:
-        # The timeout clock for the subprocess starts here — after every
-        # overlay operation has already completed.  The caller's full
-        # *timeout_ms* budget is available for the subprocess alone.
-        timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
-
-        try:
-            if resolved_deps.runner is not None:
-                return resolved_deps.runner(
-                    [command, *args], overlay_cwd, timeout_seconds
-                )
-            return _run_subprocess(
-                [command, *args],
-                overlay_cwd,
-                timeout_seconds,
-                cwd,
-                resolved_deps.process_manager,
-                on_output_chunk=resolved_deps.on_output_chunk,
-            )
-        except FileNotFoundError as exc:
-            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
-        except PermissionError as exc:
-            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise ExecutionError(
-                f"Failed to execute '{command}': timed out after {timeout_ms}ms "
-                "(subprocess execution time only — overlay / rsync excluded)"
-            ) from exc
-        except OSError as exc:
-            raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+    try:
+        if resolved_deps.runner is not None:
+            return resolved_deps.runner([command, *args], cwd, timeout_seconds)
+        return _run_subprocess(
+            [command, *args],
+            cwd,
+            timeout_seconds,
+            resolved_deps.process_manager,
+            on_output_chunk=resolved_deps.on_output_chunk,
+        )
+    except FileNotFoundError as exc:
+        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+    except PermissionError as exc:
+        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ExecutionError(
+            f"Failed to execute '{command}': timed out after {timeout_ms}ms"
+        ) from exc
+    except OSError as exc:
+        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
 
 
 def _run_subprocess(
     command: list[str],
     cwd: Path,
     timeout_seconds: float | None,
-    workspace_root: Path,
     pm: ProcessManager | None = None,
     on_output_chunk: Callable[[str], None] | None = None,
 ) -> _CompletedProcessAdapter:
@@ -589,7 +472,7 @@ def _run_subprocess(
         command,
         SpawnOptions(
             cwd=str(cwd),
-            env=_child_process_env(workspace_root, cwd),
+            env=_child_env(cwd),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             label=f"mcp-exec:{command[0]}",
@@ -698,7 +581,6 @@ def _build_effective_deps(
     return ExecRunDeps(
         runner=deps.runner,
         cwd_provider=deps.cwd_provider,
-        overlay_factory=deps.overlay_factory,
         process_manager=deps.process_manager,
         on_output_chunk=composed_cb,
     )
@@ -710,7 +592,7 @@ def handle_exec_command(
     params: Mapping[str, object],
     deps: ExecRunDeps | None = None,
 ) -> ToolResult:
-    """Execute a bounded subprocess inside a private resettable workspace sandbox."""
+    """Execute a bounded subprocess in the workspace after blacklist checks."""
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
     apply_exec_policy(parsed.command, parsed.args)

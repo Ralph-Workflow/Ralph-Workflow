@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import inspect
-import json
-import os
 import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -15,7 +13,6 @@ from typer.testing import CliRunner
 
 import ralph.cli.commands.cleanup
 from ralph.cli.commands.cleanup import cleanup
-from ralph.mcp.tools import exec_sandbox
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -23,14 +20,6 @@ if TYPE_CHECKING:
 _app = typer.Typer()
 _app.command()(cleanup)
 runner = CliRunner()
-
-
-@pytest.fixture(autouse=True)
-def _redirect_exec_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(
-        "ralph.cli.commands.cleanup._get_private_exec_base",
-        lambda: tmp_path / ".cache" / "ralph" / "exec",
-    )
 
 
 def test_cleanup_removes_worker_namespaces(tmp_path: Path) -> None:
@@ -109,41 +98,8 @@ def test_cleanup_force_removes_nested_contents(tmp_path: Path) -> None:
     assert "Removed 1 stale worker namespace" in result.output
 
 
-def test_cleanup_force_prunes_global_exec_cache(tmp_path: Path) -> None:
-    exec_cache_base = tmp_path / ".cache" / "ralph" / "exec"
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    key = exec_sandbox._workspace_key(workspace)
-    slot_root = exec_cache_base / key / f"slot-{key}-0001"
-    (slot_root / "ws").mkdir(parents=True)
-    (slot_root / ".ralph-sandbox-ready").write_text('{"ready": true}', encoding="utf-8")
-    current_pid, current_started_at = exec_sandbox._current_process_identity()
-    payload: dict[str, int | float] = {"pid": current_pid}
-    if current_started_at is not None:
-        payload["started_at"] = current_started_at
-    (slot_root / ".ralph-exec-owner.json").write_text(
-        json.dumps(payload), encoding="utf-8"
-    )
-    old_time = 1.0
-    os.utime(slot_root, (old_time, old_time))
-    os.utime(slot_root / "ws", (old_time, old_time))
-    os.utime(slot_root / ".ralph-sandbox-ready", (old_time, old_time))
-    os.utime(slot_root / ".ralph-exec-owner.json", (old_time, old_time))
-
-    with patch("ralph.cli.commands.cleanup.find_repo_root", return_value=tmp_path):
-        result = runner.invoke(_app, ["--force"])
-
-    assert result.exit_code == 0, result.output
-    assert not slot_root.exists()
-    assert "Pruned stale exec cache entries" in result.output
-
-
 def test_cleanup_does_not_touch_worktrees_directory(tmp_path: Path) -> None:
-    """Regression guard: cleanup must never remove a sibling .worktrees/ directory.
-
-    v1 does not use git per-worker checkouts, so cleanup must only operate on
-    .agent/workers/ and must leave any other directory untouched.
-    """
+    """Regression guard: cleanup must never remove a sibling .worktrees/ directory."""
     worktrees_dir = tmp_path / ".worktrees" / "unit-a"
     worktrees_dir.mkdir(parents=True)
 
@@ -174,21 +130,12 @@ class TestCleanupNeverInvokesGit:
     """Regression guardrails: cleanup must never shell out to git."""
 
     def test_cleanup_does_not_shell_out_to_git(self, tmp_path: Path, monkeypatch: object) -> None:
-        """cleanup --force must remove worker dirs without invoking any git process.
-
-        Monkeypatches subprocess entry points and asserts only du (disk-usage)
-        subprocess calls are allowed — no git or other subprocess invocations.
-        """
+        """cleanup --force must remove worker dirs without invoking any subprocess."""
 
         invocations: list[tuple[object, ...]] = []
 
         def _record(*args: object, **kwargs: object) -> object:
             invocations.append(args)
-            cmd_args = args[0] if isinstance(args[0], list) else []
-            if cmd_args and cmd_args[0] in ("du", "/usr/bin/du"):
-                return subprocess.CompletedProcess(
-                    args=cmd_args, returncode=0, stdout="0\tdir\n"
-                )
             raise AssertionError(
                 f"cleanup must not invoke subprocess: args={args!r} kwargs={kwargs!r}"
             )
@@ -211,28 +158,19 @@ class TestCleanupNeverInvokesGit:
         assert result.exit_code == 0, f"cleanup exited {result.exit_code}: {result.output}"
         assert not (workers_dir / "unit-a").exists(), "unit-a must have been removed"
         assert not (workers_dir / "unit-b").exists(), "unit-b must have been removed"
-        non_du_invocations = [
-            inv for inv in invocations
-            if not (isinstance(inv[0], list) and inv[0] and inv[0][0] in ("du", "/usr/bin/du"))
-        ]
-        assert non_du_invocations == [], (
-            f"cleanup must not invoke non-du subprocess, "
-            f"but these were recorded: {non_du_invocations!r}"
+        assert invocations == [], (
+            f"cleanup must not invoke any subprocess, "
+            f"but these were recorded: {invocations!r}"
         )
 
     def test_cleanup_source_does_not_reference_worktree_or_subprocess_git(self) -> None:
-        """Static source check: cleanup.py must not contain 'worktree' or subprocess git calls."""
+        """Static source check: cleanup.py must not contain 'worktree' or subprocess calls."""
         source = inspect.getsource(ralph.cli.commands.cleanup)
         assert "worktree" not in source, (
             "cleanup.py must not reference 'worktree' — "
             "v1 cleanup only removes .agent/workers/<unit_id>/ namespaces."
         )
-        # Must not shell out via subprocess — cleanup uses only shutil.rmtree and Path
         assert "subprocess" not in source, (
             "cleanup.py must not import or call subprocess — "
             "cleanup must use only filesystem operations (shutil/Path), never subprocess."
-        )
-        assert "git worktree" not in source, (
-            "cleanup.py must not contain 'git worktree' — "
-            "cleanup is not allowed to invoke git worktree commands."
         )

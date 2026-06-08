@@ -1,0 +1,134 @@
+"""Tests for ralph.testing.audit_mcp_timeout.
+
+The MCP timeout contract: no operation under ``ralph/mcp/`` may perform blocking
+I/O without a bounded, fail-closed timeout. This audit (AST-based, mirroring
+``audit_test_policy``) enforces it in ``make verify``. These tests pin the
+detection rules and the inline-allowlist escape hatch.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ralph.testing.audit_mcp_timeout import (
+    McpTimeoutViolation,
+    audit_mcp_directory,
+    audit_mcp_file,
+    main,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+def _audit(tmp_path: Path, src: str) -> list[McpTimeoutViolation]:
+    f = tmp_path / "mod.py"
+    f.write_text(src, encoding="utf-8")
+    return audit_mcp_file(f)
+
+
+# --- subprocess.run ---------------------------------------------------------
+
+
+def test_subprocess_run_without_timeout_is_flagged(tmp_path: Path) -> None:
+    assert _audit(tmp_path, "import subprocess\nsubprocess.run(['git', 'status'])\n")
+
+
+def test_subprocess_run_with_timeout_is_allowed(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "import subprocess\nsubprocess.run(['x'], timeout=5)\n")
+
+
+# --- .communicate() ---------------------------------------------------------
+
+
+def test_communicate_without_timeout_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "stdout, stderr = proc.communicate()\n")
+    assert len(v) == 1
+    assert v[0].category == "communicate"
+
+
+def test_communicate_with_timeout_is_allowed(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "proc.communicate(timeout=30)\n")
+
+
+def test_communicate_positional_input_is_still_flagged(tmp_path: Path) -> None:
+    # First positional to communicate() is ``input``, NOT a timeout.
+    assert _audit(tmp_path, "proc.communicate(b'data')\n")
+
+
+# --- .wait() ----------------------------------------------------------------
+
+
+def test_wait_without_timeout_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "proc.wait()\n")
+    assert len(v) == 1
+    assert v[0].category == "wait"
+
+
+def test_wait_with_keyword_timeout_is_allowed(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "proc.wait(timeout=5)\n")
+
+
+def test_wait_with_positional_timeout_is_allowed(tmp_path: Path) -> None:
+    # wait()'s first positional IS the timeout.
+    assert not _audit(tmp_path, "proc.wait(5)\n")
+
+
+# --- network ----------------------------------------------------------------
+
+
+def test_httpx_get_without_timeout_is_flagged(tmp_path: Path) -> None:
+    assert _audit(tmp_path, "import httpx\nhttpx.get('http://x')\n")
+
+
+def test_httpx_get_with_timeout_is_allowed(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "import httpx\nhttpx.get('http://x', timeout=5)\n")
+
+
+def test_urlopen_without_timeout_is_flagged(tmp_path: Path) -> None:
+    assert _audit(tmp_path, "import urllib.request\nurllib.request.urlopen(req)\n")
+
+
+def test_socket_create_connection_without_timeout_is_flagged(tmp_path: Path) -> None:
+    assert _audit(tmp_path, "import socket\nsocket.create_connection(addr)\n")
+
+
+# --- must NOT flag (Python semantics) --------------------------------------
+
+
+def test_popen_construction_is_not_flagged(tmp_path: Path) -> None:
+    # Popen takes no timeout= kwarg; the timeout lives on communicate()/wait().
+    assert not _audit(tmp_path, "import subprocess\nsubprocess.Popen(['x'])\n")
+
+
+def test_socket_socket_is_not_flagged(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "import socket\nsocket.socket(socket.AF_INET)\n")
+
+
+# --- inline allowlist marker ------------------------------------------------
+
+
+def test_inline_marker_suppresses_violation(tmp_path: Path) -> None:
+    src = "proc.communicate()  # mcp-timeout-ok: managed-process implements the timeout\n"
+    assert not _audit(tmp_path, src)
+
+
+# --- directory scan + main --------------------------------------------------
+
+
+def test_audit_directory_aggregates(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("proc.communicate()\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("proc.wait(timeout=1)\n", encoding="utf-8")
+    violations, checked = audit_mcp_directory(tmp_path)
+    assert checked == 2
+    assert len(violations) == 1
+
+
+def test_main_returns_nonzero_on_violation(tmp_path: Path) -> None:
+    (tmp_path / "c.py").write_text("proc.communicate()\n", encoding="utf-8")
+    assert main([str(tmp_path)]) == 1
+
+
+def test_main_returns_zero_when_clean(tmp_path: Path) -> None:
+    (tmp_path / "d.py").write_text("proc.communicate(timeout=5)\n", encoding="utf-8")
+    assert main([str(tmp_path)]) == 0

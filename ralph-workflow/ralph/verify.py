@@ -140,6 +140,12 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_test_policy"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        "mcp timeout audit (audit_mcp_timeout)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_mcp_timeout"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})

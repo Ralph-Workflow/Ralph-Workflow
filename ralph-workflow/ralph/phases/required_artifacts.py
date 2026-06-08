@@ -123,30 +123,65 @@ def build_retry_hint(
     detail: str,
     *,
     registry: dict[str, RequiredArtifact] | None = None,
+    prior_output: list[str] | None = None,
+    submit_tool_name: str | None = None,
+    example_payload: str | None = None,
 ) -> str:
-    """Build a retry hint message for a phase that failed to submit a required artifact.
+    """Build the retry hint for an agent that failed to submit a required artifact.
+
+    This is the SINGLE source of artifact-missing retry guidance — every caller
+    (pipeline phase gates AND the commit command) routes through it, so the
+    recovery cannot drift. When ``prior_output``/``submit_tool_name`` are given,
+    the hint additionally echoes the agent's own prior analysis back and tells it
+    to submit via the named tool, so a model that already drafted the artifact
+    submits it instead of restarting.
 
     Args:
-        phase: Pipeline phase name.
+        phase: Pipeline phase / drain name.
         detail: Error detail message.
-        registry: Optional policy-derived artifact registry. When provided,
-            the hint includes the specific artifact type and path.
+        registry: Optional artifact registry; when provided the hint names the
+            specific artifact type and json path.
+        prior_output: The agent's prior output lines, echoed back as context.
+        submit_tool_name: The submit-artifact tool the agent must call.
+        example_payload: An example submit-tool arguments payload, if available.
     """
     ra = registry.get(phase) if registry is not None else None
     if ra is None:
-        return build_retry_error_block(
+        block = build_retry_error_block(
             failure_summary=(
                 "the required artifact was not submitted before completion was declared"
             ),
             detail=detail,
         )
-    return build_retry_error_block(
-        failure_summary=(
-            f"required artifact '{ra.artifact_type}' at '{ra.json_path}' "
-            "was not submitted or was invalid"
-        ),
-        detail=detail,
+        artifact_type, json_path = "the required artifact", None
+    else:
+        block = build_retry_error_block(
+            failure_summary=(
+                f"required artifact '{ra.artifact_type}' at '{ra.json_path}' "
+                "was not submitted or was invalid"
+            ),
+            detail=detail,
+        )
+        artifact_type, json_path = ra.artifact_type, ra.json_path
+
+    lines = [block, "", "Submit the artifact now. Do not restart the task from scratch."]
+    tool = submit_tool_name or "the submit-artifact MCP tool"
+    lines.append(
+        f'Call {tool} with artifact_type="{artifact_type}" and put the payload in '
+        "the content field as a JSON string."
     )
+    if example_payload:
+        lines.append(f"Example MCP arguments: {example_payload}")
+    if json_path is not None:
+        lines.append(
+            f"If the submit-artifact MCP tool is unavailable, write the raw payload "
+            f"JSON to {json_path} instead. Do not use content_path for this retry."
+        )
+    if prior_output:
+        echoed = "\n".join(prior_output[-12:])
+        lines.append("Your prior analysis (submit it, do not redo it):")
+        lines.append(echoed)
+    return "\n".join(lines)
 
 
 def build_missing_input_hint(phase: str, upstream_phase: str, artifact_path: str) -> str:

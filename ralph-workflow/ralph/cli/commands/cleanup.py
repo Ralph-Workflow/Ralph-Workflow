@@ -8,8 +8,6 @@ from typing import Annotated
 import typer
 
 from ralph.git.operations import find_repo_root
-from ralph.mcp.tools.exec_overlay import _get_private_exec_base
-from ralph.mcp.tools.exec_sandbox import ExecSandboxManager
 
 
 def cleanup(
@@ -40,25 +38,15 @@ def cleanup(
         if workers_dir.exists()
         else []
     )
-    exec_cache_base = _get_private_exec_base()
-    has_exec_cache_entries = exec_cache_base.exists() and any(exec_cache_base.iterdir())
 
-    if not stale and not has_exec_cache_entries:
+    if not stale:
         typer.echo("No stale worker namespaces found")
         raise typer.Exit(0)
 
     if dry_run:
-        if stale:
-            typer.echo(
-                f"Found {len(stale)} stale worker namespace(s) (dry-run, not removing):"
-            )
-            for unit_id in stale:
-                typer.echo(f"  .agent/workers/{unit_id}")
-        if has_exec_cache_entries:
-            typer.echo(
-                "Detected global exec cache entries under "
-                f"{exec_cache_base} (dry-run, not removing)"
-            )
+        typer.echo(f"Found {len(stale)} stale worker namespace(s) (dry-run, not removing):")
+        for unit_id in stale:
+            typer.echo(f"  .agent/workers/{unit_id}")
         raise typer.Exit(0)
 
     if not force:
@@ -73,12 +61,5 @@ def cleanup(
         shutil.rmtree(target, ignore_errors=True)
         removed += 1
 
-    exec_summary = ExecSandboxManager(base_dir=exec_cache_base).cleanup_base()
-
     if removed > 0:
         typer.echo(f"Removed {removed} stale worker namespace(s)")
-    if exec_summary.removed_paths > 0:
-        typer.echo(
-            "Pruned stale exec cache entries: "
-            f"{exec_summary.removed_paths} path(s), {exec_summary.removed_bytes} byte(s) removed"
-        )
