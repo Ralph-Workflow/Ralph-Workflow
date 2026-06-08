@@ -76,6 +76,7 @@ All invariants are tested in `tests/test_verify_invariants.py` under `python -O`
   - Using `# type: ignore` in test files — tests must be fully typed (no exceptions)
   - Using `time.sleep()`, real subprocess, or real file I/O in non-`subprocess_e2e` tests — detected by `ralph/testing/audit_test_policy.py`
   - Any weakening of any check requires a documented justification and an entry in the audit allowlist — there is NO other path to bypass
+- **Non-circumvention rule — MCP timeout contract** — every operation under `ralph/mcp/` must perform blocking I/O with a bounded, fail-closed timeout. An unbounded blocking call hangs the MCP server thread and starves the agent of output (a real agent-hang vector). Detected by `ralph/testing/audit_mcp_timeout.py` (part of `make verify`): `subprocess.run`/`.communicate`/`.wait` without `timeout=`, and `httpx.*`/`requests.*`/`urlopen`/`socket.create_connection` without `timeout=`. The ONLY bypass is an inline `# mcp-timeout-ok: <reason>` marker for a genuinely unbounded-by-design call. See `docs/agents/verification.md` §'MCP timeout contract'.
 - **How to fix a slow test** (do NOT work around the budget):
   - Replace real I/O with fakes (MemoryWorkspace, tmp_path, MockProcessExecutor)
   - Eliminate sleep() and real wall-clock waits — inject a clock abstraction instead

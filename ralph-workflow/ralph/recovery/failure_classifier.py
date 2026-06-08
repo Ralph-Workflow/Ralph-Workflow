@@ -166,6 +166,20 @@ def is_missing_artifact_message(raw_message: str) -> bool:
     return any(s in raw_message for s in _MISSING_ARTIFACT_SUBSTRINGS)
 
 
+def is_unsubmitted_artifact_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
+    """Return True when an agent finished WITHOUT submitting a required artifact.
+
+    This is the single, shared signal every artifact-requiring caller (commit
+    generation, pipeline phases) routes to the resubmit recovery. It covers BOTH
+    a clean "completed without writing artifact" exit AND an empty/no-tool-call
+    response — both mean nothing was submitted, so both must re-prompt the agent
+    to submit (feeding back its prior analysis) rather than restart from scratch.
+    """
+    return contains_casefolded_marker(
+        detail_parts, tuple(_MISSING_ARTIFACT_SUBSTRINGS)
+    ) or contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS)
+
+
 def _is_artifact_validation_message(raw_message: str) -> bool:
     """Return True for artifact/proof validation failures with a typed recovery path."""
     artifact_validation_substrings = (

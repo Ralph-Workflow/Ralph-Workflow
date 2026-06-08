@@ -2,5 +2,21 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "env": {
     "RUST_ANALYZER_CHECK_OVERRIDE_COMMAND": ".cargo/rust-analyzer-dylint"
+  },
+  "permissions": {
+    "allow": [
+      "mcp__ralph__read_file",
+      "mcp__ralph__read_multiple_files",
+      "mcp__ralph__list_directory",
+      "mcp__ralph__list_directory_recursive",
+      "mcp__ralph__directory_tree",
+      "mcp__ralph__grep_files",
+      "mcp__ralph__search_files",
+      "mcp__ralph__git_status",
+      "mcp__ralph__git_diff",
+      "mcp__ralph__git_log",
+      "mcp__ralph__git_show",
+      "mcp__ralph__ralph_get_plan_draft"
+    ]
   }
 }

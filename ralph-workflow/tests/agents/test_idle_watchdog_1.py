@@ -962,3 +962,16 @@ def test_corroborator_exception_does_not_propagate() -> None:
     assert len(entered) == 1
     # Entry event has no corroboration keys since the corroborator raised
     assert "workspace_event_delta" not in entered[0].diagnostic
+
+
+def test_idle_elapsed_seconds_tracks_time_since_last_activity() -> None:
+    """idle_elapsed_seconds reports time since last activity, not the raw clock.
+
+    The watchdog-fire log previously printed the absolute monotonic clock (a
+    bogus ~36h 'elapsed'); it must report idle-elapsed instead.
+    """
+    watchdog, clock = _make_watchdog(idle_timeout=300.0, start=100.0)
+    watchdog.record_activity()
+    clock.advance(7.0)
+
+    assert watchdog.idle_elapsed_seconds(clock.monotonic()) == pytest.approx(7.0)

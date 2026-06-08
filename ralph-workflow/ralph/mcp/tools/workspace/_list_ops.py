@@ -12,6 +12,21 @@ from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 if TYPE_CHECKING:
     from ralph.workspace import Workspace
 
+# Recursive walks (list_directory, glob, grep enumeration) must be bounded so a
+# huge plain tree (e.g. a large vendor/ without a .git marker) cannot block the
+# MCP server thread for a long time and starve the agent of output.
+_RECURSIVE_MAX_ENTRIES = 10_000
+_RECURSIVE_MAX_DEPTH = 50
+_TRUNCATION_NOTE = (
+    "  ... (truncated: recursive walk exceeded "
+    f"{_RECURSIVE_MAX_ENTRIES} entries / {_RECURSIVE_MAX_DEPTH} levels)\n"
+)
+
+
+def _note_truncation(output: list[str]) -> None:
+    if not output or output[-1] != _TRUNCATION_NOTE:
+        output.append(_TRUNCATION_NOTE)
+
 
 def list_dir_flat(workspace: Workspace, path: str) -> str:
     normalized = normalize_relative_path(path)
@@ -46,8 +61,14 @@ def _walk_directory_recursive(
     output: list[str],
     depth: int,
 ) -> None:
+    if depth > _RECURSIVE_MAX_DEPTH or len(output) >= _RECURSIVE_MAX_ENTRIES:
+        _note_truncation(output)
+        return
     entries = list_dir_entries(workspace, path)
     for entry in sorted(entries):
+        if len(output) >= _RECURSIVE_MAX_ENTRIES:
+            _note_truncation(output)
+            return
         entry_path = join_path(path, entry)
         _append_dir_entry(workspace, entry_path, output, depth)
 
@@ -93,17 +114,34 @@ def match_glob(rel_path: str, pattern: str) -> bool:
 
 
 def _collect_files_recursive(workspace: Workspace, base_path: str) -> list[str]:
-    """Recursively collect all files under base_path, respecting skip dirs."""
+    """Recursively collect files under base_path, respecting skip dirs.
+
+    Bounded by `_RECURSIVE_MAX_ENTRIES` / `_RECURSIVE_MAX_DEPTH` so enumeration
+    (used by glob and grep) over a huge plain tree cannot run unbounded.
+    """
     results: list[str] = []
+    _collect_files_recursive_bounded(workspace, base_path, results, 0)
+    return results
+
+
+def _collect_files_recursive_bounded(
+    workspace: Workspace,
+    base_path: str,
+    results: list[str],
+    depth: int,
+) -> None:
+    if depth > _RECURSIVE_MAX_DEPTH or len(results) >= _RECURSIVE_MAX_ENTRIES:
+        return
     entries = list_dir_entries(workspace, base_path)
     for entry in sorted(entries):
+        if len(results) >= _RECURSIVE_MAX_ENTRIES:
+            return
         entry_path = join_path(base_path, entry)
         if workspace.is_dir(entry_path):
             if _should_recurse_into_directory(workspace, entry_path):
-                results.extend(_collect_files_recursive(workspace, entry_path))
+                _collect_files_recursive_bounded(workspace, entry_path, results, depth + 1)
         elif workspace.is_file(entry_path):
             results.append(entry_path)
-    return results
 
 
 def _collect_matching_files(

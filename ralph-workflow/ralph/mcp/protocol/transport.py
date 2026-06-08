@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import subprocess
 import threading
 from queue import Empty, Queue
 from subprocess import PIPE as _SUBPROCESS_PIPE
@@ -196,7 +197,14 @@ class StdioTransport:
                                 pipe.close()
             else:
                 proc.terminate()
-                proc.wait()
+                # Bound the wait so a process that ignores SIGTERM can't block
+                # the transport (and the MCP server) forever; escalate to kill.
+                try:
+                    proc.wait(timeout=5.0)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    with contextlib.suppress(subprocess.TimeoutExpired):
+                        proc.wait(timeout=5.0)
         logger.info("Closed stdio transport")
 
 

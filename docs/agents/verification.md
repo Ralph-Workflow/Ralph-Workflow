@@ -18,6 +18,17 @@ make verify
 4. Lint bypass audit (`ralph/testing/audit_lint_bypass.py`) — detects forbidden noqa, per-file-ignores
 5. Typecheck bypass audit (`ralph/testing/audit_typecheck_bypass.py`) — detects non-compliant type:ignore, mypy config weakening (including `disable_error_code`)
 6. Policy audit (`ralph/testing/audit_test_policy.py`) — detects slow test patterns, I/O in tests (including `os.system` and `os.popen` subprocess calls)
+7. MCP timeout audit (`ralph/testing/audit_mcp_timeout.py`) — enforces the MCP timeout contract (below)
+
+### MCP timeout contract — every MCP operation is bounded
+
+No operation under `ralph/mcp/` may perform blocking I/O without a bounded, fail-closed timeout. An unbounded blocking call hangs the MCP server thread, starves the agent of stdout, and trips the idle watchdog — a real, diagnosed agent-hang vector (`git status` over large `vendor/` submodules). `ralph/testing/audit_mcp_timeout.py` (part of `make verify`) statically flags, as a contract violation:
+
+- `subprocess.run(...)` without `timeout=`;
+- any `.communicate(...)` without `timeout=` (its first positional is `input`, not a timeout) and any `.wait()` without a timeout;
+- network calls (`httpx.*`/`requests.*` request methods and clients, `urllib.request.urlopen`, `socket.create_connection`) without `timeout=`.
+
+It does NOT flag `subprocess.Popen(...)` or `socket.socket(...)` (they take no `timeout=`). The only escape hatch is an inline `# mcp-timeout-ok: <reason>` marker on the call line, for a genuinely unbounded-by-design call (keep it rare and justified). Subprocesses must additionally fail closed: kill the process (group) on expiry and raise a clear tool error.
 
 ### Total test budget — 60 seconds, ABSOLUTE and IMMUTABLE
 

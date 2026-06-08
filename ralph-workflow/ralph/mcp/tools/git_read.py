@@ -96,6 +96,10 @@ def run_git_command(
     git_runner = runner or _run_git_subprocess
     try:
         output = git_runner(["git", *args], _workspace_root(workspace, cwd_provider=cwd_provider))
+    except subprocess.TimeoutExpired as exc:
+        raise ExecutionError(
+            f"git command timed out after {exc.timeout:g}s: {' '.join(args)}"
+        ) from exc
     except FileNotFoundError as exc:
         raise ExecutionError(f"Failed to execute git: {exc}") from exc
     except PermissionError as exc:
@@ -123,6 +127,10 @@ def run_git_command_lenient(
     git_runner = runner or _run_git_subprocess
     try:
         output = git_runner(["git", *args], _workspace_root(workspace, cwd_provider=cwd_provider))
+    except subprocess.TimeoutExpired as exc:
+        raise ExecutionError(
+            f"git command timed out after {exc.timeout:g}s: {' '.join(args)}"
+        ) from exc
     except FileNotFoundError as exc:
         raise ExecutionError(f"Failed to execute git: {exc}") from exc
     except PermissionError as exc:
@@ -131,6 +139,14 @@ def run_git_command_lenient(
         raise ExecutionError(f"Failed to execute git: {exc}") from exc
 
     return f"{_decode_output(output.stdout)}{_decode_output(output.stderr)}"
+
+
+# MCP read tools must never block the server thread indefinitely: a hung
+# `git status` (large vendor/ submodules, a held .git lock) would starve the
+# agent of output and trip the idle watchdog. Bound git like exec (30s) and
+# fail closed — communicate_and_cleanup terminates and kills the process tree
+# on expiry, then re-raises TimeoutExpired for run_git_command* to convert.
+_GIT_READ_TIMEOUT_SECONDS = 30.0
 
 
 def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
@@ -143,7 +159,7 @@ def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedPr
             label="git-mcp-read",
         ),
     )
-    stdout, stderr = proc.communicate()
+    stdout, stderr = proc.communicate_and_cleanup(timeout=_GIT_READ_TIMEOUT_SECONDS)
     returncode = proc.returncode if proc.returncode is not None else 0
     return subprocess.CompletedProcess(command, returncode, stdout or b"", stderr or b"")
 

@@ -190,10 +190,10 @@ class _ProcessLineReader:
         )
         assert timeout_val is not None
         logger.warning(
-            "idle watchdog firing reason={} elapsed={}s cumulative_waiting={}s "
+            "idle watchdog firing reason={} idle_elapsed={}s cumulative_waiting={}s "
             "last_activity_kind={} resume_safe=false",
             fire_reason,
-            round(self._clock.monotonic(), 1),
+            round(watchdog.idle_elapsed_seconds(self._clock.monotonic()), 1),
             round(watchdog.cumulative_waiting_on_child_seconds, 1),
             self._last_activity_kind,
         )
