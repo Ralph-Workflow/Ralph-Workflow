@@ -8,9 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
-from ralph.pipeline.agent_retry_intent import agent_retry_intent_for_failure
-from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
-from ralph.recovery.failure_classifier import FailureClassifier
+from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 
 from ._session import extract_transport_session_id, extract_transport_session_id_from_line
 
@@ -53,26 +51,23 @@ def _retry_plan_for_exception(
     attempt_lines: list[str],
     current_session_id: str | None,
 ) -> _DirectMcpRetryPlan | None:
-    if retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is None:
-        return None
-    classified = FailureClassifier().classify(
-        exc,
-        phase="standalone",
-        agent=_exception_agent_name(exc),
-    )
     session_id = (
         extract_transport_session_id(tuple(attempt_lines))
         or extract_transport_session_id(_exception_parsed_output(exc))
         or current_session_id
     )
-    retry_intent = agent_retry_intent_for_failure(
-        failure_reason=str(exc),
+    intent = resolve_retry_intent(
+        exc,
+        phase="standalone",
+        agent=_exception_agent_name(exc),
         session_id=session_id,
-        reset_tool_registry=classified.reset_tool_registry,
+        inactivity_error_type=AgentInactivityTimeoutError,
     )
+    if intent is None:
+        return None
     return _DirectMcpRetryPlan(
-        session_id=retry_intent.session_id,
-        reset_tool_registry=retry_intent.reset_tool_registry,
+        session_id=intent.session_id,
+        reset_tool_registry=intent.reset_tool_registry,
     )
 
 

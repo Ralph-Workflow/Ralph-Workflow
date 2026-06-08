@@ -501,30 +501,14 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
         ("claude", None),
         ("opencode", None),
     ]
-    assert any(
-        "Previous attempt failed to submit the required commit_message artifact" in body
-        for body in prompt_bodies[1:]
-    )
-    assert any(
-        'Call the submit-artifact MCP tool with artifact_type="commit_message"' in body
-        for body in prompt_bodies[1:]
-    )
-    assert any(
-        "If the submit-artifact MCP tool is still unavailable, write the raw commit payload JSON "
-        "to .agent/tmp/commit_message.json" in body
-        for body in prompt_bodies[1:]
-    )
+    # The retry guidance is the shared build_retry_hint output (same as the
+    # pipeline phase gates), so the assertions pin the unified hint, not a
+    # commit-specific prompt.
+    assert any("required artifact 'commit_message'" in body for body in prompt_bodies[1:])
+    assert any('artifact_type="commit_message"' in body for body in prompt_bodies[1:])
+    assert any(".agent/tmp/commit_message.json" in body for body in prompt_bodies[1:])
     assert any("Do not use content_path for this retry" in body for body in prompt_bodies[1:])
-    assert any("Message quality mistakes to avoid" in body for body in prompt_bodies[1:])
-    assert any("Bad: chore: update files" in body for body in prompt_bodies[1:])
-    assert any(
-        "Good: feat(mcp): add structured commit retries" in body for body in prompt_bodies[1:]
-    )
-    assert any("Bad: fix: stuff" in body for body in prompt_bodies[1:])
-    assert any(
-        "Good: fix(parser): preserve prefixed transcript lines" in body
-        for body in prompt_bodies[1:]
-    )
+    assert any("Submit the artifact now" in body for body in prompt_bodies[1:])
     output = stream.getvalue()
     assert "Generated commit message" in output
     assert "fix: fallback agent message" in output

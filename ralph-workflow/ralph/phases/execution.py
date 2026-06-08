@@ -40,6 +40,7 @@ from ralph.phases.artifacts import (
     artifact_validation_failure_event,
     load_phase_artifact,
     unwrap_phase_artifact_content,
+    validate_artifact_on_disk,
 )
 from ralph.phases.required_artifacts import (
     build_missing_input_hint,
@@ -274,21 +275,19 @@ def _validate_output_artifact(
         logger.warning("Execution phase '{}' missing required artifact at {}", phase, ra.json_path)
         _write_retry_hint(ctx, phase, detail)
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
-    try:
-        artifact_wrapper = load_phase_artifact(ctx.workspace, ra.json_path)
-        content = unwrap_phase_artifact_content(artifact_wrapper, expected_type=ra.artifact_type)
-        if ra.normalizer is not None:
-            ra.normalizer(content)
-    except (json.JSONDecodeError, PhaseArtifactError, ValueError) as exc:
-        detail = str(exc)
+    invalid_detail = validate_artifact_on_disk(ctx.workspace, ra)
+    if invalid_detail is not None:
         logger.warning(
-            "Invalid {} artifact in execution phase '{}': {}", ra.artifact_type, phase, detail
+            "Invalid {} artifact in execution phase '{}': {}",
+            ra.artifact_type,
+            phase,
+            invalid_detail,
         )
-        _write_retry_hint(ctx, phase, detail)
+        _write_retry_hint(ctx, phase, invalid_detail)
         return [
             artifact_validation_failure_event(
                 phase=phase,
-                reason=f"Invalid {ra.artifact_type} artifact: {detail}",
+                reason=f"Invalid {ra.artifact_type} artifact: {invalid_detail}",
             )
         ]
     return None

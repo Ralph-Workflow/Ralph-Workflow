@@ -40,9 +40,9 @@ from ralph.pipeline._agent_invocation_ctx import _AgentInvocationCtx
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
 from ralph.pipeline.agent_recovery_plan import AgentRecoveryPlan
+from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 from ralph.pipeline.agent_retry_intent import (
     AgentRetryIntent,
-    agent_retry_intent_for_failure,
     cleared_agent_retry_intent,
 )
 from ralph.pipeline.commit_executor import clear_phase_output_artifacts
@@ -344,12 +344,15 @@ def _run_attempt(
                 inactivity_error_type=AgentInactivityTimeoutError,
             )
         )
+        retry_intent = resolve_retry_intent(
+            exc,
+            phase=str(ctx.effect.phase),
+            agent=ctx.effect.agent_name,
+            session_id=recovery_plan.session_id if recovery_plan is not None else None,
+            inactivity_error_type=AgentInactivityTimeoutError,
+        )
         _set_last_captured_retry_intent(
-            agent_retry_intent_for_failure(
-                failure_reason=str(exc),
-                session_id=recovery_plan.session_id if recovery_plan is not None else None,
-                reset_tool_registry=classified.reset_tool_registry,
-            )
+            retry_intent if retry_intent is not None else cleared_agent_retry_intent()
         )
         if recovery_plan is None:
             logger.error("Agent invocation failed: {}", exc)

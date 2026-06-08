@@ -912,6 +912,13 @@ ralph.pipeline.waiting_dispatch
    :members:
    :show-inheritance:
 
+ralph.pipeline.agent_retry_decision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.agent_retry_decision
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.agent_retry_intent
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1787,20 +1794,6 @@ ralph.mcp.tools.unsafe_exec
 
    The ``raw_exec`` tool is an alias for ``unsafe_exec`` — it uses the same
    handler and exposes the same functionality under a different name.
-
-ralph.mcp.tools.exec_overlay
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.tools.exec_overlay
-   :members:
-   :show-inheritance:
-
-ralph.mcp.tools.exec_sandbox
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.tools.exec_sandbox
-   :members:
-   :show-inheritance:
 
 ralph.mcp.tools.git_read
 ~~~~~~~~~~~~~~~~~~~~~~~~

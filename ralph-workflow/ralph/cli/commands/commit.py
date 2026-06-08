@@ -54,7 +54,6 @@ from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     normalize_commit_message_content,
     read_commit_message_artifact,
-    write_commit_message_artifact,
 )
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import (
@@ -750,13 +749,6 @@ def invoke_commit_agent_attempt(
             resume_session_id=resume_session_id,
         )
 
-    if artifact_message is None:
-        artifact_message = _recover_commit_message_from_output(
-            attempt_context.repo_root,
-            parsed_output=parsed_output,
-            raw_output=raw_output,
-        )
-
     if not artifact_message:
         return CommitAgentAttempt(
             failure_detail=_format_commit_agent_failure(
@@ -794,67 +786,6 @@ def _is_missing_commit_artifact_failure(detail: str) -> bool:
     return _MISSING_COMMIT_ARTIFACT_REASON in detail or is_unsubmitted_artifact_failure((detail,))
 
 
-def _recover_commit_message_from_output(
-    repo_root: Path,
-    *,
-    parsed_output: list[str],
-    raw_output: list[str],
-) -> str | None:
-    for candidate in (*raw_output, *parsed_output):
-        payload = _extract_commit_payload_from_text(candidate)
-        if payload is None:
-            continue
-        write_commit_message_artifact(repo_root, payload)
-        return read_commit_message_artifact(repo_root)
-    return None
-
-
-def _extract_commit_payload_from_text(text: str) -> dict[str, object] | None:
-    stripped = text.strip()
-    if not stripped:
-        return None
-    json_start = stripped.find("{")
-    if json_start < 0:
-        return None
-    candidate = _parse_json_object_candidate(stripped[json_start:])
-    if candidate is None:
-        return None
-    artifact_type = candidate.get("artifact_type")
-    if artifact_type == COMMIT_MESSAGE_TYPE:
-        return _extract_commit_payload_from_artifact_wrapper(candidate)
-    try:
-        return normalize_commit_message_content(candidate)
-    except ValueError:
-        return None
-
-
-def _parse_json_object_candidate(candidate: str) -> dict[str, object] | None:
-    try:
-        parsed = cast("object", json.loads(candidate))
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    return cast("dict[str, object]", parsed)
-
-
-def _extract_commit_payload_from_artifact_wrapper(
-    payload: dict[str, object],
-) -> dict[str, object] | None:
-    content = payload.get("content")
-    nested: dict[str, object] | None = None
-    if isinstance(content, dict):
-        nested = cast("dict[str, object]", content)
-    elif isinstance(content, str):
-        nested = _parse_json_object_candidate(content)
-    if nested is None:
-        return None
-    try:
-        return normalize_commit_message_content(nested)
-    except ValueError:
-        return None
-
-
 def _summarized_retry_prompt(
     base_prompt: str, parsed_output: list[str], agent: AgentConfig
 ) -> str:
@@ -864,9 +795,10 @@ def _summarized_retry_prompt(
     and submit-tool name are supplied here.
     """
     required = _commit_required_artifact()
+    example_content: dict[str, str] = {"type": "commit", "subject": "type(scope): description"}
     example_arguments: dict[str, str] = {
         "artifact_type": required.artifact_type,
-        "content": json.dumps({"type": "commit", "subject": "type(scope): description"}),
+        "content": json.dumps(example_content),
     }
     tool_names = _submit_artifact_tool_names_for_transport(agent.transport)
     hint = build_retry_hint(

@@ -25,7 +25,9 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.git.operations import GitOperationError
-from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
+from ralph.mcp.artifacts.commit_message import (
+    write_commit_message_artifact,
+)
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
 
 _OUTPUT_BATCH = 400
@@ -248,74 +250,6 @@ def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() 
     assert len(parsed_output) < _OUTPUT_BATCH
 
 
-def test_commit_invocation_recovers_direct_commit_artifact_payload_from_output(
-    tmp_path: Path,
-) -> None:
-    prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
-    prompt_file.parent.mkdir(parents=True, exist_ok=True)
-    prompt_file.write_text("Generate a commit message.", encoding="utf-8")
-    display_context = make_display_context()
-
-    agent = AgentConfig(cmd="agent", can_commit=True, json_parser=JsonParserType.GENERIC)
-
-    def fake_invoke_agent(_agent: object, *_args: object, **_kwargs: object) -> object:
-        return iter(
-            [
-                '{"artifact_type":"commit_message","content":'
-                '{"type":"commit","subject":"fix: recovered from output"}}'
-            ]
-        )
-
-    with (
-        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
-        patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
-    ):
-        attempt = invoke_commit_agent_attempt(
-            agent,
-            prompt_file=str(prompt_file),
-            attempt_context=CommitAttemptContext(repo_root=tmp_path, verbose=False, extra_env={}),
-            display_context=display_context,
-        )
-
-    assert attempt.failure_detail == ""
-    assert attempt.message == "fix: recovered from output"
-    assert read_commit_message_artifact(tmp_path) == "fix: recovered from output"
-
-
-def test_commit_invocation_recovers_prefixed_commit_artifact_payload_from_output(
-    tmp_path: Path,
-) -> None:
-    prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
-    prompt_file.parent.mkdir(parents=True, exist_ok=True)
-    prompt_file.write_text("Generate a commit message.", encoding="utf-8")
-    display_context = make_display_context()
-
-    agent = AgentConfig(cmd="agent", can_commit=True, json_parser=JsonParserType.GENERIC)
-
-    def fake_invoke_agent(_agent: object, *_args: object, **_kwargs: object) -> object:
-        return iter(
-            [
-                'claude raw: {"artifact_type":"commit_message","content":'
-                '{"type":"commit","subject":"fix: prefixed recovery"}}'
-            ]
-        )
-
-    with (
-        patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
-        patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
-    ):
-        attempt = invoke_commit_agent_attempt(
-            agent,
-            prompt_file=str(prompt_file),
-            attempt_context=CommitAttemptContext(repo_root=tmp_path, verbose=False, extra_env={}),
-            display_context=display_context,
-        )
-
-    assert attempt.failure_detail == ""
-    assert attempt.message == "fix: prefixed recovery"
-    assert read_commit_message_artifact(tmp_path) == "fix: prefixed recovery"
-
-
 def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
     tmp_path: Path,
 ) -> None:
@@ -360,12 +294,8 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
         calls.append(getattr(options, "session_id", None))
         if len(calls) == 1:
             raise failure
-        return iter(
-            [
-                '{"artifact_type":"commit_message","content":'
-                '{"type":"commit","subject":"fix: recovered after retry"}}'
-            ]
-        )
+        write_commit_message_artifact(tmp_path, "fix: recovered after retry")
+        return iter([])
 
     with (
         patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
@@ -427,12 +357,8 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
         calls.append(getattr(options, "session_id", None))
         if len(calls) < 3:
             raise failure
-        return iter(
-            [
-                '{"artifact_type":"commit_message","content":'
-                '{"type":"commit","subject":"fix: recovered after repeated retry"}}'
-            ]
-        )
+        write_commit_message_artifact(tmp_path, "fix: recovered after repeated retry")
+        return iter([])
 
     with (
         patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),
@@ -496,12 +422,8 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
                 )
 
             return _failing_iter()
-        return iter(
-            [
-                '{"artifact_type":"commit_message","content":'
-                '{"type":"commit","subject":"fix: recovered after midstream retry"}}'
-            ]
-        )
+        write_commit_message_artifact(tmp_path, "fix: recovered after midstream retry")
+        return iter([])
 
     with (
         patch("ralph.cli.commands.commit.materialize_system_prompt", return_value=None),

@@ -11,6 +11,7 @@ from ralph.recovery.classifier import FailureCategory
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.policy.models import ArtifactContract
     from ralph.workspace.protocol import Workspace
 
@@ -53,6 +54,33 @@ def unwrap_phase_artifact_content(
     if not isinstance(content, dict):
         raise PhaseArtifactError("Artifact content must be a JSON object")
     return cast("dict[str, object]", content)
+
+
+def validate_artifact_on_disk(
+    workspace: Workspace,
+    required_artifact: RequiredArtifact,
+) -> str | None:
+    """Return None if the required artifact is present, parseable, and valid.
+
+    Otherwise return a human-readable failure detail. This is the SINGLE on-disk
+    artifact-contract check used by both the pipeline phase gates and the commit
+    command, so "missing / can't parse / wrong type / wrong format" detection
+    cannot drift between callers.
+    """
+    try:
+        artifact = load_phase_artifact(workspace, required_artifact.json_path)
+        content = unwrap_phase_artifact_content(
+            artifact, expected_type=required_artifact.artifact_type
+        )
+    except PhaseArtifactError as exc:
+        return str(exc)
+
+    if required_artifact.normalizer is not None:
+        try:
+            required_artifact.normalizer(content)
+        except ValueError as exc:
+            return f"Artifact at {required_artifact.json_path} failed validation: {exc}"
+    return None
 
 
 def artifact_validation_failure_event(
