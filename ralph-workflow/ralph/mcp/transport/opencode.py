@@ -11,6 +11,14 @@ from ralph.mcp.tools.names import (
     claude_tool_name,
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
+from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS
+
+#: OpenCode MCP client request timeout (ms). MUST exceed the longest possible
+#: server-side tool execution — otherwise the client gives up with `-32001 Request
+#: timed out` before the server finishes, producing a retry storm. exec is capped
+#: at EXEC_MAX_TIMEOUT_MS (the largest any tool can run); add headroom for server
+#: startup + output drain so even a max-length exec finishes before the client.
+_OPENCODE_MCP_CLIENT_TIMEOUT_MS = EXEC_MAX_TIMEOUT_MS + 30_000
 
 
 def merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
@@ -36,7 +44,7 @@ def build_opencode_provider_config(
             "type": "remote",
             "url": endpoint,
             "enabled": True,
-            "timeout": 30000,
+            "timeout": _OPENCODE_MCP_CLIENT_TIMEOUT_MS,
         }
     }
 

@@ -11,6 +11,7 @@ from ralph.mcp.tools.exec import (
     DEFAULT_TIMEOUT_MS,
     parse_exec_params,
 )
+from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS
 
 CUSTOM_TIMEOUT_MS = 5000
 EXPECTED_TIMEOUT_SECONDS = 2.5
@@ -59,6 +60,13 @@ class TestParseExecParams:
         params = {"command": "ls", "args": [], "timeout_ms": 0}
         result = parse_exec_params(params)
         assert result.timeout_ms == DEFAULT_TIMEOUT_MS
+
+    def test_timeout_is_capped_at_max(self) -> None:
+        # An over-large timeout_ms must be capped so a tool call can never outrun
+        # the MCP client request timeout (which would re-trigger -32001).
+        params = {"command": "ls", "args": [], "timeout_ms": EXEC_MAX_TIMEOUT_MS * 10}
+        result = parse_exec_params(params)
+        assert result.timeout_ms == EXEC_MAX_TIMEOUT_MS
 
     def test_non_int_timeout_uses_default(self) -> None:
         params: dict[str, object] = {"command": "ls", "args": [], "timeout_ms": "fast"}

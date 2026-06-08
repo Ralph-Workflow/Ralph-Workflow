@@ -25,7 +25,13 @@ from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_TYPE,
     PLAN_DRAFT_PATH,
 )
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
+from ralph.mcp.tools.names import (
+    SUBMIT_ARTIFACT_TOOL,
+    claude_tool_name,
+    claude_tool_name_prefix,
+    opencode_tool_name,
+    opencode_tool_name_prefix,
+)
 from ralph.phases.required_artifacts import (
     resolve_required_artifact,
     retry_hint_path,
@@ -559,18 +565,38 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
     )
 
 
+# Transports that expose every MCP tool as ``mcp__<server>__<tool>``: Claude Code
+# and Codex CLI (its core qualifies tool names with the ``__`` delimiter
+# unconditionally, even for a single server). Both must be prompted with that prefix.
+_CLAUDE_STYLE_TRANSPORTS = (
+    AgentTransport.CLAUDE,
+    AgentTransport.CLAUDE_INTERACTIVE,
+    AgentTransport.CODEX,
+)
+
+
 def submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
     """Return the submit-artifact tool name for the given transport."""
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
+    if transport in _CLAUDE_STYLE_TRANSPORTS:
         return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+    if transport == AgentTransport.OPENCODE:
+        return opencode_tool_name(SUBMIT_ARTIFACT_TOOL)
     return SUBMIT_ARTIFACT_TOOL
 
 
 def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:
-    """Return the tool name prefix for the given agent transport."""
-    # Prompt templates should use the same MCP tool names the active transport sees.
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
+    """Return the tool name prefix for the given agent transport.
+
+    Prompt templates must use the same MCP tool names the active transport sees,
+    or the model calls a name that does not exist. OpenCode namespaces remote MCP
+    tools as ``<server>_<tool>`` (Ralph's server is ``ralph``), so its prompts use
+    the ``ralph_`` prefix — matching the ``ralph_*`` permission Ralph already
+    grants in the OpenCode config. Claude AND Codex use ``mcp__ralph__``.
+    """
+    if transport in _CLAUDE_STYLE_TRANSPORTS:
         return claude_tool_name_prefix()
+    if transport == AgentTransport.OPENCODE:
+        return opencode_tool_name_prefix()
     return ""
 
 

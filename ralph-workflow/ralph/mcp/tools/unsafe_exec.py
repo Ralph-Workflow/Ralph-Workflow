@@ -20,7 +20,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
+from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -74,6 +74,10 @@ def handle_unsafe_exec(
         if isinstance(timeout_value, int) and timeout_value > 0
         else EXEC_DEFAULT_TIMEOUT_MS
     )
+    # Cap the per-call override: the MCP client request timeout is derived to exceed
+    # EXEC_MAX_TIMEOUT_MS, so this call can never outrun the client and re-trigger
+    # the -32001 "Request timed out" storm.
+    timeout_ms = min(timeout_ms, EXEC_MAX_TIMEOUT_MS)
     timeout_seconds: float = timeout_ms / 1000
 
     workspace_root = _workspace_root(workspace)
@@ -93,11 +97,13 @@ def handle_unsafe_exec(
         # and re-issues forever (the 5-hour retry-storm pathology). The rendered
         # message teaches both meanings of a timeout (raise the limit vs. fix a
         # genuinely stuck command), matching what the tool description advertises.
+        # Never suggest above the cap (the client timeout exceeds EXEC_MAX_TIMEOUT_MS).
+        suggested = min(timeout_ms * 2, EXEC_MAX_TIMEOUT_MS) if timeout_ms > 0 else None
         timeout_error = ExecutionError(
             f"Failed to execute {command!r}: timed out after {timeout_ms}ms",
             timed_out=True,
             timeout_ms=timeout_ms,
-            suggested_timeout_ms=timeout_ms * 2 if timeout_ms > 0 else None,
+            suggested_timeout_ms=suggested,
         )
         return ToolResult(
             content=[ToolContent.text_content(str(timeout_error))],

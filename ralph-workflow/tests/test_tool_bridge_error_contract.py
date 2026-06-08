@@ -93,3 +93,35 @@ def test_unexpected_bug_still_becomes_dispatch_error() -> None:
     bridge = _bridge_with_handler(RuntimeError("kaboom"))
     with pytest.raises(ToolDispatchError):
         bridge.dispatch("boom", {})
+
+
+def test_unknown_tool_error_is_actionable() -> None:
+    """A mis-prefixed tool name (e.g. the model's invented 'ralph_mcp__exec') must
+    yield an actionable error: keep 'is not registered' (the recovery classifier
+    keys on it), suggest the real name, and list available tools."""
+    bridge = ToolBridge()
+
+    def _handler(
+        _host_session: object | None,
+        _workspace: object | None,
+        _params: JsonObject,
+    ) -> object:
+        return None
+
+    bridge.register(
+        ToolMetadata(
+            definition=ToolDefinition(
+                name="exec", description="d", input_schema={"type": "object"}
+            ),
+            required_capability="ProcessExecBounded",
+        ),
+        _handler,
+    )
+
+    with pytest.raises(ToolDispatchError) as exc_info:
+        bridge.get("ralph_mcp__exec")
+    message = str(exc_info.value)
+    assert "is not registered" in message  # recovery classifier contract
+    assert "exec" in message  # the suggestion / available list
+    assert "Available tools" in message
+    assert "Did you mean 'exec'?" in message

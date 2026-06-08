@@ -19,7 +19,7 @@ from ralph.mcp.tools.unsafe_exec import (
     _VCS_COMMANDS,
     handle_unsafe_exec,
 )
-from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
+from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
 from tests.mock_session import MockSession
 from tests.mock_workspace_root import MockWorkspaceRoot
 
@@ -87,6 +87,30 @@ class TestUnsafeExecAlwaysBounded:
         )
 
         assert captured == [EXEC_DEFAULT_TIMEOUT_MS / 1000]
+
+    def test_oversized_timeout_is_capped_at_max(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An over-large timeout_ms must be capped so unsafe_exec cannot outrun the
+        # MCP client request timeout (which would re-trigger -32001).
+        captured: list[object] = []
+
+        def _run(*_a: object, **kw: object) -> subprocess.CompletedProcess[bytes]:
+            captured.append(kw.get("timeout"))
+            return _make_completed_process(stdout=b"ok", returncode=0)
+
+        fake_module = types.SimpleNamespace(
+            run=_run, TimeoutExpired=subprocess.TimeoutExpired
+        )
+        monkeypatch.setattr("ralph.mcp.tools.unsafe_exec.subprocess", fake_module)
+
+        handle_unsafe_exec(
+            MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
+            MockWorkspaceRoot(tmp_path),
+            {"command": "echo hi", "timeout_ms": EXEC_MAX_TIMEOUT_MS * 10},
+        )
+
+        assert captured == [EXEC_MAX_TIMEOUT_MS / 1000]
 
 
 class TestUnsafeExecTimeout:

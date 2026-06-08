@@ -21,16 +21,12 @@ def file_read_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=READ_FILE_TOOL,
                 description=(
-                    "Read the complete contents of a file as text. "
-                    "Required param: path (string, relative or absolute path inside workspace). "
-                    "Optional params for partial reads: line_start (1-based), line_end (1-based), "
-                    "offset (0-based byte offset), limit (byte limit), head (first N lines), "
-                    "tail (last N lines). "
-                    "When line/head/tail params are used, returns JSON with path, content, "
-                    "total_lines, returned_lines, truncated; when offset/limit (byte window) is "
-                    "used, returns path, content, total_bytes, returned_bytes, truncated. "
-                    "Otherwise returns plain text. "
-                    'Example: {"path": "ralph-workflow/README.md"} returns the file text.'
+                    "Read a file as text. Required param: path. Optional partial reads "
+                    "(see each param): line_start/line_end (1-based), offset/limit (bytes), "
+                    "head/tail (N lines). Partial reads return JSON — line mode: "
+                    "total_lines/returned_lines/truncated; byte mode (offset/limit): "
+                    "total_bytes/returned_bytes/truncated — otherwise plain text. "
+                    'Example: {"path": "ralph-workflow/README.md"}.'
                 ),
                 input_schema={
                     "type": "object",

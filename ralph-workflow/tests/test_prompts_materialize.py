@@ -60,6 +60,32 @@ def test_tool_name_prefix_for_claude_interactive() -> None:
     assert tool_name_prefix_for_transport(AgentTransport.CLAUDE_INTERACTIVE) == "mcp__ralph__"
 
 
+def test_tool_name_prefix_for_opencode_matches_server_namespacing() -> None:
+    # OpenCode exposes remote MCP tools as <server>_<tool>; Ralph's server is
+    # "ralph". The prompt MUST use this prefix or the model calls a name that does
+    # not exist (the ralph_mcp__exec "unavailable tool" incident).
+    assert tool_name_prefix_for_transport(AgentTransport.OPENCODE) == "ralph_"
+
+
+def test_submit_artifact_tool_name_for_opencode_is_server_prefixed() -> None:
+    assert (
+        submit_artifact_tool_name_for_transport(AgentTransport.OPENCODE)
+        == f"ralph_{SUBMIT_ARTIFACT_TOOL}"
+    )
+
+
+def test_tool_name_prefix_for_codex_uses_claude_style_namespacing() -> None:
+    # Codex CLI exposes every MCP tool as mcp__<server>__<tool> (same as Claude),
+    # so its prompts MUST use that prefix or the model calls a non-existent name.
+    assert tool_name_prefix_for_transport(AgentTransport.CODEX) == "mcp__ralph__"
+
+
+def test_submit_artifact_tool_name_for_codex_is_claude_namespaced() -> None:
+    assert submit_artifact_tool_name_for_transport(AgentTransport.CODEX) == claude_tool_name(
+        SUBMIT_ARTIFACT_TOOL
+    )
+
+
 def test_submit_artifact_tool_name_for_transport_returns_claude_namespaced_for_claude() -> None:
     assert submit_artifact_tool_name_for_transport(AgentTransport.CLAUDE) == claude_tool_name(
         SUBMIT_ARTIFACT_TOOL

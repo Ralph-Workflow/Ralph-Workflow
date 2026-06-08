@@ -75,6 +75,13 @@ GIT_SUBPROCESS_TIMEOUT_SECONDS: float = 120.0
 #: expiry, so the server stays bounded regardless.
 EXEC_DEFAULT_TIMEOUT_MS: int = 90_000
 
+#: Hard upper bound on a per-call exec ``timeout_ms`` (and on the suggested retry
+#: timeout). An agent may raise ``timeout_ms`` to recover from a timeout, but never
+#: above this — the MCP client request timeout is derived to exceed it, so a
+#: legitimately long exec can never outrun the client (which would re-raise the
+#: ``-32001 Request timed out`` storm). 5 minutes is generous for any single command.
+EXEC_MAX_TIMEOUT_MS: int = 300_000
+
 #: Default poll interval for the read loop.
 IDLE_POLL_INTERVAL_SECONDS: float = 0.05
 

@@ -33,6 +33,7 @@ from ralph.mcp.upstream.config import (
     UpstreamMcpServer,
     load_upstream_mcp_servers,
 )
+from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -495,14 +496,17 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
 
     parsed = _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
     mcp_config = cast("dict[str, object]", parsed["mcp"])
-    assert mcp_config == {
-        "ralph": {
-            "type": "remote",
-            "url": "http://127.0.0.1:9999/mcp",
-            "enabled": True,
-            "timeout": 30000,
-        }
+    ralph_server = cast("dict[str, object]", mcp_config["ralph"])
+    # The client timeout must exceed the longest server-side tool (exec); assert
+    # that property rather than a brittle literal so it cannot silently regress.
+    assert isinstance(ralph_server["timeout"], int)
+    assert ralph_server["timeout"] > EXEC_DEFAULT_TIMEOUT_MS
+    assert {k: v for k, v in ralph_server.items() if k != "timeout"} == {
+        "type": "remote",
+        "url": "http://127.0.0.1:9999/mcp",
+        "enabled": True,
     }
+    assert set(mcp_config) == {"ralph"}
     assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (
         UpstreamMcpServer(
             name="angular-cli",

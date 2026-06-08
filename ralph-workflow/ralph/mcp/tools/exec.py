@@ -30,7 +30,7 @@ from ralph.process.manager import SpawnOptions, get_process_manager
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
-from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
+from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -100,6 +100,10 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
         if isinstance(timeout_value, int) and timeout_value > 0
         else DEFAULT_TIMEOUT_MS
     )
+    # Cap the per-call override: the MCP client request timeout is derived to exceed
+    # EXEC_MAX_TIMEOUT_MS, so a tool call can never outrun the client and re-trigger
+    # the -32001 "Request timed out" storm.
+    timeout_ms = min(timeout_ms, EXEC_MAX_TIMEOUT_MS)
 
     return ExecParams(command=command, args=merged_args, timeout_ms=timeout_ms)
 
@@ -467,11 +471,15 @@ def run_command(
     except PermissionError as exc:
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
     except subprocess.TimeoutExpired as exc:
+        # Suggest a larger timeout but never above the cap (the MCP client request
+        # timeout is derived to exceed EXEC_MAX_TIMEOUT_MS; suggesting more would
+        # let the next call outrun the client and re-trigger -32001).
+        suggested = min(timeout_ms * 2, EXEC_MAX_TIMEOUT_MS) if timeout_ms > 0 else None
         raise ExecutionError(
             f"Failed to execute '{command}': timed out after {timeout_ms}ms",
             timed_out=True,
             timeout_ms=timeout_ms,
-            suggested_timeout_ms=timeout_ms * 2 if timeout_ms > 0 else None,
+            suggested_timeout_ms=suggested,
         ) from exc
     except OSError as exc:
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc

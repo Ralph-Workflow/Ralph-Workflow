@@ -244,6 +244,25 @@ def claude_tool_name_prefix(*, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
     return f"mcp__{server_name}__"
 
 
+def opencode_tool_name(
+    tool_name: str | RalphToolName, *, server_name: str = RALPH_MCP_SERVER_NAME
+) -> str:
+    """Return the OpenCode alias for a tool name (`<server>_<tool>`).
+
+    OpenCode namespaces every remote MCP tool as ``<serverName>_<tool>`` (e.g. an
+    ``angular`` server exposes ``angular_ai_tutor``). Ralph's server is registered
+    as ``ralph`` (see ``transport/opencode.py`` and its ``ralph_*`` permission),
+    so its tools are exposed as ``ralph_<tool>``. This is the canonical builder so
+    prompts match the names OpenCode actually exposes.
+    """
+    return f"{server_name}_{_coerce_tool_name(tool_name) or tool_name}"
+
+
+def opencode_tool_name_prefix(*, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
+    """Return the `<server>_` prefix OpenCode uses for remote MCP tools."""
+    return f"{server_name}_"
+
+
 def custom_proxy_tool_name(server_name: str, tool_name: str) -> str:
     """Return the stable proxy alias for a Ralph custom MCP server tool."""
     return f"ralph_custom__{server_name}__{tool_name}"

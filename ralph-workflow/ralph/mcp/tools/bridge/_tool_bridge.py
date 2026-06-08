@@ -66,7 +66,31 @@ class ToolBridge:
         try:
             return self._tools[name]
         except KeyError as exc:
-            raise ToolDispatchError(f"Tool '{name}' is not registered") from exc
+            raise ToolDispatchError(self._unknown_tool_message(name)) from exc
+
+    def _unknown_tool_message(self, name: str) -> str:
+        """Build an actionable unknown-tool error.
+
+        Keeps the ``Tool '<name>' is not registered`` phrasing (the recovery
+        classifier keys on "is not registered"), then tells the agent the correct
+        tool name — models often mis-prefix MCP tools (e.g. ``ralph_mcp__exec`` or
+        ``mcp__ralph__exec`` instead of the registered name) — and lists what is
+        available so the next call can succeed.
+        """
+        base = f"Tool '{name}' is not registered."
+        suggestion = self._suggest_registered_name(name)
+        hint = f" Did you mean '{suggestion}'?" if suggestion else ""
+        available = ", ".join(sorted(self._tools)) or "(none)"
+        return f"{base}{hint} Do not retry the same name. Available tools: {available}"
+
+    def _suggest_registered_name(self, name: str) -> str | None:
+        """Strip common mis-prefixes a model may invent and return a real tool name."""
+        for prefix in ("ralph_mcp__", "mcp__ralph__", "ralph__", "ralph_", "ralph."):
+            if name.startswith(prefix):
+                candidate = name[len(prefix) :]
+                if candidate in self._tools:
+                    return candidate
+        return None
 
     def list_metadata(self) -> list[ToolMetadata]:
         """Return tool metadata in registration order."""
