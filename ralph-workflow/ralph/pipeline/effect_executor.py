@@ -17,8 +17,8 @@ from ralph.agents.invoke import (
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
     extract_transport_session_id,
+    resolve_resume_session_id,
 )
-from ralph.agents.invoke._session_resume import resolve_resume_session_id
 from ralph.config.enums import Verbosity
 from ralph.config.mcp_loader import McpConfigError
 from ralph.display.parallel_display import (

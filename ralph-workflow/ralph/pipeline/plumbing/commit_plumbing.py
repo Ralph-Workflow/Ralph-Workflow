@@ -44,6 +44,7 @@ from ralph.agents.invoke import (
     InvokeOptions,
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
+    extract_transport_session_id,
     invoke_agent,
 )
 from ralph.agents.invoke._direct_mcp_recovery import (
@@ -51,7 +52,9 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     run_with_direct_mcp_recovery,
     summarize_retry_failure_evidence,
 )
-from ralph.agents.invoke._session import extract_transport_session_id
+
+# INVARIANT: must use the public ralph.agents.invoke surface so the per-file
+# exclusion in tests/test_no_anti_drift_regression.py stays enforced.
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext

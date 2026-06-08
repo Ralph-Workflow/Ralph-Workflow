@@ -101,6 +101,13 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     # Performance regression test: measures real subscriber dispatch latency.
     # Wall-clock measurement IS the correctness assertion.
     "test_subscriber_performance",
+    # Wall-clock budget pin for the new anti-drift test classes (per
+    # PA-004). The TestRegressionBudget::test_combined_wall_clock_under_8s
+    # test and the test_wedged_run_exits_cleanly test (PA-006) both
+    # measure real wall-clock to assert budget compliance. The wall-clock
+    # measurement IS the correctness assertion in both cases.
+    "test_no_anti_drift_regression",
+    "test_no_anti_drift_recovery_invariants",
 }
 
 # Path I/O methods that indicate real filesystem access.

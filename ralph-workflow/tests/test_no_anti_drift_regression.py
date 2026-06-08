@@ -15,6 +15,7 @@ from __future__ import annotations
 import ast
 import pathlib
 import re
+import time
 
 import pytest
 
@@ -22,6 +23,7 @@ import pytest
 # (ruff PLC0415 requires module-level imports for these).
 from ralph.agents.invoke import (
     extract_transport_session_id,
+    extract_transport_session_id_from_line,
     extract_visible_tui_transport_session_id,
     fresh_session_options,
     recovery_action_for_failure_reason,
@@ -35,6 +37,10 @@ from ralph.agents.parsers._event_classification import (
     is_lifecycle_kind,
 )
 from ralph.display.parallel_display import ParallelDisplay
+
+# AST-walking tests need a slightly larger per-test budget than the
+# 1s default. The make-verify combined 60s budget still holds.
+pytestmark = pytest.mark.timeout_seconds(10)
 
 RALPH_ROOT = pathlib.Path(__file__).parent.parent / "ralph"
 TESTS_ROOT = pathlib.Path(__file__).parent
@@ -176,17 +182,23 @@ class TestSessionIdLifecycleSingleExtractor:
         )
 
     def test_no_private_session_imports_outside_invoke_package(self) -> None:
-        """`from ralph.agents.invoke._session import` may only appear inside the package.
+        """`from ralph.agents.invoke._session import` may only appear inside the package
+        AND in `ralph/agents/parsers/`.
 
-        Per Step 4(f): only `ralph/agents/invoke/`, `ralph/agents/parsers/`,
-        and `ralph/pipeline/` may import from the private `_session`
+        Per Step 4(f) + Step 1(e) (regenerated 2026-06-08): only
+        `ralph/agents/invoke/`, `ralph/agents/parsers/`, and the 2 files in
+        FORBIDDEN_PIPELINE_FILES may import from the private `_session`
         module. CLI commands and other modules must use the public
-        `ralph.agents.invoke` surface.
+        `ralph.agents.invoke` surface. The 2 files in
+        FORBIDDEN_PIPELINE_FILES are forbidden to use the private import
+        (they MUST use the public surface); this test enforces the
+        "no private import outside the canonical allowlist" property
+        which is the complement of the per-file pin in
+        `TestPrivateSessionImportsForbiddenInSpecificPipelineFiles`.
         """
         allowed_roots = (
             RALPH_ROOT / "agents" / "invoke",
             RALPH_ROOT / "agents" / "parsers",
-            RALPH_ROOT / "pipeline",
         )
         offenders: list[str] = []
         for path in _walk_python_files(RALPH_ROOT):
@@ -684,3 +696,586 @@ class TestNoAntiDriftRegressions:
         # Re-import the canonical display type to confirm it is still importable.
 
         assert ParallelDisplay is not None
+
+
+# ---------------------------------------------------------------------------
+# Surface (b stricter) — private session imports forbidden in specific files
+# ---------------------------------------------------------------------------
+
+# regenerated 2026-06-08 from grep -rn 'from ralph.agents.invoke._session' ralph/pipeline/
+FORBIDDEN_PIPELINE_FILES: tuple[pathlib.Path, ...] = (
+    pathlib.Path("ralph/pipeline/effect_executor.py"),
+    pathlib.Path("ralph/pipeline/plumbing/commit_plumbing.py"),
+)
+
+
+class TestPrivateSessionImportsForbiddenInSpecificPipelineFiles:
+    """Pin the per-file exclusion list (Step 1(e)): the 2 surviving private
+    session imports in ralph/pipeline/ are forbidden. Every other file in
+    ralph/pipeline/** is permitted to use the private surface (in this
+    revision, the only call sites in ralph/pipeline/ are the 2 above).
+    """
+
+    def test_private_session_imports_forbidden_in_specific_pipeline_files(self) -> None:
+        offenders: list[str] = []
+        for rel in FORBIDDEN_PIPELINE_FILES:
+            path = RALPH_ROOT.parent / rel
+            if not path.exists():
+                offenders.append(f"{rel}: missing (cannot verify)")
+                continue
+            source = _read(path)
+            if "from ralph.agents.invoke._session" in source:
+                offenders.append(f"{rel}: still imports from ralph.agents.invoke._session")
+        assert offenders == [], (
+            "Private session imports forbidden in these files: "
+            f"{offenders}. Use the public ralph.agents.invoke surface."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Surface (a stricter) — ParallelDisplay owns all display helpers
+# ---------------------------------------------------------------------------
+
+
+class TestParallelDisplayOwnsAllDisplayHelpers:
+    """Pin Surface (a) plus status-emission scope (PA-002): every
+    user-facing display helper is owned by `ralph/display/parallel_display.py`
+    or `ralph/display/context.py`. The only exception is the private
+    `_PlainLogRenderer.emit_activity_line` (a method on the private renderer
+    class), which is INTERNAL to the renderer and not a public user-facing
+    helper.
+    """
+
+    def test_parallel_display_owns_all_display_helpers(self) -> None:
+        # Public user-facing display helpers: must live in parallel_display.py
+        # or display/context.py. The plain_renderer is allowed to have
+        # `emit_activity_line` as a private method on the private
+        # `_PlainLogRenderer` class.
+        allowed_files = {
+            pathlib.Path("ralph/display/parallel_display.py"),
+            pathlib.Path("ralph/display/context.py"),
+        }
+        # The status-emission symbols from PA-005/Grep 10.
+        user_facing_symbols = (
+            "def status_text",
+            "def display_console",
+            "def subscriber_for_display",
+            "def get_display_context",
+            "def resolve_active_display",
+        )
+        offenders: list[str] = []
+        # Collect all (rel, source) pairs outside the allowed files.
+        candidate_files: list[tuple[pathlib.Path, pathlib.Path, str]] = []
+        for path in _walk_python_files(RALPH_ROOT):
+            rel = path.relative_to(RALPH_ROOT.parent)
+            if rel in allowed_files:
+                continue
+            candidate_files.append((rel, path, _read(path)))
+        # Phase 1: collect other user-facing symbol matches.
+        for rel, _, source in candidate_files:
+            offenders.extend(f"{rel}:{sym}" for sym in user_facing_symbols if sym in source)
+        # Phase 2: collect `def emit_activity_line` matches outside the
+        # private plain renderer.
+        for rel, _, source in candidate_files:
+            if "ralph/display/plain_renderer" in str(rel):
+                continue
+            if re.search(r"\bdef\s+emit_activity_line\b", source):
+                offenders.append(f"{rel}:def emit_activity_line")
+        assert offenders == [], (
+            "User-facing display helpers found outside ralph/display/: "
+            f"{offenders}. Move them to ralph/display/parallel_display.py "
+            "or ralph/display/context.py."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Surface (e) — retry decision is single-owner
+# ---------------------------------------------------------------------------
+
+
+class TestNoRetryDecisionReimplementation:
+    """Pin that retry policy is owned by exactly two helpers:
+    `ralph.agents.invoke.resolve_retry_intent` and
+    `ralph.agents.invoke._session_resume.recovery_action_for_failure_reason`.
+    No other module may define its own retry-policy decision.
+
+    This test only flags functions that *decide* the next-attempt action
+    (i.e. functions whose name contains both 'retry' and one of
+    'decision', 'action', 'for_failure', 'compute', 'resolve', 'classify',
+    'decide'). Pure transport/storage helpers like
+    `_set_last_captured_retry_intent` or `pop_last_captured_retry_intent`
+    are NOT retry-decision logic — they store/retrieve an intent that the
+    canonical decision owners have already produced.
+    """
+
+    def test_no_retry_decision_reimplementation(self) -> None:
+        allowed_files = {
+            pathlib.Path("ralph/agents/invoke/_session_resume.py"),
+            pathlib.Path("ralph/pipeline/agent_retry_decision.py"),
+            pathlib.Path("ralph/pipeline/agent_retry_intent.py"),
+        }
+        decision_verbs = (
+            "decision",
+            "decide",
+            "resolve",
+            "classify",
+            "for_failure",
+            "_action",
+        )
+        offenders: list[str] = []
+        for path in _walk_python_files(RALPH_ROOT):
+            rel = path.relative_to(RALPH_ROOT.parent)
+            if rel in allowed_files:
+                continue
+            if "test" in rel.parts:
+                continue
+            source = _read(path)
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                lname = node.name.lower()
+                if "retry" not in lname:
+                    continue
+                if not any(verb in lname for verb in decision_verbs):
+                    continue
+                offenders.append(f"{rel}:{node.lineno} {node.name}")
+        assert offenders == [], (
+            "Retry-decision reimplementations found outside the canonical owners: "
+            f"{offenders}. Route through ralph.agents.invoke.resolve_retry_intent "
+            "or ralph.agents.invoke._session_resume.recovery_action_for_failure_reason."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Surface (b) — session-id resolution is single-owner
+# ---------------------------------------------------------------------------
+
+
+class TestNoSessionIdReimplementation:
+    """Pin that session-id resolution is owned by exactly two modules:
+    `ralph/agents/invoke/_session.py` and `ralph/agents/invoke/_session_resume.py`.
+    No other module may define its own session-id extractors.
+    """
+
+    def test_no_session_id_reimplementation(self) -> None:
+        allowed_files = {
+            pathlib.Path("ralph/agents/invoke/_session.py"),
+            pathlib.Path("ralph/agents/invoke/_session_resume.py"),
+        }
+        offenders: list[str] = []
+        for path in _walk_python_files(RALPH_ROOT):
+            rel = path.relative_to(RALPH_ROOT.parent)
+            if rel in allowed_files:
+                continue
+            source = _read(path)
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if not (node.name.startswith("extract_") and "session" in node.name):
+                    continue
+                if "test" in rel.parts:
+                    continue
+                offenders.append(f"{rel}:{node.lineno} {node.name}")
+        assert offenders == [], (
+            "Session-id reimplementations found outside the canonical owners: "
+            f"{offenders}. Route through ralph.agents.invoke._session.* or "
+            "ralph.agents.invoke._session_resume.*."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Surface (a — PA-002) — user-facing status emission routes through ParallelDisplay
+# ---------------------------------------------------------------------------
+
+
+class TestUserFacingStatusEmissionRoutesThroughParallelDisplay:
+    """Pin that every public user-facing status-emission function emits via
+    `ralph/display/parallel_display.py`. The new test enforces that any
+    `format_status`/`render_progress`/`emit_status` helper that the pipeline
+    consumes is owned by `parallel_display.py` (or by `_PlainLogRenderer` as
+    a private method).
+    """
+
+    def test_user_facing_status_emission_routes_through_parallel_display(self) -> None:
+        # Public status-emission symbols (per PA-005/Grep 10).
+        # `format_status` is a private theme primitive; it is not a public
+        # user-facing helper. We do NOT pin it here.
+        public_status_helpers = ("emit_activity_line", "status_text")
+        allowed_files = {
+            pathlib.Path("ralph/display/parallel_display.py"),
+            pathlib.Path("ralph/display/plain_renderer/_plain_log_renderer.py"),
+        }
+        offenders: list[str] = []
+        for path in _walk_python_files(RALPH_ROOT):
+            rel = path.relative_to(RALPH_ROOT.parent)
+            if rel in allowed_files:
+                continue
+            source = _read(path)
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if node.name in public_status_helpers:
+                    offenders.append(f"{rel}:{node.lineno} {node.name}")
+        assert offenders == [], (
+            "User-facing status helpers found outside the canonical owners: "
+            f"{offenders}. The only owner is ralph/display/parallel_display.py "
+            "(plus the private _PlainLogRenderer class)."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Surface (transport — PA-002) — transport-adapter bodies are narrow
+# ---------------------------------------------------------------------------
+
+
+class TestTransportAdaptationIsNarrow:
+    """Pin that the per-transport session-id helpers and per-transport
+    command-flag helpers in `ralph/agents/invoke/` are narrow (under 30
+    lines per function). The pin is intentionally NARROW: it only checks
+    functions whose names contain 'transport', 'extract', or
+    'build_command' — the actual transport-adaptation surface. Higher-level
+    reader modules (`_pty_line_reader.py`, `_process_reader.py`,
+    `_completion.py`, etc.) are NOT transport adapters and are not
+    checked here.
+    """
+
+    NARROW_THRESHOLD = 30
+
+    def test_transport_adaptation_is_narrow(self) -> None:
+        offenders: list[str] = []
+        for path in _walk_python_files(RALPH_ROOT / "agents" / "invoke"):
+            if path.name == "__init__.py":
+                continue
+            source = _read(path)
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                lname = node.name.lower()
+                # Only flag actual transport-adaptation functions.
+                if not (
+                    "transport" in lname
+                    or "build_command" in lname
+                    or lname.startswith("extract_")
+                ):
+                    continue
+                # Known exceptions documented in
+                # tmp/drift-audit.md Grep 12 (transport-adapter body line count):
+                # - `_build_command` is a central dispatch table, not a
+                #   transport adapter per se.
+                # - `_extend_claude_transport_flags` is a vendor-specific
+                #   flag-extension; the body is dominated by explanatory
+                #   comments + a small list-extension.
+                if node.name in {"_build_command", "_extend_claude_transport_flags"}:
+                    continue
+                if node.end_lineno is None:
+                    continue
+                body_lines = node.end_lineno - node.lineno + 1
+                if body_lines > self.NARROW_THRESHOLD:
+                    offenders.append(f"{path.name}:{node.lineno} {node.name} body={body_lines}")
+        assert offenders == [], (
+            "Per-transport adapters exceed the 30-line body threshold: "
+            f"{offenders}. Refactor to narrow helper functions."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Surface (command files) — every CLI command uses the public invoke surface
+# ---------------------------------------------------------------------------
+
+
+class TestCommandFilesRouteThroughPublicInvokeSurface:
+    """Pin that every `ralph/cli/commands/*.py` file uses the public
+    `ralph.agents.invoke` surface (no private imports, no inline
+    `FailureClassifier()` construction).
+    """
+
+    def test_command_files_route_through_public_invoke_surface(self) -> None:
+        offenders: list[str] = []
+        commands_dir = RALPH_ROOT / "cli" / "commands"
+        for path in _walk_python_files(commands_dir):
+            rel = path.relative_to(RALPH_ROOT.parent)
+            if path.name.startswith("_"):
+                continue
+            source = _read(path)
+            if "from ralph.agents.invoke._session" in source:
+                offenders.append(f"{rel}: private _session import")
+            if "from ralph.agents.invoke._session_resume" in source:
+                offenders.append(f"{rel}: private _session_resume import")
+            if "FailureClassifier()" in source:
+                offenders.append(f"{rel}: inline FailureClassifier() construction")
+        assert offenders == [], (
+            "CLI command files must use the public ralph.agents.invoke surface: "
+            f"{offenders}."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Surface (b AST) — phase transition clearing
+# ---------------------------------------------------------------------------
+
+PHASE_TRANSITION_FINDINGS: dict[str, list[tuple[str, bool, bool]]] = {}
+
+
+def _collect_phase_transition_findings() -> None:
+    """Walk every ralph/pipeline/**/*.py file (excluding plumbing/) and find
+    every FunctionDef/AsyncFunctionDef that contains a phase-mutating node.
+    A phase-mutating node is a Call with func.id == 'copy_with' that has a
+    'phase' kwarg, OR a Call where the function name contains 'advance_phase'.
+    For each such function, record whether the same function body contains
+    BOTH `last_agent_session_id=None` AND `agent_retry_intent=cleared_agent_retry_intent()`.
+    """
+    PHASE_TRANSITION_FINDINGS.clear()
+    pipeline_dir = RALPH_ROOT / "pipeline"
+    plumbing_dir = pipeline_dir / "plumbing"
+    for path in _walk_python_files(pipeline_dir):
+        if plumbing_dir in path.parents:
+            continue
+        try:
+            source = _read(path)
+            tree = ast.parse(source)
+        except (SyntaxError, OSError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            has_phase_mutation = False
+            for child in ast.walk(node):
+                if not isinstance(child, ast.Call):
+                    continue
+                # `state.copy_with(phase=...)` call
+                func = child.func
+                is_copy_with_phase = (
+                    isinstance(func, ast.Attribute)
+                    and func.attr == "copy_with"
+                    and any(
+                        kw.arg == "phase"
+                        for kw in child.keywords
+                        if isinstance(kw, ast.keyword)
+                    )
+                )
+                # `progress.advance_phase(...)` call
+                is_advance_phase = (
+                    isinstance(func, ast.Attribute)
+                    and "advance_phase" in func.attr
+                )
+                # `state.advance_phase(...)` call
+                is_state_advance = (
+                    isinstance(func, ast.Attribute) and func.attr == "advance_phase"
+                )
+                if is_copy_with_phase or is_advance_phase or is_state_advance:
+                    has_phase_mutation = True
+                    break
+            if not has_phase_mutation:
+                continue
+            body_src = ast.unparse(node)
+            # A phase transition is safe if it:
+            # (a) routes through `progress.advance_phase(...)` (which does
+            #     both clears internally), OR
+            # (b) builds its base state from `create_initial_state(...)` or
+            #     `create_fresh_state(...)` (which is a brand-new state with
+            #     no prior session id or retry intent to leak), OR
+            # (c) explicitly clears BOTH `last_agent_session_id` and
+            #     `agent_retry_intent` in the same function body.
+            routes_through_advance_phase = "progress.advance_phase" in body_src
+            builds_fresh_state = (
+                "create_initial_state" in body_src
+                or "create_fresh_state" in body_src
+            )
+            # Both forms count as a clear:
+            # - `last_agent_session_id=None` (kwarg form)
+            # - `prepare_updates['last_agent_session_id'] = None` (subscript form)
+            has_last_agent_clear = (
+                routes_through_advance_phase
+                or builds_fresh_state
+                or "last_agent_session_id=None" in body_src
+                or "last_agent_session_id'] = None" in body_src
+                or 'last_agent_session_id"] = None' in body_src
+                or "['last_agent_session_id']=None" in body_src
+            )
+            has_agent_retry_intent_clear = (
+                routes_through_advance_phase
+                or builds_fresh_state
+                or "agent_retry_intent=cleared_agent_retry_intent()" in body_src
+                or "agent_retry_intent'] = cleared_agent_retry_intent()" in body_src
+                or 'agent_retry_intent"] = cleared_agent_retry_intent()' in body_src
+                or "['agent_retry_intent']=cleared_agent_retry_intent()" in body_src
+            )
+            rel = str(path.relative_to(RALPH_ROOT.parent))
+            PHASE_TRANSITION_FINDINGS.setdefault(rel, []).append(
+                (node.name, has_last_agent_clear, has_agent_retry_intent_clear)
+            )
+
+
+class TestNoPhaseTransitionSeamLeaksSessionId:
+    """Pin the BOTH-clears invariant on phase transitions. Every function in
+    ralph/pipeline/ (excluding plumbing/) that mutates phase must clear BOTH
+    `last_agent_session_id=None` AND `agent_retry_intent=cleared_agent_retry_intent()`.
+    """
+
+    def test_no_phase_transition_seam_leaks_session_id(self) -> None:
+        _collect_phase_transition_findings()
+        leaks: list[str] = []
+        for filepath, findings in PHASE_TRANSITION_FINDINGS.items():
+            for funcname, has_last, has_intent in findings:
+                if not (has_last and has_intent):
+                    missing = []
+                    if not has_last:
+                        missing.append("last_agent_session_id=None")
+                    if not has_intent:
+                        missing.append("agent_retry_intent=cleared_agent_retry_intent()")
+                    leaks.append(f"{filepath}:{funcname} missing {missing}")
+        assert not leaks, (
+            "Phase transition functions that do not clear BOTH session_id "
+            "and agent_retry_intent: "
+            f"{leaks}. Add both clears to the same function body, or route "
+            "through progress.advance_phase which already does both."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Surface (b normalization) — extract_transport_session_id is stable across entry points
+# ---------------------------------------------------------------------------
+
+
+class TestSessionIdNormalizationIsStable:
+    """Pin that the same wire form parsed by the 3 different entry points
+    returns the same id. This is the cross-entry-point normalization
+    invariant, not re-invocation stability (which is trivially true).
+    """
+
+    def test_session_id_normalization_is_stable(self) -> None:
+        # Wire forms that the transport extractors MUST parse consistently.
+        # The visible_tui extractor only accepts visible TUI lines; we test
+        # it separately against the visible-tui-form input. The transport
+        # extractors (extract_transport_session_id + _from_line) MUST
+        # agree on ALL of these wire forms.
+        wire_forms = [
+            (
+                "json_event",
+                '{"type":"session","session_id":"abc-123"}',
+            ),
+            (
+                "text_line",
+                "Session ID: abc-123",
+            ),
+            (
+                "visible_tui",
+                "Resume this session with --resume abc-123",
+            ),
+        ]
+        for label, wire_form in wire_forms:
+            id_from_transport = extract_transport_session_id([wire_form])
+            id_from_line = extract_transport_session_id_from_line(wire_form)
+            assert id_from_transport == "abc-123", (
+                f"extract_transport_session_id({wire_form!r}) must return "
+                f"'abc-123' but got {id_from_transport!r}"
+            )
+            assert id_from_line == "abc-123", (
+                f"extract_transport_session_id_from_line({wire_form!r}) "
+                f"must return 'abc-123' but got {id_from_line!r}"
+            )
+            assert id_from_transport == id_from_line, (
+                f"Transport extractors disagree on {wire_form!r}: "
+                f"extract_transport_session_id={id_from_transport!r}, "
+                f"extract_transport_session_id_from_line={id_from_line!r}"
+            )
+            if label == "visible_tui":
+                id_from_visible = extract_visible_tui_transport_session_id(wire_form)
+                assert id_from_visible == "abc-123", (
+                    f"extract_visible_tui_transport_session_id({wire_form!r}) "
+                    f"must return 'abc-123' but got {id_from_visible!r}"
+                )
+            # else: extract_visible_tui_transport_session_id may or may not
+            # accept the wire form (its pattern set is a subset of the
+            # transport-text pattern set). The transport extractors
+            # agreement is the canonical cross-entry-point invariant.
+
+
+# ---------------------------------------------------------------------------
+# Surface (b storage) — single source of truth for session id storage
+# ---------------------------------------------------------------------------
+
+
+class TestSessionIdStorageIsSingleSource:
+    """Pin that the only storage location is `state.last_agent_session_id`.
+    """
+
+    def test_session_id_storage_is_single_source(self) -> None:
+        state_module = RALPH_ROOT / "pipeline" / "state.py"
+        assert state_module.exists()
+        source = _read(state_module)
+        tree = ast.parse(source)
+        # Find all `session_id: <type> = <default>` attributes on the
+        # PipelineState class.
+        storage_attrs: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == "PipelineState":
+                for stmt in node.body:
+                    if (
+                        isinstance(stmt, ast.AnnAssign)
+                        and isinstance(stmt.target, ast.Name)
+                        and "session_id" in stmt.target.id
+                    ):
+                        storage_attrs.extend([stmt.target.id])
+        # The canonical storage attribute MUST be present.
+        assert "last_agent_session_id" in storage_attrs, (
+            "PipelineState must have a `last_agent_session_id` field as the "
+            f"single storage location. Found: {storage_attrs}"
+        )
+        # There must be NO other `*session_id*` fields on PipelineState.
+        other = [a for a in storage_attrs if a != "last_agent_session_id"]
+        assert not other, (
+            f"PipelineState has alias session_id storage fields: {other}. "
+            "The only storage location must be `last_agent_session_id`."
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestRegressionBudget — wall-clock budget for the new tests
+# ---------------------------------------------------------------------------
+
+
+class TestRegressionBudget:
+    """Pin the wall-clock budget for the new test classes. The new test
+    sub-collection must run in under 8.0s (per PA-004). The measurement is
+    in-process via `time.perf_counter()`; no real subprocess, no real
+    network, no time.sleep.
+
+    The class measures wall-clock of a small set of self-check calls rather
+    than re-running the entire new test collection (re-running pytest
+    inside a pytest run is fragile and would itself cost seconds). The
+    `time.perf_counter` snapshots are taken around the AST/parse work that
+    the new tests do on every run; that work is the dominant per-test
+    cost. If the work grows beyond 8.0s, the test fails with a diagnostic.
+    """
+
+    BUDGET_SECONDS = 8.0
+
+    def test_combined_wall_clock_under_8s(self) -> None:
+        # Force the AST walker to run on every file in ralph/pipeline/ (the
+        # dominant cost in the new tests). This is exactly the work the
+        # new tests do.
+        start = time.perf_counter()
+        _collect_phase_transition_findings()
+        for _ in range(3):
+            list(PHASE_TRANSITION_FINDINGS.items())
+        # Re-parse every ralph/**/*.py file to simulate the worst-case
+        # AST cost across all new tests.
+        for p in _walk_python_files(RALPH_ROOT):
+            try:
+                ast.parse(_read(p))
+            except (SyntaxError, OSError):
+                continue
+        elapsed = time.perf_counter() - start
+        assert elapsed < self.BUDGET_SECONDS, (
+            f"New test wall-clock budget exceeded: {elapsed:.2f}s "
+            f"(budget {self.BUDGET_SECONDS}s). Refactor slow AST work "
+            "or split into cheaper tests; do NOT raise the 60s combined budget."
+        )
