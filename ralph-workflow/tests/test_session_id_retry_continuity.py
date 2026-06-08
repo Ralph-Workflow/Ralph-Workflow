@@ -32,11 +32,11 @@ from __future__ import annotations
 import uuid
 
 from ralph.agents.invoke import (
+    InvokeOptions,
     fresh_session_options,
     recovery_action_for_failure_reason,
     resolve_resume_session_id,
 )
-from ralph.agents.invoke._types import InvokeOptions
 
 
 def test_tool_availability_failure_yields_resume_action() -> None:
