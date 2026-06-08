@@ -1,6 +1,6 @@
 {
   "schema_version": "ecc.self-repair-self-improve-audit.v1",
-  "checked_at": "2026-06-08T00:45:43.452192+02:00",
+  "checked_at": "2026-06-08T03:12:44.518312+02:00",
   "total_loops_audited": 20,
   "loops_with_self_repair": 18,
   "loops_with_self_improve": 18,
@@ -8,18 +8,18 @@
   "loops_missing_self_improve": 2,
   "loop_results": [
     {
-      "job": "agent-architecture-watchdog",
-      "script": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_audit.py",
+      "job": "system-health-monitor",
+      "script": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
       "has_self_repair": true,
-      "sr_detail": "patterns:self_?repair,health_.*monitor",
+      "sr_detail": "patterns:stale_artifact,auto_?repair,health_.*monitor",
       "needs_self_repair": true,
       "has_self_improve": true,
-      "si_detail": "patterns:self_improv,self_improv,verifier artifact",
+      "si_detail": "patterns:Verifier artifact,verifier artifact,verdict\": \"pass",
       "needs_self_improve": true,
       "self_repair_missing": false,
       "self_improve_missing": false,
-      "job_id": "dc190b5f-f215-458b-bdce-ba36be178c80",
-      "model": "openrouter/deepseek/deepseek-v4-pro"
+      "job_id": "1c0ad179-185c-4067-ba16-d41702524ee0",
+      "model": "minimax/MiniMax-M3"
     },
     {
       "job": "codeberg-github-mirror-sync",
@@ -33,20 +33,6 @@
       "self_repair_missing": false,
       "self_improve_missing": false,
       "job_id": "b7d74fa6-ab9b-4f66-9d03-a77c0ad7a56c",
-      "model": "minimax/MiniMax-M3"
-    },
-    {
-      "job": "system-health-monitor",
-      "script": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-      "has_self_repair": true,
-      "sr_detail": "patterns:stale_artifact,auto_?repair,health_.*monitor",
-      "needs_self_repair": true,
-      "has_self_improve": true,
-      "si_detail": "patterns:Verifier artifact,verifier artifact,verdict\": \"pass",
-      "needs_self_improve": true,
-      "self_repair_missing": false,
-      "self_improve_missing": false,
-      "job_id": "1c0ad179-185c-4067-ba16-d41702524ee0",
       "model": "minimax/MiniMax-M3"
     },
     {
@@ -131,6 +117,20 @@
       "self_repair_missing": false,
       "self_improve_missing": false,
       "job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854",
+      "model": "openrouter/deepseek/deepseek-v4-pro"
+    },
+    {
+      "job": "agent-architecture-watchdog",
+      "script": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_audit.py",
+      "has_self_repair": true,
+      "sr_detail": "patterns:self_?repair,health_.*monitor",
+      "needs_self_repair": true,
+      "has_self_improve": true,
+      "si_detail": "patterns:self_improv,self_improv,verifier artifact",
+      "needs_self_improve": true,
+      "self_repair_missing": false,
+      "self_improve_missing": false,
+      "job_id": "dc190b5f-f215-458b-bdce-ba36be178c80",
       "model": "openrouter/deepseek/deepseek-v4-pro"
     },
     {

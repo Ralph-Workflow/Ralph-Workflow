@@ -1,14 +1,14 @@
 {
-  "ts": "2026-06-08T02:03:01.710696",
+  "ts": "2026-06-08T02:45:42.241383",
   "jobs_checked": 20,
-  "issues_found": 7,
+  "issues_found": 5,
   "issues": [
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 7846.52,
+      "artifact_age_minutes": 7889.19,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
     },
@@ -18,31 +18,23 @@
       "category": "loop_verification_fail",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Docs system is well-aligned with positioning. The README \u2192 START_HERE \u2192 docs/README journey is coherent. Promoted secondary pages reinforce rather than fight the main story. No hard failures detected. Minor polish opportunities exist (reviewable-output.md is orphaned) but nothing that breaks the rubric."
+      "likely_cause": "Docs system is strongly aligned with the positioning document. Coherent README \u2192 START_HERE \u2192 docs/README journey. No internal leakage on top-level surfaces. Clear audience fit/non-fit. Engineering-practice dependence honestly stated."
     },
     {
       "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_reviewable-output-md-is-not-linked-from-any-prom",
+      "name": "docs_agentic_review_mustFix_codeberg-primary-readme-is-noticeably-shorter-th",
       "category": "review_followup_required",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "last_error": "reviewable-output.md is not linked from any promoted page \u2014 either integrate it into docs/README alongside overnight-demo-real.md under an evidence route, or remove it to avoid orphaned surface area",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: reviewable-output.md is not linked from any promoted page \u2014 either integrate it into docs/README alongside overnight-demo-real.md under an evidence route, or remove it to avoid orphaned surface area"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-08T01:47:07.280203+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
+      "last_error": "Codeberg primary README is noticeably shorter than the GitHub mirror's docs section \u2014 the primary should at minimum mirror the docs link density and the 'When it fits/doesn't fit' section from the GitHub copy, since it's the canonical source of truth.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Codeberg primary README is noticeably shorter than the GitHub mirror's docs section \u2014 the primary should at minimum mirror the docs link density and the 'When it fits/doesn't fit' section from the GitHub copy, since it's the canonical source of truth."
     },
     {
       "job_id": "__artifacts__",
       "name": "docs_agentic_review_escalation",
       "category": "escalation_required",
       "last_error": "mustFix has unresolved entries",
-      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=72",
-      "repeats_in_recent_history": 72,
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=78",
+      "repeats_in_recent_history": 78,
       "owner_domain": "docs",
       "incident_key": "docs_agentic_review::loop_verification_fail",
       "escalation_level": "critical",
@@ -50,26 +42,14 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "docs_agentic_review_mustFix_reviewable-output-md-is-not-linked-from-any-prom_escalation",
+      "name": "docs_agentic_review_mustFix_codeberg-primary-readme-is-noticeably-shorter-th_escalation",
       "category": "escalation_required",
-      "last_error": "reviewable-output.md is not linked from any promoted page \u2014 either integrate it into docs/README alongside overnight-demo-real.md under an evidence route, or remove it to avoid orphaned surface area",
-      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_reviewable-output-md-is-not-linked-from-any-prom:review_followup_required repeat_count=2",
+      "last_error": "Codeberg primary README is noticeably shorter than the GitHub mirror's docs section \u2014 the primary should at minimum mirror the docs link density and the 'When it fits/doesn't fit' section from the GitHub copy, since it's the canonical source of truth.",
+      "likely_cause": "Incident escalation level=owner: docs_agentic_review_mustFix_codeberg-primary-readme-is-noticeably-shorter-th:review_followup_required repeat_count=2",
       "repeats_in_recent_history": 2,
       "owner_domain": "docs",
-      "incident_key": "docs_agentic_review_mustFix_reviewable-output-md-is-not-linked-from-any-prom::review_followup_required",
+      "incident_key": "docs_agentic_review_mustFix_codeberg-primary-readme-is-noticeably-shorter-th::review_followup_required",
       "escalation_level": "owner",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
-      "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-08T01:47:07.280203+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=111",
-      "repeats_in_recent_history": 111,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
-      "escalation_level": "critical",
       "blocked_by": []
     }
   ],
@@ -78,19 +58,43 @@
       "type": "rerun_docs_verifier",
       "job": "docs_agentic_review",
       "ok": true,
-      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is well-aligned with positioning. The README \\u2192 START_HERE \\u2192 docs/README journey is coherent. Promoted secondary pages reinforce rather than fight the ma"
+      "detail": "independently verified pass\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is strongly aligned with the positioning document. Coherent README \\u2192 START_HERE \\u2192 docs/README journey. No internal leakage on top-level surfaces. Clear "
     },
     {
       "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_reviewable-output-md-is-not-linked-from-any-prom",
+      "job": "docs_agentic_review_mustFix_codeberg-primary-readme-is-noticeably-shorter-th",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780876974569:10\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1780879525852:15\"\n}"
+    },
+    {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-08T02:45:31.036272+02:00\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780879533137:16\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_agentic_review_escalation",
       "ok": true,
       "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780879537334:17\"\n}"
     }
   ]
 }

@@ -32354,3 +32354,90 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is strongly aligned with the positioning document. Coherent README \u2192 START_HERE \u2192 docs/README journey. No internal leakage on top-level surfaces. Clear audience fit/non-fit. Engineering-practice dependence honestly stated.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Codeberg primary README is noticeably shorter than the GitHub mirror's docs section \u2014 the primary should at minimum mirror the docs link density and the 'When it fits/doesn't fit' section from the GitHub copy, since it's the canonical source of truth."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md",
+      "reason": "Leads with 'operating system for autonomous coding' tagline and immediately frames as FOSS AI agent orchestrator. The 'Why it's different' table clearly separates from chat-window tools. 'Who it's for/not for' explicitly gates scope."
+    },
+    {
+      "path": "START_HERE.md",
+      "reason": "Leads with the simple Ralph-loop core, composability, and strong default workflow. Focuses on task selection and honest evaluation. Zero internal plumbing leakage. The 'Next pages only if you need them' section is an excellent low-anxiety pattern."
+    },
+    {
+      "path": "docs/README.md",
+      "reason": "Intent-based routing ('Choose one route') with 'Keep proof secondary' section explicitly telling users that proof pages come after product understanding. This is a model documentation map."
+    },
+    {
+      "path": "docs/spec-driven-ai-agent.md",
+      "reason": "Reinforces the spec-driven positioning without fighting the README story. Explains why the spec matters as an operational necessity, not ceremony."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "'Simple at the center, stronger in composition, useful before customization' \u2014 directly mirrors the core positioning. Does not leak internal mechanics."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system is coherent, positions the product as a composable loop framework / AI orchestrator with a strong simple-core story. README leads with the right tagline, the comparison table reinforces the differentiation, START_HERE provides an honest first-run path, and docs/README routes cleanly while keeping proof secondary. Minor asymmetry between the repo-root and PyPI sub-package README surfaces, but no hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Align repo-root README with the stronger PyPI sub-package README (pre-flight checklist, fit/fit-not matrix, depth presets, a-fast-way-to-tell section)",
+    "Add START_HERE.md link from ralph-workflow/README.md so PyPI-first visitors see the first-run guidance"
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Leads with 'operating system for autonomous coding' tagline, explains simple-core -> composable framework, draws clear audience fit/non-fit boundaries, comparison table is effective and avoids internal plumbing language"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Honest first-run path with concrete task selection guidance, emphasizes result-first evaluation, keeps supporting detail secondary"
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Routes users cleanly from README/START_HERE into deeper content, explicitly ranks product story and operator route above proof pages, maintains Codeberg-primary framing"
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
