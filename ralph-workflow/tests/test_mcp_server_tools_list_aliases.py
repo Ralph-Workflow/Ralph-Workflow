@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
+
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._server_state import ServerState
@@ -82,21 +84,48 @@ def test_tools_list_alias_matches_canonical_description_and_input_schema() -> No
     assert alias_entry["inputSchema"] == raw["inputSchema"]
 
 
+class _DuplicateNameRegistry:
+    """A registry that emits two definitions sharing one name."""
+
+    def list_definitions(self) -> list[ToolDefinition]:
+        definition = ToolDefinition(
+            name="dup",
+            description="duplicate",
+            input_schema={"type": "object"},
+        )
+        return [definition, definition]
+
+
 def test_tools_list_runtime_invariant_rejects_duplicate_names() -> None:
-    """If the alias builder regresses and emits a duplicate name, the
-    runtime invariant must raise (NOT silently pass through)."""
-    server = _build_server_with_tool("read_file")
-    # Patch the alias builder to return the raw name (degenerate) to
-    # simulate a regression where the alias collapses to the canonical
-    # name. The current code skips such entries, so the invariant holds
-    # by construction. We assert the constructor-level invariant by
-    # verifying that calling _handle_tools_list twice produces
-    # identical, non-duplicate results.
-    tools = _tools_list(server)
-    tools_again = _tools_list(server)
-    assert [t["name"] for t in tools] == [t["name"] for t in tools_again]
-    names = [t["name"] for t in tools]
-    assert len(names) == len(set(names))
+    """If the tool surface regresses and emits a duplicate name, the runtime
+    invariant must RAISE at _handle_tools_list (it stays loud even though
+    handle_request now wraps it into a JSON-RPC error)."""
+    server = McpServer(
+        session=cast("Any", object()),
+        workspace=cast("Any", object()),
+        registry=cast("Any", _DuplicateNameRegistry()),
+    )
+    request = JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id="1", params={})
+
+    with pytest.raises(RuntimeError, match="duplicate tool names"):
+        server._handle_tools_list(request)
+
+
+def test_handle_request_wraps_duplicate_name_invariant_as_jsonrpc_error() -> None:
+    """The same invariant, reached via handle_request, becomes a -32603 error
+    rather than crashing the transport."""
+    server = McpServer(
+        session=cast("Any", object()),
+        workspace=cast("Any", object()),
+        registry=cast("Any", _DuplicateNameRegistry()),
+    )
+    request = JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id="1", params={})
+
+    response, _ = server.handle_request(request, ServerState.RUNNING)
+
+    assert response is not None
+    assert response.error is not None
+    assert response.error["code"] == -32603
 
 
 def test_tools_call_dispatches_alias_to_canonical_handler() -> None:

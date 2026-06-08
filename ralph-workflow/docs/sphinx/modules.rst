@@ -919,6 +919,13 @@ ralph.pipeline.agent_retry_intent
    :members:
    :show-inheritance:
 
+ralph.pipeline.retryable_failure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.retryable_failure
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.state
 ~~~~~~~~~~~~~~~~~~~~
 

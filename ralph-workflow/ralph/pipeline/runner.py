@@ -69,6 +69,7 @@ from ralph.pipeline.activity_stream import (
     truncate,
 )
 from ralph.pipeline.agent_execution_deps import AgentExecutionDeps
+from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
     commit_effect,
@@ -739,10 +740,20 @@ def _handle_inline_effect(
             if target_phase_def is not None and target_phase_def.role == "execution":
                 clear_cycle_baseline(workspace_scope.root)
                 write_start_commit_if_absent(workspace_scope.root)
-        updated_state = prepared_state.copy_with(
-            phase=effect.phase,
-            current_drain=effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
-        )
+        prepare_updates: dict[str, object] = {
+            "phase": effect.phase,
+            "current_drain": effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
+        }
+        # A change of phase here (skip-invocation success route, failed-route
+        # re-entry) must clear the next-attempt session action exactly like
+        # progress.advance_phase does. Preserving it would leak a stale resume
+        # session id / retry intent into an unrelated phase's first attempt.
+        # Same-phase re-prompts (the retry-in-session resume path) intentionally
+        # keep the intent so the resume can take effect.
+        if effect.phase != prepared_state.phase:
+            prepare_updates["last_agent_session_id"] = None
+            prepare_updates["agent_retry_intent"] = cleared_agent_retry_intent()
+        updated_state = prepared_state.copy_with(**prepare_updates)
         ckpt.save(updated_state, checkpoint_path)
         _notify_pipeline_subscriber(effective_subscriber, updated_state)
         return updated_state

@@ -11,7 +11,7 @@ from ralph.agents.invoke import (
     OpenCodeResumableExitError,
     bounded_output_lines,
     check_process_result,
-    extract_session_id,
+    extract_transport_session_id,
 )
 
 if TYPE_CHECKING:
@@ -31,7 +31,7 @@ class _FakeInteractiveHandle:
 def test_extract_session_id_from_interactive_transcript_marker() -> None:
     output = ["Claude session ready. Session ID: pty-session-42\n"]
 
-    assert extract_session_id(output) == "pty-session-42"
+    assert extract_transport_session_id(output) == "pty-session-42"
 
 
 def test_bounded_output_does_not_treat_stop_hook_turn_boundary_as_explicit_completion() -> None:

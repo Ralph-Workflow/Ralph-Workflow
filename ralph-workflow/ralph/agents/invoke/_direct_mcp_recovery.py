@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
+from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
 from ralph.pipeline.agent_retry_intent import agent_retry_intent_for_failure
+from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.recovery.failure_classifier import FailureClassifier
 
 from ._session import extract_transport_session_id, extract_transport_session_id_from_line
@@ -52,12 +53,7 @@ def _retry_plan_for_exception(
     attempt_lines: list[str],
     current_session_id: str | None,
 ) -> _DirectMcpRetryPlan | None:
-    inactivity_module = import_module("ralph.agents.invoke._agent_inactivity_timeout_error")
-    effect_executor = import_module("ralph.pipeline.effect_executor")
-    inactivity_error_type = getattr(inactivity_module, "AgentInactivityTimeoutError")
-    retryable_failure_reason = getattr(effect_executor, "retryable_agent_failure_reason")
-
-    if retryable_failure_reason(exc, inactivity_error_type) is None:
+    if retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is None:
         return None
     classified = FailureClassifier().classify(
         exc,

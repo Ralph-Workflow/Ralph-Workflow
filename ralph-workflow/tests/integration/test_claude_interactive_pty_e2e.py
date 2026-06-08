@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.agents.invoke import InvokeOptions, extract_session_id, invoke_agent
+from ralph.agents.invoke import InvokeOptions, extract_transport_session_id, invoke_agent
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
 from ralph.process.pty import spawn_pty_process
@@ -51,4 +51,4 @@ def test_claude_interactive_pty_runtime_behaves_like_tty_session(tmp_path: Path)
 
     assert any("claude tool: read_file" in line for line in lines)
     assert any("Task declared complete:" in line for line in lines)
-    assert extract_session_id(lines) == "pty-session-e2e"
+    assert extract_transport_session_id(lines) == "pty-session-e2e"

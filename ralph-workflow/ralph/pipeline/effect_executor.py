@@ -18,8 +18,8 @@ from ralph.agents.invoke import (
     build_invoke_options_from_config,
     extract_transport_session_id,
 )
-from ralph.agents.invoke._session_resume import resolve_session_resume_flag
-from ralph.config.enums import AgentTransport, Verbosity
+from ralph.agents.invoke._session_resume import resolve_resume_session_id
+from ralph.config.enums import Verbosity
 from ralph.config.mcp_loader import McpConfigError
 from ralph.git.operations import stage_files
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
@@ -90,38 +90,6 @@ _AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
 _RECOVERY_CONTEXT_LINES = 12
 _RECOVERY_CONTEXT_MAX_CHARS = 240
 _PORCELAIN_STATUS_PREFIX_LEN = 3
-_TRANSIENT_CONNECTIVITY_MARKERS = (
-    "connection refused",
-    "network is unreachable",
-    "temporary failure in name resolution",
-    "name or service not known",
-    "timed out",
-    "timeout",
-    "offline",
-    "econnreset",
-    "enotfound",
-    "socket hang up",
-)
-
-_TURN_LIMIT_MARKERS = (
-    "conversation exceeded 50 turns",
-)
-
-_POST_TOOL_EMPTY_RESPONSE_MARKERS = (
-    "empty response with no tool calls",
-    "empty response",
-)
-
-_POST_TOOL_ACTIVITY_MARKERS = (
-    '"type":"tool_result"',
-    '"type": "tool_result"',
-    '"type":"mcp_tool_result"',
-    '"type": "mcp_tool_result"',
-    '"type":"tool_use"',
-    '"type": "tool_use"',
-    '[plain] tool:',
-    ' tool: ',
-)
 
 
 @dataclass(frozen=True)
@@ -210,27 +178,21 @@ def execute_agent_effect(
 
 def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
     attempt_prompt_file = ctx.effect.prompt_file
-    # Single source of truth for the session-resume decision: the new helper
-    # in ralph.agents.invoke._session_resume reads the stored failure reason
-    # from pipeline state and returns the right flag (--resume for Claude
-    # Code, --session for OpenCode) plus the session id to thread into
-    # InvokeOptions. The pre-fix code had a divergent `--session-id` branch
-    # in _build_claude_interactive_command that silently created a new
-    # session for the resume path. Now ALL resume-vs-create decisions go
-    # through this helper.
+    # Single source of truth for the session-resume DECISION: resolve_resume_session_id
+    # maps the stored retry action to the session id to thread into InvokeOptions.
+    # The per-transport resume flag SYNTAX is owned separately by config.session_flag
+    # in each command builder, so the decision and the flag string cannot drift.
     resume_session_id: str | None = None
     if ctx.state is not None:
         retry_intent = ctx.state.agent_retry_intent
         action = retry_intent.action
         prior_session_id = retry_intent.session_id
         if action is not None and action != "fresh":
-            _extra, sid = resolve_session_resume_flag(
-                ctx.agent_config.transport or AgentTransport.GENERIC,
+            resume_session_id = resolve_resume_session_id(
                 has_prior_session=bool(prior_session_id),
                 prior_session_id=prior_session_id,
                 recovery_action=action,
             )
-            resume_session_id = sid
     bridge = None
     try:
         _materialize = ctx.deps.materialize_system_prompt_fn or materialize_system_prompt
@@ -583,53 +545,6 @@ def _failure_requires_fresh_session(exc: Exception, inactivity_error_type: type[
     return contains_casefolded_marker(_recovery_error_parts(exc), _SESSION_NOT_FOUND_SUBSTRINGS)
 
 
-def _retryable_agent_failure_reason(
-    exc: Exception, inactivity_error_type: type[Exception]
-) -> str | None:
-    detail_parts = _recovery_error_parts(exc)
-    primary_text = _primary_recovery_error_text(exc)
-    checks: tuple[tuple[bool, str], ...] = (
-        (isinstance(exc, inactivity_error_type), "an inactivity timeout"),
-        (
-            type(exc).__name__ == "OpenCodeResumableExitError",
-            "agent session exited without required completion evidence",
-        ),
-        (
-            contains_casefolded_marker(detail_parts, _SESSION_NOT_FOUND_SUBSTRINGS),
-            "a stale session ID (fresh session required)",
-        ),
-        (
-            contains_casefolded_marker(detail_parts, _TURN_LIMIT_MARKERS),
-            "the agent conversation turn limit",
-        ),
-        (
-            _has_transient_connectivity_signal(primary_text),
-            "a transient connectivity failure",
-        ),
-        (
-            contains_casefolded_marker(detail_parts, _POST_TOOL_EMPTY_RESPONSE_MARKERS)
-            and contains_casefolded_marker(detail_parts, _POST_TOOL_ACTIVITY_MARKERS),
-            "a post-tool-result continuation failure",
-        ),
-    )
-    for matched, reason in checks:
-        if matched:
-            return reason
-    return None
-
-
-def _primary_recovery_error_text(exc: Exception) -> str:
-    stderr = cast("object", getattr(exc, "stderr", ""))
-    if isinstance(stderr, str) and stderr.strip():
-        return stderr
-    return str(exc)
-
-
-def _has_transient_connectivity_signal(text: str) -> bool:
-    lowered = text.lower()
-    return any(marker in lowered for marker in _TRANSIENT_CONNECTIVITY_MARKERS)
-
-
 def _recovery_error_parts(exc: Exception) -> list[str]:
     return failure_detail_parts(exc)
 
@@ -745,7 +660,6 @@ def _write_agent_retry_prompt(
 
 
 recovery_error_parts = _recovery_error_parts
-retryable_agent_failure_reason = _retryable_agent_failure_reason
 resolve_recovery_session_id = _resolve_recovery_session_id
 recovery_context_lines = _recovery_context_lines
 retry_prompt_file_for_context = _retry_prompt_file_for_context

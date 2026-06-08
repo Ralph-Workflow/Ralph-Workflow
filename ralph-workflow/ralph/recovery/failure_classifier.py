@@ -68,12 +68,12 @@ _TOOL_AVAILABILITY_SUBSTRINGS: tuple[str, ...] = (
     "no such tool available",
 )
 
-_POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS: tuple[str, ...] = (
+POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS: tuple[str, ...] = (
     "empty response with no tool calls",
     "empty response",
 )
 
-_POST_TOOL_ACTIVITY_MARKERS: tuple[str, ...] = (
+POST_TOOL_ACTIVITY_MARKERS: tuple[str, ...] = (
     '"type":"tool_result"',
     '"type": "tool_result"',
     '"type":"mcp_tool_result"',
@@ -218,8 +218,8 @@ def _is_tool_dispatch_unregistered_error(exc: BaseException) -> bool:
 
 def _is_post_tool_empty_response_failure(detail_parts: list[str]) -> bool:
     return contains_casefolded_marker(
-        detail_parts, _POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
-    ) and contains_casefolded_marker(detail_parts, _POST_TOOL_ACTIVITY_MARKERS)
+        detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+    ) and contains_casefolded_marker(detail_parts, POST_TOOL_ACTIVITY_MARKERS)
 
 
 def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) -> bool:
@@ -400,9 +400,17 @@ class FailureClassifier:
             return FailureCategory.AGENT, True, False
         if _is_suspicious_timeout_without_output(detail_parts, connectivity_state):
             return FailureCategory.AGENT, True, False
-        msg_lower = raw_message.lower()
+        # Scan the full detail surface (message + stderr + parsed_output) with
+        # the shared marker vocabulary, the same surface and vocabulary the
+        # pipeline retryable reasoner uses. Checking only ``raw_message`` here
+        # let an empty-response signal carried in ``parsed_output`` (e.g. the
+        # nanocoder/MiniMax-M3 empty turn) be misclassified as AMBIGUOUS, so the
+        # same failure was budget-attributed differently depending on which text
+        # surface carried the signal.
         if not _message_looks_environmental(raw_message) and (
-            "empty" in msg_lower or "no output" in msg_lower or "timed out" in msg_lower
+            contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS)
+            or contains_casefolded_marker(detail_parts, _NO_OUTPUT_SUBSTRINGS)
+            or contains_casefolded_marker(detail_parts, _TIMEOUT_SUBSTRINGS)
         ):
             return FailureCategory.AGENT, True, False
         return None

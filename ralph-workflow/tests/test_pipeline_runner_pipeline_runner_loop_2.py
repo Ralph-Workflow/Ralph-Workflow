@@ -19,6 +19,7 @@ from ralph.display.context import make_display_context
 from ralph.pipeline import phase_agent_handler as phase_agent_handler_module
 from ralph.pipeline import prompt_prep as prompt_prep_module
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 from ralph.pipeline.effects import (
     ExitFailureEffect,
     ExitSuccessEffect,
@@ -703,9 +704,13 @@ class TestPipelineRunnerLoop:
         result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
+        # Advancing to a different phase must also clear the next-attempt session
+        # action so a stale resume id/intent cannot leak into the new phase.
         state.copy_with.assert_called_once_with(
             phase="development",
             current_drain="development",
+            last_agent_session_id=None,
+            agent_retry_intent=cleared_agent_retry_intent(),
         )
         execute_effect.assert_not_called()
         reducer.assert_not_called()

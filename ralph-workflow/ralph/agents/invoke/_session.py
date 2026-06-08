@@ -8,13 +8,6 @@ from typing import cast
 
 _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
 _TURN_BOUNDARY_MARKER = "[claude turn boundary]"
-_LEGACY_SESSION_ID_PATTERNS = (
-    re.compile(r"session\s+id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
-    re.compile(r"session_id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
-    re.compile(r"sessionId\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
-    re.compile(r"--resume\s+([A-Za-z0-9._:-]+)"),
-    re.compile(r"--session\s+([A-Za-z0-9._:-]+)"),
-)
 
 _COMPLETION_SESSION_ID_PATTERNS = (
     re.compile(r"session_id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
@@ -69,42 +62,6 @@ def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
     return None
 
 
-def _find_session_id(value: object) -> str | None:
-    if isinstance(value, dict):
-        for key in ("session_id", "sessionId"):
-            session_id = value.get(key)
-            if isinstance(session_id, str) and session_id:
-                return session_id
-        for nested in value.values():
-            session_id = _find_session_id(nested)
-            if session_id:
-                return session_id
-    if isinstance(value, list):
-        for item in value:
-            session_id = _find_session_id(item)
-            if session_id:
-                return session_id
-    return None
-
-
-def _extract_session_id_from_line(line: str) -> str | None:
-    try:
-        parsed = cast("object", json.loads(line))
-    except json.JSONDecodeError:
-        stripped = line.strip()
-        if _EXPLICIT_COMPLETION_MARKER in stripped:
-            for pattern in _COMPLETION_SESSION_ID_PATTERNS:
-                match = pattern.search(stripped)
-                if match is not None:
-                    return match.group(1)
-        for pattern in _LEGACY_SESSION_ID_PATTERNS:
-            match = pattern.search(stripped)
-            if match is not None:
-                return match.group(1)
-        return None
-    return _find_session_id(parsed)
-
-
 def _extract_transport_session_id_from_line(line: str) -> str | None:
     try:
         parsed = cast("object", json.loads(line))
@@ -113,15 +70,6 @@ def _extract_transport_session_id_from_line(line: str) -> str | None:
     if not isinstance(parsed, dict):
         return None
     return _match_transport_json_session_id(parsed)
-
-
-def extract_session_id(raw_output: list[str] | tuple[str, ...]) -> str | None:
-    """Extract a nested session identifier from raw NDJSON output lines."""
-    for line in raw_output:
-        session_id = _extract_session_id_from_line(line)
-        if session_id:
-            return session_id
-    return None
 
 
 def extract_transport_session_id(raw_output: list[str] | tuple[str, ...]) -> str | None:

@@ -48,6 +48,7 @@ class AgentRetryIntent(RalphBaseModel):
 
 
 def cleared_agent_retry_intent() -> AgentRetryIntent:
+    """Return the empty intent used to clear next-attempt session state."""
     return AgentRetryIntent()
 
 
@@ -91,6 +92,7 @@ def resume_agent_retry_intent(
     failure_reason: str = "",
     reset_tool_registry: bool = False,
 ) -> AgentRetryIntent:
+    """Build a resume intent that reuses an existing agent session id."""
     return AgentRetryIntent(
         action="resume",
         session_id=session_id,

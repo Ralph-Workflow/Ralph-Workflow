@@ -14,11 +14,13 @@ from ralph.agents.execution_state import (
     OpenCodeExecutionStrategy,
 )
 from ralph.agents.idle_watchdog import TimeoutPolicy
+from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
 from ralph.agents.invoke._errors import AgentInvocationError, OpenCodeResumableExitError
 from ralph.agents.invoke._session import _bounded_output_lines, extract_transport_session_id
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
+from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.recovery.failure_classifier import FailureClassifier
 
@@ -308,7 +310,8 @@ def _check_process_result(
 
 def _log_invocation_exit(exc: AgentInvocationError) -> None:
     classified = FailureClassifier().classify(exc, phase="invoke", agent=exc.agent_name)
-    if classified.reset_tool_registry or classified.reset_session:
+    retryable = retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is not None
+    if classified.reset_tool_registry or classified.reset_session or retryable:
         logger.warning(
             "Retryable agent exit with code {}: {} [{}]",
             exc.returncode,
@@ -316,4 +319,9 @@ def _log_invocation_exit(exc: AgentInvocationError) -> None:
             summarize_retry_failure_evidence(exc.parsed_output),
         )
         return
-    logger.error("Agent exited with code {}: {}", exc.returncode, exc.stderr)
+    logger.error(
+        "Agent exited with code {}: {} [{}]",
+        exc.returncode,
+        exc.stderr,
+        summarize_retry_failure_evidence(exc.parsed_output),
+    )

@@ -89,7 +89,22 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
             body["result"] = response.result
         if response.error is not None:
             body["error"] = response.error
-        encoded = f"event: message\r\ndata: {json.dumps(body)}\r\n\r\n".encode()
+        # Serialization runs outside McpServer.handle_request's error net. A
+        # non-JSON-serializable value leaking through a tool result must still
+        # yield a well-formed -32603 JSON-RPC error frame, never a bare HTTP 500
+        # the client can only read as a broken/empty session.
+        try:
+            encoded = f"event: message\r\ndata: {json.dumps(body)}\r\n\r\n".encode()
+        except (TypeError, ValueError) as exc:
+            error_body: dict[str, object] = {
+                "jsonrpc": "2.0",
+                "id": response.msg_id,
+                "error": {
+                    "code": -32603,
+                    "message": f"Response serialization failed: {exc}",
+                },
+            }
+            encoded = f"event: message\r\ndata: {json.dumps(error_body)}\r\n\r\n".encode()
         session_id = None
         if request.method == "initialize":
             session_id = cast("_FallbackHttpServer", self.server).mcp_server._session.session_id

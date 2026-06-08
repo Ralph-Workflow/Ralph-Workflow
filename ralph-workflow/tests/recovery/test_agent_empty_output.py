@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+from ralph.agents.invoke._errors import AgentInvocationError
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
@@ -129,6 +130,32 @@ def test_empty_output_message_classified_as_agent_fault() -> None:
         phase="development",
         agent="claude",
     )
+
+    assert failure.category == FailureCategory.AGENT
+    assert failure.counts_against_budget is True
+
+
+def test_empty_response_in_parsed_output_classified_as_agent_fault() -> None:
+    """An empty-response signal carried only in parsed_output (not the primary
+    message) must classify as an agent fault, exactly like one in the message.
+
+    Regression for cross-surface drift: the nanocoder/MiniMax-M3 empty turn
+    surfaces "Model returned an empty response with no tool calls" in
+    parsed_output while stderr carries only the MCP-connect line. The classifier
+    must scan the same surface (and shared vocabulary) the retryable reasoner
+    uses, so the failure is not silently demoted to AMBIGUOUS.
+    """
+    exc = AgentInvocationError(
+        "nanocoder",
+        1,
+        "[plain] MCP server connected: ralph",
+        parsed_output=[
+            "nanocoder raw: reasoning ...",
+            "Model returned an empty response with no tool calls",
+        ],
+    )
+
+    failure = FailureClassifier().classify(exc, phase="development", agent="nanocoder")
 
     assert failure.category == FailureCategory.AGENT
     assert failure.counts_against_budget is True

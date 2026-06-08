@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 from importlib import import_module
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-
-from pathlib import Path
 
 from ralph.cli.commands.prompt_helper import ReviewAction, _run_single_invoke, run_prompt_helper
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
 

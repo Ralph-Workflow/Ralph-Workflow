@@ -4,8 +4,20 @@ from __future__ import annotations
 
 from typing import cast
 
+from ralph.recovery.failure_classifier import (
+    POST_TOOL_ACTIVITY_MARKERS,
+    POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS,
+    SESSION_NOT_FOUND_SUBSTRINGS,
+)
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 
+# Intentionally BROADER than ``failure_classifier._TRANSPORT_SUBSTRINGS``.
+# This set is a coarse retry trigger: any of these substrings marks the failure
+# as worth retrying as a transient connectivity fault. The classifier's
+# environmental transport set deliberately OMITS bare ``timeout``/``timed out``
+# so connectivity-aware timeouts stay agent-attributable (see
+# tests/recovery/test_classifier_session.py). The two sets serve different
+# decisions and must NOT be merged into one object.
 _TRANSIENT_CONNECTIVITY_MARKERS = (
     "connection refused",
     "network is unreachable",
@@ -23,29 +35,6 @@ _TURN_LIMIT_MARKERS = (
     "conversation exceeded 50 turns",
 )
 
-_POST_TOOL_EMPTY_RESPONSE_MARKERS = (
-    "empty response with no tool calls",
-    "empty response",
-)
-
-_POST_TOOL_ACTIVITY_MARKERS = (
-    '"type":"tool_result"',
-    '"type": "tool_result"',
-    '"type":"mcp_tool_result"',
-    '"type": "mcp_tool_result"',
-    '"type":"tool_use"',
-    '"type": "tool_use"',
-    "[plain] tool:",
-    " tool: ",
-)
-
-_SESSION_NOT_FOUND_SUBSTRINGS = (
-    "No conversation found with session ID:",
-    "Session not found",
-    "Unknown session",
-    "session does not exist",
-)
-
 
 def retryable_agent_failure_reason(
     exc: Exception,
@@ -61,7 +50,7 @@ def retryable_agent_failure_reason(
             "agent session exited without required completion evidence",
         ),
         (
-            contains_casefolded_marker(detail_parts, _SESSION_NOT_FOUND_SUBSTRINGS),
+            contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS),
             "a stale session ID (fresh session required)",
         ),
         (
@@ -73,9 +62,19 @@ def retryable_agent_failure_reason(
             "a transient connectivity failure",
         ),
         (
-            contains_casefolded_marker(detail_parts, _POST_TOOL_EMPTY_RESPONSE_MARKERS)
-            and contains_casefolded_marker(detail_parts, _POST_TOOL_ACTIVITY_MARKERS),
+            contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS)
+            and contains_casefolded_marker(detail_parts, POST_TOOL_ACTIVITY_MARKERS),
             "a post-tool-result continuation failure",
+        ),
+        # A plain empty model turn with no tool call (no prior tool activity) is
+        # still a recoverable wedge: the model connected, produced no actionable
+        # output, and another attempt may succeed. This mirrors the pipeline
+        # classifier treating an empty response as a recoverable agent failure,
+        # so the direct-MCP recovery path (commit/prompt-helper/smoke) does not
+        # drift from the pipeline by hard-failing where the pipeline would retry.
+        (
+            contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS),
+            "an empty model response",
         ),
     )
     for matched, reason in checks:

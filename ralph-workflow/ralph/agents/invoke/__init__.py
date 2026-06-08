@@ -546,7 +546,6 @@ read_lines_from_process = _read_lines_from_process
 wait_for_descendants_then_recheck = _wait_for_descendants_then_recheck
 policy_from_options = _policy_from_options
 merge_mcp_toml_into_upstreams = _merge_mcp_toml_into_upstreams
-extract_session_id = extract_transport_session_id
 
 # Re-export all public types and error classes
 __all__ = [
@@ -574,7 +573,6 @@ __all__ = [
     "command_for_log",
     "discover_http_mcp_tool_names",
     "extract_choice_menu_state",
-    "extract_session_id",
     "extract_transport_session_id",
     "get_process_manager",
     "interactive_auto_response_for_prompt",

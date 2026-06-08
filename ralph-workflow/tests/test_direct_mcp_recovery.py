@@ -7,7 +7,7 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     iter_with_direct_mcp_recovery,
     run_with_direct_mcp_recovery,
 )
-from ralph.agents.invoke._session import extract_session_id, extract_transport_session_id
+from ralph.agents.invoke._session import extract_transport_session_id
 
 
 def test_direct_mcp_recovery_ignores_nested_tool_payload_session_ids() -> None:
@@ -40,7 +40,6 @@ def test_session_extractors_accept_completion_marker_session_id() -> None:
     line = "Task declared complete: session_id=abc123, summary=done, timestamp=1"
 
     assert extract_transport_session_id((line,)) == "abc123"
-    assert extract_session_id((line,)) == "abc123"
 
 
 def test_transport_session_extractor_ignores_generic_plain_text_session_assignment() -> None:

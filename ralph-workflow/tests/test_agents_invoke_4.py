@@ -966,6 +966,58 @@ def test_agy_command_appends_session_flag(tmp_path: Path) -> None:
     assert "test-session-123" in cmd
 
 
+def test_claude_interactive_command_uses_config_session_flag(tmp_path: Path) -> None:
+    """The claude-interactive builder emits the resume flag from config.session_flag.
+
+    Regression for the cross-transport drift: the resume flag SYNTAX has exactly
+    one source (config.session_flag), shared by every builder. The interactive
+    builder must not hardcode its own --resume string.
+    """
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text("Build the feature.\n", encoding="utf-8")
+    config = AgentConfig(
+        cmd="claude",
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+        session_flag="--resume {}",
+    )
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(session_id="sess-abc"),
+    )
+
+    assert "--resume" in cmd
+    assert "sess-abc" in cmd
+    assert "--session-id" not in cmd
+
+
+def test_claude_interactive_command_honors_custom_session_flag(tmp_path: Path) -> None:
+    """A custom session_flag is honored by the interactive builder, not ignored.
+
+    Before the fix the interactive builder ignored config.session_flag and
+    hardcoded --resume, so a custom flag silently diverged from the other
+    transports. config.session_flag is now the single syntax source.
+    """
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text("Build the feature.\n", encoding="utf-8")
+    config = AgentConfig(
+        cmd="claude",
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+        session_flag="--continue {}",
+    )
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(session_id="sess-xyz"),
+    )
+
+    assert "--continue" in cmd
+    assert "sess-xyz" in cmd
+    assert "--resume" not in cmd
+
+
 def test_agy_command_appends_verbose_flag(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"

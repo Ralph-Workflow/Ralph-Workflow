@@ -1,87 +1,63 @@
 """Single source of truth for the agent session-resume / session-create policy.
 
-Public surface:
+Two orthogonal concerns are kept deliberately separate so neither can drift:
 
-- :func:`resolve_session_resume_flag` is the ONLY function in the Ralph
-  codebase that knows Claude Code's ``--resume`` vs ``--session-id`` flag
-  semantics. All call sites that need to decide which flag to emit
-  delegate to this helper. The agent configuration's ``session_flag``
-  template (e.g. ``"--resume {}"`` or ``"--session {}"``) is the
-  per-transport source of truth for the resume syntax.
+- :func:`resolve_resume_session_id` is the ONLY place that decides WHETHER the
+  next attempt continues the prior agent session and WHICH session id it
+  threads. It maps a recovery action (``fresh``/``resume``/
+  ``new_session_with_id``) to the session id the caller records in pipeline
+  state (or ``None`` for a fresh session).
+- The per-transport resume FLAG SYNTAX (``--resume {}`` for Claude Code,
+  ``--session {}`` for OpenCode, ``None`` for transports without resume) lives
+  exclusively in each agent's ``session_flag`` template (see
+  ``ralph.agents.registry``). Every command builder emits the flag via
+  ``config.session_flag``; no builder hardcodes the flag string. This keeps the
+  syntax single-sourced and honours custom agent configurations uniformly.
 
-The pre-fix code had a SINGLE divergent ``elif`` branch in
+- :func:`recovery_action_for_failure_reason` is the ONLY mapping from a stored
+  failure reason to a recovery action.
+
+The pre-fix code had a divergent ``elif`` branch in
 ``_build_claude_interactive_command`` that emitted ``--session-id``
-(create a new session with this id) for the interactive-Claude path.
-That was a real-session-continuation bug: Claude Code treats
-``--session-id`` and ``--resume`` as two different flags with two
-different semantics, so the resume path was silently a fresh session.
-
-The fix routes ALL resume-vs-create decisions through
-``resolve_session_resume_flag`` so the policy lives in one place and
-cannot drift between call sites.
+(create a new session with this id) for the interactive-Claude path, silently
+turning the resume path into a fresh session. Routing every builder through
+``config.session_flag`` makes that divergence structurally impossible.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
 
-from ralph.recovery.failure_classifier import SESSION_NOT_FOUND_SUBSTRINGS
-from ralph.recovery.failure_details import contains_casefolded_marker
-
-if TYPE_CHECKING:
-    from ralph.config.enums import AgentTransport
-
-# Authoritative mapping for the built-in transports. Custom agent
-# configurations with a non-empty ``session_flag`` template override
-# these defaults at the agent-config layer.
-_DEFAULT_RESUME_FLAGS: dict[str, str] = {
-    "claude": "--resume",
-    "claude_interactive": "--resume",
-    "opencode": "--session",
-}
-
-
-def resolve_session_resume_flag(
-    transport: AgentTransport | str,
+def resolve_resume_session_id(
     *,
     has_prior_session: bool,
     prior_session_id: str | None,
     recovery_action: str,
-) -> tuple[list[str], str | None]:
-    """Return the (cmd_args, new_session_id) pair for the given transport.
+) -> str | None:
+    """Return the session id to thread into the next attempt, or None for fresh.
+
+    This is the single decision point for session continuation. The
+    per-transport resume flag SYNTAX is owned separately by each agent's
+    ``session_flag`` template; this helper only decides the id.
 
     Args:
-        transport: The agent transport (``AgentTransport`` enum value or
-            a string with the same name). Determines the resume-flag
-            syntax (e.g. ``--resume`` for Claude Code, ``--session``
-            for OpenCode).
         has_prior_session: True when the orchestrator has a prior session
-            id to resume (or annotate a fresh session with). When False,
-            the helper returns no extra args and a None session id.
+            id to continue from. When False, the helper always returns None.
         prior_session_id: The session id from the prior attempt. May be
             None when ``has_prior_session`` is False; must be non-empty
             when ``has_prior_session`` is True.
-        recovery_action: The decision the recovery controller made. One
-            of:
-              - ``"fresh"``: ignore any prior session id; let the agent
-                create a brand-new session.
+        recovery_action: The decision the recovery controller made. One of:
+              - ``"fresh"``: ignore any prior session id; start anew.
               - ``"resume"``: continue the prior session.
-              - ``"new_session_with_id"``: brand-new session whose id is
-                the supplied prior_session_id. (Used by transports
-                that accept a creation-time session id.)
+              - ``"new_session_with_id"``: reuse the supplied id for a new
+                session (transports that accept a creation-time session id).
 
     Returns:
-        A 2-tuple ``(extra_cmd_args, new_session_id_for_state)``. The
-        ``extra_cmd_args`` list contains zero or more CLI flag tokens
-        to append to the agent command line. The
-        ``new_session_id_for_state`` is the session id the caller
-        should record in pipeline state, or None to leave state
-        unchanged.
+        The session id the caller should record in pipeline state and thread
+        into the agent invocation, or None to start a fresh session.
 
     Raises:
         ValueError: When ``recovery_action`` is unknown or
-            ``has_prior_session=True`` but ``prior_session_id`` is
-            empty/None.
+            ``has_prior_session=True`` but ``prior_session_id`` is empty/None.
     """
     if recovery_action not in {"fresh", "resume", "new_session_with_id"}:
         raise ValueError(
@@ -93,56 +69,9 @@ def resolve_session_resume_flag(
             "has_prior_session=True requires a non-empty prior_session_id"
         )
 
-    transport_name: str
-    if hasattr(transport, "value"):
-        value: object = cast("object", transport.value)
-        transport_name = str(value) if isinstance(value, str) else str(transport)
-    else:
-        transport_name = str(transport)
-    resume_flag = _DEFAULT_RESUME_FLAGS.get(transport_name)
-    if resume_flag is None:
-        # Unknown transport: no default resume flag. Callers can still
-        # pass `recovery_action='new_session_with_id'` to use a generic
-        # --session-id flag, but this is unusual and only triggered by
-        # custom agent configurations with a non-empty session_flag
-        # template.
-        resume_flag = "--session-id"
-
     if recovery_action == "fresh" or not has_prior_session:
-        return [], None
-
-    session_id: str = prior_session_id if isinstance(prior_session_id, str) else ""
-    if recovery_action == "resume":
-        return [resume_flag, session_id], session_id
-
-    # recovery_action == "new_session_with_id"
-    return ["--session-id", session_id], session_id
-
-
-def _is_tool_availability_marker(failure_reason: str) -> bool:
-    """Return True when the failure_reason indicates a tool-availability failure.
-
-    Used by ``recovery_action_for_failure_reason`` to detect the new
-    tool-availability family (the live wire-level ``No such tool
-    available: mcp__<server>__<tool>`` error). The check is
-    case-insensitive literal-substring matching on two surfaces:
-
-    1. The exception class name is ``ToolDispatchError`` — the
-       runtime-side mirror of the live error.
-    2. The failure reason contains the substring
-       ``"No such tool available"`` (case-insensitive). This catches
-       the wire-level message format Claude Code emits.
-
-    The literal substring is preferred over a regex match for
-    performance and to match the existing
-    ``_TOOL_AVAILABILITY_SUBSTRINGS`` policy in failure_classifier.
-    """
-    if not isinstance(failure_reason, str) or not failure_reason:
-        return False
-    if failure_reason == "ToolDispatchError":
-        return True
-    folded = failure_reason.casefold()
-    return "no such tool available" in folded or "empty response with no tool calls" in folded
+        return None
+    return prior_session_id if isinstance(prior_session_id, str) else None
 
 
 def recovery_action_for_failure_reason(
@@ -197,12 +126,13 @@ def recovery_action_for_failure_reason(
         return "resume"
     if reset_tool_registry:
         return "resume"
-    if contains_casefolded_marker((failure_reason,), SESSION_NOT_FOUND_SUBSTRINGS):
-        return "fresh"
+    # Everything else — including the stale/invalid session id family — starts
+    # fresh: a prior session that did not match a resume-worthy failure reason
+    # cannot be safely continued.
     return "fresh"
 
 
 __all__ = [
     "recovery_action_for_failure_reason",
-    "resolve_session_resume_flag",
+    "resolve_resume_session_id",
 ]

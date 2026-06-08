@@ -6,6 +6,8 @@ import base64 as _base64
 import json
 from typing import TYPE_CHECKING, cast
 
+from loguru import logger
+
 from ralph import __version__
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.resources import parse_media_uri
@@ -134,6 +136,29 @@ class McpServer:
         self._expose_mcp_aliases = expose_mcp_aliases
 
     def handle_request(
+        self, request: JsonRpcRequest, state: ServerState
+    ) -> tuple[JsonRpcResponse | None, ServerState]:
+        # Uniform transport safety net: no method handler may crash the
+        # transport. An unhandled exception in ANY handler (tools/list,
+        # initialize, resources/*, or a bug in tools/call) is converted to a
+        # JSON-RPC -32603 error so an MCP client always receives a well-formed
+        # response instead of a bare HTTP 500 it can only read as a broken or
+        # empty session. tools/call keeps its own catch for the common,
+        # non-fatal tool-dispatch-error case (a clearer message); this outer
+        # net covers everything else.
+        try:
+            return self._dispatch_request(request, state)
+        except Exception as exc:
+            logger.error(
+                "MCP request handler crashed for method={}: {}", request.method, exc
+            )
+            error = {"code": -32603, "message": f"Internal server error: {exc}"}
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
+                state,
+            )
+
+    def _dispatch_request(
         self, request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse | None, ServerState]:
         if request.method == "notifications/initialized":
