@@ -104,7 +104,8 @@ def file_read_specs() -> list[ToolSpec]:
                 description=(
                     "Write UTF-8 text to a file in the workspace, creating parent directories as "
                     "needed. Required params: path (string) and content (string). Overwrites "
-                    "existing files if they exist. Returns nothing on success. "
+                    "existing files if they exist. Returns a success confirmation "
+                    "with the number of bytes written. "
                     'Example: {"path": "tmp/notes.md", "content": "hello world"} creates '
                     "or overwrites tmp/notes.md with 'hello world'."
                 ),

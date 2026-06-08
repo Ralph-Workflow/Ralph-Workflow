@@ -65,13 +65,16 @@ def handle_unsafe_exec(
             "are not permitted via unsafe_exec"
         )
 
+    # Require a strictly positive timeout: 0/negative/non-int falls back to the
+    # default. Zero must NOT mean "unbounded" — that would make unsafe_exec a
+    # blocking-forever call on the MCP server thread (an agent-controllable hang).
     timeout_value = params.get("timeout_ms", EXEC_DEFAULT_TIMEOUT_MS)
     timeout_ms = (
         timeout_value
-        if isinstance(timeout_value, int) and timeout_value >= 0
+        if isinstance(timeout_value, int) and timeout_value > 0
         else EXEC_DEFAULT_TIMEOUT_MS
     )
-    timeout_seconds: float | None = timeout_ms / 1000 if timeout_ms > 0 else None
+    timeout_seconds: float = timeout_ms / 1000
 
     workspace_root = _workspace_root(workspace)
 

@@ -10,6 +10,11 @@ from ralph.mcp.tools.bridge._spec_helpers import _is_approved
 from ralph.mcp.tools.bridge._tool_bridge_error import ToolBridgeError
 from ralph.mcp.tools.bridge._tool_dispatch_error import ToolDispatchError
 from ralph.mcp.tools.bridge._tool_registration_error import ToolRegistrationError
+from ralph.mcp.tools.capability_denied_error import CapabilityDeniedError
+from ralph.mcp.tools.invalid_params_error import InvalidParamsError
+from ralph.mcp.tools.tool_content import ToolContent
+from ralph.mcp.tools.tool_error import ToolError
+from ralph.mcp.tools.tool_result import ToolResult
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -98,6 +103,21 @@ class ToolBridge:
             return tool.handler(host_session, workspace, tool_params)
         except ToolBridgeError:
             raise
+        except (InvalidParamsError, CapabilityDeniedError):
+            # Fix-your-call errors: the agent must change the call before it can
+            # succeed, so they correctly surface as protocol errors — retrying the
+            # identical call is rightly rejected again.
+            raise
+        except ToolError as exc:
+            # Operational tool failure (timeout, output/size limit, spawn/IO/git
+            # failure). Returning a retryable -32603 protocol error here is what let
+            # an agent re-issue an identical failing call for ~5 hours. Convert to a
+            # terminal, non-retryable is_error result so every handler is covered by
+            # one guard even if it forgets to convert the failure itself.
+            return ToolResult(
+                content=[ToolContent.text_content(str(exc))],
+                is_error=True,
+            )
         except Exception as exc:
             raise ToolDispatchError(f"Tool '{name}' failed: {exc}") from exc
 

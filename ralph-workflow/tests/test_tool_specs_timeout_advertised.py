@@ -72,9 +72,23 @@ def test_exec_family_does_not_advertise_the_stale_30s_default() -> None:
 
 def test_exec_family_hint_teaches_the_two_meanings_of_a_timeout() -> None:
     for name in _EXEC_FAMILY:
-        text = _spec(name).metadata.definition.description.lower()
+        top = _spec(name).metadata.definition.description.lower()
+        prop = str(_timeout_schema(name)["description"]).lower()
+        # Top-level keeps a short pointer so the agent knows a timeout is terminal
+        # (is_error), not a retryable protocol error.
+        assert "is_error" in top, name
+        assert "timeout_ms" in top, name
+        # The timeout_ms property carries the full two meanings:
         # Meaning 1: legitimately long -> raise the limit.
-        assert "timeout_ms" in text, name
+        assert "raise" in prop and "timeout_ms" in prop, name
         # Meaning 2: the command may be genuinely stuck and must be fixed, not
         # merely retried with a bigger budget.
-        assert any(word in text for word in ("loop", "stuck", "hang")), name
+        assert any(word in prop for word in ("loop", "stuck", "hang", "deadlock")), name
+
+
+def test_exec_family_top_level_description_within_hint_budget() -> None:
+    # The wire layer enforces a 500-char cap on the tool description; pin it here
+    # too so detailed timeout guidance stays in the (uncapped) property, not the
+    # top-level hint.
+    for name in _EXEC_FAMILY:
+        assert len(_spec(name).metadata.definition.description) <= 500, name

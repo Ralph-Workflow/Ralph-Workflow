@@ -18,6 +18,7 @@ from ralph.mcp.tools.exec import (
     ExecRunDeps,
     handle_exec_command,
     parse_exec_params,
+    run_command,
 )
 from tests.mock_session import MockSession
 from tests.mock_workspace_root import MockWorkspaceRoot
@@ -175,3 +176,27 @@ class TestHandleExecCommand:
             if isinstance(text_val, str):
                 text_parts.append(text_val)
         assert "streamed-chunk" in "".join(text_parts)
+
+
+class TestRunCommandAlwaysBounded:
+    """Defense in depth: run_command must never hand the runner an unbounded
+    (None) timeout, even if called directly with timeout_ms<=0. An unbounded
+    blocking call hangs the MCP server thread (an agent-controllable hang)."""
+
+    def test_zero_timeout_passes_bounded_timeout_to_runner(self, tmp_path: Path) -> None:
+        captured: list[float | None] = []
+
+        def _runner(
+            argv: list[str], cwd: Path, timeout_seconds: float | None
+        ) -> exec_completed_process._CompletedProcessAdapter:
+            del argv, cwd
+            captured.append(timeout_seconds)
+            return exec_completed_process._CompletedProcessAdapter(
+                stdout=b"", stderr=b"", returncode=0
+            )
+
+        run_command(
+            "echo", [], MockWorkspaceRoot(tmp_path), 0, deps=ExecRunDeps(runner=_runner)
+        )
+
+        assert captured == [DEFAULT_TIMEOUT_MS / 1000]

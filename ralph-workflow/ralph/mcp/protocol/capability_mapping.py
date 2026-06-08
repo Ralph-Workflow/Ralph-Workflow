@@ -63,6 +63,7 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.WORKSPACE_WRITE_EPHEMERAL: Capability.WORKSPACE_WRITE_EPHEMERAL,
     McpCapability.WORKSPACE_WRITE_TRACKED: Capability.WORKSPACE_WRITE_TRACKED,
     McpCapability.GIT_STATUS_READ: Capability.GIT_STATUS_READ,
+    McpCapability.GIT_DIFF_READ: Capability.GIT_DIFF_READ,
     McpCapability.GIT_WRITE: Capability.GIT_WRITE,
     McpCapability.ENV_READ: Capability.ENV_READ,
     McpCapability.ENV_WRITE: Capability.ENV_WRITE,
