@@ -1,0 +1,25 @@
+[
+  {
+    "timestamp": "2026-06-08T02:28:52.027964+00:00",
+    "ok": true,
+    "batches": 2,
+    "submitted": 110,
+    "total_sitemap_urls": 110,
+    "results": [
+      {
+        "ok": true,
+        "submitted": 100,
+        "total": 100,
+        "status_code": 200,
+        "error": null
+      },
+      {
+        "ok": true,
+        "submitted": 10,
+        "total": 10,
+        "status_code": 200,
+        "error": null
+      }
+    ]
+  }
+]
