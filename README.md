@@ -1,12 +1,53 @@
 # Ralph Workflow
 
-> **The operating system for autonomous coding.**
+> Mirror of [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star/issues/discussion on Codeberg.
+
+**Hand your coding agents a spec tonight. Wake up to reviewable, tested commits.**
+
+Ralph Workflow is a free, open-source composable loop framework that runs the coding agents you already use — Claude Code, Codex, or OpenCode — on your own machine. Simple at the center, powerful in composition.
 
 ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
 
-> Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use — Claude Code, Codex, OpenCode — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
+*Nightcrawler credits Ralph Workflow as its inspiration · ~1,300 installs/month on PyPI.*
 
-**⭐ Star on Codeberg** → [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) (Codeberg primary) | **GitHub mirror** → [github.com/Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow)
+## Install and run
+
+```bash
+pipx install ralph-workflow   # 1. install
+ralph --init                  # 2. scaffold .agent/ and PROMPT.md
+$EDITOR PROMPT.md             # 3. edit PROMPT.md — your spec for the run
+ralph                         # 4. run the unattended workflow
+```
+
+## What an overnight run leaves you
+
+Here is the actual finish-receipt from the bundled [empty-name-validation example](examples/first-review-bundle/) — a real, unedited handoff you read in the morning instead of a transcript:
+
+```text
+# Development Result
+
+## Outcome
+Implemented empty-name validation in the CLI create flow and added
+test coverage for empty and whitespace-only input.
+
+## Changed files
+- cli/create.py
+- tests/test_create.py
+
+## Checks run
+- pytest tests/test_create.py        ✓ passed
+- project formatting / lint checks    ✓ passed
+
+## Reviewer focus
+- confirm validation happens before any file creation side effect
+- confirm the error message is clear enough for CLI users
+- confirm no unrelated flow changed
+```
+
+Watch a full first run (`--init` → `--diagnose` → `--dry-run`) — a real, unedited capture:
+[![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd)
+
+> Ralph is free and runs locally — stars are the only signal we get that it's working for you, and they set what we build next. If a run shipped real software for you: ⭐ [star on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow).
 
 ---
 
@@ -14,7 +55,7 @@
 
 Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and turns it into a **composable loop framework** where each phase can loop independently and hand off to the next. A single `ralph` command spawns planning, development iteration, review, and fix cycles across multiple agents, then produces finished git commits you can review in the morning.
 
-**This is not a chat window or a prompt tool.** It's an orchestrator that runs real engineering pipelines unattended — overnight, while you sleep. The default workflow ships strong enough to start with immediately; customize it later when you need more control.
+**This is not a chat window or a prompt tool.** It's an orchestrator — an operating system for autonomous coding — that runs real engineering pipelines unattended, overnight, while you sleep. The default workflow ships strong enough to start with immediately; customize it later when you need more control.
 
 ## Why it's different
 

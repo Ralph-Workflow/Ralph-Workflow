@@ -31,6 +31,35 @@ Strong output usually includes:
 - known gaps, caveats, or follow-up risks
 - enough context for a human to inspect the software directly
 
+## A real finish-receipt
+
+This is the actual, unedited `DEVELOPMENT_RESULT.md` from the bundled empty-name-validation example — the artifact itself, not a link out to it:
+
+```text
+# Development Result
+
+## Outcome
+Implemented empty-name validation in the CLI create flow and added
+test coverage for empty and whitespace-only input.
+
+## Changed files
+- cli/create.py
+- tests/test_create.py
+
+## Checks run
+- pytest tests/test_create.py        ✓ passed
+- project formatting / lint checks    ✓ passed
+
+## Reviewer focus
+- confirm validation happens before any file creation side effect
+- confirm the error message is clear enough for CLI users
+- confirm no unrelated flow changed
+```
+
+Notice what this answers without opening a single log: what changed, what checks ran and passed, and what to inspect first.
+
+> **Star to bookmark before your overnight run.** Stars are the only signal we get that Ralph is working for you, and they set what we build next: [star on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow). ⭐
+
 ## What to evaluate first
 
 1. inspect the software behavior or diff summary
