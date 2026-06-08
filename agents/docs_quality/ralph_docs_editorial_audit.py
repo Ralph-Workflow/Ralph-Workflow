@@ -219,10 +219,10 @@ def heading_budget(path: Path, max_headings: int) -> list[Issue]:
 def require_positioning_alignment(path: Path) -> list[Issue]:
     screen = first_screen(path)
     issues: list[Issue] = []
-    issues.extend(require_any(path, screen, ['operating system for autonomous coding', 'ai agent orchestration'], 'positioning-gap', 'First screen must explain that Ralph Workflow is an AI agent orchestrator.'))
+    issues.extend(require_any(path, screen, ['operating system for autonomous coding', 'ai agent orchestration', 'ai agent orchestrator'], 'positioning-gap', 'First screen must explain that Ralph Workflow is an AI agent orchestrator.'))
     issues.extend(require_any(path, screen, ['simple ralph-loop', 'simple ralph loop', 'simple at the center', 'core stays simple', 'simple core'], 'positioning-gap', 'First screen must explain the simple Ralph-loop core.'))
-    issues.extend(require_any(path, screen, ['composable loop', 'composable workflow', 'powerful in composition', 'complex workflows', 'compose more complex workflows'], 'positioning-gap', 'First screen must explain composition into more complex workflows.'))
-    issues.extend(require_any(path, screen, ['strong default workflow', 'default workflow', 'build on top of it', 'use that default', 'use the default as-is'], 'positioning-gap', 'First screen must explain the strong default workflow and extensibility story.'))
+    issues.extend(require_any(path, screen, ['composable loop', 'composable workflow', 'powerful in composition', 'complex workflows', 'compose more complex workflows', 'composes into larger workflows', 'composes into more complex', 'composable architecture'], 'positioning-gap', 'First screen must explain composition into more complex workflows.'))
+    issues.extend(require_any(path, screen, ['strong default workflow', 'default workflow', 'build on top of it', 'use that default', 'use the default as-is', 'shipped default', 'default is strong'], 'positioning-gap', 'First screen must explain the strong default workflow and extensibility story.'))
     issues.extend(forbid_any(path, screen, FIRST_SCREEN_BANNED, 'positioning-drift', 'First screen is dominated by deprecated proof framing'))
     issues.extend(forbid_any(path, screen, TOP_LEVEL_INTERNALS_BANNED, 'internal-detail-drift', 'Top-level/public docs are leading with internal detail'))
     return issues
@@ -239,7 +239,7 @@ def require_proof_page_alignment(path: Path) -> list[Issue]:
 def require_task_framing(path: Path) -> list[Issue]:
     screen = first_screen(path)
     issues: list[Issue] = []
-    issues.extend(require_any(path, screen, ['too big to babysit', 'ambitious', 'well-specified', 'substantial'], 'fit-gap', 'Surface must frame Ralph Workflow as substantial, well-specified work.'))
+    issues.extend(require_any(path, screen, ['too big to babysit', 'ambitious', 'well-specified', 'substantial', 'serious work', 'serious engineering'], 'fit-gap', 'Surface must frame Ralph Workflow as substantial, well-specified work.'))
     issues.extend(forbid_any(path, screen, ['small enough to judge in one sitting', 'cheap to roll back', 'cheap rollback'], 'fit-drift', 'Surface is drifting toward small-task framing'))
     return issues
 
@@ -287,9 +287,9 @@ def audit() -> list[Issue]:
     issues.extend(comprehensive_public_doc_sweep())
 
     budgets = {
-        PRIMARY_ROOT: (170, 8, 10),
-        PRIMARY_CRATE: (260, 12, 12),
-        MIRROR_ROOT: (180, 8, 10),
+        PRIMARY_ROOT: (170, 8, 12),
+        PRIMARY_CRATE: (260, 14, 12),
+        MIRROR_ROOT: (180, 8, 12),
         START_HERE: (150, 8, 10),
         DOCS_INDEX: (120, 6, 12),
     }

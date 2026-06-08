@@ -315,7 +315,7 @@ def main() -> int:
         },
         'scope': {
             'target_name': 'OpenClaw live agent runtime',
-            'model_stack': ['openai-codex/gpt-5.4', 'minimax/MiniMax-M2.7-highspeed'],
+            'model_stack': ['openai-codex/gpt-5.4', 'minimax/MiniMax-M3'],
             'layers_to_audit': [
                 'system prompt', 'tool selection', 'tool execution', 'hidden repair loops',
                 'persistence', 'ownership boundaries', 'runtime cron topology'

@@ -1,76 +1,36 @@
 {
-  "ts": "2026-06-08T05:03:28.367999",
+  "ts": "2026-06-08T05:15:31.046104",
   "jobs_checked": 20,
-  "issues_found": 5,
+  "issues_found": 1,
   "issues": [
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "required_text": "Status: independently verified pass",
-      "likely_cause": "Verifier artifact exists but does not show required pass contract"
-    },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 8026.96,
+      "artifact_age_minutes": 8039.01,
       "max_age_minutes": 240,
       "likely_cause": "Required runtime artifact is stale"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-08T05:03:18.773275+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_escalation",
-      "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier:artifact_contract_fail repeat_count=80",
-      "repeats_in_recent_history": 80,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
-    },
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
-      "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-08T05:03:18.773275+02:00\"\n}",
-      "likely_cause": "Incident escalation level=critical: agent_architecture_verifier_runtime:artifact_contract_fail repeat_count=140",
-      "repeats_in_recent_history": 140,
-      "owner_domain": "architecture",
-      "incident_key": "agent_architecture_verifier_runtime::artifact_contract_fail",
-      "escalation_level": "critical",
-      "blocked_by": []
     }
   ],
   "repairs_attempted": [
     {
       "type": "rerun_independent_architecture_verification",
       "job": "agent_architecture_verifier_runtime",
-      "ok": false,
+      "ok": true,
       "detail": "python3 agents/system/agent_architecture_independent_verify.py"
     },
     {
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
-      "ok": false,
-      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-08T05:03:18.773275+02:00\"\n}"
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-06-08T05:15:20.706792+02:00\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "agent_architecture_verifier_escalation",
       "ok": true,
-      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1780888523318:30\"\n}"
     },
     {
       "type": "owner_loop_escalation",

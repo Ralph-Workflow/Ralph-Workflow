@@ -1,6 +1,7 @@
 {
   "lastChecks": {
-    "marketing_outcome_runner": 1748437265
+    "marketing_outcome_runner": 1748437265,
+    "churn_watchdog": 1749287580
   },
   "lastCronRuns": {
     "marketing_outcome_capability_runner": {
@@ -10,5 +11,6 @@
       "fresh_targets_prepared": ["ComputingForGeeks"],
       "comparison_queue_prepared_count": 8
     }
-  }
+  },
+  "lastHeartbeat": 1749287580
 }

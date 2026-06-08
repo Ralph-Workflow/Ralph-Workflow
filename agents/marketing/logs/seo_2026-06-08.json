@@ -1,0 +1,132 @@
+{
+  "timestamp": "2026-06-08T07:35:29.493497",
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "title": "Autonomous coding workflow \u2014 Ralph Workflow",
+      "meta_description": "Open-source autonomous coding workflow for Claude Code, Codex, and OpenCode. Hand off one task overnight and wake up to tested, reviewable code.",
+      "canonical": "https://ralphworkflow.com/",
+      "og_tags": {
+        "description": "Open-source autonomous coding workflow for Claude Code, Codex, and OpenCode. Hand off one task overnight and wake up to tested, reviewable code.",
+        "title": "Autonomous coding workflow \u2014 Ralph Workflow",
+        "type": "website",
+        "url": "https://ralphworkflow.com/",
+        "site_name": "Ralph Workflow",
+        "image": "https://ralphworkflow.com/ralph-workflow-social-card.png",
+        "image:width": "1200",
+        "image:height": "630",
+        "image:type": "image/png",
+        "image:alt": "Ralph Workflow \u2014 Open-source autonomous coding workflow orchestrator"
+      },
+      "twitter_card": "summary_large_image",
+      "json_ld": true,
+      "has_h1": true,
+      "word_count": 7100,
+      "has_nav": true,
+      "has_main": true,
+      "lang_attr": "en"
+    },
+    "robots": {
+      "status": 200,
+      "directive_count": 35,
+      "sitemap_url": "https://ralphworkflow.com/sitemap.xml"
+    },
+    "sitemap": {
+      "status": 200,
+      "url_count": 110,
+      "urls": [
+        "https://ralphworkflow.com/",
+        "https://ralphworkflow.com/start",
+        "https://ralphworkflow.com/privacy",
+        "https://ralphworkflow.com/terms",
+        "https://ralphworkflow.com/install",
+        "https://ralphworkflow.com/docs/",
+        "https://ralphworkflow.com/compare",
+        "https://ralphworkflow.com/contact",
+        "https://ralphworkflow.com/docs/advanced-artifact-configuration",
+        "https://ralphworkflow.com/docs/advanced-mcp-configuration",
+        "https://ralphworkflow.com/docs/advanced-pipeline-configuration",
+        "https://ralphworkflow.com/docs/after-your-first-run",
+        "https://ralphworkflow.com/docs/agents",
+        "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
+        "https://ralphworkflow.com/docs/ai-agent-workflow-composer",
+        "https://ralphworkflow.com/docs/ai-coding-workflow-automation",
+        "https://ralphworkflow.com/docs/bounded-autonomy-for-unattended-coding",
+        "https://ralphworkflow.com/docs/claude-code-approval-mode",
+        "https://ralphworkflow.com/docs/claude-code-automation",
+        "https://ralphworkflow.com/docs/claude-code-codex-workflow"
+      ]
+    }
+  },
+  "onpage": {
+    "score": 100,
+    "grade": "A",
+    "issues": [],
+    "recommendations": []
+  },
+  "ranks": {
+    "_note": "GSC token refresh failed. Run `python3 agents/marketing/gsc_auth.py` to re-authorize."
+  },
+  "backlinks": {
+    "count_approx": 0,
+    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data"
+  },
+  "domain_rating": {
+    "dr": null,
+    "status": 0
+  },
+  "competitors": {
+    "claude.ai/code": {
+      "status": 0,
+      "ok": false,
+      "title": ""
+    },
+    "cursor.com": {
+      "status": 200,
+      "ok": true,
+      "title": "Cursor: The best coding agent"
+    },
+    "github.com/features/copilot": {
+      "status": 200,
+      "ok": true,
+      "title": "GitHub Copilot \u00b7 Your AI pair programmer \u00b7 GitHub"
+    },
+    "aider.chat": {
+      "status": 200,
+      "ok": true,
+      "title": "Aider - AI Pair Programming in Your Terminal"
+    },
+    "continue.dev": {
+      "status": 200,
+      "ok": true,
+      "title": "Continue \u2022 Quality control for your software factory. | Continue"
+    }
+  },
+  "content_gap": {
+    "gaps": [],
+    "covered": [
+      "unattended coding agent",
+      "AI agent orchestration CLI",
+      "spec-driven AI agent",
+      "AI coding workflow automation",
+      "Claude Code automation",
+      "Claude Code unattended",
+      "AI agent workflow composer",
+      "Ralph Workflow"
+    ],
+    "coverage_pct": 100.0,
+    "scan_method": "homepage+sitemap",
+    "urls_scanned": 45
+  },
+  "serp": {
+    "position": null,
+    "people_also_ask": false,
+    "related_searches": false,
+    "keyword": "unattended coding agent"
+  },
+  "priority_actions": [
+    "Set up Google Search Console: python3 agents/marketing/gsc_auth.py",
+    "Build backlinks: submit to directories, guest post, earn citations"
+  ]
+}

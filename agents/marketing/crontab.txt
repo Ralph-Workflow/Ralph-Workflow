@@ -28,9 +28,6 @@
 # === CONTENT DISTRIBUTION ===
 0 6 * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/run_posting.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/run_posting_cron.log 2>&1
 15 3 * * 3,7 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/stackoverflow_answer_lane.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/stackoverflow_answer_cron.log 2>&1
-# === SEO CANNIBALIZATION ===
-15 7 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/seo_cannibalization_watchdog.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/seo_cannibalization_cron.log 2>&1
-
 # === SEO ===
 0 5 * * 1,4 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/bing_indexnow_ping.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/indexnow_ping_cron.log 2>&1
 30 5 * * 6 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/indexation_health_check.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/indexation_health_cron.log 2>&1
@@ -38,10 +35,9 @@
 # === MAINTENANCE ===
 0 4 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/log_janitor.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/log_janitor_cron.log 2>&1
 # === INFRA ===
-37 */12 * * * /home/mistlight/git-sync.sh
 # === RALPH DOCS QUALITY (staggered to prevent opencode overlap) ===
 # Runner fires at :01/:31, Verifier fires once hourly at :17
 # Gap ensures agentic review subprocess (up to 15min with opencode timeouts) completes before next job
 1,31 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_runner.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/watchdog_cron.log 2>&1
-17 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/verifier_cron.log 2>&1
 6,36 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/verifier_cron.log 2>&1
+15 7 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/seo_cannibalization_watchdog.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/seo_cannibalization_cron.log 2>&1

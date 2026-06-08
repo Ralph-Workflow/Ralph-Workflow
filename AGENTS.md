@@ -246,7 +246,12 @@ The goal: Be helpful without being annoying. Check in a few times a day, do usef
 
 ## Marketing Session Startup
 
-Every session, BEFORE doing anything else:
+**The learning loop is law.** Every marketing agent gets better by moving a REAL external metric,
+run over run — never by producing artifacts. Read and follow
+`agents/marketing/MARKETING_LEARNING_LOOP.md` first: SENSE the metric → SCORE tactics in
+`logs/tactic_ledger.jsonl` → DECIDE (kill what's flat, never repeat `failing`/`blocked`) → ACT once
+or ESCALATE via `drafts/CREDENTIAL_UNBLOCK.md` → STOP if the metric is flat ≥7 days. Then:
+
 1. Read the latest pulse report (it delivers to the Matrix channel at 08/14/20)
 2. Read memory/YYYY-MM-DD.md for CRM — who am I talking to? What did we discuss?
 3. Read SOUL.md — re-center on identity as a marketer

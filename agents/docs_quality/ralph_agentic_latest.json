@@ -1,6 +1,6 @@
 {
   "status": "pass",
-  "summary": "README \u2192 START_HERE \u2192 docs/README journey is coherent, front-door docs lead with product value not plumbing, promoted next-click pages all reinforce the same simple-core / composable-orchestration story, and no top-level surface leaks internal process language as primary framing.",
+  "summary": "Docs system accurately reflects the positioning: orchestrator-first framing, simple-Ralph-core story, result-first evaluation, and honest engineering-prerequisites. No internal leakage or stale framing on top-level surfaces.",
   "loopHealthy": true,
   "criteria": {
     "positioning": "pass",
@@ -13,24 +13,32 @@
   "mustFix": [],
   "strongestEvidence": [
     {
-      "path": "README.md",
-      "reason": "Leads with 'operating system for autonomous coding' tagline, frames as composable loop framework, comparison table sells orchestration not receipts, and explicitly points first-timers to START_HERE.md."
+      "path": "/Ralph-Workflow/README.md",
+      "reason": "Leads with 'operating system for autonomous coding' and 'AI agent orchestrator'; comparison table differentiates against chat tools, not other orchestrators; 'simple Ralph-loop...composable loop framework' is the exact positioning language."
     },
     {
-      "path": "START_HERE.md",
-      "reason": "Opens with the simple-core framing, gives a concrete first-run path with task selection discipline, and routes to docs/README only after the run is done."
+      "path": "/Ralph-Workflow/README.md#L33-L39",
+      "reason": "'Who it's for' nails the ambitious/well-specified-work framing and explicitly lists what it is NOT for \u2014 directly from the positioning doc."
     },
     {
-      "path": "docs/README.md",
-      "reason": "Acts as a clean switchboard that routes by reader intent, keeps proof pages secondary, and frames everything around the product story."
+      "path": "/Ralph-Workflow/ralph-workflow/README.md",
+      "reason": "PyPI README includes 'GitHub is the mirror. Codeberg is the primary repo.' banner, leads with result-first tagline, and has the name-origin paragraph that frames RW as an improvement on Ralph."
     },
     {
-      "path": "docs/first-task-guide.md",
-      "reason": "Full conversion page that reinforces spec-driven, result-first evaluation with zero internal plumbing language."
+      "path": "/Ralph-Workflow/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Picks up cleanly from README with 'shortest honest first run'; explicitly mentions default-as-is-then-customize and simple-core-composition; routes to docs/README.md as next step."
+    },
+    {
+      "path": "/Ralph-Workflow/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Explicitly positions itself as after README+START_HERE; includes 'Keep proof secondary' section; routes by user intent (fastest run / manual / product framing) rather than by architecture. This is the best-behaved docs switchboard in the system."
     },
     {
       "path": "docs/reviewable-output.md",
-      "reason": "Properly positions itself as secondary supporting proof rather than the main pitch."
+      "reason": "Correctly self-positions as 'supporting proof, not the main product pitch'; orders evidence as working behavior \u2192 real checks \u2192 written scope \u2192 supporting artifacts (logs last) \u2014 exact match to positioning doc's evaluation order."
+    },
+    {
+      "path": "docs/ai-agent-orchestration-cli.md",
+      "reason": "Quotes 'simple at the center, stronger in composition, useful before customization' directly \u2014 uses positioning language, not internal plumbing."
     }
   ],
   "shouldUserNeedToRepeatThis": false

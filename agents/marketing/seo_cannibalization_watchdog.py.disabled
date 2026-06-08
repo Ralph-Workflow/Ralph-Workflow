@@ -1,192 +1,169 @@
 #!/usr/bin/env python3
+"""SEO Cannibalization Watchdog — prevents GitHub mirror from outranking Codeberg.
+
+Problem: GitHub has higher domain authority than Codeberg. If both repos have
+identical README content, Google ranks the GitHub mirror above Codeberg for brand
+searches, sending organic traffic to the mirror instead of the primary repo.
+
+Fix (audit #33): GitHub README is overwritten with a short mirror notice after
+each sync. This watchdog verifies the fix stays in place.
+
+Run: weekly via cron (Sun 07:15 CEST).
 """
-SEO cannibalization watchdog — verifies the GitHub mirror README is a short
-mirror notice (not the full Codeberg README), preventing Google from ranking
-the GitHub mirror above Codeberg for brand searches.
 
-Background (audit #33, 2026-06-05):
-    GitHub has overwhelmingly higher domain authority than Codeberg. When both
-    repos have similar README content, search engines rank GitHub above Codeberg
-    for brand terms. The fix strips GitHub's README to a mirror notice.
-
-Verification method:
-    Direct HTTP fetch of raw.githubusercontent.com — this is a reliable signal
-    because if the README is the full rich version, Google WILL rank GitHub
-    above Codeberg. If it's the short mirror notice, Codeberg has the unique
-    canonical content.
-
-    Search rank monitoring (DDG/Brave) is disabled until a search provider
-    recovers (both DDG and Brave are dead from this environment).
-
-Schedule: weekly (Sun 08:00) via crontab
-"""
+from __future__ import annotations
 
 import json
-import os
+import subprocess
 import sys
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-WORKSPACE = Path.home() / ".openclaw/workspace"
-LOG_DIR = WORKSPACE / "agents/marketing/logs"
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-
-STATE_FILE = LOG_DIR / "seo_cannibalization_state.json"
-OUTPUT_FILE = LOG_DIR / "seo_cannibalization_latest.json"
-REPORT_FILE = LOG_DIR / "seo_cannibalization_latest.md"
-
+WORKSPACE = Path("/home/mistlight/.openclaw/workspace")
+SYNC_SCRIPT = WORKSPACE / "agents" / "marketing" / "sync_to_github.sh"
 GITHUB_README_URL = "https://raw.githubusercontent.com/Ralph-Workflow/Ralph-Workflow/main/README.md"
-MIRROR_MARKER = "This is a mirror"  # Text that MUST appear in the mirror notice
-FULL_README_MARKER = "## What it does"  # Text that appears in the full README (must NOT appear)
+SYNC_LOG = WORKSPACE / "agents" / "marketing" / "logs" / "sync_github.log"
+WATCHDOG_LOG = WORKSPACE / "agents" / "marketing" / "logs" / "seo_cannibalization_latest.json"
+WATCHDOG_HISTORY = WORKSPACE / "agents" / "marketing" / "logs" / "seo_cannibalization_history.jsonl"
 
-MIRROR_README_PATH = WORKSPACE / "agents/marketing/github_mirror_readme.md"
+# If GitHub README exceeds this length, it's the full README, not the mirror notice.
+# Mirror notice should be < 1000 chars. Full README is ~9700+ chars.
+MIRROR_NOTICE_MAX_BYTES = 1500
+FULL_README_MIN_BYTES = 5000
+
+# Expected mirror-notice markers (must appear in the stripped version)
+MIRROR_MARKERS = [
+    "mirror",
+    "Codeberg",
+    "primary",
+]
 
 
-def check_github_readme() -> dict:
-    """Fetch GitHub's README and check if it matches the mirror notice."""
-    result = {
-        "url": GITHUB_README_URL,
-        "status": "unknown",
-        "is_mirror_notice": False,
-        "has_full_content": False,
-        "has_mirror_marker": False,
-        "chars": 0,
-    }
-
+def fetch_github_readme() -> tuple[int, str]:
+    """Fetch the raw GitHub README via curl (no auth needed for public repos)."""
     try:
-        req = urllib.request.Request(GITHUB_README_URL, headers={
-            "User-Agent": "Ralph-SEO-Watchdog/1.0",
-            "Cache-Control": "no-cache"
-        })
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            content = resp.read().decode("utf-8", errors="replace")
-            result["status"] = f"HTTP {resp.status}"
-            result["chars"] = len(content)
-            result["has_mirror_marker"] = MIRROR_MARKER in content
-            result["has_full_content"] = FULL_README_MARKER in content
-
-            if result["has_mirror_marker"] and not result["has_full_content"]:
-                result["is_mirror_notice"] = True
+        proc = subprocess.run(
+            ["curl", "-sS", "--max-time", "15", "-w", "%{http_code}", "-o", "/tmp/gh_readme_check.md",
+             GITHUB_README_URL],
+            capture_output=True, text=True, timeout=20
+        )
+        http_code = proc.stdout.strip()
+        content = Path("/tmp/gh_readme_check.md").read_text(encoding="utf-8", errors="replace")
+        return int(http_code), content
     except Exception as e:
-        result["status"] = f"ERROR: {e}"
-
-    return result
+        return 0, f"FETCH_ERROR: {e}"
 
 
-def load_state() -> dict:
-    if STATE_FILE.exists():
-        with open(STATE_FILE) as f:
-            return json.load(f)
-    return {"first_run": None, "history": []}
+def check_sync_script_post_hook() -> dict:
+    """Check if sync_to_github.sh includes the README mirror-notice post-sync hook."""
+    if not SYNC_SCRIPT.exists():
+        return {"has_post_hook": False, "reason": "sync_script_missing"}
+    
+    content = SYNC_SCRIPT.read_text(encoding="utf-8")
+    
+    # Check for mirror-notice logic
+    has_mirror_readme_replace = "MIRROR_README" in content and ("cp" in content or "cat" in content)
+    has_readme_overwrite = "README.md" in content and ("github" in content.lower())
+    
+    # Check if it currently preserves (bad) or strips (good) the README
+    preserves_full = "Preserve full README" in content or "README kept identical" in content
+    strips_to_notice = "mirror notice" in content.lower() or "MIRROR_README" in content
+    
+    return {
+        "has_post_hook": has_readme_overwrite,
+        "has_mirror_notice_logic": has_mirror_readme_replace or strips_to_notice,
+        "preserves_full_readme": preserves_full,
+        "strips_to_mirror_notice": strips_to_notice,
+        "status": "healthy" if strips_to_notice else ("cannibalizing" if preserves_full else "unknown"),
+    }
 
 
-def save_state(state: dict):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2, default=str)
+def check_last_sync() -> dict:
+    """Check when the last sync ran and its status."""
+    if not SYNC_LOG.exists():
+        return {"last_sync": None, "status": "no_sync_log"}
+    
+    lines = SYNC_LOG.read_text(encoding="utf-8").strip().split("\n")
+    if not lines:
+        return {"last_sync": None, "status": "empty_log"}
+    
+    last_line = lines[-1]
+    return {
+        "last_sync_line": last_line,
+        "preserves_readme": "README kept identical" in last_line,
+        "status": "preserves_full_readme" if "README kept identical" in last_line else "unknown",
+    }
 
 
-def main():
+def main() -> int:
     now = datetime.now(timezone.utc)
-    state = load_state()
-    if state["first_run"] is None:
-        state["first_run"] = now.isoformat()
+    findings = []
+    severity = "ok"
 
-    # Verify GitHub README
-    readme = check_github_readme()
-
-    # Check the local mirror template exists
-    mirror_template_ok = MIRROR_README_PATH.exists()
-
-    # Determine status
-    if readme["is_mirror_notice"]:
-        status = "ok"
-        summary = "GitHub README is mirror notice — Codeberg has unique canonical content"
-    elif readme["has_full_content"]:
-        status = "CANNIBALIZED"
-        summary = "GitHub README has FULL content — SEO cannibalization ACTIVE"
-    elif readme["status"].startswith("ERROR"):
-        status = "blind"
-        summary = f"Cannot verify: {readme['status']}"
+    # 1. Check sync script configuration
+    sync_check = check_sync_script_post_hook()
+    if sync_check.get("preserves_full_readme"):
+        findings.append("CRITICAL: sync_to_github.sh preserves full README on GitHub — Codeberg SEO is being cannibalized")
+        severity = "critical"
+    elif sync_check.get("strips_to_mirror_notice"):
+        findings.append("OK: sync_to_github.sh includes mirror-notice logic")
     else:
-        status = "warning"
-        summary = "GitHub README state indeterminate — manual check recommended"
+        findings.append("WARNING: sync_to_github.sh configuration is unknown")
+        severity = "warning"
 
-    # Record history
-    entry = {
-        "timestamp": now.isoformat(),
-        "status": status,
-        "summary": summary,
-        "readme_chars": readme["chars"],
-        "mirror_marker": readme["has_mirror_marker"],
-        "full_content": readme["has_full_content"],
-        "mirror_template_exists": mirror_template_ok,
+    # 2. Check last sync log
+    sync_status = check_last_sync()
+    if sync_status.get("preserves_readme"):
+        findings.append("Last sync preserved full README — regression confirmed")
+
+    # 3. Check live GitHub README size
+    http_code, content = fetch_github_readme()
+    if http_code == 200:
+        content_len = len(content)
+        if content_len > FULL_README_MIN_BYTES:
+            findings.append(f"GitHub README is {content_len} bytes (full README) — actively cannibalizing Codeberg SEO")
+            severity = "critical"
+        elif content_len < MIRROR_NOTICE_MAX_BYTES:
+            findings.append(f"GitHub README is {content_len} bytes (mirror notice) — safe")
+            severity = "ok" if severity == "ok" else severity
+        else:
+            findings.append(f"GitHub README is {content_len} bytes (ambiguous size)")
+            severity = "warning" if severity == "ok" else severity
+    else:
+        findings.append(f"Could not fetch GitHub README (HTTP {http_code})")
+        if severity == "ok":
+            severity = "warning"
+
+    payload = {
+        "timestamp": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "severity": severity,
+        "findings": findings,
+        "sync_script_check": sync_check,
+        "sync_log_check": sync_status,
+        "github_readme_http": http_code,
+        "github_readme_bytes": len(content) if http_code == 200 else None,
+        "action_required": severity == "critical",
+        "fix_instruction": (
+            "Restore mirror-notice post-sync hook in sync_to_github.sh. "
+            "The hook should overwrite GitHub README with a short mirror notice "
+            "after each push to prevent Google from ranking GitHub above Codeberg."
+        ) if severity == "critical" else None,
     }
-    state["history"].append(entry)
-    if len(state["history"]) > 26:
-        state["history"] = state["history"][-26:]
 
-    # Write structured output
-    output = {
-        "generated_at": now.isoformat(),
-        "watchdog": "seo_cannibalization",
-        "status": status,
-        "summary": summary,
-        "github_readme": readme,
-        "mirror_template_exists": mirror_template_ok,
-        "fix_deployed": "audit_33_github_mirror_readme",
-        "fix_date": "2026-06-05",
-        "fix_mechanism": "sync_to_github.sh post-sync hook overwrites GitHub README after each Codeberg→GitHub push",
-        "history": state["history"][-12:],
-    }
-    with open(OUTPUT_FILE, "w") as f:
-        json.dump(output, f, indent=2, default=str)
+    WATCHDOG_LOG.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    with WATCHDOG_HISTORY.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(payload) + "\n")
 
-    # Write human-readable report
-    lines = [
-        "# SEO Cannibalization Report",
-        f"Generated: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}",
-        "",
-        f"## Status: {status.upper()}",
-        "",
-        f"**{summary}**",
-        "",
-        "## GitHub README check",
-        f"- Status: {readme['status']}",
-        f"- Characters: {readme['chars']}",
-        f"- Has mirror marker ('{MIRROR_MARKER}'): {'✅' if readme['has_mirror_marker'] else '❌'}",
-        f"- Has full content ('{FULL_README_MARKER}'): {'❌' if readme['has_full_content'] else '✅'}",
-        f"- Mirror template exists locally: {'✅' if mirror_template_ok else '❌'}",
-        "",
-        "## Fix status",
-        "- **Audit #33 (2026-06-05):** GitHub mirror README stripped to short mirror notice",
-        "- **Mechanism:** sync_to_github.sh post-sync hook overheads GitHub README after each push",
-        "- **Expected:** GitHub README ≈ 833 chars (mirror notice), Codeberg README ≈ 9,725 chars (full rich content)",
-        "- **Search provider monitoring:** Suspended (DDG HTTP 202, Brave 0 results). Resume when provider recovers.",
-    ]
-
-    # Add history table
-    if state["history"]:
-        lines.append("")
-        lines.append("## History")
-        for h in state["history"][-8:]:
-            ts = h["timestamp"][:16].replace("T", " ")
-            lines.append(f"- {ts} — **{h['status']}** — {h['summary'][:100]}")
-
-    with open(REPORT_FILE, "w") as f:
-        f.write("\n".join(lines) + "\n")
-
-    state["last_run"] = now.isoformat()
-    save_state(state)
-
-    # Alert if cannibalized
-    if status == "CANNIBALIZED":
-        print(f"ESCALATION: {summary}")
-        sys.exit(1)
-
-    print(f"SEO cannibalization check: {status}")
-    print(f"  {summary}")
+    if severity == "critical":
+        print(f"[SEO CANNIBALIZATION CRITICAL] {'; '.join(findings)}")
+        return 1
+    elif severity == "warning":
+        print(f"[SEO CANNIBALIZATION WARNING] {'; '.join(findings)}")
+        return 0
+    else:
+        print(f"[SEO CANNIBALIZATION OK] {'; '.join(findings)}")
+        return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

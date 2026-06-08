@@ -1,6 +1,6 @@
 # Ralph Workflow vs Cursor
 
-**Last updated:** June 07, 2026 · [Edit this comparison](https://codeberg.org/Ralph-Workflow/Ralph-Workflow) · [← Back to all comparisons](/comparisons)
+**Last updated:** June 08, 2026 · [Edit this comparison](https://codeberg.org/Ralph-Workflow/Ralph-Workflow) · [← Back to all comparisons](/comparisons)
 
 ## At a Glance
 

@@ -328,7 +328,7 @@ FILE: /home/mistlight/Ralph-Workflow/README.md
 95: | `ralph --init` | [init-output.txt](docs/sphinx/_static/demo/init-output.txt) — banner, capabilities, first-run setup |
 96: | `ralph --diagnose` | [diagnose-output.txt](docs/sphinx/_static/demo/diagnose-output.txt) — agent inventory, config, MCP check |
 97: | `ralph --dry-run` | [dry-run-output.txt](docs/sphinx/_static/demo/dry-run-output.txt) — pipeline phases and iteration plan |
-98: | ▶ **Full demo** | ![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg) — watch the complete first-run flow |
+98: | ▶ **Full demo** | [![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) — watch the complete first-run flow |
 99: | ⭐ **Contribute** | `ralph contribute` — opens Codeberg in your browser so you can star the project |
 100: 
 101: These are **unedited terminal captures** from a real run — not mock-ups.
@@ -336,7 +336,7 @@ FILE: /home/mistlight/Ralph-Workflow/README.md
 103: **Built-in capabilities:**
 104: 
 105: - **Phase routing** — planning agent → development agent → review agent → fix loop
-106: - **Cost-efficient model routing** — use cheaper agents for planning, stronger ones for coding
+106: - **Cost arbitrage** — use cheaper agents for planning, stronger ones for coding
 107: - **Repo-based handoff** — agents read each other's output through the repo, not context stuffing
 108: - **Recovery + retry** — each phase can loop independently on failure
 109: - **Vendor-neutral** — your config is YAML, your agents are your choice, your code is yours
@@ -497,19 +497,19 @@ FILE: /home/mistlight/Ralph-Workflow/ralph-workflow/README.md
 131: ralph -T     # thorough: complex refactors, ten iterations
 132: ```
 133: 
-134: ## What to expect from a run
+134: ## A fast way to tell whether Ralph Workflow fits
 135: 
-136: *A fast way to tell whether Ralph Workflow fits:*
-137: 
-138: 1. Pick one real backlog task that is small enough to review in one sitting.
-139: 2. Write it down in `PROMPT.md` with clear acceptance criteria.
-140: 3. Run Ralph Workflow overnight.
-141: 4. Come back and ask one question: **would you merge this?**
-142: 
-143: If yes, give it a harder task next.
-144: If no, tighten the spec, checks, or task choice and run again.
+136: 1. Pick one real backlog task that is small enough to review in one sitting.
+137: 2. Write it down in `PROMPT.md` with clear acceptance criteria.
+138: 3. Run Ralph Workflow overnight.
+139: 4. Come back and ask one question: **would you merge this?**
+140: 
+141: If yes, give it a harder task next.
+142: If no, tighten the spec, checks, or task choice and run again.
+143: 
+144: If the first run teaches you something real either way, turn that result into the right public Codeberg action: star/watch the primary repo if it earned trust, or report the exact first-run friction on Codeberg if it did not.
 145: 
-146: If the first run teaches you something real either way, turn that result into the right public Codeberg action: star/watch the primary repo if it earned trust, or report the exact first-run friction on Codeberg if it did not.
+146: ## What to expect from a run
 147: 
 148: Ralph Workflow is meant to get you to a strong implementation starting point while you are away, not to replace engineering judgment.
 149: 
@@ -600,17 +600,17 @@ FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/REA
 26: | Locked to one vendor | Claude + Codex + OpenCode in the same pipeline — your choice |
 27: | "Look at the diff" | Runnable, tested software with integration checks |
 28: 
-29: ## Who it's for
+29: [See how Ralph Workflow compares to 14 other autonomous coding tools →](https://ralphworkflow.com/compare)
 30: 
-31: Developers and teams who have **ambitious, well-specified work** that's too big to babysit and too risky to trust blindly. A good first run looks like:
+31: ## Who it's for
 32: 
-33: - The fitness app you wanted to build
-34: - A major product milestone
-35: - A substantial application slice with real acceptance criteria
-36: 
-37: It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
+33: Developers and teams who have **ambitious, well-specified work** that's too big to babysit and too risky to trust blindly. A good first run looks like:
+34: 
+35: - The fitness app you wanted to build
+36: - A major product milestone
+37: - A substantial application slice with real acceptance criteria
 38: 
-39: > **First time?** Start with **[START_HERE.md](START_HERE.md)** — a guided first run with task selection, diagnosis, and a walked-through wake-up.
+39: It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
 40: 
 41: ## Quick start
 42: 
@@ -648,60 +648,61 @@ FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/REA
 74: ```
 75: 
 76: Full docs at [ralphworkflow.com](https://ralphworkflow.com/docs).
-77: 
-78: 1. Run `ralph --diagnose` to confirm healthy helpers
-79: 2. Write your task in `PROMPT.md` in your project root
-80: 3. Run `ralph`
-81: 4. Go to sleep. Wake up to finished git commits you can review
-82: 
-83: That's it. The default workflow is already strong enough to start with. Customize later when you need more control.
+77: Maintainers working in-repo should use `ralph-workflow/docs/sphinx/` as the canonical
+78: source for the published manual.
+79: 
+80: 1. Run `ralph --diagnose` to confirm healthy helpers
+81: 2. Write your task in `PROMPT.md` in your project root
+82: 3. Run `ralph`
+83: 4. Go to sleep. Wake up to finished git commits you can review
 84: 
-85: For first-run guidance — task selection, diagnosis, and a walked-through first wake-up — see **[START_HERE.md](START_HERE.md)**.
+85: That's it. The default workflow is already strong enough to start with. Customize later when you need more control.
 86: 
-87: ## See it in action
+87: For first-run guidance — task selection, diagnosis, and a walked-through first wake-up — see **[START_HERE.md](START_HERE.md)**.
 88: 
-89: Real terminal output from Ralph Workflow v0.8.8 on a fresh project:
+89: ## See it in action
 90: 
-91: | Command | Output |
-92: |---|---|
-93: | `ralph --init` | `docs/sphinx/_static/demo/init-output.txt` — banner, capabilities, first-run setup |
-94: | `ralph --diagnose` | `docs/sphinx/_static/demo/diagnose-output.txt` — agent inventory, config, MCP check |
-95: | `ralph --dry-run` | `docs/sphinx/_static/demo/dry-run-output.txt` — pipeline phases and iteration plan |
-96: | ▶ **Full demo** | [![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) — watch the complete first-run flow |
-97: 
-98: These are **unedited terminal captures** from a real run — not mock-ups.
-99: 
-100: ## Built-in capabilities
-101: 
-102: - **Phase routing** — planning agent → development agent → review agent → fix loop
-103: - **Cost-efficient model routing** — use cheaper agents for planning, stronger ones for coding
-104: - **Repo-based handoff** — agents read each other's output through the repo, not context stuffing
-105: - **Recovery + retry** — each phase can loop independently on failure
-106: - **Vendor-neutral** — your config is YAML, your agents are your choice, your code is yours
-107: - **`ralph --diagnose`** — pre-flight health check for agents, tools, and capability bundles
-108: 
-109: ## Documentation
-110: 
-111: | Page | What it covers |
-112: |---|---|
-113: | [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |
-114: | [Quickstart](https://ralphworkflow.com/docs/quickstart.html) | Write a spec and run it in 10 minutes |
-115: | [Configuration](https://ralphworkflow.com/docs/configuration.html) | Agent routing, phase policies, model selection |
-116: | [User Stories](https://ralphworkflow.com/docs/user-stories.html) | Real workflows from real runs |
-117: 
-118: ## Engineering-practice requirements
-119: 
-120: Ralph Workflow depends on good software engineering practices — it does not replace them. You need:
-121: 
-122: - **Clear specs** with concrete acceptance criteria
-123: - **Meaningful tests** in your repo
-124: - **Honest review discipline** — the review agent flags issues, you decide what to do
-125: 
-126: A repo without guardrails will produce results that reflect that. Plan accordingly.
-127: 
-128: ---
-129: 
-130: *Free and open source. Runs on your machine. Ships with a default workflow strong enough for real software engineering.*
+91: Example terminal output from Ralph Workflow v0.8.8 on a fresh project:
+92: 
+93: | Command | Output |
+94: |---|---|
+95: | `ralph --init` | [init-output.txt](docs/sphinx/_static/demo/init-output.txt) — banner, capabilities, first-run setup |
+96: | `ralph --diagnose` | [diagnose-output.txt](docs/sphinx/_static/demo/diagnose-output.txt) — agent inventory, config, MCP check |
+97: | `ralph --dry-run` | [dry-run-output.txt](docs/sphinx/_static/demo/dry-run-output.txt) — pipeline phases and iteration plan |
+98: | ▶ **Full demo** | [![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) — watch the complete first-run flow |
+99: | ⭐ **Contribute** | `ralph contribute` — opens Codeberg in your browser so you can star the project |
+100: 
+101: These are **unedited terminal captures** from a real run — not mock-ups.
+102: 
+103: **Built-in capabilities:**
+104: 
+105: - **Phase routing** — planning agent → development agent → review agent → fix loop
+106: - **Cost arbitrage** — use cheaper agents for planning, stronger ones for coding
+107: - **Repo-based handoff** — agents read each other's output through the repo, not context stuffing
+108: - **Recovery + retry** — each phase can loop independently on failure
+109: - **Vendor-neutral** — your config is YAML, your agents are your choice, your code is yours
+110: - **`ralph --diagnose`** — pre-flight health check for agents, tools, and capability bundles
+111: 
+112: ## Documentation
+113: 
+114: | Page | What it covers |
+115: |---|---|
+116: | [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |
+117: | [Full Docs](https://ralphworkflow.com/docs) | Quickstart, configuration, user stories, and more |
+118: 
+119: ## Engineering-practice requirements
+120: 
+121: Ralph Workflow depends on good software engineering practices — it does not replace them. You need:
+122: 
+123: - **Clear specs** with concrete acceptance criteria
+124: - **Meaningful tests** in your repo
+125: - **Honest review discipline** — the review agent flags issues, you decide what to do
+126: 
+127: A repo without guardrails will produce results that reflect that. Plan accordingly.
+128: 
+129: ---
+130: 
+131: *Free and open source. Runs on your machine. Ships with a default workflow strong enough for real software engineering.*
 
 FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md
 1: # Start Here: Run Ralph Workflow on One Real Task
@@ -710,7 +711,7 @@ FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/STA
 4: > Inspect and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 5: 
 6: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
-7: It runs the coding agents you already use, on your own machine. The simple Ralph loop composes into complex workflows and ships with a strong default workflow for substantial, well-specified software engineering. Use the default as-is, then customize when you're ready.
+7: It runs the coding agents you already use, on your own machine. The simple Ralph loop composes into larger workflows and ships with a strong default workflow for substantial, well-specified software engineering. Use the default as-is, then customize when you're ready.
 8: 
 9: This page gives the shortest honest first run.
 10: Start with one real, well-specified backlog task and judge the outcome by what the software does now and what checks ran.
@@ -833,84 +834,82 @@ FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/doc
 FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md
 1: # AI Agent Orchestration CLI: What Matters in Practice
 2: 
-3: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
-4: That simple center composes into more complex workflows for substantial, well-specified software engineering work on your own machine with the coding agents you already use, and the shipped default is already strong enough to start with.
-5: 
-6: If you are comparing AI agent orchestration CLIs, the useful question is not whether a tool can call an agent.
-7: The useful question is whether it gives you a workflow that stays understandable, reviewable, and extensible when the task stops being tiny.
-8: 
-9: ## What Ralph Workflow is trying to solve
-10: 
-11: A single long coding-agent session can work for small edits.
-12: It gets much shakier when the task needs:
-13: 
-14: - a real written spec
-15: - explicit planning before implementation
-16: - repeated verification instead of one final guess
-17: - room to swap or extend agent behavior later
-18: - a handoff a human can judge without reverse-engineering the whole run
-19: 
-20: Ralph Workflow takes the simple Ralph-loop idea and uses it as the center of a larger orchestration model.
-21: The point is not complexity for its own sake.
-22: The point is to keep the center simple so the larger workflow stays easier to reason about.
-23: 
-24: ## Why the default workflow matters
-25: 
-26: The default workflow matters because most users should not have to design an orchestration system before they can test one.
-27: You should be able to start with the shipped path, run a real task, and only then decide whether to extend it.
-28: 
-29: That is the practical promise: simple at the center, stronger in composition, useful before customization.
-30: 
-31: ## Where to go next
-32: 
-33: - for the shortest honest first run: [START_HERE.md](../START_HERE.md)
-34: - for task selection help: [first-task-guide.md](./first-task-guide.md)
-35: - for the operator manual: [Sphinx manual home](../ralph-workflow/docs/sphinx/index.rst)
-36: - for configuration and file locations: [configuration.md](../ralph-workflow/docs/sphinx/configuration.md)
+3: Ralph Workflow is a free and open-source AI agent orchestrator — not a thin wrapper, but a composable loop framework that runs the coding agents you already use on your own machine. Its opinion is simple: the orchestrator should not be more complex than the work it is orchestrating. A single understandable Ralph-loop at the center composes into more ambitious workflows without the CLI turning into a maze of flags and phase names you need a diagram to follow.
+4: 
+5: If you are comparing AI agent orchestration CLIs, the useful question is not whether a tool can call an agent.
+6: The useful question is whether it gives you a workflow that stays understandable, reviewable, and extensible when the task stops being tiny.
+7: 
+8: ## What Ralph Workflow is trying to solve
+9: 
+10: A single long coding-agent session can work for small edits.
+11: It gets much shakier when the task needs:
+12: 
+13: - a real written spec
+14: - explicit planning before implementation
+15: - repeated verification instead of one final guess
+16: - room to swap or extend agent behavior later
+17: - a handoff a human can judge without reverse-engineering the whole run
+18: 
+19: Ralph Workflow takes the simple Ralph-loop idea and uses it as the center of a larger orchestration model.
+20: The point is not complexity for its own sake.
+21: The point is to keep the center simple so the larger workflow stays easier to reason about.
+22: 
+23: ## Why the default workflow matters
+24: 
+25: The default workflow matters because most users should not have to design an orchestration system before they can test one.
+26: You should be able to start with the shipped path, run a real task, and only then decide whether to extend it.
+27: 
+28: That is the practical promise: simple at the center, stronger in composition, useful before customization.
+29: 
+30: ## Where to go next
+31: 
+32: - for the shortest honest first run: [START_HERE.md](../START_HERE.md)
+33: - for task selection help: [first-task-guide.md](./first-task-guide.md)
+34: - for the operator manual: [Sphinx manual home](../ralph-workflow/docs/sphinx/index.rst)
+35: - for configuration and file locations: [configuration.md](../ralph-workflow/docs/sphinx/configuration.md)
 
 FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md
 1: # Spec-Driven AI Agent: Why the Spec Still Matters
 2: 
-3: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
-4: That simple center composes into more complex workflows for substantial, well-specified software engineering work, and a written spec is what gives that stronger default workflow a real finish line.
-5: 
-6: If an agent keeps saying it is done before the work actually holds up, the problem is often not raw model capability.
-7: The problem is that the task was never specific enough to verify honestly.
-8: 
-9: ## Why Ralph Workflow leans on specs
-10: 
-11: Ralph Workflow is designed for ambitious work that already deserves a clear target:
-12: 
-13: - a real feature slice
-14: - a milestone with acceptance criteria
-15: - a refactor with defined invariants
-16: - a verification pass with concrete failure conditions
-17: 
-18: That is where a spec stops being ceremony and starts being operational.
-19: It tells the workflow what done means.
-20: It also gives the human a standard to review against afterward.
-21: 
-22: ## What a good spec changes
-23: 
-24: A serious spec helps in three places at once:
-25: 
-26: 1. **Planning** — the agent can make better choices when constraints are explicit.
-27: 2. **Verification** — checks can be judged against something real instead of vibes.
-28: 3. **Review** — the human can compare the result to the promised scope instead of reading tea leaves from a transcript.
-29: 
-30: Without that written target, even a strong model can produce work that sounds plausible while drifting away from what mattered.
-31: 
-32: ## Why this fits the default workflow
-33: 
-34: Ralph Workflow is not asking for giant design docs on every change.
-35: It is asking you to use the workflow where ambiguity is expensive and a clear finish line matters.
-36: That is one reason the default workflow works better on serious repo tasks than on tiny, vague chores.
-37: 
-38: ## What to read next
-39: 
-40: - for choosing a strong first task: [first-task-guide.md](./first-task-guide.md)
-41: - for the shortest honest run path: [START_HERE.md](../START_HERE.md)
-42: - for operator setup and configuration: [configuration.md](../ralph-workflow/docs/sphinx/configuration.md)
+3: Ralph Workflow is a free and open-source AI agent orchestrator built for work that is big enough to deserve a real written spec. Its simple Ralph-loop core — plan, implement, review — gives each phase a concrete handoff boundary. The system composes into more complex workflows for serious engineering, but it never stops asking the same question: is the spec satisfied? A written spec is not a nice-to-have here — it is the finish line the loop keeps orbiting until it is actually reached.
+4: 
+5: If an agent keeps saying it is done before the work actually holds up, the problem is often not raw model capability.
+6: The problem is that the task was never specific enough to verify honestly.
+7: 
+8: ## Why Ralph Workflow leans on specs
+9: 
+10: Ralph Workflow is designed for ambitious work that already deserves a clear target:
+11: 
+12: - a real feature slice
+13: - a milestone with acceptance criteria
+14: - a refactor with defined invariants
+15: - a verification pass with concrete failure conditions
+16: 
+17: That is where a spec stops being ceremony and starts being operational.
+18: It tells the workflow what done means.
+19: It also gives the human a standard to review against afterward.
+20: 
+21: ## What a good spec changes
+22: 
+23: A serious spec helps in three places at once:
+24: 
+25: 1. **Planning** — the agent can make better choices when constraints are explicit.
+26: 2. **Verification** — checks can be judged against something real instead of vibes.
+27: 3. **Review** — the human can compare the result to the promised scope instead of reading tea leaves from a transcript.
+28: 
+29: Without that written target, even a strong model can produce work that sounds plausible while drifting away from what mattered.
+30: 
+31: ## Why this fits the default workflow
+32: 
+33: Ralph Workflow is not asking for giant design docs on every change.
+34: It is asking you to use the workflow where ambiguity is expensive and a clear finish line matters.
+35: That is one reason the default workflow works better on serious repo tasks than on tiny, vague chores.
+36: 
+37: ## What to read next
+38: 
+39: - for choosing a strong first task: [first-task-guide.md](./first-task-guide.md)
+40: - for the shortest honest run path: [START_HERE.md](../START_HERE.md)
+41: - for operator setup and configuration: [configuration.md](../ralph-workflow/docs/sphinx/configuration.md)
 
 FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md
 1: # Your First Ralph Workflow Task
@@ -1120,47 +1119,46 @@ FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/doc
 FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md
 1: # Unattended Coding Agent: What It Should Actually Mean
 2: 
-3: Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
-4: That simple center composes into more complex workflows for substantial, well-specified repo work on your own machine with the agents you already use, and the default workflow is already strong enough to start with.
-5: 
-6: If you are looking for an unattended coding agent, the important question is not just whether a model can keep typing while you are away.
-7: The important question is whether you can come back to software you can judge honestly.
-8: 
-9: ## Unattended should still mean accountable
-10: 
-11: A useful unattended workflow should leave you with:
-12: 
-13: - a clear task boundary
-14: - software that actually runs or verifies better than before
-15: - checks that tell you something real
-16: - enough structure that you can understand what happened without replaying everything
-17: 
-18: That is the standard Ralph Workflow is trying to meet.
-19: It is not promising magic independence from engineering discipline.
-20: It is promising a stronger way to organize serious work.
-21: 
-22: ## When unattended use fits best
-23: 
-24: Ralph Workflow fits best when you have:
-25: 
-26: - a backlog task with a written finish line
-27: - a repo with meaningful tests or validation
-28: - enough scope that a simple chat session becomes awkward
-29: - time to evaluate the result after the run
-30: 
-31: It fits worse when the task is vague, tiny, or dependent on constant mid-run steering.
-32: 
-33: ## Why the default workflow matters
-34: 
-35: Most people should not have to build an orchestration system before they can judge one.
-36: You should be able to start with the shipped path, learn how it behaves on a real task, and extend it later only if you need to.
-37: 
-38: ## Where to go next
-39: 
-40: - for the shortest honest first run: [START_HERE.md](../START_HERE.md)
-41: - for choosing a task worth running unattended: [first-task-guide.md](./first-task-guide.md)
-42: - for the maintained manual: [Sphinx manual home](../ralph-workflow/docs/sphinx/index.rst)
-43: - for user-goal routing inside the manual: [user-stories.md](../ralph-workflow/docs/sphinx/user-stories.md)
+3: Ralph Workflow is a free and open-source AI agent orchestrator that runs unattended coding sessions on your own machine with the agents you already use. Its simple Ralph-loop core — plan, implement, review — is what makes unattended work accountable: each phase has a concrete handoff, the workflow loops when the review says "not yet," and the result arrives with a trail you can actually inspect. The shipped default is strong enough to start with, and the composable architecture lets you extend it when your tasks outgrow the defaults.
+4: 
+5: If you are looking for an unattended coding agent, the important question is not just whether a model can keep typing while you are away.
+6: The important question is whether you can come back to software you can judge honestly.
+7: 
+8: ## Unattended should still mean accountable
+9: 
+10: A useful unattended workflow should leave you with:
+11: 
+12: - a clear task boundary
+13: - software that actually runs or verifies better than before
+14: - checks that tell you something real
+15: - enough structure that you can understand what happened without replaying everything
+16: 
+17: That is the standard Ralph Workflow is trying to meet.
+18: It is not promising magic independence from engineering discipline.
+19: It is promising a stronger way to organize serious work.
+20: 
+21: ## When unattended use fits best
+22: 
+23: Ralph Workflow fits best when you have:
+24: 
+25: - a backlog task with a written finish line
+26: - a repo with meaningful tests or validation
+27: - enough scope that a simple chat session becomes awkward
+28: - time to evaluate the result after the run
+29: 
+30: It fits worse when the task is vague, tiny, or dependent on constant mid-run steering.
+31: 
+32: ## Why the default workflow matters
+33: 
+34: Most people should not have to build an orchestration system before they can judge one.
+35: You should be able to start with the shipped path, learn how it behaves on a real task, and extend it later only if you need to.
+36: 
+37: ## Where to go next
+38: 
+39: - for the shortest honest first run: [START_HERE.md](../START_HERE.md)
+40: - for choosing a task worth running unattended: [first-task-guide.md](./first-task-guide.md)
+41: - for the maintained manual: [Sphinx manual home](../ralph-workflow/docs/sphinx/index.rst)
+42: - for user-goal routing inside the manual: [user-stories.md](../ralph-workflow/docs/sphinx/user-stories.md)
 
 FILE: /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md
 1: # What Good Ralph Workflow Output Looks Like

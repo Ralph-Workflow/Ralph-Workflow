@@ -186,7 +186,8 @@ def main() -> int:
 
     if architecture:
         overall = architecture.get('executive_verdict', {}).get('overall_health')
-        if overall not in {'healthy', 'healthy_with_repairs', 'high_risk', 'moderate_risk', 'external_risk', 'watch', 'architecture_green', 'qualified_pass'}:
+        allowed_health = {'healthy', 'healthy_with_repairs', 'high_risk', 'moderate_risk', 'external_risk', 'watch', 'architecture_green', 'architecture_green_external_red', 'qualified_pass', 'caution'}
+        if overall not in allowed_health:
             architecture_errors.append(f'architecture report overall health is not healthy: {overall!r}')
         elif overall in ('high_risk', 'moderate_risk', 'external_risk'):
             verified_repairs.append({

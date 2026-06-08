@@ -3,10 +3,10 @@
 Status: PASS
 
 Timestamp:
-- 2026-06-07 05:36 UTC
+- 2026-06-08 05:36 UTC
 
 Summary:
-- README → START_HERE → docs/README journey is coherent, front-door docs lead with product value not plumbing, promoted next-click pages all reinforce the same simple-core / composable-orchestration story, and no top-level surface leaks internal process language as primary framing.
+- Docs system accurately reflects the positioning: orchestrator-first framing, simple-Ralph-core story, result-first evaluation, and honest engineering-prerequisites. No internal leakage or stale framing on top-level surfaces.
 
 Loop healthy enough to stop repeated user reminders:
 - yes
@@ -23,8 +23,10 @@ Must fix:
 - none
 
 Strongest evidence:
-- `README.md` — Leads with 'operating system for autonomous coding' tagline, frames as composable loop framework, comparison table sells orchestration not receipts, and explicitly points first-timers to START_HERE.md.
-- `START_HERE.md` — Opens with the simple-core framing, gives a concrete first-run path with task selection discipline, and routes to docs/README only after the run is done.
-- `docs/README.md` — Acts as a clean switchboard that routes by reader intent, keeps proof pages secondary, and frames everything around the product story.
-- `docs/first-task-guide.md` — Full conversion page that reinforces spec-driven, result-first evaluation with zero internal plumbing language.
-- `docs/reviewable-output.md` — Properly positions itself as secondary supporting proof rather than the main pitch.
+- `/Ralph-Workflow/README.md` — Leads with 'operating system for autonomous coding' and 'AI agent orchestrator'; comparison table differentiates against chat tools, not other orchestrators; 'simple Ralph-loop...composable loop framework' is the exact positioning language.
+- `/Ralph-Workflow/README.md#L33-L39` — 'Who it's for' nails the ambitious/well-specified-work framing and explicitly lists what it is NOT for — directly from the positioning doc.
+- `/Ralph-Workflow/ralph-workflow/README.md` — PyPI README includes 'GitHub is the mirror. Codeberg is the primary repo.' banner, leads with result-first tagline, and has the name-origin paragraph that frames RW as an improvement on Ralph.
+- `/Ralph-Workflow/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md` — Picks up cleanly from README with 'shortest honest first run'; explicitly mentions default-as-is-then-customize and simple-core-composition; routes to docs/README.md as next step.
+- `/Ralph-Workflow/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md` — Explicitly positions itself as after README+START_HERE; includes 'Keep proof secondary' section; routes by user intent (fastest run / manual / product framing) rather than by architecture. This is the best-behaved docs switchboard in the system.
+- `docs/reviewable-output.md` — Correctly self-positions as 'supporting proof, not the main product pitch'; orders evidence as working behavior → real checks → written scope → supporting artifacts (logs last) — exact match to positioning doc's evaluation order.
+- `docs/ai-agent-orchestration-cli.md` — Quotes 'simple at the center, stronger in composition, useful before customization' directly — uses positioning language, not internal plumbing.

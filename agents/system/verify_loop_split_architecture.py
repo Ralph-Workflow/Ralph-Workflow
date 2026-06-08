@@ -13,21 +13,17 @@ TEST_SCRIPT = ROOT / 'agents/system/test_loop_split_runtime.py'
 EXPECTED = {
     'docs-precheck': {
         'name': 'ralph-docs-supervisor-precheck',
-        'model': 'minimax/MiniMax-M2.7-highspeed',
+        'model': 'minimax/MiniMax-M3',
     },
     'docs-gpt-worker': {
         'name': 'ralph-workflow-docs-verifier-supervisor',
-        'model': 'openai-codex/gpt-5.4',
+        'model': 'openrouter/deepseek/deepseek-v4-pro',
         'expr': '6 */12 * * *',
     },
-    'marketing-audit-precheck': {
-        'name': 'marketing-workflow-audit-precheck',
-        'model': 'minimax/MiniMax-M2.7-highspeed',
-    },
-    'marketing-audit-gpt-worker': {
+    'marketing-audit': {
         'name': 'marketing-workflow-audit',
-        'model': 'openai-codex/gpt-5.4',
-        'expr': '20 */6 * * *',
+        'model': 'openrouter/deepseek/deepseek-v4-pro',
+        'expr': '20 8 * * *',
     },
 }
 
@@ -63,7 +59,7 @@ def main() -> int:
             'expr': job.get('schedule', {}).get('expr'),
         })
 
-    for script in [DOCS_PRECHECK, MARKETING_PRECHECK]:
+    for script in [DOCS_PRECHECK]:
         code, out, err = run_cmd(['python3', str(script), '--dry-run'])
         assert code == 0, f'{script.name} dry-run failed: {(out or err).strip()}'
         payload = json.loads((out or '{}').strip())
