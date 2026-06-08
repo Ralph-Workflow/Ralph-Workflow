@@ -145,9 +145,11 @@ def run_git_command_lenient(
 
 # MCP read tools must never block the server thread indefinitely: a hung
 # `git status` (large vendor/ submodules, a held .git lock) would starve the
-# agent of output and trip the idle watchdog. Bound git like exec (30s) and
-# fail closed — communicate_and_cleanup terminates and kills the process tree
-# on expiry, then re-raises TimeoutExpired for run_git_command* to convert.
+# agent of output and trip the idle watchdog. Git reads are bounded at a fixed
+# 30s (they are short, fixed subcommands with no agent-tunable timeout, unlike
+# the exec tool) and fail closed — communicate_and_cleanup terminates and kills
+# the process tree on expiry, then re-raises TimeoutExpired for
+# run_git_command* to convert into an actionable is_error result.
 _GIT_READ_TIMEOUT_SECONDS = 30.0
 
 

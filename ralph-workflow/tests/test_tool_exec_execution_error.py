@@ -35,3 +35,32 @@ def test_cache_full_message_describes_automatic_reset_without_internal_tool() ->
     assert "active_leases" not in message, (
         "cache-full message must not contain old lock-era active_leases field"
     )
+
+
+def test_timeout_message_presents_both_interpretations() -> None:
+    """A timeout is ambiguous: the command may be legitimately long (raise the
+    limit) OR genuinely stuck (infinite loop / deadlock / blocked on input),
+    where raising the limit only wastes more time. The message must surface BOTH
+    so the agent does not reflexively double the timeout on a wedged command."""
+    err = ExecutionError(
+        "Failed to execute 'x': timed out after 90000ms",
+        timed_out=True,
+        timeout_ms=90_000,
+        suggested_timeout_ms=180_000,
+    )
+    message = str(err).lower()
+    # Interpretation 1: legitimately long -> raise the limit.
+    assert "timeout_ms" in message
+    assert "180000" in message
+    # Interpretation 2: the command itself may be broken and must be fixed.
+    assert any(word in message for word in ("loop", "stuck", "hang", "deadlock"))
+
+
+def test_timeout_message_without_suggestion_still_warns_about_stuck_commands() -> None:
+    err = ExecutionError(
+        "Failed to execute 'x': timed out",
+        timed_out=True,
+        timeout_ms=0,
+    )
+    message = str(err).lower()
+    assert any(word in message for word in ("loop", "stuck", "hang", "deadlock"))

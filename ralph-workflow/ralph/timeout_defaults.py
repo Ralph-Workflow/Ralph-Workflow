@@ -66,6 +66,15 @@ REPEATED_ERROR_WINDOW_SECONDS: float | None = 600.0
 #: vendor submodules). The process tree is killed on expiry.
 GIT_SUBPROCESS_TIMEOUT_SECONDS: float = 120.0
 
+#: Default per-call timeout for the exec MCP tool family (exec/unsafe_exec). Set
+#: above the 60s combined ``make verify`` budget so an agent running verification
+#: (or a slow git op) through exec does not time out on every call. This is the one
+#: source of truth: both the exec handler default and the advertised tool-schema
+#: default derive from it, so the hint shown to the agent cannot drift from the
+#: behavior. Per-call ``timeout_ms`` overrides it; the process tree is killed on
+#: expiry, so the server stays bounded regardless.
+EXEC_DEFAULT_TIMEOUT_MS: int = 90_000
+
 #: Default poll interval for the read loop.
 IDLE_POLL_INTERVAL_SECONDS: float = 0.05
 

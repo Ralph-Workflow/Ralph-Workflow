@@ -69,19 +69,24 @@ class ExecutionError(ToolError):
         ms = self.timeout_ms if self.timeout_ms is not None else "?"
         lines: list[str] = [f"Command timed out after {ms}ms (process killed)."]
         lines.append(
-            "This is expected for long-running commands. Re-issuing the IDENTICAL call"
-            " will time out again."
+            "Re-issuing the IDENTICAL call will time out again. A timeout has two"
+            " possible causes — decide which before retrying:"
         )
         if self.suggested_timeout_ms is not None:
             lines.append(
-                f"To proceed: pass a larger timeout_ms (e.g. {self.suggested_timeout_ms})"
-                " or run a shorter command. Do not retry unchanged."
+                f"1. The command is legitimately long-running: pass a larger timeout_ms"
+                f" (e.g. {self.suggested_timeout_ms}) or run a shorter command."
             )
         else:
             lines.append(
-                "To proceed: pass a larger timeout_ms or run a shorter command."
-                " Do not retry unchanged."
+                "1. The command is legitimately long-running: pass a larger timeout_ms"
+                " or run a shorter command."
             )
+        lines.append(
+            "2. The command is genuinely stuck (infinite loop, deadlock, or blocked"
+            " waiting on input): raising timeout_ms will only waste more time — fix the"
+            " command itself. Do not retry unchanged."
+        )
         if self.diagnostics:
             lines.append(f"  Diagnostics: {self.diagnostics}")
         return "\n".join(lines)

@@ -20,6 +20,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -64,11 +65,11 @@ def handle_unsafe_exec(
             "are not permitted via unsafe_exec"
         )
 
-    timeout_value = params.get("timeout_ms", 30000)
+    timeout_value = params.get("timeout_ms", EXEC_DEFAULT_TIMEOUT_MS)
     timeout_ms = (
         timeout_value
         if isinstance(timeout_value, int) and timeout_value >= 0
-        else 30000
+        else EXEC_DEFAULT_TIMEOUT_MS
     )
     timeout_seconds: float | None = timeout_ms / 1000 if timeout_ms > 0 else None
 
@@ -83,10 +84,22 @@ def handle_unsafe_exec(
             timeout=timeout_seconds,
             check=False,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise ExecutionError(
-            f"Command timed out after {timeout_ms}ms: {command!r}"
-        ) from exc
+    except subprocess.TimeoutExpired:
+        # Return an actionable, non-retryable is_error result rather than letting
+        # the exception become a -32603 protocol error the agent reads as transient
+        # and re-issues forever (the 5-hour retry-storm pathology). The rendered
+        # message teaches both meanings of a timeout (raise the limit vs. fix a
+        # genuinely stuck command), matching what the tool description advertises.
+        timeout_error = ExecutionError(
+            f"Failed to execute {command!r}: timed out after {timeout_ms}ms",
+            timed_out=True,
+            timeout_ms=timeout_ms,
+            suggested_timeout_ms=timeout_ms * 2 if timeout_ms > 0 else None,
+        )
+        return ToolResult(
+            content=[ToolContent.text_content(str(timeout_error))],
+            is_error=True,
+        )
 
     stdout = result.stdout[:_MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
     stderr = result.stderr[:_MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
