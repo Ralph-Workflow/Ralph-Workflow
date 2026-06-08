@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.skills._agent_paths import AgentSkillRoot
 from ralph.skills._installer import check_skills_update_available, install_baseline_skills
 
 if TYPE_CHECKING:
@@ -32,6 +33,21 @@ def test_check_skills_update_available_returns_false_when_contents_match(
     monkeypatch.setattr(
         "ralph.skills._installer._installed_skills_dir",
         lambda: installed_dir,
+    )
+    # Restrict the check to the canonical Claude root so this test stays focused
+    # on the "contents match -> no update" contract. The new "iterate every
+    # registered root" behavior is covered separately in
+    # tests/test_skills_installer_sibling_symlinks.py.
+    fake_canonical = AgentSkillRoot(
+        agent="claude",
+        path_segments=(str(installed_dir),),
+        source_url="",
+        is_canonical=True,
+    )
+
+    monkeypatch.setattr(
+        "ralph.skills._installer.agent_skill_roots",
+        lambda: (fake_canonical,),
     )
     assert check_skills_update_available() is False
 

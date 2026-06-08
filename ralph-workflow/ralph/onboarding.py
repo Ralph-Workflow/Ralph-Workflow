@@ -69,6 +69,8 @@ def welcome_panel_next_steps() -> tuple[str, ...]:
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
         "Install AI agents if missing (e.g., `claude`, `opencode`, `nanocoder`, `agy`)",
+        "Skills were auto-symlinked into Claude, Codex, OpenCode, and AGY skill roots; "
+        f"run `{DIAGNOSE_COMMAND}` if any agent cannot see them",
         f"(Optional) Run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}",
         f"(Recommended) Run {DIAGNOSE_COMMAND} to verify agents, MCP servers, and config "
         "before the first real run",
@@ -84,6 +86,8 @@ def fallback_next_steps() -> tuple[str, ...]:
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
         f"(Optional) Read {GETTING_STARTED_DOC} for a step-by-step first-run walkthrough",
+        "Skills were auto-symlinked into Claude, Codex, OpenCode, and AGY skill roots; "
+        f"run `{DIAGNOSE_COMMAND}` if any agent cannot see them",
         f"(Optional) Run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}",
         "(Optional) Configure MCP servers in `.agent/mcp.toml` or "
         "`~/.config/ralph-workflow-mcp.toml`",

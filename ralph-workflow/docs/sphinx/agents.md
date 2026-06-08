@@ -10,6 +10,8 @@ Ralph Workflow can supervise multiple coding agents, but the contract stays the 
 
 Ralph Workflow currently supports **Claude**, **Codex**, **OpenCode**, **Nanocoder**, and **Google Anti Gravity** as orchestration targets. Each runs under the same unattended workflow contract described on this page. For help choosing, see [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 
+> See `ralph/skills/_agent_paths.py` for the canonical mapping of every supported agent's user-global skill-discovery root.
+
 ## What this page is for
 
 This page explains how Ralph Workflow orchestrates agent sessions, what completion means, and why interactive and headless transports make different tradeoffs.

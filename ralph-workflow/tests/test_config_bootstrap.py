@@ -28,7 +28,38 @@ from ralph.workspace.scope import WorkspaceScope
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
 _EXPECTED_REGENERATE_COUNT = 9
-_EXPECTED_DEFAULT_GITIGNORE_LINES = (".agent/", "/PROMPT*", "wt-*/")
+_EXPECTED_DEFAULT_GITIGNORE_LINES = (
+    # Ralph-local
+    ".agent/",
+    "/PROMPT*",
+    "wt-*/",
+    # Python
+    "__pycache__/",
+    "*.py[codz]",
+    "*$py.class",
+    ".venv/",
+    "venv/",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    ".coverage",
+    "htmlcov/",
+    "dist/",
+    "build/",
+    "*.egg-info/",
+    # Node
+    "node_modules/",
+    ".next/",
+    ".nuxt/",
+    # Editors (NOTE: .vscode/ intentionally NOT included — upstream repo
+    # has tracked files under .vscode/.)
+    ".idea/",
+    "*.swp",
+    "*.swo",
+    # OS metadata
+    ".DS_Store",
+    "Thumbs.db",
+)
 _EXPECTED_IGNORED_LOCAL_PATHS = (
     ".agent/mcp.toml",
     ".agent/checkpoint.json",
@@ -370,6 +401,61 @@ def test_ensure_local_configs_preserves_gitignore_without_duplicate_default_entr
     assert content.count(".agent/") == 1
     assert content.count("/PROMPT*") == 1
     assert content.count("wt-*/") == 1
+
+
+def test_ensure_local_configs_gitignore_includes_python_patterns(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".agent"
+
+    ensure_local_configs(agent_dir)
+
+    content = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    for python_pattern in ("__pycache__/", ".venv/", ".mypy_cache/", ".pytest_cache/"):
+        assert python_pattern in content, (
+            f"Expected Python pattern {python_pattern!r} in .gitignore, got: {content!r}"
+        )
+
+
+def test_ensure_local_configs_gitignore_includes_node_patterns(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".agent"
+
+    ensure_local_configs(agent_dir)
+
+    content = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert "node_modules/" in content
+    assert ".next/" in content
+
+
+def test_ensure_local_configs_gitignore_preserves_user_owned_existing_entries(
+    tmp_path: Path,
+) -> None:
+    agent_dir = tmp_path / ".agent"
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text(
+        "# my custom rule\n"
+        "__pycache__/\n",
+        encoding="utf-8",
+    )
+
+    ensure_local_configs(agent_dir)
+
+    content = gitignore.read_text(encoding="utf-8")
+    assert "# my custom rule" in content
+    assert "node_modules/" in content
+
+
+def test_ensure_local_configs_gitignore_dedup_when_pattern_already_present(
+    tmp_path: Path,
+) -> None:
+    agent_dir = tmp_path / ".agent"
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text("__pycache__/\n", encoding="utf-8")
+
+    ensure_local_configs(agent_dir)
+    # Re-run idempotency: pattern already present, must not be added again.
+    ensure_local_configs(agent_dir)
+
+    content = gitignore.read_text(encoding="utf-8")
+    assert content.count("__pycache__/") == 1
 
 
 def test_ensure_local_configs_gitignore_covers_representative_local_paths(

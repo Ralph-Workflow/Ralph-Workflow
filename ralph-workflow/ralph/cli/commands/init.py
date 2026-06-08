@@ -170,6 +170,24 @@ def _ensure_baseline_capabilities(*, display_context: DisplayContext) -> None:
         pass
 
 
+def _collect_skill_root_rows() -> list[tuple[str, str, Text]]:
+    """Build the (agent, skill_root, status_text) rows for the per-agent coverage table."""
+    from ralph.skills._agent_paths import agent_skill_roots
+    from ralph.skills._content import BASELINE_SKILL_NAMES
+
+    rows: list[tuple[str, str, Text]] = []
+    for entry in agent_skill_roots():
+        resolved = entry.resolve()
+        all_present = all((resolved / name / "SKILL.md").exists() for name in BASELINE_SKILL_NAMES)
+        if all_present:
+            status_text = Text("OK", style="theme.status.success")
+        else:
+            status_text = Text("Skipped", style="theme.status.pending")
+        label = f"{entry.agent} (canonical)" if entry.is_canonical else entry.agent
+        rows.append((label, str(resolved), status_text))
+    return rows
+
+
 def _print_capability_summary(console: Console, state: CapabilityState) -> None:
     """Print the baseline capabilities summary table."""
     from rich.table import Table
@@ -207,6 +225,16 @@ def _print_capability_summary(console: Console, state: CapabilityState) -> None:
             )
         table.add_row(label, "Managed", status_text)
     console.print(table)
+
+    if state.skills.status != CapabilityStatus.NOT_INSTALLED:
+        console.print(Text("Skill root coverage", style="theme.cat.meta"))
+        skill_table = Table(show_header=True)
+        skill_table.add_column("Agent", style="theme.cat.meta")
+        skill_table.add_column("Skill root", style="theme.text.muted")
+        skill_table.add_column("Status")
+        for agent_label, skill_root, status_text in _collect_skill_root_rows():
+            skill_table.add_row(agent_label, skill_root, status_text)
+        console.print(skill_table)
 
 
 def _print_fallback_next_steps(target: Path, *, display_context: DisplayContext) -> None:

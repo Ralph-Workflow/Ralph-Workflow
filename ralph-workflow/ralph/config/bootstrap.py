@@ -13,6 +13,8 @@ Bootstrap creates the standard first-run config set:
   - Project-local: .agent/ralph-workflow.toml, .agent/mcp.toml,
                    .agent/pipeline.toml, .agent/artifacts.toml
   - Advanced optional: .agent/agents.toml (only regenerated when already present)
+  - Batteries-included .gitignore: Ralph-local, Python, Node, editor, and OS
+    metadata patterns (see _DEFAULT_GITIGNORE_PATTERNS)
 """
 
 from __future__ import annotations
@@ -44,7 +46,39 @@ _GLOBAL_POLICY_FILENAME_MAP = {
 }
 _ADVANCED_LOCAL_POLICY_FILENAMES = ("agents.toml",)
 _LOCAL_CONFIG_SOURCE = "ralph-workflow-local.toml"
-_DEFAULT_GITIGNORE_PATTERNS = (".agent/", "/PROMPT*", "wt-*/")
+_DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
+    # Ralph Workflow local artifacts (existing — DO NOT REORDER)
+    ".agent/",
+    "/PROMPT*",
+    "wt-*/",
+    # Python
+    "__pycache__/",
+    "*.py[codz]",
+    "*$py.class",
+    ".venv/",
+    "venv/",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    ".coverage",
+    "htmlcov/",
+    "dist/",
+    "build/",
+    "*.egg-info/",
+    # Node
+    "node_modules/",
+    ".next/",
+    ".nuxt/",
+    # Editors / IDEs (NOTE: .vscode/ intentionally NOT included —
+    # the upstream repository has tracked files under .vscode/ that
+    # a blanket ignore would hide.)
+    ".idea/",
+    "*.swp",
+    "*.swo",
+    # OS metadata
+    ".DS_Store",
+    "Thumbs.db",
+)
 
 
 def _module_attr_or_none(module: ModuleType, attribute: str) -> object | None:

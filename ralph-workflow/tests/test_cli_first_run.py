@@ -277,6 +277,10 @@ def test_cli_init_adds_default_gitignore_entries(
     assert ".agent/" in content
     assert "/PROMPT*" in content
     assert "wt-*/" in content
+    # Batteries-included patterns added in step 3 of wt-003.
+    assert "__pycache__/" in content
+    assert "node_modules/" in content
+    assert ".DS_Store" in content
 
 
 def test_cli_init_local_config_copies_global_configs_into_project(

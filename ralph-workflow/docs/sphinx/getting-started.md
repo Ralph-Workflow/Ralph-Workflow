@@ -44,6 +44,8 @@ If you are unsure what counts as a good task, use [First Task Guide](first-task-
 That flow matters because Ralph Workflow is designed to give you a stronger unattended coding loop than a single long agent session.
 The point of the first run is to see whether the default loop improves the repo in a way you can actually review.
 
+After the first successful `ralph --init`, the bundled skill bundle is also auto-symlinked from `~/.claude/skills/` into the Codex (`~/.codex/skills/`), OpenCode (`~/.config/opencode/skills/`), and Google Anti Gravity (`~/.gemini/antigravity-cli/skills/`) skill roots so all four supported agents pick up the same baseline skills without extra setup. The bundled `.gitignore` template now also covers common Python, Node, editor, and OS artifacts (`__pycache__/`, `node_modules/`, `.idea/`, `.DS_Store`, and so on) so a fresh repo is batteries-included from the first commit.
+
 ## Minimal first-run example
 
 ```bash

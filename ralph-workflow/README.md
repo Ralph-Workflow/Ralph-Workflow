@@ -24,6 +24,8 @@ $EDITOR PROMPT.md             # 3. edit PROMPT.md — your spec for the run
 ralph                         # 4. run the unattended workflow
 ```
 
+This also auto-symlinks the bundled skill bundle into the supported agent roots and seeds a batteries-included .gitignore.
+
 ## What an overnight run leaves you
 
 Here is the actual finish-receipt from the bundled [empty-name-validation example](examples/first-review-bundle/) — a real, unedited handoff, not a mock-up. You read this in the morning instead of a transcript:
