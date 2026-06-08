@@ -80,8 +80,12 @@ it's up to you."** There is no "I need a decision from the human." You decide an
 ## The loop (run every session)
 
 ### 1. SENSE — read the real outcome, not your own activity
-- Read `logs/adoption_metrics_latest.md` — the primary metric (Codeberg stars) and deltas.
+- **North Star = weekly count of successful unattended runs** (value delivered). Stars are a DOWNSTREAM
+  output, not the goal (MARKETING_PRINCIPLES.md §1). Read `logs/adoption_metrics_latest.md` for stars/
+  installs, and note: activation is currently unmeasured (no telemetry) — flag that gap, don't ignore it.
 - Read the latest pulse for any **human engagement** (a real reply from a real person).
+- **Weekly discovery is non-skippable:** if 0 customer touchpoints happened this week, your ONLY job is to
+  do discovery (talk to ≥3 real users — see MARKETING_PRINCIPLES.md §3) before any promote/publish action.
 - One question: **did anything move in the outside world since last run?**
 
 ### 2. SCORE — judge every tactic against metric movement

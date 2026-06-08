@@ -9,7 +9,7 @@ Every public surface (site H1, README hero, PyPI summary, social bios) MUST lead
 not the abstraction. There is exactly ONE canonical hero. Do not invent variants.
 
 - **Hero line (H1):** *"Hand your coding agents a spec tonight. Wake up to reviewable, tested commits."*
-- **Sub-line (what it is):** *"Ralph Workflow is a free, open-source composable loop framework that runs the coding agents you already use — Claude Code, Codex, or OpenCode — on your own machine. Simple at the center, powerful in composition."*
+- **Sub-line (what it is — leads with the owned word + the alternative):** *"Ralph Workflow runs the coding agents you already use — Claude Code, Codex, or OpenCode — **unattended**, on your own machine. Instead of babysitting them prompt-by-prompt, you hand off a spec and walk away. Free, open-source, local-first. (A composable loop framework underneath.)"*
 - **One-sentence pitch (bios/social):** *"Write the spec, run `ralph`, walk away — come back to runnable, tested software you can actually review."*
 
 **RETIRE from hero/primary surfaces:** "The operating system for autonomous coding." Abstract, grandiose,
@@ -23,6 +23,18 @@ fails the 10-second test. It may appear once, lower down, as a tagline — never
 
 **Always SHOW, never tell:** put a real finish-receipt / unedited terminal output inline at the top of
 the surface — do not hyperlink to it off-site. The whole wedge is "lead with the verifiable result."
+
+### Positioning rules from the marketing canon (apply to ALL copy — see MARKETING_PRINCIPLES.md §4)
+- **Name the alternative FIRST (Dunford):** lead with what they'd do otherwise — *"Instead of babysitting
+  Claude Code prompt-by-prompt — or a hand-rolled bash loop — Ralph runs the agent you already use,
+  unattended, against a spec."* Nothing is differentiated except against a named alternative.
+- **Own the word "unattended" / "overnight" (Ries & Trout):** no competitor owns it. Lead with the
+  recognizable category *"unattended coding-agent runner"*; demote "composable loop framework" to a clause.
+- **The USER is the hero, second person (StoryBrand):** *"You hand it a spec tonight; you wake to reviewed,
+  tested commits."* Never lead with "Ralph does X." Ralph is the guide, not the hero.
+- **Concrete proof, not abstraction (Made to Stick):** show one real spec → real reviewed PR, not "big tasks."
+- **One clear star CTA at peak value (StoryBrand):** the post-successful-run nudge + above-the-fold ask,
+  always with the reason. Exactly one primary CTA.
 
 ## What Ralph Workflow is
 
@@ -44,22 +56,17 @@ The key idea is simple at the center:
 That is why Ralph Workflow is more than just "AI orchestration."
 It is composable orchestration built around loop structure.
 
-A strong concise framing:
-> Ralph Workflow takes the simple Ralph-loop idea and turns it into a composable loop framework for real software engineering.
+**NOTE — the CANONICAL HERO COPY block at the TOP of this file is the single source of truth for public
+copy.** The framings below are internal background only; do NOT use them as hero/lead copy. Per the canon
+(§ Positioning rules): lead with the named alternative + the owned word **"unattended"**; "composable loop
+framework / AI orchestrator" is a SECONDARY, technical descriptor; and **"the operating system for
+autonomous coding" is RETIRED** — do not use it on any public surface.
 
-Another durable framing:
-> Ralph Workflow is the operating system for autonomous coding.
-
-The full story should preserve all of these truths together:
-
-- the core Ralph loop is simple
-- that simple core composes into complex workflows
-- that simplicity makes the system easier to configure, reason about, and extend
-- Ralph Workflow is an AI agent orchestrator, not just another coding chat or thin wrapper
-- the shipped default workflow is already very good for writing software
-- users can start with the default workflow and build on top of it when needed
-
-This should feel like **simple at the center, powerful in composition**.
+Internal background (true, but not lead copy):
+- the core Ralph loop is simple; that simple core composes into complex workflows ("simple at the center,
+  powerful in composition")
+- Ralph Workflow is a real AI agent orchestrator, not a coding chat or thin wrapper
+- the shipped default workflow is already very good; users can build on top of it
 
 ## What it is for
 
