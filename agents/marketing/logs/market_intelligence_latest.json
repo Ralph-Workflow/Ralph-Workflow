@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-08T07:35:29.175692",
+  "generated_at": "2026-06-08T07:53:46.603406",
   "source": "competitor_analysis.py",
   "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
   "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-06-08.md",
@@ -51,7 +51,7 @@
       "name": "Hermes Agent",
       "positioning": "Self-improving agent that learns from experience",
       "site_status": 200,
-      "github_stars": 186289,
+      "github_stars": 186306,
       "key_features_found": [
         "Persistent memory"
       ]
@@ -60,7 +60,7 @@
       "name": "Conductor OSS",
       "positioning": "Enterprise-grade workflow orchestration for AI agents",
       "site_status": 200,
-      "github_stars": 31898,
+      "github_stars": 31899,
       "key_features_found": [
         "Durable execution"
       ]

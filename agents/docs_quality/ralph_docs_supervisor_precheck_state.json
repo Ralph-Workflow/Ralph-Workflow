@@ -1,8 +1,0 @@
-{
-  "last_triggered_at": 1780769441.8968375,
-  "last_reason_signature": "verifier_not_pass|verifier_json_not_pass|process_state:incidentOpen=True|process_state:repairContinuationRequired=True|process_state:currentIncidentId=ralph-docs-incident-20260606T180952Z",
-  "last_target_job": "ralph-workflow-docs-verifier-supervisor",
-  "last_checked_at_utc": "2026-06-07T07:42:39Z",
-  "last_checked_verdict": "independently verified pass",
-  "last_checked_fingerprint": "9c70da0ce1d102d0"
-}

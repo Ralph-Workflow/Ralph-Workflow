@@ -1,1 +1,0 @@
-Quick dry-run validation body for session and editor path only.
