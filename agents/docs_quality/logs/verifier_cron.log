@@ -32266,3 +32266,91 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": false
 }
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "Docs system accurately embodies the positioning document. README opens with mandated tagline, comparison table, and honest-fit framing. START_HERE provides clean first-run path. docs/README routes by goal and keeps proof secondary. Promoted pages reinforce the same story without internal leakage. No hard failures detected.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/Ralph-Workflow/README.md",
+      "reason": "Opens with 'operating system for autonomous coding', correctly frames Codeberg primary / GitHub mirror, uses 'composable loop framework', follows result-first evaluation order, includes 'strong enough to start with / customize later' pattern."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "Leads with simple-core / composable-loops framing, gives honest first-run path, explicitly says default workflow is strong enough before customization, links to docs/README as third journey step."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "Correctly positions itself after README and START_HERE. Routes by goal, keeps proof secondary, frames Codeberg as primary."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md",
+      "reason": "Exemplary secondary page: explicitly disclaims being the main pitch, leads with 'what the software does now', orders evidence correctly (behavior -> checks -> scope -> artifacts), links back to primary journey."
+    },
+    {
+      "path": "/home/mistlight/Ralph-Workflow/ralph-workflow/README.md",
+      "reason": "Distinguishes Ralph Workflow from generic Ralph by explicitly listing what it adds. Frames Codeberg as primary. Includes honest 'what to expect' and 'when it fits' sections."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
+
+AGENTIC
+{
+  "status": "pass",
+  "summary": "The docs system is well-positioned. README \u2192 START_HERE \u2192 docs/README chains cleanly with proper audience routing. Internal concepts (artifacts, handoff plumbing, phase receipts) stay out of top-level product copy. The engineering-practice dependency, simple-core/powerful-composition framing, Codeberg-primary messaging, and result-first evaluation are consistently applied across all surfaces. Minor copy polish needed but no hard failures.",
+  "loopHealthy": true,
+  "criteria": {
+    "positioning": "pass",
+    "accuracy": "pass",
+    "internalLeakage": "pass",
+    "copyQuality": "pass",
+    "informationArchitecture": "pass",
+    "journeyCoherence": "pass"
+  },
+  "mustFix": [
+    "Polish 'ships strong enough to start with immediately' across README variants \u2014 reads compressed. Prefer the cleaner phrasing already used in START_HERE and docs/README ('already strong enough to start with before you customize anything')."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "README.md (primary)",
+      "reason": "Opens with 'operating system for autonomous coding', correctly frames as FOSS AI agent orchestrator with simple-core/powerful-composition framing, strong default workflow, and explicit engineering-practice dependency."
+    },
+    {
+      "path": "docs/README.md (docs map)",
+      "reason": "Explicitly positions itself after README and START_HERE, routes by user intent, includes 'Keep proof secondary' section \u2014 excellent information architecture discipline that directly follows positioning guidance."
+    },
+    {
+      "path": "START_HERE.md (GitHub mirror)",
+      "reason": "Clean first-run path with honest task selection guidance, explicit fit/non-fit, and outcome-oriented success criteria. Doesn't lead with internal plumbing."
+    },
+    {
+      "path": "first-task-guide.md",
+      "reason": "Strong practical conversion content with spec template, task selection criteria, and morning-after review framework. No internal language at the product-promise level."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": false
+}
