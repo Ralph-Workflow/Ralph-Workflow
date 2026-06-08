@@ -29,6 +29,10 @@ if TYPE_CHECKING:
 
 RUN_REPORT_PROGRESS_CAPABILITY = "run.report_progress"
 ARTIFACT_SUBMIT_CAPABILITY = "artifact.submit"
+# Coordinate is planning/coordination-only — gated on plan_write so it matches the
+# coordinate tool spec's advertised capability (planning drains only), not the
+# broader artifact.submit held by every drain.
+ARTIFACT_PLAN_WRITE_CAPABILITY = "artifact.plan_write"
 ENV_READ_CAPABILITY = "env.read"
 _COMPLETION_SENTINEL_RELPATHFMT = ".agent/completion_seen_{run_id}.json"
 
@@ -167,7 +171,7 @@ def handle_coordinate(
     now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
     """Coordinate parallel worker activities."""
-    require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Workspace coordination")
+    require_capability(session, ARTIFACT_PLAN_WRITE_CAPABILITY, "Workspace coordination")
     action = _parameter_as_string(params, "action")
     work_unit_value = params.get("work_unit_id")
     work_unit_id = work_unit_value if isinstance(work_unit_value, str) else None
@@ -205,6 +209,7 @@ def read_env_value(env: dict[str, str] | os._Environ[str], name: str) -> str:
 
 
 __all__ = [
+    "ARTIFACT_PLAN_WRITE_CAPABILITY",
     "ARTIFACT_SUBMIT_CAPABILITY",
     "ENV_READ_CAPABILITY",
     "PROGRESS_PIPELINE_MARKER",

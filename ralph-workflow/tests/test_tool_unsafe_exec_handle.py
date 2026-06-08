@@ -19,6 +19,7 @@ from ralph.mcp.tools.unsafe_exec import (
     _VCS_COMMANDS,
     handle_unsafe_exec,
 )
+from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
 from tests.mock_session import MockSession
 from tests.mock_workspace_root import MockWorkspaceRoot
 
@@ -59,6 +60,33 @@ def _mock_subprocess_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
         TimeoutExpired=subprocess.TimeoutExpired,
     )
     monkeypatch.setattr("ralph.mcp.tools.unsafe_exec.subprocess", fake_module)
+
+
+class TestUnsafeExecAlwaysBounded:
+    """timeout_ms<=0 must clamp to the default, never become an unbounded
+    subprocess call with timeout=None that hangs the MCP server thread."""
+
+    def test_zero_timeout_passes_bounded_timeout_to_subprocess(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: list[object] = []
+
+        def _run(*_a: object, **kw: object) -> subprocess.CompletedProcess[bytes]:
+            captured.append(kw.get("timeout"))
+            return _make_completed_process(stdout=b"ok", returncode=0)
+
+        fake_module = types.SimpleNamespace(
+            run=_run, TimeoutExpired=subprocess.TimeoutExpired
+        )
+        monkeypatch.setattr("ralph.mcp.tools.unsafe_exec.subprocess", fake_module)
+
+        handle_unsafe_exec(
+            MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
+            MockWorkspaceRoot(tmp_path),
+            {"command": "echo hi", "timeout_ms": 0},
+        )
+
+        assert captured == [EXEC_DEFAULT_TIMEOUT_MS / 1000]
 
 
 class TestUnsafeExecTimeout:

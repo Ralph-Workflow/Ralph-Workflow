@@ -53,6 +53,13 @@ class TestParseExecParams:
         result = parse_exec_params(params)
         assert result.timeout_ms == DEFAULT_TIMEOUT_MS
 
+    def test_zero_timeout_uses_default_not_unbounded(self) -> None:
+        # timeout_ms=0 must NOT mean "no timeout": it would become an unbounded
+        # blocking call on the MCP server thread (an agent-controllable hang).
+        params = {"command": "ls", "args": [], "timeout_ms": 0}
+        result = parse_exec_params(params)
+        assert result.timeout_ms == DEFAULT_TIMEOUT_MS
+
     def test_non_int_timeout_uses_default(self) -> None:
         params: dict[str, object] = {"command": "ls", "args": [], "timeout_ms": "fast"}
         result = parse_exec_params(params)

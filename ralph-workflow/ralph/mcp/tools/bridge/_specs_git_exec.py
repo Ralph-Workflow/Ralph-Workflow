@@ -15,18 +15,27 @@ from ralph.mcp.tools.names import (
 )
 from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
 
-# A timeout is ambiguous, so the hint must teach both readings up front: a
+# Short pointer kept in the top-level description (which has a ~500-char budget);
+# the full two-meaning guidance lives in the timeout_ms property below.
+_TIMEOUT_SEMANTICS = (
+    "On timeout you get an is_error result (not a retryable error) — see timeout_ms "
+    "before retrying."
+)
+
+# A timeout is ambiguous, so the property hint teaches both readings: a
 # legitimately long command should raise ``timeout_ms``, but an unexpectedly slow
 # one may be genuinely stuck (infinite loop, deadlock, or blocked on input), in
 # which case raising the limit only wastes another full budget — fix the command
-# instead. Shared by the exec family so the guidance cannot drift between them.
-_TIMEOUT_SEMANTICS = (
-    f"Default timeout_ms is {EXEC_DEFAULT_TIMEOUT_MS} (above the verify budget). "
-    "On a timeout the process tree is killed and you get an is_error result, not a "
-    "retryable protocol error: decide WHY it timed out before retrying. If the "
-    "command is genuinely long-running, raise timeout_ms; if it is unexpectedly "
-    "slow it may be stuck in an infinite loop, deadlocked, or blocked waiting on "
-    "input — fix the command rather than just raising the limit."
+# instead. Default is interpolated from the one source of truth so the advertised
+# hint can never drift from real behavior.
+_TIMEOUT_MS_DESCRIPTION = (
+    f"Timeout in milliseconds (default: {EXEC_DEFAULT_TIMEOUT_MS}, above the verify "
+    "budget; example values: 10000, 60000, 120000). On a timeout the process tree is "
+    "killed and the call returns an is_error result, NOT a retryable protocol error — "
+    "decide WHY before retrying: if the command is genuinely long-running, raise "
+    "timeout_ms; if it is unexpectedly slow it may be stuck in an infinite loop, "
+    "deadlocked, or blocked waiting on input, in which case fix the command rather "
+    "than just raising the limit."
 )
 
 
@@ -35,10 +44,7 @@ def _timeout_ms_property() -> dict[str, object]:
     source of truth so the advertised hint can never drift from real behavior."""
     return {
         "type": "number",
-        "description": (
-            f"Timeout in milliseconds as a number (default: {EXEC_DEFAULT_TIMEOUT_MS}, "
-            "example values: 10000, 60000, 120000)."
-        ),
+        "description": _TIMEOUT_MS_DESCRIPTION,
         "default": EXEC_DEFAULT_TIMEOUT_MS,
     }
 
@@ -51,8 +57,7 @@ def git_exec_specs() -> list[ToolSpec]:
                 name=GIT_STATUS_TOOL,
                 description=(
                     "Get git status showing modified, staged, and untracked files. "
-                    "No parameters required. Returns a status object with lists of modified, "
-                    "staged, and untracked files. "
+                    "No parameters required. Returns the raw `git status` text output. "
                     "Example: {} returns git status output."
                 ),
                 input_schema={"type": "object", "properties": {}},
@@ -84,7 +89,10 @@ def git_exec_specs() -> list[ToolSpec]:
                         },
                     },
                 },
-                required_capability="GitStatusRead",
+                # Matches handle_git_diff's gate (GIT_DIFF_READ_CAPABILITY). Resolves
+                # to the git.diff_read capability (every drain holds it via the base
+                # set) through the McpCapability.GIT_DIFF_READ mapping.
+                required_capability="GitDiffRead",
             ),
             module_name="ralph.mcp.tools.git_read",
             handler_name="handle_git_diff",
@@ -93,9 +101,9 @@ def git_exec_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=GIT_LOG_TOOL,
                 description=(
-                    "Get git commit log with hash, author, date, and message. "
+                    "Get git commit log (one line per commit, `--oneline` format). "
                     "Optional param: count (number, default 10). "
-                    "Returns an array of commit objects. "
+                    "Returns the raw `git log` text, one commit per line. "
                     'Example: {"count": 5} returns the 5 most recent commits.'
                 ),
                 input_schema={
@@ -154,7 +162,7 @@ def git_exec_specs() -> list[ToolSpec]:
                     "Shell-style strings are tokenized; the command blacklist is the "
                     "security boundary. Returns stdout, stderr, "
                     'and exit_code. Example: {"command": "python -m pytest", '
-                    '"args": ["-q"], "timeout_ms": 60000}. '
+                    '"args": ["-q"]}. '
                     "Some commands may still be blacklisted; prefer structured tools "
                     "when available. " + _TIMEOUT_SEMANTICS
                 ),
@@ -197,7 +205,12 @@ def git_exec_specs() -> list[ToolSpec]:
                         },
                         "timeout_ms": _timeout_ms_property(),
                     },
-                    "required": ["command"],
+                    # The handler accepts command OR argv (see description); reflect
+                    # that here instead of falsely requiring only command.
+                    "anyOf": [
+                        {"required": ["command"]},
+                        {"required": ["argv"]},
+                    ],
                 },
                 required_capability="ProcessExecBounded",
             ),

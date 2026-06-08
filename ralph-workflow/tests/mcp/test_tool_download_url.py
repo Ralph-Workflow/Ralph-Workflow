@@ -82,6 +82,33 @@ def test_download_url_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     assert workspace.read("downloads/data.json") == '{"key": "value"}'
 
 
+class _WriteFailsWorkspace(MemoryWorkspace):
+    def write(self, path: str, content: str) -> None:
+        raise OSError("No space left on device")
+
+
+def test_download_url_write_failure_returns_is_error_not_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A workspace write failure (disk full / permission / read-only fs) must
+    # surface as a terminal is_error result — never escape as a raw OSError that
+    # the bridge turns into a retryable -32603 protocol error (retry-storm class).
+    monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
+
+    result = tool_webvisit.handle_download_url(
+        _AllowedSession(),
+        _WriteFailsWorkspace(),
+        {"url": "https://example.com/data.json", "output_path": "downloads/data.json"},
+        web_visit_config=_make_config(),
+    )
+
+    assert isinstance(result, ToolResult)
+    assert result.is_error is True
+    assert "space left" in result.content[0].text.lower() or "download" in (
+        result.content[0].text.lower()
+    )
+
+
 def test_download_url_capability_denied(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
 

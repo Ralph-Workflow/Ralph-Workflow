@@ -24,6 +24,7 @@ class McpCapability(StrEnum):
     WORKSPACE_EDIT = "WorkspaceEdit"
     WORKSPACE_DELETE = "WorkspaceDelete"
     GIT_STATUS_READ = "GitStatusRead"
+    GIT_DIFF_READ = "GitDiffRead"
     GIT_WRITE = "GitWrite"
     ENV_READ = "EnvRead"
     ENV_WRITE = "EnvWrite"

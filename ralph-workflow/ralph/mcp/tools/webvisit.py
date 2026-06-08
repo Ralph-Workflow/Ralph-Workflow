@@ -138,7 +138,23 @@ def handle_download_url(
     body_bytes = outcome.body or b""
     content_str = body_bytes.decode("utf-8", errors="replace")
 
-    workspace.write(output_path, content_str)
+    try:
+        workspace.write(output_path, content_str)
+    except OSError as exc:
+        # A write failure (disk full, permission, read-only fs) is an operational
+        # error: surface it as a terminal is_error result, not a raw OSError that
+        # the bridge would turn into a retryable -32603 protocol error.
+        logger.warning("download_url write failed: {e}", e=exc)
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    f"Failed to write downloaded content to '{output_path}': {exc}. "
+                    "Re-issuing the identical call will fail again — free space, fix "
+                    "permissions, or choose a different output_path."
+                )
+            ],
+            is_error=True,
+        )
 
     payload: dict[str, object] = {
         "status": "ok",

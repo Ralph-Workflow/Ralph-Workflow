@@ -91,10 +91,13 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     command = command_tokens[0] if command_tokens else ""
     merged_args = [*command_tokens[1:], *args]
 
+    # Require a strictly positive timeout: timeout_ms<=0 (or non-int) falls back to
+    # the default. Zero must NOT mean "unbounded" — that would make exec a blocking-
+    # forever call on the MCP server thread, an agent-controllable hang vector.
     timeout_value = params.get("timeout_ms", DEFAULT_TIMEOUT_MS)
     timeout_ms = (
         timeout_value
-        if isinstance(timeout_value, int) and timeout_value >= 0
+        if isinstance(timeout_value, int) and timeout_value > 0
         else DEFAULT_TIMEOUT_MS
     )
 
@@ -443,7 +446,11 @@ def run_command(
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
     cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
-    timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
+    # Defense in depth: never produce an unbounded (None) timeout. A non-positive
+    # timeout_ms is clamped to the default so a direct caller cannot create a
+    # blocking-forever subprocess on the MCP server thread.
+    effective_timeout_ms = timeout_ms if timeout_ms > 0 else DEFAULT_TIMEOUT_MS
+    timeout_seconds = effective_timeout_ms / 1000
 
     try:
         if resolved_deps.runner is not None:
@@ -473,7 +480,7 @@ def run_command(
 def _run_subprocess(
     command: list[str],
     cwd: Path,
-    timeout_seconds: float | None,
+    timeout_seconds: float,
     pm: ProcessManager | None = None,
     on_output_chunk: Callable[[str], None] | None = None,
 ) -> _CompletedProcessAdapter:

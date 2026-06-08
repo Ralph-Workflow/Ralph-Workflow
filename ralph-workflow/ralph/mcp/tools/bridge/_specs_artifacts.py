@@ -39,11 +39,13 @@ def artifact_specs() -> list[ToolSpec]:
                         "artifact_type": {
                             "type": "string",
                             "description": (
-                                "Type of artifact as a string: plan, development_result, "
-                                "issues, fix_result, commit_message, "
+                                "Type of artifact as a string. Common types: plan, "
+                                "development_result, issues, fix_result, commit_message, "
                                 "development_analysis_decision, planning_analysis_decision, "
-                                "or review_analysis_decision "
-                                "(example values: 'plan', 'development_result', 'issues')."
+                                "review_analysis_decision (this list is not exhaustive). "
+                                "On an unknown type the error response points to the "
+                                "artifact formats index "
+                                "(.agent/artifact-formats/artifact_formats_index.md)."
                             ),
                         },
                         "content": {
@@ -353,6 +355,9 @@ def artifact_specs() -> list[ToolSpec]:
                     },
                     "required": ["action"],
                 },
+                # Coordinate is planning/coordination-only: gated on plan_write (held
+                # by planning drains), NOT artifact.submit (held by every drain).
+                # handle_coordinate enforces the SAME capability — keep them in sync.
                 required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),
             module_name="ralph.mcp.tools.coordination",

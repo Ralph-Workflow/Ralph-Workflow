@@ -56,6 +56,58 @@ def test_communicate_positional_input_is_still_flagged(tmp_path: Path) -> None:
     assert _audit(tmp_path, "proc.communicate(b'data')\n")
 
 
+# --- .communicate_and_cleanup() (the real exec call) ------------------------
+
+
+def test_communicate_and_cleanup_without_timeout_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "proc.communicate_and_cleanup()\n")
+    assert len(v) == 1
+    assert v[0].category == "communicate"
+
+
+def test_communicate_and_cleanup_with_timeout_is_allowed(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "proc.communicate_and_cleanup(timeout=30)\n")
+
+
+# --- aliased imports must not evade detection -------------------------------
+
+
+def test_aliased_subprocess_module_is_flagged(tmp_path: Path) -> None:
+    assert _audit(tmp_path, "import subprocess as sp\nsp.run(['x'])\n")
+
+
+def test_from_import_subprocess_run_is_flagged(tmp_path: Path) -> None:
+    assert _audit(tmp_path, "from subprocess import run\nrun(['x'])\n")
+
+
+def test_from_import_subprocess_run_aliased_is_flagged(tmp_path: Path) -> None:
+    assert _audit(tmp_path, "from subprocess import run as r\nr(['x'])\n")
+
+
+def test_aliased_httpx_is_flagged(tmp_path: Path) -> None:
+    assert _audit(tmp_path, "import httpx as hx\nhx.get('http://x')\n")
+
+
+def test_aliased_subprocess_run_with_timeout_is_allowed(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "import subprocess as sp\nsp.run(['x'], timeout=5)\n")
+
+
+# --- additional unbounded subprocess primitives -----------------------------
+
+
+def test_os_system_is_flagged(tmp_path: Path) -> None:
+    # os.system takes no timeout — always unbounded.
+    assert _audit(tmp_path, "import os\nos.system('sleep 9')\n")
+
+
+def test_subprocess_check_output_without_timeout_is_flagged(tmp_path: Path) -> None:
+    assert _audit(tmp_path, "import subprocess\nsubprocess.check_output(['x'])\n")
+
+
+def test_subprocess_check_output_with_timeout_is_allowed(tmp_path: Path) -> None:
+    assert not _audit(tmp_path, "import subprocess\nsubprocess.check_output(['x'], timeout=5)\n")
+
+
 # --- .wait() ----------------------------------------------------------------
 
 
