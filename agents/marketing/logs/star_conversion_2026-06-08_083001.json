@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-06-08T08:30:01.156958",
+  "agent": "star_conversion_agent",
+  "codeberg_stars": 12,
+  "downloads_day": 16,
+  "downloads_month": 1174,
+  "zero_star_samples": 15,
+  "chronic": true,
+  "recommendation_level": "structural",
+  "cta_issues": [],
+  "cta_functional": true
+}

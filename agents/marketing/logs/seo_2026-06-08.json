@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-06-08T07:53:46.798403",
+  "timestamp": "2026-06-08T08:06:04.506718",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -66,11 +66,200 @@
     "recommendations": []
   },
   "ranks": {
-    "_note": "GSC token refresh failed. Run `python3 agents/marketing/gsc_auth.py` to re-authorize."
+    "unattended coding agent": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI agent orchestration CLI": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "spec-driven AI agent": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI coding workflow automation": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Claude Code automation": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Claude Code unattended": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI agent workflow composer": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Ralph Workflow": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "_top_queries": [
+      {
+        "query": "ralph workflow",
+        "position": 2.0,
+        "impressions": 49,
+        "clicks": 16,
+        "ctr": 32.7
+      },
+      {
+        "query": "ralph ai",
+        "position": 7.0,
+        "impressions": 37,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph framework",
+        "position": 5.0,
+        "impressions": 23,
+        "clicks": 1,
+        "ctr": 4.3
+      },
+      {
+        "query": "ralph ai agent",
+        "position": 12.0,
+        "impressions": 12,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph software",
+        "position": 8.0,
+        "impressions": 10,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph git",
+        "position": 7.0,
+        "impressions": 9,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph github",
+        "position": 22.0,
+        "impressions": 8,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph coding",
+        "position": 18.0,
+        "impressions": 7,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "\"ralph loop\" ai workflow",
+        "position": 7.0,
+        "impressions": 6,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph open source",
+        "position": 8.0,
+        "impressions": 6,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph orchestrator",
+        "position": 21.0,
+        "impressions": 6,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "\"ralph loop\" agent workflow",
+        "position": 7.0,
+        "impressions": 5,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph prompt",
+        "position": 8.0,
+        "impressions": 5,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph claude code",
+        "position": 36.0,
+        "impressions": 4,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "github ralph",
+        "position": 32.0,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralf ai",
+        "position": 5.0,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ralph repo",
+        "position": 10.0,
+        "impressions": 3,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "ai ralph",
+        "position": 7,
+        "impressions": 2,
+        "clicks": 1,
+        "ctr": 50.0
+      },
+      {
+        "query": "\"ralph loop\" workflow",
+        "position": 6,
+        "impressions": 2,
+        "clicks": 0,
+        "ctr": 0
+      },
+      {
+        "query": "claude code ralph loop",
+        "position": 46.0,
+        "impressions": 2,
+        "clicks": 0,
+        "ctr": 0
+      }
+    ]
   },
   "backlinks": {
     "count_approx": 0,
-    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data"
+    "error": "HTTP Error 429: Too Many Requests"
   },
   "domain_rating": {
     "dr": null,
@@ -117,16 +306,13 @@
     ],
     "coverage_pct": 100.0,
     "scan_method": "homepage+sitemap",
-    "urls_scanned": 44
+    "urls_scanned": 42
   },
   "serp": {
-    "position": null,
-    "people_also_ask": false,
-    "related_searches": false,
+    "error": "HTTP Error 429: Too Many Requests",
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
-    "Set up Google Search Console: python3 agents/marketing/gsc_auth.py",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]
 }

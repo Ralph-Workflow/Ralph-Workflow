@@ -119,8 +119,8 @@ Freestyle's launch hit 322 HN points. Their sandboxed execution model is complem
 - **Competitors:** Hermes 173K+ stars, Cursor dominates AI-editor category, Nightcrawler credits Ralph as pioneer
 - **Positioning:** `/compare` page is strong, clear differentiation ("operating system for autonomous coding")
 
-### Star Conversion Gap (star_conversion_agent — 2026-06-07 08:30)
-- **Gap**: 1335 PyPI downloads/month (49/day) → 12 Codeberg stars
-- **Conversion rate**: 0.00% across 14 consecutive measurement samples
+### Star Conversion Gap (star_conversion_agent — 2026-06-08 08:30)
+- **Gap**: 1174 PyPI downloads/month (16/day) → 12 Codeberg stars
+- **Conversion rate**: 0.00% across 15 consecutive measurement samples
 - **Action**: star_conversion_agent.py monitoring daily; runner.py periodic CTA fires at 50% of runs
 - **Next step**: Increase CTA frequency → 50% if gap persists 14+ days

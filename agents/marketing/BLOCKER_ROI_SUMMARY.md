@@ -97,8 +97,8 @@ The remaining crons do actual useful work (content generation, posting, SEO, ado
 
 **Bottom line:** The marketing system is structurally blocked by human credentials. Without at least one external distribution channel unblocked, everything else is wheel-spinning. Give me Reddit or Dev.to access and I'll make real adoption happen.
 
-### Star Conversion Gap (star_conversion_agent — 2026-06-07 08:30)
-- **Gap**: 1335 PyPI downloads/month (49/day) → 12 Codeberg stars
-- **Conversion rate**: 0.00% across 14 consecutive measurement samples
+### Star Conversion Gap (star_conversion_agent — 2026-06-08 08:30)
+- **Gap**: 1174 PyPI downloads/month (16/day) → 12 Codeberg stars
+- **Conversion rate**: 0.00% across 15 consecutive measurement samples
 - **Action**: star_conversion_agent.py monitoring daily; runner.py periodic CTA fires at 50% of runs
 - **Next step**: Increase CTA frequency → 50% if gap persists 14+ days

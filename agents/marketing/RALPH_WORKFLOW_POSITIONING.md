@@ -3,6 +3,27 @@
 This file is the durable product-definition reference for marketing and messaging.
 Use it when writing README copy, landing-page language, social posts, comparisons, outreach, or review assets.
 
+## 🎯 CANONICAL HERO COPY — USE THIS VERBATIM EVERYWHERE (resolves all prior drift)
+
+Every public surface (site H1, README hero, PyPI summary, social bios) MUST lead with the RESULT,
+not the abstraction. There is exactly ONE canonical hero. Do not invent variants.
+
+- **Hero line (H1):** *"Hand your coding agents a spec tonight. Wake up to reviewable, tested commits."*
+- **Sub-line (what it is):** *"Ralph Workflow is a free, open-source composable loop framework that runs the coding agents you already use — Claude Code, Codex, or OpenCode — on your own machine. Simple at the center, powerful in composition."*
+- **One-sentence pitch (bios/social):** *"Write the spec, run `ralph`, walk away — come back to runnable, tested software you can actually review."*
+
+**RETIRE from hero/primary surfaces:** "The operating system for autonomous coding." Abstract, grandiose,
+fails the 10-second test. It may appear once, lower down, as a tagline — never as the lead.
+
+**The star ask (use this reason verbatim, never a bare link):**
+> *"Ralph is free and runs locally — stars are the only signal we get that it's working for you, and they set what we build next. If a run shipped real software for you: ⭐ star on Codeberg."*
+
+**Social proof to surface everywhere (both true, currently unused on most surfaces):**
+- *"Nightcrawler credits Ralph Workflow as its inspiration."*  ·  *"~1,300 installs/month on PyPI."*
+
+**Always SHOW, never tell:** put a real finish-receipt / unedited terminal output inline at the top of
+the surface — do not hyperlink to it off-site. The whole wedge is "lead with the verifiable result."
+
 ## What Ralph Workflow is
 
 Ralph Workflow is a free and open-source composable loop framework and AI orchestrator.

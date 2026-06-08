@@ -1,8 +1,21 @@
 # MARKETING_LEARNING_LOOP.md — How every marketing agent gets better as it markets
 
+> **HOW TO USE THIS FILE (read first — works for ANY model, weak or strong):** Every step below is
+> LITERAL. Do exactly what each numbered step says, in order, using the EXACT file paths given. Do not
+> skip steps. Do not improvise. If a step says "read file X", read X. If it says "append to file Y",
+> append to Y. If you are ever unsure what to do, do the lowest-numbered step you have not done yet.
+> Never ask a human — the owner's standing answer to every question is "it's up to you."
+
 **This is the shared learning protocol. Every marketing agent (research, competitor, pulse, and any
 future one) reads this FIRST and follows it. The goal is one thing: get better at moving a real
 external metric, run over run. Not better at producing artifacts. Better at reaching people.**
+
+**Mandatory reading order EVERY run (read these 5 files, in this order, before doing anything):**
+1. `agents/marketing/MARKETING_PRINCIPLES.md` — the marketing playbook (customer discovery + acquisition)
+2. `agents/marketing/RALPH_WORKFLOW_POSITIONING.md` — the canonical product message
+3. `agents/marketing/logs/adoption_metrics_latest.md` — the real metric right now
+4. `agents/marketing/logs/tactic_ledger.jsonl` — what has worked / failed / is dead
+5. `agents/marketing/logs/customer_discovery.jsonl` — what real users have told us (create empty if missing)
 
 The unit of improvement is an **external outcome** (a star, a reply, a click, a signup, a backlink,
 a human doing something). Internal artifacts (posts written, tests passed, docs verified, scripts
@@ -37,6 +50,33 @@ one of the things that makes this loop better than an inconsistent human.
   juice short-term numbers. Getting banned (as Reddit already showed) is the *dumb* move. Durable
   presence > disposable accounts. Play channels by their rules or pick better channels.
 
+## 🤖 FULL AUTONOMY — no human supervision, ever (owner standing directive)
+
+The owner's standing instruction: **"If there is any reason to ask me for anything, the answer is ALWAYS
+it's up to you."** There is no "I need a decision from the human." You decide and act.
+
+- **NEVER ask, escalate, or hand off to a human.** No "needs credentials," no "handoff bridge," no
+  "draft for a human to post," no "escalate to owner." Those patterns are BANNED — they are the
+  opposite of autonomy and were the system's biggest failure (drafts that never shipped). YOU do it.
+- **Self-repair autonomously when blocked:** a channel dies → pivot to another viable channel (do NOT
+  evade bans/shadowbans with new accounts or Tor — that's the dumb, brand-killing move). A login needs
+  2FA → read the code from webmail (IONOS profile) and complete it yourself. A tool needs login → log
+  in via browser. A path is blocked → find a legitimate alternative and take it. Now, not later.
+- **Decide with the ledger, act, and move on.** Uncertainty is not a reason to stop — pick the best
+  legitimate option and execute. The only banned moves are ban-evasion and spam; everything legitimate
+  is yours to do without asking.
+
+## Channel reality (keep current — self-repair updates this)
+
+- **Reddit: DEAD** — account shadowbanned from past over-automation; posts reach nobody. Do NOT post
+  there, do NOT evade with new accounts/Tor. Pivot.
+- **VIABLE now (owner-provisioned, legitimate):**
+  - **GitHub** — `gh` CLI authed: fix repo description, cut releases, open comparison-page PRs/backlinks.
+  - **Email** — IONOS webmail: send genuine, individually-tailored curator/publisher outreach (not blast).
+  - **Mastodon / dev.to / HN** — browser login (use webmail for any 2FA); participate genuinely.
+  - **Apollo** — browser login (webmail for 2FA); targeted prospecting/outreach, value-first, human cadence.
+  - **Owned media** — website, Codeberg/GitHub repos, docs/blog (conversion surfaces; measure impact).
+
 ## The loop (run every session)
 
 ### 1. SENSE — read the real outcome, not your own activity
@@ -55,44 +95,53 @@ one of the things that makes this loop better than an inconsistent human.
 - **Double down** only on tactics marked `worked`.
 - **Kill** tactics marked `failing`. Iterate-or-die: never optimize something already proven flat.
 - **Never repeat** a tactic the ledger already marks `failing` or `blocked`. Check before acting.
-- If every available tactic is `failing` or `blocked` → go to step 4's ESCALATE branch.
+- If every available tactic is `failing`/`blocked` → SELF-REPAIR: pivot to a viable channel above and
+  act there. There is no "escalate to human" — you find the next legitimate path yourself.
 
-### 4. ACT once — you HAVE a live channel, use it
-- **Live actuator: Reddit** (account `Informal-Salt827`, 109 karma, cookie + old.reddit.com browser
-  session). This channel WORKS. The agent was never permanently blocked — it was rate-limited from
-  over-automating. So acting is not optional: each run, take **exactly one genuine action**.
-- Secondary live channels (confirm via browser login, then use): Mastodon, dev.to, HN.
-- **How a human marketer acts here (mandatory guardrails — violating these is what broke Reddit):**
-  - Find a thread/post where Ralph Workflow **genuinely** helps someone's actual problem.
-  - Write a **real, individually-authored** comment — on-positioning (see positioning section),
-    value-first, answer the person. NEVER a template. NEVER the same text twice.
-  - Link to Ralph only when it truly answers the question. Most comments should give value with no link.
-  - **Hard cap: 1–2 genuine actions per day, ever.** The daily cron cadence enforces human pace. If
-    you feel the urge to post more/faster, that's the automation-spam instinct — stop.
-  - Log each action in the ledger as `status: pending` with a `checkback` date.
-- **Only escalate (`drafts/CREDENTIAL_UNBLOCK.md`) for channels that are genuinely credential-blocked**
-  (email/SMTP, GitHub auth). Do NOT escalate Reddit — it's live. Use it.
+### 4. ACT once — pick a viable channel and take one genuine action
+- **Reddit is DEAD (shadowban) — never act there.** Choose from the VIABLE channels above.
+- Each run, take **exactly one genuine, value-first action** that reaches a real person or strengthens a
+  real conversion surface. Pick the FIRST option below that you can do this run:
+  - **PREFERRED — customer discovery (pre-revenue priority):** find ONE real person (a GitHub issue
+    author, a dev.to/Mastodon/HN commenter on AI coding agents, a Ralph installer). Ask them ONE genuine
+    question from the discovery list in MARKETING_PRINCIPLES.md §0 (about THEIR problem — never pitch).
+    Append what you learn to `agents/marketing/logs/customer_discovery.jsonl` (one JSON line:
+    {who, channel, quote, job_to_be_done, implication}). This is the highest-value action pre-revenue.
+  - GitHub: fix the repo description, cut a release, open one comparison-page backlink PR.
+  - Email (webmail): send ONE individually-tailored curator/publisher outreach (never a blast).
+  - Mastodon/dev.to/HN: write ONE real, individually-authored, on-positioning post/comment that
+    genuinely helps — value-first, link only when it truly answers. NEVER a template, never the same text.
+  - Apollo: identify and reach ONE qualified prospect with a genuine, tailored message.
+- **Mandatory guardrails (violating these is what got Reddit shadowbanned):** human cadence (1–2 genuine
+  actions/day max), never templated, never spam, always on-positioning. If you feel the urge to
+  blast more/faster, that's the automation-spam instinct — stop.
+- **Complete logins yourself:** if a channel needs 2FA, read the code from webmail and finish the login.
+- Log each action in the ledger as `status: pending` with a `checkback` date.
 
-### 5. STOP-GUARD — the hard limit (enforces ACTIVITY_THEATER.md)
-- If the primary metric has been flat for **7 consecutive days**, HALT all artifact production,
-  write the escalation, and do nothing else until the human acts or a genuinely new channel opens.
-- Producing content while the metric is flat ≥7 days is a process failure, full stop.
+### 5. STOP-GUARD — prevent theater, but NEVER stop autonomously
+- If a tactic has been flat for its checkbacks, kill it and PIVOT to a different viable channel/tactic —
+  do not keep producing artifacts on a dead tactic.
+- There is no "halt and wait for the human." If everything you've tried is flat, that means **try a
+  channel/angle you haven't** (pivot), not stop. The system runs unsupervised — it always has a next
+  legitimate move (a different community, a different outreach target, a conversion-surface improvement).
+- The ONLY things you never do: ban-evasion, spam, templated automation, and human-handoff/escalation.
 
 ---
 
 ## What "getting better" looks like here (concrete)
 - Run N: tried tactic X → log it with a checkback.
 - Run N+1: read metric. X moved nothing → mark `no_effect`, pick a *different* tactic Y.
-- Run N+2: Y also flat, and X now `failing` → both dead. If nothing left is unblocked → ESCALATE.
+- Run N+2: Y also flat, and X now `failing` → both dead. PIVOT to a channel/angle you haven't tried.
 - Over time the ledger becomes a map of what's dead and what works, and the agent stops wasting runs.
 
-## Anti-theater checks (fail any → stop and re-read this file)
-- Am I about to run a tactic the ledger already marks `failing` or `blocked`? → don't.
-- Is my "improvement" a change to an internal artifact with no path to a person? → not improvement.
-- Has the primary metric been flat ≥7 days and I'm still making content? → STOP and escalate.
+## Anti-theater checks (fail any → fix it yourself and act, do not stop)
+- Am I about to run a tactic the ledger already marks `failing` or `blocked`? → don't; pick another.
+- Is my "improvement" a change to an internal artifact with no path to a person? → not improvement; act externally.
+- Am I about to ask/escalate/hand off to a human? → BANNED; decide and do it yourself.
+- Has a tactic been flat past its checkbacks and I'm still doing it? → kill it, pivot to a viable channel.
 
 ## Files
 - Outcome signal: `logs/adoption_metrics_latest.md`, `logs/adoption_metrics.jsonl`
 - Tactic ledger: `logs/tactic_ledger.jsonl` (append-only; one JSON object per tactic outcome)
 - Honest status: `MARKETING_SELF_IMPROVEMENT.md`
-- Escalation target: `drafts/CREDENTIAL_UNBLOCK.md`
+- Channel status: `drafts/CREDENTIAL_UNBLOCK.md` (now a channel-status record, NOT a human escalation)

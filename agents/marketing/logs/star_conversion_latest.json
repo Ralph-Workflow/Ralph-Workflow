@@ -99,16 +99,23 @@
       "downloads_month": 1335,
       "codeberg_stars": 12,
       "github_stars": 3
+    },
+    {
+      "at": "2026-06-08T08:30:01.156958",
+      "downloads_day": 16,
+      "downloads_month": 1174,
+      "codeberg_stars": 12,
+      "github_stars": 3
     }
   ],
-  "zero_star_samples": 14,
+  "zero_star_samples": 15,
   "chronic": true,
   "recommendation_level": "structural",
-  "emit_recommendation": false,
-  "last_recommendation_at": "2026-06-04T08:30:01.947686",
-  "recommendation_count": 1,
-  "suppressed_by_interval": true,
-  "downloads_day": 49,
-  "downloads_month": 1335,
+  "emit_recommendation": true,
+  "last_recommendation_at": "2026-06-08T08:30:01.156958",
+  "recommendation_count": 2,
+  "suppressed_by_interval": false,
+  "downloads_day": 16,
+  "downloads_month": 1174,
   "codeberg_stars": 12
 }

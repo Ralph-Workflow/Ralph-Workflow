@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-06-07T06:15:01.767341+00:00",
-  "live_total_lines": 19,
+  "generated_at": "2026-06-08T06:15:01.081682+00:00",
+  "live_total_lines": 17,
   "marketing_job_count": 14,
-  "golden_job_count": 20,
+  "golden_job_count": 18,
   "min_marketing_jobs": 8,
   "issues": [],
   "ok": true,
@@ -27,9 +27,7 @@
     "30 5 * * 6 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/indexation_health_check.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/indexation_health_cron.log 2>&1",
     "0 10 * * 6 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/seo_retrofit_lane.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/seo_retrofit_cron.log 2>&1",
     "0 4 * * 0 /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/marketing/log_janitor.py >> /home/mistlight/.openclaw/workspace/agents/marketing/logs/log_janitor_cron.log 2>&1",
-    "37 */12 * * * /home/mistlight/git-sync.sh",
     "1,31 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_runner.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/watchdog_cron.log 2>&1",
-    "17 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/verifier_cron.log 2>&1",
     "6,36 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/verifier_cron.log 2>&1"
   ]
 }
