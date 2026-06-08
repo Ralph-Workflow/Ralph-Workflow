@@ -233,7 +233,7 @@ To opt out: delete or rename `~/.config/ralph-workflow-user.ini`. Ralph Workflow
 
 Already installed? Run **`ralph star`** from your terminal to open the primary repo, or visit <https://codeberg.org/RalphWorkflow/Ralph-Workflow>. Codeberg is primary — star, watch, fork, and open issues there first; GitHub is a read-only mirror.
 
-Stars are the only signal we get that Ralph is working for you, and they set what we build next.
+Stars are the only signal we get that Ralph Workflow is working for you, and they set what we build next.
 
 ## Development and verification
 
