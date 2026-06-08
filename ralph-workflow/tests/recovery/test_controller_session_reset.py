@@ -24,13 +24,11 @@ _AgentInvocationError.__name__ = "AgentInvocationError"
 def _make_state(
     agents: list[str],
     last_session_id: str | None = None,
-    session_preserve: bool = False,
 ) -> PipelineState:
     return PipelineState(
         phase="development",
         phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
         last_agent_session_id=last_session_id,
-        session_preserve_retry_pending=session_preserve,
     )
 
 
@@ -45,7 +43,7 @@ def test_stale_session_clears_last_agent_session_id(
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
     )
-    state = _make_state(["claude"], last_session_id="deadbeef-1234", session_preserve=True)
+    state = _make_state(["claude"], last_session_id="deadbeef-1234")
 
     exc = _AgentInvocationError(
         "Agent 'claude' failed with code 1: No conversation found with session ID: deadbeef-1234"
@@ -57,10 +55,10 @@ def test_stale_session_clears_last_agent_session_id(
     assert new_state.last_agent_session_id is None
 
 
-def test_stale_session_clears_session_preserve_retry_pending(
+def test_stale_session_clears_agent_retry_intent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """After stale-session failure, session_preserve_retry_pending is False."""
+    """After stale-session failure, the next-attempt retry intent is cleared."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
@@ -68,7 +66,7 @@ def test_stale_session_clears_session_preserve_retry_pending(
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
     )
-    state = _make_state(["claude"], last_session_id="deadbeef-1234", session_preserve=True)
+    state = _make_state(["claude"], last_session_id="deadbeef-1234")
 
     exc = _AgentInvocationError(
         "Agent 'claude' failed with code 1: No conversation found with session ID: deadbeef-1234"
@@ -77,7 +75,7 @@ def test_stale_session_clears_session_preserve_retry_pending(
         state, exc, FailureContext(phase="development", agent="claude")
     )
 
-    assert new_state.session_preserve_retry_pending is False
+    assert new_state.agent_retry_intent.action is None
 
 
 def test_stale_session_writes_retry_hint_file(

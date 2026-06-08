@@ -45,9 +45,10 @@ class TestReviewLoopBehavior:
                 prompt_file: object,
                 *,
                 session_id: str | None = None,
+                session_id_sink: object | None = None,
                 required_artifact: object | None = None,
             ) -> Iterator[str]:
-                del prompt_file, session_id, required_artifact
+                del prompt_file, session_id, session_id_sink, required_artifact
                 return mock_invoke_runtime()
 
         monkeypatch.setattr(

@@ -230,7 +230,8 @@ def test_proof_failure_preserves_same_session_via_recovery_controller() -> None:
 
     new_state, _ = reducer_reduce(state, failure_event, recovery=controller)
 
-    assert new_state.session_preserve_retry_pending is True
+    assert new_state.agent_retry_intent.action == "resume"
+    assert new_state.agent_retry_intent.session_id == "sess-proof-123"
     assert new_state.last_agent_session_id == "sess-proof-123"
     assert new_state.last_failure_category == FailureCategory.ARTIFACT_VALIDATION
     assert new_state.last_error is not None

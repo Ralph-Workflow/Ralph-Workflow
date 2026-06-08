@@ -54,7 +54,7 @@ def _state_without_session(phase: str = "development_analysis") -> PipelineState
 class TestReducerSessionPreservingRetry:
     """Via the legacy reducer path (no RecoveryController)."""
 
-    def test_retry_in_session_with_session_id_sets_pending_flag(self) -> None:
+    def test_retry_in_session_with_session_id_sets_resume_intent(self) -> None:
         state = _state_with_session()
         event = PhaseFailureEvent(
             phase="development_analysis",
@@ -63,9 +63,10 @@ class TestReducerSessionPreservingRetry:
             retry_in_session=True,
         )
         new_state, _ = reducer_reduce(state, event)
-        assert new_state.session_preserve_retry_pending is True
+        assert new_state.agent_retry_intent.action == "resume"
+        assert new_state.agent_retry_intent.session_id == "sess-abc123"
 
-    def test_retry_in_session_without_session_id_does_not_set_pending_flag(self) -> None:
+    def test_retry_in_session_without_session_id_leaves_no_resume_intent(self) -> None:
         state = _state_without_session()
         event = PhaseFailureEvent(
             phase="development_analysis",
@@ -74,9 +75,9 @@ class TestReducerSessionPreservingRetry:
             retry_in_session=True,
         )
         new_state, _ = reducer_reduce(state, event)
-        assert new_state.session_preserve_retry_pending is False
+        assert new_state.agent_retry_intent.action is None
 
-    def test_retry_in_session_false_never_sets_pending_flag(self) -> None:
+    def test_retry_in_session_false_never_sets_resume_intent(self) -> None:
         state = _state_with_session()
         event = PhaseFailureEvent(
             phase="development_analysis",
@@ -85,7 +86,7 @@ class TestReducerSessionPreservingRetry:
             retry_in_session=False,
         )
         new_state, _ = reducer_reduce(state, event)
-        assert new_state.session_preserve_retry_pending is False
+        assert new_state.agent_retry_intent.action is None
 
     def test_chain_retries_increments_on_session_preserving_retry(self) -> None:
         state = _state_with_session()

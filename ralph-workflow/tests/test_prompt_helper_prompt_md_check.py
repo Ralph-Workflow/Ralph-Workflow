@@ -36,9 +36,10 @@ class TestPromptMdCheck:
                 prompt_file: Path,
                 *,
                 session_id: str | None = None,
+                session_id_sink: object | None = None,
                 required_artifact: object | None = None,
             ) -> Iterator[str]:
-                del prompt_file, session_id, required_artifact
+                del prompt_file, session_id, session_id_sink, required_artifact
                 return iter(())
 
         monkeypatch.setattr(

@@ -912,6 +912,13 @@ ralph.pipeline.waiting_dispatch
    :members:
    :show-inheritance:
 
+ralph.pipeline.agent_retry_intent
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.agent_retry_intent
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.state
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -1799,6 +1806,13 @@ ralph.mcp.tools.names
 ~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.tools.names
+   :members:
+   :show-inheritance:
+
+ralph.mcp.tool_contract
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.tool_contract
    :members:
    :show-inheritance:
 

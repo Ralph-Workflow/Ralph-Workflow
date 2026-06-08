@@ -43,6 +43,10 @@ from ralph.pipeline._reducer_worker_state import (
 from ralph.pipeline._reducer_worker_state import (
     handle_workers_resumed as _handle_workers_resumed,
 )
+from ralph.pipeline.agent_retry_intent import (
+    cleared_agent_retry_intent,
+    resume_agent_retry_intent,
+)
 from ralph.pipeline.effects import Effect, SaveCheckpointEffect
 from ralph.pipeline.events import (
     AnalysisDecisionEvent,
@@ -373,7 +377,16 @@ def _handle_phase_failure(
         # _handle_agent_failure preserves it when it transitions to the failure route.
         state_with_error = state.copy_with(last_error=failure_message)
         if event.retry_in_session and state.last_agent_session_id:
-            state_with_error = state_with_error.copy_with(session_preserve_retry_pending=True)
+            state_with_error = state_with_error.copy_with(
+                agent_retry_intent=resume_agent_retry_intent(
+                    state.last_agent_session_id,
+                    failure_reason=failure_message,
+                ),
+            )
+        else:
+            state_with_error = state_with_error.copy_with(
+                agent_retry_intent=cleared_agent_retry_intent()
+            )
         return _handle_agent_failure(state_with_error, policy=policy)
     # Non-recoverable failures: check workflow_fallback before global failure route.
     # Policy-declared workflow_fallback takes precedence over recovery.failed_route.
@@ -444,7 +457,11 @@ def _handle_agent_failure(
     if chain.current_index + 1 < len(chain.agents):
         new_chain = chain.with_advance()
         new_metrics = state.metrics.with_fallback_increment()
-        new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
+        new_state = state.with_phase_chain(state.phase, new_chain).copy_with(
+            metrics=new_metrics,
+            last_agent_session_id=None,
+            agent_retry_intent=cleared_agent_retry_intent(),
+        )
         return new_state, []
 
     # Chain exhausted: check for per-phase workflow_fallback before global failure route.
@@ -460,10 +477,7 @@ def _handle_agent_failure(
                     "agent chain exhausted — routing via policy workflow_fallback",
                 )
             )
-            new_state = state.copy_with(
-                phase=fallback_target,
-                previous_phase=state.phase,
-            )
+            new_state = progress.advance_phase(state, fallback_target, policy=policy)
             return new_state, []
 
     failure_reason = _failure_reason(

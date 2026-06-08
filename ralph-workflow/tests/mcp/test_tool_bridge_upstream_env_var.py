@@ -82,6 +82,7 @@ class TestUpstreamEnvVar:
             _AllowedSession(),
             _FakeWorkspace(),
         )
+        bridge.set_client_capabilities({"image", "media"})
 
         tool_names = {defn.name for defn in bridge.list_definitions()}
         for tool in ALL_RALPH_TOOLS:

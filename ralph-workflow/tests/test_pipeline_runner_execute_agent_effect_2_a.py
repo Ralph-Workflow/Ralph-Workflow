@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 from rich.console import Console
 
+from ralph.agents.invoke import AgentInvocationError
 from ralph.config.enums import (
     AgentTransport,
     JsonParserType,
@@ -18,8 +19,10 @@ from ralph.config.enums import (
 from ralph.config.mcp_loader import McpConfigError
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.pipeline import _runner_session as runner_session_module
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline.agent_retry_intent import resume_agent_retry_intent
 from ralph.pipeline.effects import (
     InvokeAgentEffect,
     PreparePromptEffect,
@@ -817,6 +820,98 @@ class TestExecuteAgentEffectA:
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
+
+    def test_execute_agent_effect_uses_canonical_retry_intent_resume(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        monkeypatch.setattr(
+            effect_executor_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: _FakeBridge(),
+        )
+        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(
+            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+        )
+
+        seen_session_ids: list[str | None] = []
+
+        def record_invoke(*_args: object, **kwargs: object) -> object:
+            seen_session_ids.append(getattr(kwargs.get("options"), "session_id", None))
+            return iter(["line"])
+
+        state = PipelineState.model_validate({"phase": "development"}).copy_with(
+            agent_retry_intent=resume_agent_retry_intent("sess-retry")
+        )
+
+        result = runner_module.execute_agent_effect(
+            effect,
+            self._config(),
+            runner_module.AgentExecutionDeps(
+                invoke_agent=record_invoke,
+                agent_invocation_error=AgentError,
+                agent_registry=registry,
+            ),
+            WorkspaceScope("/tmp/worktree"),
+            state=state,
+            display_context=make_display_context(),
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert seen_session_ids == ["sess-retry"]
+
+    def test_apply_session_capture_clears_stale_session_after_fresh_retry_intent(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        monkeypatch.setattr(
+            effect_executor_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: _FakeBridge(),
+        )
+        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(
+            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+        )
+
+        def stale_session_invoke(
+            *_args: object, **_kwargs: object
+        ) -> object:
+            yield '{"type":"session","session_id":"sess-stale"}'
+            raise AgentInvocationError(
+                "dev",
+                1,
+                "No conversation found with session ID: sess-stale",
+            )
+
+        state = PipelineState.model_validate({"phase": "development"}).copy_with(
+            last_agent_session_id="sess-stale",
+            agent_retry_intent=resume_agent_retry_intent("sess-stale"),
+        )
+
+        result = runner_module.execute_agent_effect(
+            effect,
+            self._config(),
+            runner_module.AgentExecutionDeps(
+                invoke_agent=stale_session_invoke,
+                agent_invocation_error=AgentInvocationError,
+                agent_registry=registry,
+            ),
+            WorkspaceScope("/tmp/worktree"),
+            state=state,
+            display_context=make_display_context(),
+        )
+
+        new_state = runner_session_module.apply_session_capture(state)
+
+        assert result == PipelineEvent.AGENT_FAILURE
+        assert new_state.last_agent_session_id is None
+        assert new_state.agent_retry_intent.action == "fresh"
 
     def test_handles_unexpected_error_as_failure(self, monkeypatch: MonkeyPatch) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")

@@ -347,7 +347,7 @@ def test_stream_parsed_agent_activity_session_sink_ignores_nested_tool_payload_s
 
     lines = [
         json.dumps({"type": "tool_result", "content": {"session_id": "tool-payload"}}),
-        json.dumps({"session_id": "transport-session"}),
+        json.dumps({"type": "session", "session_id": "transport-session"}),
     ]
 
     stream_parsed_agent_activity(

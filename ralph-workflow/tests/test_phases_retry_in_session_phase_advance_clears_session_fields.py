@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from ralph.phases import PhaseContext
+from ralph.pipeline.agent_retry_intent import resume_agent_retry_intent
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -161,7 +162,7 @@ class TestPhaseAdvanceClearsSessionFields:
         new_state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, pipeline_policy=policy)
         assert new_state.last_agent_session_id is None
 
-    def test_advance_phase_clears_session_preserve_retry_pending(self) -> None:
+    def test_advance_phase_clears_agent_retry_intent(self) -> None:
         state = PipelineState(
             phase="development_analysis",
             phase_chains={
@@ -170,11 +171,11 @@ class TestPhaseAdvanceClearsSessionFields:
                 )
             },
             last_agent_session_id="sess-x",
-            session_preserve_retry_pending=True,
+            agent_retry_intent=resume_agent_retry_intent("sess-x"),
         )
         policy = _minimal_analysis_policy()
         new_state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, pipeline_policy=policy)
-        assert new_state.session_preserve_retry_pending is False
+        assert new_state.agent_retry_intent.action is None
 
     def test_complete_clears_session_fields_on_terminal_success(self) -> None:
         state = PipelineState(
@@ -183,7 +184,7 @@ class TestPhaseAdvanceClearsSessionFields:
                 "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
             },
             last_agent_session_id="sess-to-clear",
-            session_preserve_retry_pending=True,
+            agent_retry_intent=resume_agent_retry_intent("sess-to-clear"),
         )
 
         new_state, _ = reducer_reduce(
@@ -194,7 +195,7 @@ class TestPhaseAdvanceClearsSessionFields:
 
         assert new_state.phase == "done"
         assert new_state.last_agent_session_id is None
-        assert new_state.session_preserve_retry_pending is False
+        assert new_state.agent_retry_intent.action is None
 
     def test_failed_clears_session_fields_on_terminal_failure(self) -> None:
         state = PipelineState(
@@ -203,7 +204,7 @@ class TestPhaseAdvanceClearsSessionFields:
                 "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
             },
             last_agent_session_id="sess-to-clear",
-            session_preserve_retry_pending=True,
+            agent_retry_intent=resume_agent_retry_intent("sess-to-clear"),
             last_error="boom",
         )
 
@@ -215,7 +216,7 @@ class TestPhaseAdvanceClearsSessionFields:
 
         assert new_state.phase == "failed_terminal"
         assert new_state.last_agent_session_id is None
-        assert new_state.session_preserve_retry_pending is False
+        assert new_state.agent_retry_intent.action is None
 
     def test_workflow_fallback_clears_session_fields(self) -> None:
         state = PipelineState(
@@ -224,7 +225,7 @@ class TestPhaseAdvanceClearsSessionFields:
                 "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
             },
             last_agent_session_id="sess-to-clear",
-            session_preserve_retry_pending=True,
+            agent_retry_intent=resume_agent_retry_intent("sess-to-clear"),
         )
 
         new_state, _ = reducer_reduce(
@@ -239,4 +240,4 @@ class TestPhaseAdvanceClearsSessionFields:
 
         assert new_state.phase == "planning"
         assert new_state.last_agent_session_id is None
-        assert new_state.session_preserve_retry_pending is False
+        assert new_state.agent_retry_intent.action is None

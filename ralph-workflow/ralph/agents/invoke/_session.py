@@ -29,6 +29,45 @@ _TRANSPORT_TEXT_SESSION_PATTERNS = (
     re.compile(r"^--session\s+([A-Za-z0-9._:-]+)$"),
 )
 
+_TRANSPORT_JSON_TYPES = frozenset(
+    {
+        "session",
+        "session_ready",
+        "session_start",
+        "session_resume",
+    }
+)
+
+
+def _match_transport_text_session_id(stripped: str) -> str | None:
+    if _EXPLICIT_COMPLETION_MARKER in stripped:
+        for pattern in _COMPLETION_SESSION_ID_PATTERNS:
+            match = pattern.search(stripped)
+            if match is not None:
+                return match.group(1)
+    for pattern in _TRANSPORT_TEXT_SESSION_PATTERNS:
+        match = pattern.search(stripped)
+        if match is not None:
+            return match.group(1)
+    return None
+
+
+def _match_transport_json_session_id(parsed: dict[str, object]) -> str | None:
+    event_type = parsed.get("type")
+    if isinstance(event_type, str) and event_type in _TRANSPORT_JSON_TYPES:
+        for key in ("session_id", "sessionId"):
+            session_id = parsed.get(key)
+            if isinstance(session_id, str) and session_id:
+                return session_id
+    meta = parsed.get("meta")
+    if not isinstance(meta, dict):
+        return None
+    for key in ("session_id", "sessionId"):
+        session_id = meta.get(key)
+        if isinstance(session_id, str) and session_id:
+            return session_id
+    return None
+
 
 def _find_session_id(value: object) -> str | None:
     if isinstance(value, dict):
@@ -70,24 +109,10 @@ def _extract_transport_session_id_from_line(line: str) -> str | None:
     try:
         parsed = cast("object", json.loads(line))
     except json.JSONDecodeError:
-        stripped = line.strip()
-        if _EXPLICIT_COMPLETION_MARKER in stripped:
-            for pattern in _COMPLETION_SESSION_ID_PATTERNS:
-                match = pattern.search(stripped)
-                if match is not None:
-                    return match.group(1)
-        for pattern in _TRANSPORT_TEXT_SESSION_PATTERNS:
-            match = pattern.search(stripped)
-            if match is not None:
-                return match.group(1)
-        return None
+        return _match_transport_text_session_id(line.strip())
     if not isinstance(parsed, dict):
         return None
-    for key in ("session_id", "sessionId"):
-        session_id = parsed.get(key)
-        if isinstance(session_id, str) and session_id:
-            return session_id
-    return None
+    return _match_transport_json_session_id(parsed)
 
 
 def extract_session_id(raw_output: list[str] | tuple[str, ...]) -> str | None:
@@ -119,12 +144,7 @@ def extract_visible_tui_transport_session_id(text: str) -> str | None:
     This intentionally excludes generic ``session_id=...`` patterns so assistant or
     tool text cannot masquerade as transport session metadata.
     """
-    stripped = text.strip()
-    for pattern in _TRANSPORT_TEXT_SESSION_PATTERNS:
-        match = pattern.search(stripped)
-        if match is not None:
-            return match.group(1)
-    return None
+    return _match_transport_text_session_id(text.strip())
 
 
 def _bounded_output_lines(

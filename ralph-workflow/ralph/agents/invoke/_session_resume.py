@@ -25,6 +25,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from ralph.recovery.failure_classifier import SESSION_NOT_FOUND_SUBSTRINGS
+from ralph.recovery.failure_details import contains_casefolded_marker
+
 if TYPE_CHECKING:
     from ralph.config.enums import AgentTransport
 
@@ -163,8 +166,8 @@ def recovery_action_for_failure_reason(
       ``reset_tool_registry=True``) -> ``resume`` (NEW BEHAVIOR; the
       pre-fix code returned ``fresh`` here, which made every
       tool-availability retry re-read the prompt).
-    - ``NoConversationFoundError`` family (with a prior session)
-      -> ``new_session_with_id``
+    - stale/invalid session id family (with a prior session)
+      -> ``fresh``
     - everything else -> ``fresh``
 
     Args:
@@ -194,8 +197,8 @@ def recovery_action_for_failure_reason(
         return "resume"
     if reset_tool_registry:
         return "resume"
-    if failure_reason == "NoConversationFoundError":
-        return "new_session_with_id"
+    if contains_casefolded_marker((failure_reason,), SESSION_NOT_FOUND_SUBSTRINGS):
+        return "fresh"
     return "fresh"
 
 

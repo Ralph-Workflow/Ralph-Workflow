@@ -430,7 +430,7 @@ def test_generate_commit_retries_missing_artifact_in_same_session_when_available
         options = kwargs.get("options")
         seen_session_ids.append(None if options is None else options.session_id)
         if len(seen_session_ids) == 1:
-            return iter(['{"session_id":"claude-session-1"}'])
+            return iter(['{"type":"session","session_id":"claude-session-1"}'])
         write_commit_message_artifact(tmp_path, "fix: retried in session")
         return iter([])
 

@@ -37,8 +37,8 @@ from ralph.mcp.server._mcp_server_extras import McpServerExtras
 from ralph.mcp.server._process_like import ProcessLike
 from ralph.mcp.server._spawn_process import SpawnProcess
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
-from ralph.mcp.tools.bridge import build_ralph_tool_registry
-from ralph.mcp.tools.names import RalphToolName, claude_tool_name
+from ralph.mcp.tool_contract import visible_owned_tool_names
+from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
 from ralph.workspace.fs import FsWorkspace
 
@@ -90,7 +90,7 @@ _ALIAS_VERIFY_TOOL_NAME: str = "read_file"
 # lives in ``ralph.mcp.tools.names``; we hard-code ``"ralph"`` here
 # to keep the lifecycle module import-light and avoid a circular
 # dependency through ``ralph.mcp.tools.bridge``.
-_ALIAS_VERIFY_SERVER_NAME: str = "ralph"
+_ALIAS_VERIFY_SERVER_NAME: str = RALPH_MCP_SERVER_NAME
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
@@ -549,24 +549,12 @@ def _visible_mcp_tool_names_owned(
     *,
     upstream_registry: UpstreamRegistry | None = None,
 ) -> list[str]:
-    registry = build_ralph_tool_registry(
-        session, workspace, upstream_registry=upstream_registry, mcp_config=None
+    return visible_owned_tool_names(
+        session,
+        workspace,
+        upstream_registry=upstream_registry,
+        include_aliases=True,
     )
-    visible: list[str] = []
-    for definition in registry.list_definitions():
-        visible.append(definition.name)
-        # Also include the mcp__<server>__<tool> alias so the preflight
-        # accepts strict-MCP clients that invoke via the alias. The alias
-        # is identical to `claude_tool_name(name)` for every member of
-        # RalphToolName.
-        try:
-            member = RalphToolName(definition.name)
-        except ValueError:
-            continue
-        alias = claude_tool_name(member)
-        if alias != definition.name and alias not in visible:
-            visible.append(alias)
-    return visible
 
 
 def _workspace_root(workspace: WorkspaceLike) -> Path:

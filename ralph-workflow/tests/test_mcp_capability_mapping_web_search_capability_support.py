@@ -33,7 +33,6 @@ class TestWebSearchCapabilitySupport:
     @pytest.mark.parametrize(
         "drain",
         [
-            SessionDrain.ANALYSIS,
             SessionDrain.COMMIT,
             SessionDrain.DEVELOPMENT_COMMIT,
             SessionDrain.REVIEW_COMMIT,

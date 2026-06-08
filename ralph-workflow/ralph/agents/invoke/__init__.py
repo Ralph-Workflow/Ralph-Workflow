@@ -95,10 +95,9 @@ from ralph.mcp.protocol.startup import (
     tools_list_request,
 )
 from ralph.mcp.session_plan import effective_session_mcp_plan_from_servers
+from ralph.mcp.tool_contract import canonicalize_tool_names
 from ralph.mcp.tools.names import (
-    RALPH_MCP_SERVER_NAME,
     claude_tool_name,
-    claude_tool_name_prefix,
 )
 from ralph.mcp.transport.agy import (
     agy_workspace_mcp_endpoint,
@@ -492,18 +491,7 @@ def _canonical_http_mcp_tool_names(endpoint: str) -> tuple[str, ...]:
     except (PreflightError, ValueError) as exc:
         logger.warning("Failed to discover Ralph MCP tools for provider allowlist: {}", exc)
         return ()
-    prefix = claude_tool_name_prefix(server_name=RALPH_MCP_SERVER_NAME)
-    canonical: list[str] = []
-    seen: set[str] = set()
-    for tool_name in visible_tool_names:
-        canonical_name = tool_name
-        if tool_name.startswith(prefix):
-            canonical_name = tool_name[len(prefix):]
-        if not canonical_name or canonical_name in seen:
-            continue
-        seen.add(canonical_name)
-        canonical.append(canonical_name)
-    return tuple(canonical)
+    return canonicalize_tool_names(visible_tool_names)
 
 
 def _discover_http_mcp_tool_names(endpoint: str) -> list[str]:

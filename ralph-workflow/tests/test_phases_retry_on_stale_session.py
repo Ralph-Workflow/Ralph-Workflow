@@ -47,7 +47,6 @@ _EXPECTED_INVOCATION_COUNT = 2
 
 def _make_state(
     last_session_id: str | None = None,
-    session_preserve: bool = False,
 ) -> PipelineState:
     return PipelineState(
         phase="development",
@@ -55,7 +54,6 @@ def _make_state(
             "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
         },
         last_agent_session_id=last_session_id,
-        session_preserve_retry_pending=session_preserve,
     )
 
 
@@ -154,7 +152,7 @@ def test_runner_stale_session_internal_retry_succeeds(
         prompt_file=str(prompt_file),
     )
     config = _make_config()
-    state = _make_state(last_session_id=stale_session_id, session_preserve=True)
+    state = _make_state(last_session_id=stale_session_id)
 
     result = runner_module.execute_agent_effect(
         effect,
@@ -225,7 +223,7 @@ def test_runner_inactivity_timeout_with_captured_session_retries_same_session(
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the change", encoding="utf-8")
     captured_session_id = "unsafe-after-kill"
-    captured_session = f'{{"session_id":"{captured_session_id}"}}'
+    captured_session = f'{{"type":"session","session_id":"{captured_session_id}"}}'
     captured_calls: list[tuple[str | None, str]] = []
 
     def fake_invoke_agent(
@@ -388,7 +386,7 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
                 "claude",
                 1,
                 "No conversation found with session ID: stale-original",
-                parsed_output=['{"session_id":"different-session-from-output"}'],
+                parsed_output=['{"type":"session","session_id":"different-session-from-output"}'],
             )
         return []
 
@@ -412,7 +410,7 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
         ),
         WorkspaceScope(tmp_path),
         display_context=make_display_context(),
-        state=_make_state(last_session_id="stale-original", session_preserve=True),
+        state=_make_state(last_session_id="stale-original"),
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -455,7 +453,7 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
         )
 
     config = _make_config()
-    state = _make_state(last_session_id=stale_session_id, session_preserve=True)
+    state = _make_state(last_session_id=stale_session_id)
     result = runner_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
@@ -539,7 +537,7 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
         prompt_file=str(prompt_file),
     )
     config = _make_config()
-    state = _make_state(last_session_id=opencode_stale_session_id, session_preserve=True)
+    state = _make_state(last_session_id=opencode_stale_session_id)
 
     result = runner_module.execute_agent_effect(
         effect,
@@ -630,7 +628,7 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
         ),
         WorkspaceScope(tmp_path),
         display_context=make_display_context(),
-        state=_make_state(last_session_id="deadbeef", session_preserve=True),
+        state=_make_state(last_session_id="deadbeef"),
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -700,7 +698,7 @@ def test_runner_opencode_lowercase_stale_message_in_parsed_output_triggers_retry
         ),
         WorkspaceScope(tmp_path),
         display_context=make_display_context(),
-        state=_make_state(last_session_id="lower-case-deadbeef", session_preserve=True),
+        state=_make_state(last_session_id="lower-case-deadbeef"),
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -729,7 +727,7 @@ def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.Mo
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
     )
-    state = _make_state(last_session_id=session_id, session_preserve=True)
+    state = _make_state(last_session_id=session_id)
 
     new_state, _, evt = controller.handle(
         state, exc, FailureContext(phase="development", agent="claude")
@@ -739,7 +737,7 @@ def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.Mo
     assert evt.category == "agent"
 
     assert new_state.last_agent_session_id is None
-    assert new_state.session_preserve_retry_pending is False
+    assert new_state.agent_retry_intent.action is None
 
     assert new_state.phase == "development"
 
@@ -771,17 +769,13 @@ def test_stale_session_attempt2_uses_fresh_session(
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
     )
-    state = _make_state(last_session_id=session_id, session_preserve=True)
+    state = _make_state(last_session_id=session_id)
 
     new_state, _, _ = controller.handle(
         state, exc, FailureContext(phase="development", agent="claude")
     )
 
-    resume_session_id = (
-        new_state.last_agent_session_id
-        if (new_state.session_preserve_retry_pending and new_state.last_agent_session_id)
-        else None
-    )
+    resume_session_id = new_state.agent_retry_intent.session_id
     assert resume_session_id is None, (
         "After session reset, runner must compute resume_session_id=None, "
         f"got {resume_session_id!r}"

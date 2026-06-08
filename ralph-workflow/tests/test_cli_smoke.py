@@ -241,7 +241,7 @@ def test_execute_smoke_turns_retries_post_tool_empty_response_with_same_session(
         1,
         "Model returned an empty response with no tool calls",
         parsed_output=[
-            '{"session_id":"sess-smoke"}',
+            '{"type":"session","session_id":"sess-smoke"}',
             '{"type":"tool_result","tool":"read_file"}',
         ],
     )

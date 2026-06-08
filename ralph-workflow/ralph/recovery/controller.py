@@ -9,6 +9,11 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.pipeline import progress
+from ralph.pipeline.agent_retry_intent import (
+    cleared_agent_retry_intent,
+    resume_agent_retry_intent,
+)
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
 from ralph.recovery.budget import AgentBudgetRegistry
@@ -223,7 +228,7 @@ class RecoveryController:
             )
             new_state = new_state.copy_with(
                 last_agent_session_id=None,
-                session_preserve_retry_pending=False,
+                agent_retry_intent=cleared_agent_retry_intent(),
             )
             self._write_session_reset_hint(phase, failure)
 
@@ -291,8 +296,12 @@ class RecoveryController:
         """Apply a single retry to the chain and optionally preserve the agent session."""
         retried_state = state.with_phase_chain(phase, chain.with_retry_increment())
         if retry_in_session and state.last_agent_session_id:
-            retried_state = retried_state.copy_with(session_preserve_retry_pending=True)
-        return retried_state
+            return retried_state.copy_with(
+                agent_retry_intent=resume_agent_retry_intent(
+                    state.last_agent_session_id,
+                ),
+            )
+        return retried_state.copy_with(agent_retry_intent=cleared_agent_retry_intent())
 
     def _chain_config_for_phase(self, phase: str) -> AgentChainConfig | None:
         """Resolve the AgentChainConfig backing the given phase, or None."""
@@ -429,7 +438,11 @@ class RecoveryController:
 
             new_state = (
                 state.with_phase_chain(phase, chain.with_advance())
-                .copy_with(last_retry_delay_ms=0)
+                .copy_with(
+                    last_retry_delay_ms=0,
+                    last_agent_session_id=None,
+                    agent_retry_intent=cleared_agent_retry_intent(),
+                )
                 .with_fallover_record(fallover_record)
             )
             return new_state, []
@@ -480,9 +493,11 @@ class RecoveryController:
                 "Set policy_bundle when constructing RecoveryController."
             )
         failed_route = self._policy_bundle.pipeline.recovery.failed_route
-        return state.copy_with(
-            phase=failed_route,
-            previous_phase=state.phase,
+        return progress.advance_phase(
+            state,
+            failed_route,
+            policy=self._policy_bundle.pipeline,
+        ).copy_with(
             last_error=reason,
             recovery_epoch=state.recovery_epoch + 1,
             last_failure_category=str(category),

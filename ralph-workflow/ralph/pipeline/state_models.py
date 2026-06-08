@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import ConfigDict
 
 from ralph.pipeline.agent_chain_state import AgentChainState
+from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 from ralph.pipeline.commit_state import CommitState
 from ralph.pipeline.fallover_record import FalloverRecord
 from ralph.pipeline.rebase_state import RebaseState
@@ -22,6 +23,7 @@ class _FrozenPipelineStateModel(RalphBaseModel):
 
 __all__ = [
     "AgentChainState",
+    "AgentRetryIntent",
     "CommitState",
     "FalloverRecord",
     "RebaseState",

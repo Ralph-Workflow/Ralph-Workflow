@@ -164,23 +164,7 @@ WEB_VISIT_TOOLS: tuple[str, ...] = (VISIT_URL_TOOL,)
 WEB_DOWNLOAD_TOOLS: tuple[str, ...] = (DOWNLOAD_URL_TOOL,)
 MEDIA_READ_TOOLS: tuple[str, ...] = (READ_IMAGE_TOOL, READ_MEDIA_TOOL)
 
-ALL_RALPH_TOOLS: tuple[str, ...] = (
-    *WORKSPACE_READ_TOOLS,
-    *WORKSPACE_EDIT_TOOLS,
-    *WORKSPACE_DELETE_TOOLS,
-    *GIT_STATUS_READ_TOOLS,
-    *GIT_DIFF_READ_TOOLS,
-    *TRACKED_WRITE_TOOLS,
-    *PROCESS_EXEC_TOOLS,
-    *PROCESS_EXEC_UNBOUNDED_TOOLS,
-    *ARTIFACT_TOOLS,
-    *PLANNING_DRAFT_TOOLS,
-    *PROGRESS_TOOLS,
-    *ENV_READ_TOOLS,
-    *WEB_SEARCH_TOOLS,
-    *WEB_VISIT_TOOLS,
-    *WEB_DOWNLOAD_TOOLS,
-)
+ALL_RALPH_TOOLS: tuple[str, ...] = tuple(str(member) for member in RalphToolName)
 
 # Authoritative source: https://opencode.ai/config.json schema PermissionConfig keys
 # Setting each to false physically removes the tool (unlike permission which is allow-by-default).

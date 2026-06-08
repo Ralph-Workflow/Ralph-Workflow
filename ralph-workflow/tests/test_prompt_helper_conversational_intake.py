@@ -54,9 +54,10 @@ class TestPromptHelperConversationalIntake:
                 prompt_file: Path,
                 *,
                 session_id: str | None = None,
+                session_id_sink: object | None = None,
                 required_artifact: object | None = None,
             ) -> Iterator[str]:
-                del required_artifact
+                del required_artifact, session_id_sink
                 prompt_payloads.append(prompt_file.read_text(encoding="utf-8"))
                 session_ids.append(session_id)
                 if len(prompt_payloads) == 1:

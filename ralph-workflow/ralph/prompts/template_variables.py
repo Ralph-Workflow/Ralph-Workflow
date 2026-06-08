@@ -7,39 +7,27 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
+from ralph.mcp.tool_contract import visible_tool_names_for_capabilities
 from ralph.mcp.tools.names import (
-    ARTIFACT_SUBMIT_TOOLS,
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
     DISCARD_PLAN_DRAFT_TOOL,
     EXEC_TOOL,
     FINALIZE_PLAN_TOOL,
     GET_PLAN_DRAFT_TOOL,
-    GIT_DIFF_READ_TOOLS,
     GIT_DIFF_TOOL,
     GIT_LOG_TOOL,
     GIT_SHOW_TOOL,
-    GIT_STATUS_READ_TOOLS,
     GIT_STATUS_TOOL,
     INSERT_PLAN_STEP_TOOL,
     LIST_DIRECTORY_RECURSIVE_TOOL,
     LIST_DIRECTORY_TOOL,
-    MEDIA_READ_TOOLS,
-    PLAN_DRAFT_READ_TOOLS,
-    PLAN_DRAFT_WRITE_TOOLS,
-    PROCESS_EXEC_TOOLS,
-    PROCESS_EXEC_UNBOUNDED_TOOLS,
-    PROGRESS_TOOLS,
     REMOVE_PLAN_STEP_TOOL,
     REPLACE_PLAN_STEP_TOOL,
     REPORT_PROGRESS_TOOL,
     SEARCH_FILES_TOOL,
     SUBMIT_ARTIFACT_TOOL,
     SUBMIT_PLAN_SECTION_TOOL,
-    TRACKED_WRITE_TOOLS,
-    WEB_DOWNLOAD_TOOLS,
-    WEB_VISIT_TOOLS,
-    WORKSPACE_READ_TOOLS,
     WRITE_FILE_TOOL,
     RalphToolName,
     prefix_tool_name,
@@ -409,27 +397,9 @@ def bool_to_string(value: bool) -> str:
 
 
 def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
-    results: list[str] = []
-    tool_matrix: Sequence[tuple[RalphCapability, Sequence[str]]] = (
-        (RalphCapability.WORKSPACE_READ, WORKSPACE_READ_TOOLS),
-        (RalphCapability.GIT_STATUS_READ, GIT_STATUS_READ_TOOLS),
-        (RalphCapability.GIT_DIFF_READ, GIT_DIFF_READ_TOOLS),
-        (RalphCapability.WORKSPACE_WRITE_TRACKED, TRACKED_WRITE_TOOLS),
-        (RalphCapability.PROCESS_EXEC_BOUNDED, PROCESS_EXEC_TOOLS),
-        (RalphCapability.PROCESS_EXEC_UNBOUNDED, PROCESS_EXEC_UNBOUNDED_TOOLS),
-        (RalphCapability.ARTIFACT_SUBMIT, ARTIFACT_SUBMIT_TOOLS),
-        (RalphCapability.ARTIFACT_PLAN_READ, PLAN_DRAFT_READ_TOOLS),
-        (RalphCapability.ARTIFACT_PLAN_WRITE, PLAN_DRAFT_WRITE_TOOLS),
-        (RalphCapability.RUN_REPORT_PROGRESS, PROGRESS_TOOLS),
-        (RalphCapability.ENV_READ, ["read_env"]),
-        (RalphCapability.WEB_VISIT, WEB_VISIT_TOOLS),
-        (RalphCapability.WEB_DOWNLOAD, WEB_DOWNLOAD_TOOLS),
-        (RalphCapability.MEDIA_READ, MEDIA_READ_TOOLS),
-    )
-    for capability, tools in tool_matrix:
-        if capabilities.contains(capability):
-            results.extend(tools)
-    return results
+    capability_ids = [capability.value for capability in capabilities.to_vec()]
+    drain = "planning" if RalphCapability.ARTIFACT_PLAN_WRITE in capabilities.to_vec() else "prompt"
+    return visible_tool_names_for_capabilities(capability_ids, drain=drain)
 
 
 def format_mcp_tools_list(tool_names: Sequence[str]) -> str:

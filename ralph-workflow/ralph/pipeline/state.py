@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Final, cast
 from pydantic import Field, field_validator, model_validator
 
 from ralph.config.enums import PipelinePhase
+from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState
 
@@ -158,25 +159,7 @@ class PipelineState(_FrozenPipelineStateModel):
     recovery_cycle_cap: int = Field(default=200, ge=1)
     last_retry_delay_ms: int = 0
     last_agent_session_id: str | None = None
-    # Tracks the class name of the last agent-side failure so the session
-    # resume helper can map failure reason to recovery action. Empty string
-    # means "no failure recorded" (the cleared state on the success path).
-    # Default '' is intentional so legacy checkpoints load cleanly without
-    # any migration.
-    last_agent_failure_reason: str = ""
-    # NEW BEHAVIOR: tracks whether the last agent-side failure was
-    # classified as a tool-availability failure (the live wire-level
-    # `No such tool available: mcp__<server>__<tool>` error). When
-    # True, the resume-vs-create helper
-    # ``recovery_action_for_failure_reason(..., reset_tool_registry=True)``
-    # returns ``'resume'`` instead of ``'fresh'`` so the next attempt
-    # continues the prior session rather than re-reading the prompt.
-    # The field is set alongside ``last_agent_failure_reason`` in
-    # ``effect_executor._run_attempt`` and consumed by
-    # ``_invoke_agent_with_recovery``. Default False preserves the
-    # existing behavior for legacy checkpoints.
-    last_agent_reset_tool_registry: bool = False
-    session_preserve_retry_pending: bool = False
+    agent_retry_intent: AgentRetryIntent = Field(default_factory=AgentRetryIntent)
 
     @model_validator(mode="after")
     def _validate_phase_set(self) -> PipelineState:
@@ -186,32 +169,10 @@ class PipelineState(_FrozenPipelineStateModel):
                 "before construction; use PipelineState.from_policy(policy) "
                 "or pass phase= explicitly."
             )
-        # Import-time invariant on last_agent_failure_reason: this field is
-        # the input to resolve_session_resume_flag's failure-reason mapping.
-        # A non-string value (None, int, dict, etc.) would silently bypass
-        # the recovery action lookup and yield a fresh session on every
-        # retry, defeating the resume policy. Enforce with `if`/`raise
-        # RuntimeError` (NOT `assert`) so the check survives `python -O`
-        # and the deserialization path (model_validate) is covered too.
-        if not isinstance(self.last_agent_failure_reason, str):
+        if not isinstance(self.agent_retry_intent, AgentRetryIntent):
             raise RuntimeError(
-                "PipelineState.last_agent_failure_reason must be str; "
-                f"got {type(self.last_agent_failure_reason).__name__}"
-            )
-        # NEW BEHAVIOR: import-time invariant on
-        # last_agent_reset_tool_registry. The field is the input to the
-        # new ``recovery_action_for_failure_reason(..., reset_tool_registry=...)``
-        # parameter: a non-bool value (None, int, str, etc.) would
-        # silently bypass the new tool-availability recovery branch
-        # and yield a fresh session on every tool-availability
-        # failure, defeating the resume-on-tool-availability policy.
-        # Enforce with `if`/`raise RuntimeError` (NOT `assert`) so the
-        # check survives `python -O` and the deserialization path
-        # (model_validate) is covered too.
-        if not isinstance(self.last_agent_reset_tool_registry, bool):
-            raise RuntimeError(
-                "PipelineState.last_agent_reset_tool_registry must be bool; "
-                f"got {type(self.last_agent_reset_tool_registry).__name__}"
+                "PipelineState.agent_retry_intent must be AgentRetryIntent; "
+                f"got {type(self.agent_retry_intent).__name__}"
             )
         return self
 
@@ -525,6 +486,7 @@ class PipelineState(_FrozenPipelineStateModel):
 PipelineState.model_rebuild(
     _types_namespace={
         "PipelinePhase": PipelinePhase,
+        "AgentRetryIntent": AgentRetryIntent,
         "WorkUnit": WorkUnit,
         "WorkerState": WorkerState,
     }

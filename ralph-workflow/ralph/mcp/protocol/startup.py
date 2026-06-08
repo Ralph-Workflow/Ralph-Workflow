@@ -43,7 +43,7 @@ from ralph.mcp.protocol.env import (
     MCP_PROBE_TIMEOUT_MS_ENV,
     MCP_SUPERVISION_INTERVAL_MS_ENV,
 )
-from ralph.mcp.tools.bridge import build_ralph_tool_registry
+from ralph.mcp.tool_contract import visible_owned_tool_names
 from ralph.workspace import Workspace
 
 __all__ = [
@@ -105,10 +105,12 @@ def _visible_mcp_tool_names_owned(
     *,
     upstream_registry: UpstreamRegistry | None = None,
 ) -> list[str]:
-    bridge = build_ralph_tool_registry(
-        session, workspace, upstream_registry=upstream_registry, mcp_config=None
+    return visible_owned_tool_names(
+        session,
+        workspace,
+        upstream_registry=upstream_registry,
+        include_aliases=True,
     )
-    return [definition.name for definition in bridge.list_definitions()]
 
 
 def mcp_preflight_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:

@@ -57,3 +57,7 @@ def test_raw_exec_tool_constant_matches_enum() -> None:
 
 def test_all_ralph_tools_includes_raw_exec_tool() -> None:
     assert RAW_EXEC_TOOL in ALL_RALPH_TOOLS
+
+
+def test_all_ralph_tools_matches_enum_members_exactly() -> None:
+    assert tuple(str(member) for member in RalphToolName) == ALL_RALPH_TOOLS

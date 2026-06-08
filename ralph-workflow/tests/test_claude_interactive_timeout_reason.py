@@ -60,7 +60,7 @@ class _SessionCapturingRaisingPtyLineReader:
         del args, kwargs
 
     def read_lines(self) -> object:
-        yield '{"session_id":"session-from-stream"}\n'
+        yield '{"type":"session","session_id":"session-from-stream"}\n'
         raise _IdleStreamTimeoutError(
             300.0,
             WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,

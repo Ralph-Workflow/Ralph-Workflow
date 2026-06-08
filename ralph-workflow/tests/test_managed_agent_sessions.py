@@ -260,7 +260,7 @@ def test_managed_runtime_retries_post_tool_empty_response_with_same_session(
         1,
         "Model returned an empty response with no tool calls",
         parsed_output=[
-            '{"session_id":"sess-managed"}',
+            '{"type":"session","session_id":"sess-managed"}',
             '{"type":"tool_result","tool":"read_file"}',
         ],
     )
@@ -351,4 +351,53 @@ def test_managed_runtime_preserves_supplied_session_id_on_first_attempt(
 
     assert result == ["ok"]
     assert calls == ["sess-existing"]
+    assert bridge_state["shutdown_calls"] == 1
+
+
+def test_managed_runtime_reports_observed_session_id_on_success(
+    tmp_path: Path,
+    config_with_helper_agent: UnifiedConfig,
+) -> None:
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Describe a notes app.", encoding="utf-8")
+
+    bridge, bridge_state = _make_fake_bridge()
+    observed_session_ids: list[str] = []
+
+    def fake_start_mcp_server(*args: object) -> object:
+        del args
+        return bridge
+
+    def fake_invoke_agent(
+        _agent_config: object,
+        _prompt_file_path: str,
+        _options: object,
+    ) -> Iterator[str]:
+        return iter(['{"type":"session","session_id":"sess-observed"}', "ok"])
+
+    deps = cast("Any", _session_runtime()).ManagedAgentSessionDeps(
+        start_mcp_server=fake_start_mcp_server,
+        invoke_agent=fake_invoke_agent,
+        materialize_system_prompt=lambda *args: str(tmp_path / "system.md"),
+        workspace_factory=lambda root: MemoryWorkspace(root=str(root)),
+    )
+
+    with cast("Any", _session_runtime()).ManagedAgentSessionRuntime.open(
+        config=config_with_helper_agent,
+        workspace_root=tmp_path,
+        agent_config=config_with_helper_agent.agents["prompt-helper-agent"],
+        request=cast("Any", _session_runtime()).ManagedAgentSessionRequest(
+            session_id_prefix="prompt-helper",
+            drain="standalone",
+            capabilities=frozenset({"workspace.read", "artifact.submit"}),
+            system_prompt_name="prompt-helper",
+        ),
+        deps=deps,
+    ) as runtime:
+        result = list(
+            runtime.invoke_prompt_file(prompt_file, session_id_sink=observed_session_ids.append)
+        )
+
+    assert result == ['{"type":"session","session_id":"sess-observed"}', "ok"]
+    assert observed_session_ids == ["sess-observed"]
     assert bridge_state["shutdown_calls"] == 1

@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ralph.cli.commands.prompt_helper import ReviewAction, run_prompt_helper
+from pathlib import Path
+
+from ralph.cli.commands.prompt_helper import ReviewAction, _run_single_invoke, run_prompt_helper
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -36,9 +38,10 @@ class TestRunPromptHelper:
                 prompt_file: Path,
                 *,
                 session_id: str | None = None,
+                session_id_sink: object | None = None,
                 required_artifact: object | None = None,
             ) -> Iterator[str]:
-                del prompt_file, session_id, required_artifact
+                del prompt_file, session_id, session_id_sink, required_artifact
                 return iter(())
 
         monkeypatch.setattr(
@@ -210,9 +213,10 @@ class TestRunPromptHelper:
                 prompt_file: Path,
                 *,
                 session_id: str | None = None,
+                session_id_sink: object | None = None,
                 required_artifact: object | None = None,
             ) -> Iterator[str]:
-                del required_artifact
+                del required_artifact, session_id_sink
                 runtime_calls.append((prompt_file.read_text(encoding="utf-8"), session_id))
                 return iter(())
 
@@ -231,6 +235,30 @@ class TestRunPromptHelper:
         assert len(runtime_calls) == 1
         assert "What do you want to build or define?" in runtime_calls[0][0]
         assert runtime_calls[0][1] is None
+
+    def test_run_single_invoke_returns_stream_observed_session_id(
+        self,
+    ) -> None:
+        runtime_calls: list[str | None] = []
+
+        class _FakeRuntime:
+            def invoke_prompt_file(
+                self,
+                prompt_file: Path,
+                *,
+                session_id: str | None = None,
+                session_id_sink: object | None = None,
+                required_artifact: object | None = None,
+            ) -> Iterator[str]:
+                del prompt_file, required_artifact
+                runtime_calls.append(session_id)
+                if callable(session_id_sink):
+                    session_id_sink("sess-helper")
+                return iter(["ok"])
+
+        prompt_file = Path("PROMPT.md")
+        assert _run_single_invoke(_FakeRuntime(), prompt_file) == "sess-helper"
+        assert runtime_calls == [None]
 
     def test_review_action_enum_values(self) -> None:
         """ReviewAction enum has expected values."""

@@ -23,7 +23,7 @@ from ralph.mcp.multimodal.capabilities import (
     ResolvedCapabilityProfile,
     resolve_capability_profile,
 )
-from ralph.mcp.protocol.capability_mapping import DrainClass, drain_class_for_session
+from ralph.mcp.protocol.capability_mapping import DrainClass, SessionDrain, drain_class_for_session
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.agy import load_existing_agy_upstream_servers
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
@@ -172,24 +172,16 @@ def build_session_mcp_plan(
     3. ``UNKNOWN_IDENTITY`` fallback
     """
 
-    capabilities = _base_capabilities_for_drain(drain, agents_policy)
+    capability_cls = _resolve_capability_cls(drain, agents_policy)
+    capabilities = _base_capabilities_for_resolved_class(
+        capability_cls,
+        planning_drain=drain == "planning",
+    )
     mcp_config = load_mcp_config(
         config_path=(
             (workspace_path / ".agent" / "mcp.toml") if workspace_path is not None else None
         )
     )
-
-    capability_cls = _resolve_capability_cls(drain, agents_policy)
-    is_commit = capability_cls == DrainClass.COMMIT
-
-    if mcp_config.web_search.enabled and not is_commit:
-        capabilities.add("web.search")
-    if mcp_config.web_visit.enabled and not is_commit:
-        capabilities.add("web.visit")
-    if mcp_config.web_visit.enabled and capability_cls in (DrainClass.DEVELOPMENT, DrainClass.FIX):
-        capabilities.add("web.download")
-    if mcp_config.media.enabled:
-        capabilities.add("media.read")
 
     server_env: dict[str, str] = {}
     effective_mcp = resolve_effective_session_mcp_plan(workspace_path)
@@ -218,8 +210,14 @@ def build_session_mcp_plan(
             {server.name: cached_tool_catalog[server.name] for server in upstreams},
         )
 
-    if upstreams and not is_commit:
-        capabilities.add("upstream.tool_use")
+    capabilities = _apply_config_driven_capabilities(
+        capabilities,
+        capability_cls=capability_cls,
+        mcp_config_enabled_web_search=mcp_config.web_search.enabled,
+        mcp_config_enabled_web_visit=mcp_config.web_visit.enabled,
+        mcp_config_enabled_media=mcp_config.media.enabled,
+        has_upstreams=bool(upstreams),
+    )
 
     _model_opts = model_opts or SessionModelOpts(model_flag=model_flag)
     if _model_opts.model_identity is not None:
@@ -272,14 +270,8 @@ _DEVELOPMENT_EXTRA: frozenset[str] = frozenset(
     }
 )
 
-
-def _base_capabilities_for_drain(
-    drain: str,
-    agents_policy: AgentsPolicy | None = None,
-) -> set[str]:
-    capability_cls = _resolve_capability_cls(drain, agents_policy)
-
-    base = {
+_BASE_CAPABILITIES: frozenset[str] = frozenset(
+    {
         "workspace.read",
         "git.status_read",
         "git.diff_read",
@@ -288,15 +280,78 @@ def _base_capabilities_for_drain(
         "workspace.metadata_read",
         "process.exec_bounded",
     }
+)
 
+_PROMPT_DRAIN_RUNTIME_CLASSES: dict[SessionDrain, DrainClass] = {
+    SessionDrain.PLANNING: DrainClass.PLANNING,
+    SessionDrain.DEVELOPMENT_ANALYSIS: DrainClass.ANALYSIS,
+    SessionDrain.DEVELOPMENT_COMMIT: DrainClass.COMMIT,
+    SessionDrain.ANALYSIS: DrainClass.ANALYSIS,
+    SessionDrain.REVIEW: DrainClass.REVIEW,
+    SessionDrain.REVIEW_ANALYSIS: DrainClass.ANALYSIS,
+    SessionDrain.DEVELOPMENT: DrainClass.DEVELOPMENT,
+    SessionDrain.FIX: DrainClass.FIX,
+    SessionDrain.REVIEW_COMMIT: DrainClass.COMMIT,
+    SessionDrain.COMMIT: DrainClass.COMMIT,
+}
+
+
+def _apply_config_driven_capabilities(
+    capabilities: set[str],
+    *,
+    capability_cls: DrainClass,
+    mcp_config_enabled_web_search: bool,
+    mcp_config_enabled_web_visit: bool,
+    mcp_config_enabled_media: bool,
+    has_upstreams: bool,
+) -> set[str]:
+    is_commit = capability_cls == DrainClass.COMMIT
+    if mcp_config_enabled_web_search and not is_commit:
+        capabilities.add("web.search")
+    if mcp_config_enabled_web_visit and not is_commit:
+        capabilities.add("web.visit")
+    if mcp_config_enabled_web_visit and capability_cls in (DrainClass.DEVELOPMENT, DrainClass.FIX):
+        capabilities.add("web.download")
+    if mcp_config_enabled_media:
+        capabilities.add("media.read")
+    if has_upstreams and not is_commit:
+        capabilities.add("upstream.tool_use")
+    return capabilities
+
+
+def default_prompt_capability_identifiers(drain: SessionDrain) -> frozenset[str]:
+    """Return prompt-visible default capabilities from the runtime plan rules."""
+    capability_cls = _PROMPT_DRAIN_RUNTIME_CLASSES[drain]
+    mcp_config = load_mcp_config(config_path=None)
+    capabilities = _base_capabilities_for_resolved_class(
+        capability_cls,
+        planning_drain=drain == SessionDrain.PLANNING,
+    )
+    return frozenset(
+        _apply_config_driven_capabilities(
+            capabilities,
+            capability_cls=capability_cls,
+            mcp_config_enabled_web_search=mcp_config.web_search.enabled,
+            mcp_config_enabled_web_visit=mcp_config.web_visit.enabled,
+            mcp_config_enabled_media=mcp_config.media.enabled,
+            has_upstreams=False,
+        )
+    )
+
+
+def _base_capabilities_for_resolved_class(
+    capability_cls: DrainClass,
+    *,
+    planning_drain: bool,
+) -> set[str]:
     cls_value = capability_cls.value
     extras: set[str] = set(_CAPABILITY_PRESETS.get(cls_value, frozenset()))
-    if drain == "planning":
+    if planning_drain:
         extras.add("artifact.plan_write")
     if cls_value in _CAPABILITY_PRESETS:
-        return base | extras
+        return set(_BASE_CAPABILITIES | extras)
     # development and fix classes: full write surface
-    return base | _DEVELOPMENT_EXTRA | extras
+    return set(_BASE_CAPABILITIES | _DEVELOPMENT_EXTRA | extras)
 
 
 __all__ = [
@@ -304,6 +359,7 @@ __all__ = [
     "SessionMcpPlan",
     "SessionModelOpts",
     "build_session_mcp_plan",
+    "default_prompt_capability_identifiers",
     "effective_session_mcp_plan_from_servers",
     "resolve_effective_session_mcp_plan",
     "resolve_model_identity",

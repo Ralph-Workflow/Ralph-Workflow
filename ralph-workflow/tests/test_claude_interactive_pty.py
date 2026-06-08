@@ -89,7 +89,7 @@ def test_invoke_agent_routes_claude_interactive_through_pty_runtime(
 
     def fake_run_pty_and_read_lines(*args: object, **kwargs: object) -> Iterator[str]:
         del args, kwargs
-        yield '{"session_id":"pty-session-1"}\n'
+        yield '{"type":"session","session_id":"pty-session-1"}\n'
         yield "Task declared complete: session_id=pty-session-1, summary=done, timestamp=1\n"
 
     monkeypatch.setattr(invoke_module, "get_process_manager", lambda: manager)
@@ -110,6 +110,6 @@ def test_invoke_agent_routes_claude_interactive_through_pty_runtime(
     assert manager.spawn_called is False
     assert manager.spawn_pty_called is False
     assert lines == [
-        '{"session_id":"pty-session-1"}\n',
+        '{"type":"session","session_id":"pty-session-1"}\n',
         "Task declared complete: session_id=pty-session-1, summary=done, timestamp=1\n",
     ]

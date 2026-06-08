@@ -35,6 +35,7 @@ from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.onboarding import CODEBERG_STAR_CTA
 from ralph.phases import handle_phase, register_role_handlers
 from ralph.pipeline import checkpoint as ckpt
+from ralph.pipeline import progress
 from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt as _handle_keyboard_interrupt
 from ralph.pipeline._runner_mcp_validation import (
     default_probe_agent_transports as _default_probe_agent_transports,
@@ -718,9 +719,11 @@ def _handle_inline_effect(
                     err=exc,
                 )
                 current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
-                recovered_state = state.copy_with(
-                    phase=pipeline_policy.entry_phase,
-                    previous_phase=state.phase,
+                recovered_state = progress.advance_phase(
+                    state,
+                    pipeline_policy.entry_phase,
+                    policy=pipeline_policy,
+                ).copy_with(
                     last_error=str(exc),
                     recovery_epoch=current_epoch + 1,
                 )
@@ -754,9 +757,11 @@ def _handle_inline_effect(
             status_text("Recovery triggered", effect.reason, "yellow"),
         )
         current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
-        recovered_state = state.copy_with(
-            phase=pipeline_policy.recovery.failed_route,
-            previous_phase=state.phase,
+        recovered_state = progress.advance_phase(
+            state,
+            pipeline_policy.recovery.failed_route,
+            policy=pipeline_policy,
+        ).copy_with(
             last_error=effect.reason,
             recovery_epoch=current_epoch + 1,
         )

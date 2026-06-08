@@ -716,6 +716,7 @@ class TestPipelineRunnerLoop:
     ) -> None:
         state = MagicMock()
         state.phase = "planning"
+        state.copy_with.return_value = state
 
         effects = [
             InvokeAgentEffect(
@@ -793,7 +794,6 @@ class TestPipelineRunnerLoop:
         assert result == 0
         reducer.assert_called_once()
         args, kwargs = reducer.call_args
-        assert args[0] is state
         assert args[1] == PipelineEvent.AGENT_SUCCESS
         assert args[2] == policy_bundle.pipeline
         assert kwargs.get("recovery") is not None

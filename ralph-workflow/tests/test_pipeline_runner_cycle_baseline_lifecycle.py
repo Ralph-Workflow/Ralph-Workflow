@@ -435,7 +435,6 @@ class TestCycleBaselineLifecycle:
         state = MagicMock()
         state.phase = "development_commit"
         state.copy_with = MagicMock(return_value=state)
-        state.session_preserve_retry_pending = False
 
         monkeypatch.setattr(runner_module, "determine_effect_from_policy", _fake_determine_effect)
         monkeypatch.setattr(

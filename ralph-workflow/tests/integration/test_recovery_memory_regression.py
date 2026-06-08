@@ -80,7 +80,6 @@ def _resume_next_cycle(state: PipelineState) -> PipelineState:
         previous_phase=None,
         last_error=None,
         last_agent_session_id=None,
-        session_preserve_retry_pending=False,
         phase_chains={
             "development": AgentChainState(
                 agents=["claude", "opencode"],

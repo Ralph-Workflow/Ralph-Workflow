@@ -63,7 +63,14 @@ def _make_bridge(*, max_restarts: int) -> RestartAwareMcpBridge:
     )
 
 
-def test_tool_registry_reset_cap_substring_is_present() -> None:
+def test_tool_registry_reset_cap_substring_is_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_http_tools_list_names",
+        lambda endpoint, *, timeout: ["read_file", "mcp__ralph__read_file"],
+    )
     bridge = _make_bridge(max_restarts=1000)
     for _ in range(lifecycle_module._TOOL_REGISTRY_MAX_RESETS):
         bridge.reset_tool_registry()
@@ -100,10 +107,15 @@ def test_restart_budget_cap_substrings_are_present() -> None:
     assert "recovery-attempt exhausted" not in msg
 
 
-def test_three_caps_have_distinct_substrings() -> None:
+def test_three_caps_have_distinct_substrings(monkeypatch: pytest.MonkeyPatch) -> None:
     """The three caps must produce three distinguishable substrings
     that do not overlap. This is the contract the orchestrator uses
     to decide which bound fired."""
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_http_tools_list_names",
+        lambda endpoint, *, timeout: ["read_file", "mcp__ralph__read_file"],
+    )
     # 1. tool-registry-reset
     bridge = _make_bridge(max_restarts=1000)
     for _ in range(lifecycle_module._TOOL_REGISTRY_MAX_RESETS):

@@ -5,8 +5,7 @@ These tests pin:
 - ``resolve_session_resume_flag`` is the ONLY place that knows Claude
   Code's ``--resume`` vs ``--session-id`` flag semantics.
 - A simulated live 'retry after timeout' feeds
-  ``state.last_agent_session_id='sid-1'`` and
-  ``state.last_agent_failure_reason='AgentInactivityTimeoutError'`` and
+  a canonical retry intent with ``session_id='sid-1'`` and
   the helper returns ``['--resume', 'sid-1']`` (NOT
   ``['--session-id', 'sid-1']``).
 - The recovery action mapping routes known failure reasons to the
@@ -115,7 +114,7 @@ def test_resolve_rejects_prior_session_id_mismatch() -> None:
     [
         ("AgentInactivityTimeoutError", True, "resume"),
         ("OpenCodeResumableExitError", True, "resume"),
-        ("NoConversationFoundError", True, "new_session_with_id"),
+        ("No conversation found with session ID: abc", True, "fresh"),
         ("RandomOtherError", True, "fresh"),
         ("AgentInactivityTimeoutError", False, "fresh"),
         ("NoConversationFoundError", False, "fresh"),

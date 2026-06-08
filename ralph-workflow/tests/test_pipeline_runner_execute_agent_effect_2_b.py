@@ -329,7 +329,7 @@ class TestExecuteAgentEffectB:
             if len(seen_session_ids) == 1:
 
                 def _first_attempt() -> object:
-                    yield '{"session_id":"claude-session-42"}'
+                    yield '{"type":"session","session_id":"claude-session-42"}'
                     raise AgentInvocationError("claude", 1, "connection refused")
 
                 return _first_attempt()

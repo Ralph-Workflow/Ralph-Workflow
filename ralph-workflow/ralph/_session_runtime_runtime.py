@@ -134,6 +134,7 @@ class ManagedAgentSessionRuntime:
         prompt_file: str | Path,
         *,
         session_id: str | None = None,
+        session_id_sink: Callable[[str], None] | None = None,
         required_artifact: RequiredArtifact | None = None,
         waiting_listener: WaitingStatusListener | None = None,
         permission_prompt_listener: Callable[[str], None] | None = None,
@@ -184,6 +185,7 @@ class ManagedAgentSessionRuntime:
             _invoke_with_retry_session,
             max_retries=max_retries,
             reset_tool_registry=reset_tool_registry,
+            on_session_observed=session_id_sink,
             on_retry_failure=lambda lines: logger.warning(
                 "Retrying managed agent session after retryable failure: {}",
                 summarize_retry_failure_evidence(lines),

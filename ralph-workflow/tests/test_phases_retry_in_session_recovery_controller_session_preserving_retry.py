@@ -66,7 +66,8 @@ class TestRecoveryControllerSessionPreservingRetry:
             FailureContext(phase="development_analysis", agent="claude", retry_in_session=True),
         )
 
-        assert new_state.session_preserve_retry_pending is True
+        assert new_state.agent_retry_intent.action == "resume"
+        assert new_state.agent_retry_intent.session_id == "sess-abc123"
 
     def test_retry_in_session_no_effect_when_session_id_absent(self) -> None:
         controller = self._make_controller()
@@ -78,7 +79,7 @@ class TestRecoveryControllerSessionPreservingRetry:
             FailureContext(phase="development_analysis", agent="claude", retry_in_session=True),
         )
 
-        assert new_state.session_preserve_retry_pending is False
+        assert new_state.agent_retry_intent.action is None
 
     def test_retry_in_session_false_never_sets_pending_flag(self) -> None:
         controller = self._make_controller()
@@ -90,4 +91,4 @@ class TestRecoveryControllerSessionPreservingRetry:
             FailureContext(phase="development_analysis", agent="claude", retry_in_session=False),
         )
 
-        assert new_state.session_preserve_retry_pending is False
+        assert new_state.agent_retry_intent.action is None

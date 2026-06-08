@@ -25,6 +25,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.state import CommitState, PipelineState
 from ralph.policy.models import (
@@ -115,7 +116,7 @@ def advance_phase(
         "phase": target_phase,
         "previous_phase": state.phase,
         "last_agent_session_id": None,
-        "session_preserve_retry_pending": False,
+        "agent_retry_intent": cleared_agent_retry_intent(),
     }
 
     phase_def = policy.phases.get(target_phase)

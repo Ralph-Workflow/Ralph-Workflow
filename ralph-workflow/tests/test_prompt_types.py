@@ -10,7 +10,6 @@ from ralph.prompts.types import (
     PROCESS_EXEC_TOOLS,
     PROGRESS_TOOLS,
     TRACKED_WRITE_TOOLS,
-    WORKSPACE_READ_TOOLS,
     Capability,
     CapabilitySet,
     PolicyFlag,
@@ -34,16 +33,15 @@ def test_capability_set_defaults_cover_each_drain() -> None:
     assert set(planning) == {
         Capability.WORKSPACE_READ,
         Capability.WORKSPACE_METADATA_READ,
-        Capability.WORKSPACE_WRITE_EPHEMERAL,
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
         Capability.ARTIFACT_PLAN_READ,
         Capability.ARTIFACT_PLAN_WRITE,
         Capability.PROCESS_EXEC_BOUNDED,
+        Capability.MEDIA_READ,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
     }
     assert set(development) == {
         Capability.WORKSPACE_READ,
@@ -60,14 +58,15 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.ARTIFACT_PLAN_READ,
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
+        Capability.MEDIA_READ,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
         Capability.WEB_DOWNLOAD,
-        Capability.UPSTREAM_TOOL_USE,
     }
     assert set(fix) == {
         Capability.WORKSPACE_READ,
         Capability.WORKSPACE_METADATA_READ,
+        Capability.WORKSPACE_WRITE_EPHEMERAL,
         Capability.WORKSPACE_WRITE_TRACKED,
         Capability.WORKSPACE_EDIT,
         Capability.WORKSPACE_DELETE,
@@ -79,20 +78,22 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.ARTIFACT_PLAN_READ,
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
+        Capability.MEDIA_READ,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
         Capability.WEB_DOWNLOAD,
-        Capability.UPSTREAM_TOOL_USE,
     }
     assert set(commit) == {
         Capability.WORKSPACE_READ,
         Capability.WORKSPACE_METADATA_READ,
+        Capability.WORKSPACE_WRITE_EPHEMERAL,
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
         Capability.ARTIFACT_PLAN_READ,
         Capability.PROCESS_EXEC_BOUNDED,
         Capability.RUN_REPORT_PROGRESS,
+        Capability.MEDIA_READ,
     }
 
 
@@ -131,8 +132,15 @@ def test_visible_mcp_tool_names_respects_enabled_capabilities() -> None:
         ]
     )
 
-    assert visible_mcp_tool_names(capabilities) == [
-        *WORKSPACE_READ_TOOLS,
+    assert set(visible_mcp_tool_names(capabilities)) == {
+        "read_file",
+        "list_directory",
+        "list_directory_recursive",
+        "directory_tree",
+        "search_files",
+        "read_multiple_files",
+        "list_allowed_roots",
+        "grep_files",
         *GIT_STATUS_READ_TOOLS,
         *GIT_DIFF_READ_TOOLS,
         *TRACKED_WRITE_TOOLS,
@@ -141,7 +149,7 @@ def test_visible_mcp_tool_names_respects_enabled_capabilities() -> None:
         *PLAN_DRAFT_WRITE_TOOLS,
         *PROGRESS_TOOLS,
         *ENV_READ_TOOLS,
-    ]
+    }
 
 
 def test_capability_template_variables_include_enabled_tools_and_flags() -> None:
@@ -209,7 +217,16 @@ def test_capability_template_variables_leave_disabled_tool_names_empty() -> None
 
     variables = capability_template_variables(capabilities, policy_flags)
 
-    assert variables["MCP_TOOLS_LIST"] == format_mcp_tools_list(list(WORKSPACE_READ_TOOLS))
+    assert set(variables["MCP_TOOLS_LIST"].split(", ")) == {
+        "read_file",
+        "list_directory",
+        "list_directory_recursive",
+        "directory_tree",
+        "search_files",
+        "read_multiple_files",
+        "list_allowed_roots",
+        "grep_files",
+    }
     assert variables["WRITE_FILE_TOOL_NAME"] == ""
     assert variables["EXEC_TOOL_NAME"] == ""
     assert variables["GIT_DIFF_TOOL_NAME"] == ""

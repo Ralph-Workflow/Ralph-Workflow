@@ -33,7 +33,7 @@ def test_direct_mcp_recovery_ignores_nested_tool_payload_session_ids() -> None:
             reset_tool_registry=lambda: None,
         )
 
-    assert calls == [None]
+    assert calls == [None, None]
 
 
 def test_session_extractors_accept_completion_marker_session_id() -> None:
@@ -49,6 +49,12 @@ def test_transport_session_extractor_ignores_generic_plain_text_session_assignme
     assert extract_transport_session_id((line,)) is None
 
 
+def test_transport_session_extractor_ignores_top_level_tool_payload_session_id() -> None:
+    line = '{"type":"tool_result","session_id":"tool-payload"}'
+
+    assert extract_transport_session_id((line,)) is None
+
+
 def test_iter_direct_mcp_recovery_preserves_early_session_id_across_long_output() -> None:
     calls: list[str | None] = []
 
@@ -57,7 +63,7 @@ def test_iter_direct_mcp_recovery_preserves_early_session_id_across_long_output(
     ) -> list[str]:
         calls.append(session_id)
         if len(calls) == 1:
-            lines = ['{"session_id":"sess-early"}']
+            lines = ['{"type":"session","session_id":"sess-early"}']
             lines.extend(f"line-{index}" for index in range(500))
 
             def _iter() -> object:
@@ -82,3 +88,43 @@ def test_iter_direct_mcp_recovery_preserves_early_session_id_across_long_output(
 
     assert result[-1] == "recovered"
     assert calls == [None, "sess-early"]
+
+
+def test_direct_mcp_recovery_retries_stale_session_with_fresh_attempt() -> None:
+    calls: list[str | None] = []
+
+    def _run_attempt(session_id: str | None, capture: callable) -> str:
+        calls.append(session_id)
+        if len(calls) == 1:
+            capture("sess-stale")
+            raise AgentInvocationError(
+                "claude",
+                1,
+                "No conversation found with session ID: sess-stale",
+            )
+        return "fresh-retry"
+
+    result = run_with_direct_mcp_recovery(
+        _run_attempt,
+        max_retries=1,
+        reset_tool_registry=lambda: None,
+    )
+
+    assert result == "fresh-retry"
+    assert calls == [None, None]
+
+
+def test_iter_direct_mcp_recovery_reports_observed_session_ids() -> None:
+    observed_session_ids: list[str] = []
+
+    result = list(
+        iter_with_direct_mcp_recovery(
+            lambda _session_id: ['{"type":"session","session_id":"sess-stream"}', "ok"],
+            max_retries=0,
+            reset_tool_registry=lambda: None,
+            on_session_observed=observed_session_ids.append,
+        )
+    )
+
+    assert result == ['{"type":"session","session_id":"sess-stream"}', "ok"]
+    assert observed_session_ids == ["sess-stream"]

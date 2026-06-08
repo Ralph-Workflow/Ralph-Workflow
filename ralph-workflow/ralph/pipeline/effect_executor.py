@@ -18,10 +18,7 @@ from ralph.agents.invoke import (
     build_invoke_options_from_config,
     extract_transport_session_id,
 )
-from ralph.agents.invoke._session_resume import (
-    recovery_action_for_failure_reason,
-    resolve_session_resume_flag,
-)
+from ralph.agents.invoke._session_resume import resolve_session_resume_flag
 from ralph.config.enums import AgentTransport, Verbosity
 from ralph.config.mcp_loader import McpConfigError
 from ralph.git.operations import stage_files
@@ -43,6 +40,11 @@ from ralph.pipeline._agent_invocation_ctx import _AgentInvocationCtx
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
 from ralph.pipeline.agent_recovery_plan import AgentRecoveryPlan
+from ralph.pipeline.agent_retry_intent import (
+    AgentRetryIntent,
+    agent_retry_intent_for_failure,
+    cleared_agent_retry_intent,
+)
 from ralph.pipeline.commit_executor import clear_phase_output_artifacts
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.legacy_console_display import (
@@ -53,6 +55,7 @@ from ralph.pipeline.legacy_console_display import (
     subscriber_for_display,
 )
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, verbosity_rank
+from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.process.mcp_supervisor import McpSupervisor
@@ -216,22 +219,15 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
     # session for the resume path. Now ALL resume-vs-create decisions go
     # through this helper.
     resume_session_id: str | None = None
-    if (
-        ctx.state is not None
-        and ctx.state.session_preserve_retry_pending
-        and ctx.state.last_agent_failure_reason
-        and ctx.state.last_agent_session_id
-    ):
-        action = recovery_action_for_failure_reason(
-            ctx.state.last_agent_failure_reason,
-            has_prior_session=True,
-            reset_tool_registry=ctx.state.last_agent_reset_tool_registry,
-        )
-        if action != "fresh":
+    if ctx.state is not None:
+        retry_intent = ctx.state.agent_retry_intent
+        action = retry_intent.action
+        prior_session_id = retry_intent.session_id
+        if action is not None and action != "fresh":
             _extra, sid = resolve_session_resume_flag(
                 ctx.agent_config.transport or AgentTransport.GENERIC,
-                has_prior_session=True,
-                prior_session_id=ctx.state.last_agent_session_id,
+                has_prior_session=bool(prior_session_id),
+                prior_session_id=prior_session_id,
                 recovery_action=action,
             )
             resume_session_id = sid
@@ -347,21 +343,17 @@ def _run_attempt(
         # the next attempt starts fresh. The single-source-of-truth
         # resume helper reads this field to decide between "resume" and
         # "fresh".
-        _set_last_captured_failure_reason("")
-        _set_last_captured_reset_tool_registry(False)
+        _set_last_captured_retry_intent(cleared_agent_retry_intent())
         return _AttemptResult(PipelineEvent.AGENT_SUCCESS, attempt_prompt_file, resume_session_id)
     except McpServerError as exc:
         logger.error(
             "MCP server failed permanently after {} restart(s): {}", exc.restart_count, exc
         )
-        _set_last_captured_failure_reason("McpServerError")
-        _set_last_captured_reset_tool_registry(False)
+        _set_last_captured_retry_intent(
+            AgentRetryIntent(action="fresh", failure_reason="McpServerError")
+        )
         return _AttemptResult(PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id)
     except ctx.deps.agent_invocation_error as exc:
-        # Capture the class name as the failure reason. The single-source-
-        # of-truth resume helper reads this to decide the recovery
-        # action.
-        _set_last_captured_failure_reason(exc.__class__.__name__)
         # Run the failure classifier to detect tool-availability
         # failures (the post-tool-result wedge). The classifier returns
         # a ClassifiedFailure with reset_tool_registry=True when the
@@ -375,7 +367,6 @@ def _run_attempt(
             phase=str(ctx.effect.phase),
             agent=ctx.effect.agent_name,
         )
-        _set_last_captured_reset_tool_registry(classified.reset_tool_registry)
         recovery_plan = build_agent_recovery_plan(
             AgentRecoveryInput(
                 exc=exc,
@@ -389,6 +380,13 @@ def _run_attempt(
                     extracted_session_id or extract_transport_session_id(tuple(raw_output))
                 ),
                 inactivity_error_type=AgentInactivityTimeoutError,
+            )
+        )
+        _set_last_captured_retry_intent(
+            agent_retry_intent_for_failure(
+                failure_reason=str(exc),
+                session_id=recovery_plan.session_id if recovery_plan is not None else None,
+                reset_tool_registry=classified.reset_tool_registry,
             )
         )
         if recovery_plan is None:
@@ -414,8 +412,7 @@ def _run_attempt(
         )
     except Exception:
         logger.exception("Unexpected error during agent invocation: {}")
-        _set_last_captured_failure_reason("")
-        _set_last_captured_reset_tool_registry(False)
+        _set_last_captured_retry_intent(cleared_agent_retry_intent())
         return _AttemptResult(PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id)
 
 
@@ -532,7 +529,7 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     """Determine whether and how to retry a failed agent invocation."""
     if recovery_input.attempt_index >= recovery_input.max_recovery_attempts:
         return None
-    reason = _retryable_agent_failure_reason(
+    reason = retryable_agent_failure_reason(
         recovery_input.exc, recovery_input.inactivity_error_type
     )
     if reason is None:
@@ -754,71 +751,23 @@ recovery_context_lines = _recovery_context_lines
 retry_prompt_file_for_context = _retry_prompt_file_for_context
 
 
-# Module-level helpers to capture the most recent agent failure reason
-# for the single-source-of-truth session-resume helper. State mutation
-# is performed at the runner level (where PipelineState is constructed),
-# so we use a thread-local similar to the existing
-# `_set_last_captured_session_id` pattern in `_runner_session.py`.
-
-_failure_reason_local: _threading.local = _threading.local()
+_retry_intent_local: _threading.local = _threading.local()
 
 
-def _set_last_captured_failure_reason(reason: str) -> None:
-    _failure_reason_local.reason = reason
+def _set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
+    _retry_intent_local.intent = intent
 
 
-def pop_last_captured_failure_reason() -> str:
-    """Return and clear the most recent agent-side failure reason.
+def pop_last_captured_retry_intent() -> AgentRetryIntent:
+    """Return and clear the most recent canonical next-attempt retry intent."""
 
-    Set by ``_set_last_captured_failure_reason`` (called by
-    ``_run_attempt``) and consumed by the runner when it applies the
-    captured state to ``PipelineState`` via ``copy_with``. The
-    thread-local storage matches the pattern used by
-    ``_set_last_captured_session_id`` in ``_runner_session.py``.
-
-    Returns:
-        The last recorded failure reason (the exception class name),
-        or the empty string if no failure was recorded. The
-        thread-local is cleared on read so a subsequent call returns
-        the empty string unless a new failure was recorded in between.
-    """
-    reason: str = getattr(_failure_reason_local, "reason", "")
-    _failure_reason_local.reason = ""
-    return reason
-
-
-_reset_tool_registry_local: _threading.local = _threading.local()
-
-
-def _set_last_captured_reset_tool_registry(value: bool) -> None:
-    _reset_tool_registry_local.value = value
-
-
-def pop_last_captured_reset_tool_registry() -> bool:
-    """Return and clear the most recent agent-side reset_tool_registry flag.
-
-    Set by ``_set_last_captured_reset_tool_registry`` (called by
-    ``_run_attempt``) and consumed by the runner when it applies the
-    captured state to ``PipelineState`` via ``copy_with``. When
-    True, the next attempt's resume-vs-create decision honors the
-    tool-availability recovery path: a session-resume is issued
-    instead of a fresh session.
-
-    Returns:
-        The last recorded reset_tool_registry flag (a bool), or False
-        if none was recorded. The thread-local is cleared on read so
-        a subsequent call returns False unless a new value was
-        recorded in between.
-    """
-    raw: object = getattr(_reset_tool_registry_local, "value", False)
-    is_bool = isinstance(raw, bool)
-    value: bool = bool(raw) if is_bool else False
-    _reset_tool_registry_local.value = False
-    return value
+    raw: object = getattr(_retry_intent_local, "intent", cleared_agent_retry_intent())
+    intent = raw if isinstance(raw, AgentRetryIntent) else cleared_agent_retry_intent()
+    _retry_intent_local.intent = cleared_agent_retry_intent()
+    return intent
 
 
 __all__ = [
-    "pop_last_captured_failure_reason",
-    "pop_last_captured_reset_tool_registry",
+    "pop_last_captured_retry_intent",
     "stage_files",
 ]

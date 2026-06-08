@@ -22,6 +22,7 @@ if TYPE_CHECKING:
             prompt_file: str | Path,
             *,
             session_id: str | None = None,
+            session_id_sink: Callable[[str], None] | None = None,
             required_artifact: RequiredArtifact | None = None,
             waiting_listener: Callable[[WaitingStatusEvent], None] | None = None,
             permission_prompt_listener: Callable[[str], None] | None = None,
@@ -193,12 +194,22 @@ def _run_single_invoke(
     session_id: str | None = None,
 ) -> str | None:
     """Run a single agent turn and preserve resumable sessions for host-owned loops."""
+    observed_session_id = session_id
+
+    def _capture_session_id(captured_session_id: str) -> None:
+        nonlocal observed_session_id
+        observed_session_id = captured_session_id
+
     try:
-        for line in runtime.invoke_prompt_file(prompt_file, session_id=session_id):
+        for line in runtime.invoke_prompt_file(
+            prompt_file,
+            session_id=session_id,
+            session_id_sink=_capture_session_id,
+        ):
             _display_agent_line(line)
     except OpenCodeResumableExitError as exc:
-        return exc.resumable_session_id
-    return None
+        return exc.resumable_session_id or observed_session_id
+    return observed_session_id
 
 
 def _write_prompt_file(workspace_root: Path, prompt_content: str) -> Path:

@@ -232,7 +232,7 @@ def test_commit_invocation_requires_commit_message_artifact(tmp_path: Path) -> N
 
 def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() -> None:
     display_context = make_display_context()
-    session_line = '{"session_id":"sess-early"}'
+    session_line = '{"type":"session","session_id":"sess-early"}'
     filler = ["x" * 8192 for _ in range(_OUTPUT_BATCH)]
 
     parsed_output, raw_output, resume_session_id = collect_commit_agent_output(
@@ -345,7 +345,7 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
         1,
         "Model returned an empty response with no tool calls",
         parsed_output=[
-            '{"session_id":"sess-post-tool"}',
+            '{"type":"session","session_id":"sess-post-tool"}',
             '{"type":"tool_result","tool":"read_file"}',
         ],
     )
@@ -412,7 +412,7 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
         1,
         "Model returned an empty response with no tool calls",
         parsed_output=[
-            '{"session_id":"sess-post-tool"}',
+            '{"type":"session","session_id":"sess-post-tool"}',
             '{"type":"tool_result","tool":"read_file"}',
         ],
     )
@@ -486,7 +486,7 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
         calls.append(getattr(options, "session_id", None))
         if len(calls) == 1:
             def _failing_iter() -> object:
-                yield '{"session_id":"sess-midstream"}'
+                yield '{"type":"session","session_id":"sess-midstream"}'
                 yield '{"type":"tool_result","tool":"read_file"}'
                 raise AgentInvocationError(
                     "claude",
