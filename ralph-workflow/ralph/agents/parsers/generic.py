@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Final, cast
 
+from ralph.display.vt_normalizer import normalize_vt_text
+
 from .agent_output_line import AgentOutputLine
 from .text_accumulator import TextAccumulator
 
@@ -86,7 +88,16 @@ class GenericParser:
         Yields:
             Normalized AgentOutputLine instances.
         """
-        for line in lines:
+        for raw_line in lines:
+            # Strip ANSI/VT decorations BEFORE classification. Nanocoder (a TUI)
+            # piped without a PTY emits colour codes around its output, e.g.
+            # ``\x1b[36m[plain] tool: mcp__ralph__list_directory\x1b[0m``. Without
+            # normalization the strict ``startswith("[plain] tool:")`` check below
+            # fails and tool calls are misclassified as raw content — so MCP tool
+            # activity never renders live, even though the failure classifier
+            # (substring match) still detects it. Normalizing here keeps both in
+            # agreement.
+            line = normalize_vt_text(raw_line)
             stripped = line.strip()
             if not stripped:
                 continue

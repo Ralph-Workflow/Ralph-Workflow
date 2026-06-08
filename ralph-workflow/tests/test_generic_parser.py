@@ -107,3 +107,24 @@ def test_thought_alongside_lifecycle_suppressed_type() -> None:
     line = json.dumps({"type": "thinking", "thought": "hidden"})
     results = list(parser.parse(iter([line])))
     assert results == [], f"Lifecycle type must suppress entire event, got: {results}"
+
+
+def test_plain_tool_line_emits_tool_use() -> None:
+    """A clean '[plain] tool: NAME' line emits a tool_use with the tool name."""
+    parser = GenericParser()
+    results = list(parser.parse(iter(["[plain] tool: mcp__ralph__list_directory"])))
+    tool_uses = [r for r in results if r.type == "tool_use"]
+    assert len(tool_uses) == 1, f"Expected 1 tool_use, got: {results}"
+    assert tool_uses[0].content == "mcp__ralph__list_directory"
+
+
+def test_ansi_decorated_tool_line_still_emits_tool_use() -> None:
+    """A '[plain] tool: NAME' line wrapped in ANSI color codes (nanocoder TUI
+    output piped without a PTY) must still be detected as a tool_use, so MCP tool
+    calls render live instead of being misclassified as raw content."""
+    parser = GenericParser()
+    ansi_line = "\x1b[36m[plain] tool: mcp__ralph__list_directory\x1b[0m"
+    results = list(parser.parse(iter([ansi_line])))
+    tool_uses = [r for r in results if r.type == "tool_use"]
+    assert len(tool_uses) == 1, f"Expected 1 tool_use, got: {results}"
+    assert tool_uses[0].content == "mcp__ralph__list_directory"

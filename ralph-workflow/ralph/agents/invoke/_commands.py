@@ -323,7 +323,13 @@ def _build_nanocoder_command(
     options: _BuildCommandOptions,
 ) -> list[str]:
     prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
-    cmd = [_agent_command_name(config), "--mode", "auto-accept", "run"]
+    # ``yolo`` mode (not ``auto-accept``): Ralph's MCP/tool allowlist and the
+    # workspace boundary are the permission control layer, mirroring claude's
+    # --dangerously-skip-permissions. ``auto-accept`` only auto-approves the
+    # Ralph MCP tools advertised in the server's alwaysAllow list; nanocoder's
+    # native tools (e.g. ``execute_bash``) still block on approval and wedge the
+    # agent ("Tool approval required for: execute_bash").
+    cmd = [_agent_command_name(config), "--mode", "yolo", "run"]
 
     effective_model = options.model_flag or config.model_flag
     if effective_model:

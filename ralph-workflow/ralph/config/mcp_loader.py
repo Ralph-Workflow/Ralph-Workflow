@@ -65,9 +65,9 @@ def local_mcp_config_path(workspace_scope: WorkspaceScope) -> Path:
 
 def _load_mcp_toml(path: Path) -> dict[str, object]:
     if not path.exists():
-        logger.debug("MCP config not found, skipping: {}", path)
+        logger.trace("MCP config not found, skipping: {}", path)
         return {}
-    logger.debug("Loading MCP config from {}", path)
+    logger.trace("Loading MCP config from {}", path)
     with path.open("rb") as fh:
         try:
             data: dict[str, object] = tomllib.load(fh)
@@ -138,7 +138,7 @@ def load_mcp_config(
         logger.error(message)
         raise McpConfigError(message) from exc
 
-    logger.debug(
+    logger.trace(
         "MCP config loaded: {} server(s), web_search.enabled={}",
         len(config.mcp_servers),
         config.web_search.enabled,
