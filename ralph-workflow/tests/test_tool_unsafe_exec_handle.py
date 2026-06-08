@@ -50,6 +50,42 @@ def _mock_subprocess(
     monkeypatch.setattr("ralph.mcp.tools.unsafe_exec.subprocess", fake_module)
 
 
+def _mock_subprocess_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise_timeout(*_a: object, **_kw: object) -> object:
+        raise subprocess.TimeoutExpired(cmd="x", timeout=1.0)
+
+    fake_module = types.SimpleNamespace(
+        run=_raise_timeout,
+        TimeoutExpired=subprocess.TimeoutExpired,
+    )
+    monkeypatch.setattr("ralph.mcp.tools.unsafe_exec.subprocess", fake_module)
+
+
+class TestUnsafeExecTimeout:
+    """A timeout must become an actionable, non-retryable is_error result — not a
+    propagated exception that the bridge turns into a retryable -32603 protocol
+    error (the 5-hour retry-storm pathology). The message must teach BOTH meanings
+    of a timeout, matching what the tool description promises the agent."""
+
+    def test_timeout_returns_actionable_is_error_result_not_exception(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+        workspace = MockWorkspaceRoot(tmp_path)
+        _mock_subprocess_timeout(monkeypatch)
+
+        result = handle_unsafe_exec(session, workspace, {"command": "sleep 999"})
+
+        assert result.is_error is True
+        content = result.content[0]
+        assert isinstance(content, ToolContent)
+        text = content.text.lower()
+        assert "timed out" in text
+        assert "timeout_ms" in text
+        # The second interpretation (command may be genuinely stuck) must be present.
+        assert any(word in text for word in ("loop", "stuck", "hang", "deadlock"))
+
+
 class TestUnsafeExecCapabilityGate:
     def test_requires_process_exec_unbounded_capability(self, tmp_path: Path) -> None:
         session = MockSession(set())

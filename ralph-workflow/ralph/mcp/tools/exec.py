@@ -30,6 +30,7 @@ from ralph.process.manager import SpawnOptions, get_process_manager
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
+from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -38,11 +39,13 @@ if TYPE_CHECKING:
     from ralph.process.manager._process_manager_types import _PsutilModuleLike, _PsutilProcessLike
 
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
-# Default per-call exec timeout. Set above the 60s combined verify budget so an
-# agent running `make verify`/`make test` (or a slow git op) through exec does not
-# time out on every call. Per-call `timeout_ms` overrides this; the process tree
-# is still killed on expiry, so the server stays bounded.
-DEFAULT_TIMEOUT_MS = 90_000
+# Default per-call exec timeout. Single source of truth lives in
+# ``ralph.timeout_defaults`` so the advertised tool-schema default (see
+# ``_specs_git_exec``) cannot drift from the handler's actual behavior. Set above
+# the 60s combined verify budget so an agent running `make verify`/`make test`
+# (or a slow git op) through exec does not time out on every call. Per-call
+# `timeout_ms` overrides this; the process tree is still killed on expiry.
+DEFAULT_TIMEOUT_MS = EXEC_DEFAULT_TIMEOUT_MS
 _MAX_OUTPUT_BYTES = 1 * 1024 * 1024
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
 _KILL_SIGNAL_ARG_COUNT = 2

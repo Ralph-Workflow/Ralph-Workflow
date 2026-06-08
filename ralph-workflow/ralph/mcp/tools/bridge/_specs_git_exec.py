@@ -13,6 +13,34 @@ from ralph.mcp.tools.names import (
     RAW_EXEC_TOOL,
     UNSAFE_EXEC_TOOL,
 )
+from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS
+
+# A timeout is ambiguous, so the hint must teach both readings up front: a
+# legitimately long command should raise ``timeout_ms``, but an unexpectedly slow
+# one may be genuinely stuck (infinite loop, deadlock, or blocked on input), in
+# which case raising the limit only wastes another full budget — fix the command
+# instead. Shared by the exec family so the guidance cannot drift between them.
+_TIMEOUT_SEMANTICS = (
+    f"Default timeout_ms is {EXEC_DEFAULT_TIMEOUT_MS} (above the verify budget). "
+    "On a timeout the process tree is killed and you get an is_error result, not a "
+    "retryable protocol error: decide WHY it timed out before retrying. If the "
+    "command is genuinely long-running, raise timeout_ms; if it is unexpectedly "
+    "slow it may be stuck in an infinite loop, deadlocked, or blocked waiting on "
+    "input — fix the command rather than just raising the limit."
+)
+
+
+def _timeout_ms_property() -> dict[str, object]:
+    """Schema for the ``timeout_ms`` param, with the default derived from the one
+    source of truth so the advertised hint can never drift from real behavior."""
+    return {
+        "type": "number",
+        "description": (
+            f"Timeout in milliseconds as a number (default: {EXEC_DEFAULT_TIMEOUT_MS}, "
+            "example values: 10000, 60000, 120000)."
+        ),
+        "default": EXEC_DEFAULT_TIMEOUT_MS,
+    }
 
 
 def git_exec_specs() -> list[ToolSpec]:
@@ -126,9 +154,9 @@ def git_exec_specs() -> list[ToolSpec]:
                     "Shell-style strings are tokenized; the command blacklist is the "
                     "security boundary. Returns stdout, stderr, "
                     'and exit_code. Example: {"command": "python -m pytest", '
-                    '"args": ["-q"], "timeout_ms": 5000}. '
+                    '"args": ["-q"], "timeout_ms": 60000}. '
                     "Some commands may still be blacklisted; prefer structured tools "
-                    "when available."
+                    "when available. " + _TIMEOUT_SEMANTICS
                 ),
                 input_schema={
                     "type": "object",
@@ -167,14 +195,7 @@ def git_exec_specs() -> list[ToolSpec]:
                                 "(example values: ['-la'], '--help', ['.', '--max-depth', '2'])."
                             ),
                         },
-                        "timeout_ms": {
-                            "type": "number",
-                            "description": (
-                                "Timeout in milliseconds as a number "
-                                "(default: 30000, example values: 5000, 10000, 60000)."
-                            ),
-                            "default": 30000,
-                        },
+                        "timeout_ms": _timeout_ms_property(),
                     },
                     "required": ["command"],
                 },
@@ -191,9 +212,9 @@ def git_exec_specs() -> list[ToolSpec]:
                     "directory. All shell operators (|, &&, ||, ;, &, >, >>, <, <<) work. "
                     "Only version control commands (git, hg, svn) are blocked. "
                     "Required param: command (string, the full shell command). "
-                    "Optional param: timeout_ms (integer, default 30000). "
+                    "Optional param: timeout_ms. "
                     "Returns stdout, stderr, and exit_code. "
-                    'Example: {"command": "make build && npm test"}.'
+                    'Example: {"command": "make build && npm test"}. ' + _TIMEOUT_SEMANTICS
                 ),
                 input_schema={
                     "type": "object",
@@ -206,14 +227,7 @@ def git_exec_specs() -> list[ToolSpec]:
                                 '(example values: "make build", "npm test && npm lint").'
                             ),
                         },
-                        "timeout_ms": {
-                            "type": "number",
-                            "description": (
-                                "Timeout in milliseconds (default: 30000, "
-                                "example values: 5000, 10000, 60000)."
-                            ),
-                            "default": 30000,
-                        },
+                        "timeout_ms": _timeout_ms_property(),
                     },
                     "required": ["command"],
                 },
@@ -230,9 +244,9 @@ def git_exec_specs() -> list[ToolSpec]:
                     "in the real repository directory. All shell operators (|, &&, ||, ;, "
                     "&, >, >>, <, <<) work. Only version control commands (git, hg, svn) "
                     "are blocked. Required param: command (string, the full shell command). "
-                    "Optional param: timeout_ms (integer, default 30000). "
+                    "Optional param: timeout_ms. "
                     "Returns stdout, stderr, and exit_code. "
-                    'Example: {"command": "make build && npm test"}.'
+                    'Example: {"command": "make build && npm test"}. ' + _TIMEOUT_SEMANTICS
                 ),
                 input_schema={
                     "type": "object",
@@ -245,14 +259,7 @@ def git_exec_specs() -> list[ToolSpec]:
                                 '(example values: "make build", "npm test && npm lint").'
                             ),
                         },
-                        "timeout_ms": {
-                            "type": "number",
-                            "description": (
-                                "Timeout in milliseconds (default: 30000, "
-                                "example values: 5000, 10000, 60000)."
-                            ),
-                            "default": 30000,
-                        },
+                        "timeout_ms": _timeout_ms_property(),
                     },
                     "required": ["command"],
                 },
