@@ -5,6 +5,16 @@ There is exactly ONE place where both the pipeline executor
 (`run_with_direct_mcp_recovery`) decide whether a failed attempt is retryable
 and what the canonical next-attempt intent is. Routing both callers through
 `resolve_retry_intent` makes the retry semantics impossible to drift apart.
+
+drift-audit: This module owns the recovery-decision pipeline seam — the
+ONLY `FailureClassifier(` site in `ralph/pipeline/`. The 8-file allowlist
+is INVARIANT (8 files; 5 actual sites). When extending the recovery
+decision surface, do NOT add a 6th `FailureClassifier(` site here — the
+seam is already a single owner. New callers MUST route through
+`should_reset_tool_registry(...)` (ralph/recovery/failure_classifier.py)
+for classification, and through `resolve_retry_intent(...)` (this
+module) for the canonical next-attempt intent. PA-003 procedure: pin
+counts are invariant — do not raise them.
 """
 
 from __future__ import annotations

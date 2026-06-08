@@ -12,6 +12,20 @@ from .classified_failure import ClassifiedFailure
 from .failure_category import FailureCategory
 from .failure_details import contains_casefolded_marker, failure_detail_parts
 
+# drift-audit: FailureClassifier( is the single-source classifier. The
+# 8-file allowlist (enforced by
+# tests/test_no_anti_drift_recovery_invariants.py:TestFailureClassifierSingleOwner)
+# is the LEGAL constructor set. The 5 actual construction sites are:
+#   - ralph/recovery/failure_classifier.py:should_reset_tool_registry (this file)
+#   - ralph/recovery/controller.py:RecoveryController.__init__
+#   - ralph/agents/invoke/_completion.py:_log_invocation_exit
+#   - ralph/pipeline/effect_executor.py:_run_attempt (recovery-decision seam)
+#   - ralph/pipeline/agent_retry_decision.py:resolve_retry_intent (recovery-decision seam)
+# Consumer-facing callers outside this package MUST route through
+# should_reset_tool_registry(...) (this file) — NEVER construct
+# FailureClassifier directly. PA-003 extension: pin count is INVARIANT
+# (5 actual sites inside 8-file allowlist); do not raise either count.
+
 # Network/transport error substrings that indicate environmental faults
 _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(
     {
