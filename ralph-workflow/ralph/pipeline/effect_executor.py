@@ -44,6 +44,11 @@ from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline._agent_bridge_ctx import _AgentBridgeCtx
 from ralph.pipeline._agent_invocation_ctx import _AgentInvocationCtx
+from ralph.pipeline._retry_progress_guard import (
+    MAX_IDENTICAL_RETRY_ATTEMPTS,
+    RetryProgressGuard,
+    retry_failure_signature,
+)
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
 from ralph.pipeline.agent_recovery_plan import AgentRecoveryPlan
@@ -104,6 +109,10 @@ class _AttemptResult:
     # detected. The default False preserves the existing behavior on
     # non-tool-availability failures.
     reset_tool_registry: bool = False
+    # Normalized signature of a non-terminal (will-retry) failure, used by the
+    # recovery loop's zero-progress guard to bound consecutive identical retries.
+    # None for terminal results (success/permanent failure), which return early.
+    failure_signature: str | None = None
 
 
 def execute_agent_effect(
@@ -242,12 +251,28 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
         bridge_ctx = _AgentBridgeCtx(
             bridge=bridge, session=session, system_prompt_file=system_prompt_file
         )
+        progress_guard = RetryProgressGuard()
         for attempt_index in range(ctx.max_recovery_attempts + 1):
             result = _run_attempt(
                 ctx, bridge_ctx, attempt_index, attempt_prompt_file, resume_session_id
             )
             if result.event is not None:
                 return result.event
+            # Zero-progress guard: a retry that reproduces the prior failure's
+            # signature makes no forward progress. Bound consecutive identical
+            # retries so the loop cannot spin re-running a doomed attempt for the
+            # full recovery/session budget (the endless "Retrying ... (N/10)"
+            # wedge). A changed signature means progress and resets the streak.
+            if result.failure_signature is not None and progress_guard.record(
+                result.failure_signature
+            ):
+                logger.error(
+                    "Aborting agent '{}' retries: {} consecutive identical "
+                    "zero-progress failures. Refusing to spin; failing fast.",
+                    ctx.effect.agent_name,
+                    MAX_IDENTICAL_RETRY_ATTEMPTS,
+                )
+                return PipelineEvent.AGENT_FAILURE
             if (
                 result.reset_tool_registry
                 and isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
@@ -373,6 +398,9 @@ def _run_attempt(
             recovery_plan.prompt_file,
             recovery_plan.session_id,
             reset_tool_registry=classified.reset_tool_registry,
+            failure_signature=retry_failure_signature(
+                recovery_plan.reason, list(rendered_output)
+            ),
         )
     except Exception:
         logger.exception("Unexpected error during agent invocation: {}")

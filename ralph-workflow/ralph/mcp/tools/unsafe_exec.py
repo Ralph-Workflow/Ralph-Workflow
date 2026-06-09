@@ -25,7 +25,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.mcp.tools.exec import run_command
+from ralph.mcp.tools.exec import resolve_spill_dir, run_command
 from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
 
 if TYPE_CHECKING:
@@ -96,12 +96,11 @@ def handle_unsafe_exec(
         f"Stdout:\n{stdout}\n\n"
         f"Stderr:\n{stderr}"
     )
-    spill_dir = deps.spill_dir if deps is not None else None
     return format_or_spill(
         text,
         returncode=output.returncode,
         truncated=output.truncated,
-        spill_dir=spill_dir,
+        spill_dir=resolve_spill_dir(workspace, deps),
     )
 
 
