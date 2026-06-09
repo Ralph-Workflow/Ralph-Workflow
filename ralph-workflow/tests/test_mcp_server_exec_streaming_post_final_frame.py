@@ -2,7 +2,7 @@
 
 ``do_POST`` sends the SSE headers before dispatching an exec tools/call. If an
 exception then escapes the streaming dispatch (e.g. a session object without
-the ``tool_output_sink`` surface), the request thread dies and the socket
+the ``tool_output_sink_entry`` surface), the request thread dies and the socket
 closes with an empty body. A streamable-http client cannot distinguish that
 from a still-running call, so it waits for its full request timeout and
 surfaces ``-32001 Request timed out`` — for every retry, forever. The handler
@@ -22,7 +22,7 @@ from ralph.mcp.server._server_state import ServerState
 
 
 class _SessionWithoutStreamingSurface:
-    """Session lacking tool_output_sink/stream_tool_output (no streaming surface)."""
+    """Session lacking the tool_output_sink_entry streaming surface."""
 
     session_id = "sess-1"
 
