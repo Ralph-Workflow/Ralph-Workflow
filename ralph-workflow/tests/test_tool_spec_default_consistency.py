@@ -11,8 +11,8 @@ imports both and pins them equal. If either side changes, this fails.
 from __future__ import annotations
 
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp.tools import _exec_output_spill, unsafe_exec
 from ralph.mcp.tools import exec as exec_tool
-from ralph.mcp.tools import unsafe_exec
 from ralph.mcp.tools.artifact import _section_mode
 from ralph.mcp.tools.bridge._specs_artifacts import artifact_specs
 from ralph.mcp.tools.bridge._specs_file_list import file_list_specs
@@ -63,11 +63,12 @@ def test_web_search_limit_bounds_match_handler() -> None:
     assert limit["default"] == _DEFAULT_LIMIT
 
 
-def test_exec_max_output_bytes_constants_agree() -> None:
-    # _MAX_OUTPUT_BYTES is defined independently in both exec handlers; not
-    # agent-facing, but pin them equal so the two output caps cannot silently
-    # diverge.
-    assert exec_tool._MAX_OUTPUT_BYTES == unsafe_exec._MAX_OUTPUT_BYTES
+def test_exec_handlers_share_one_output_spill_path() -> None:
+    # Both exec handlers route oversized output through the single shared spill
+    # helper, so their inline cap and spill behavior cannot silently diverge.
+    assert exec_tool.format_or_spill is _exec_output_spill.format_or_spill
+    assert unsafe_exec.format_or_spill is _exec_output_spill.format_or_spill
+    assert _exec_output_spill.INLINE_OUTPUT_LIMIT_BYTES > 0
 
 
 def test_read_file_max_bytes_default_matches_handler() -> None:

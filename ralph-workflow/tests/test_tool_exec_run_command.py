@@ -194,24 +194,26 @@ def test_run_command_kills_process_when_output_exceeds_limit(
                 self._returncode = 137 if (self._terminated or self._killed) else 0
             return self._returncode
 
-    monkeypatch.setattr(exec_tool, "_MAX_OUTPUT_BYTES", 12)
+    monkeypatch.setattr(exec_tool, "SPILL_OUTPUT_LIMIT_BYTES", 12)
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=lambda command, opts: StreamingFakePopen(),
     )
 
-    with pytest.raises(ExecutionError, match="killed after output exceeded 12 bytes") as excinfo:
-        run_command(
-            "python",
-            ["-c", "print('boom')"],
-            tmp_path,
-            5_000,
-            deps=ExecRunDeps(process_manager=pm),
-        )
+    # Exceeding the capture cap no longer raises (which forced a blind retry loop).
+    # The process is killed and the captured tail is returned flagged truncated, so
+    # the caller can spill it to a file and the agent can still see the output.
+    result = run_command(
+        "python",
+        ["-c", "print('boom')"],
+        tmp_path,
+        5_000,
+        deps=ExecRunDeps(process_manager=pm),
+    )
 
-    message = str(excinfo.value)
-    assert "67890-suffix" in message
-    assert "err-tail" in message
+    assert result.truncated is True
+    assert b"67890-suffix" in result.stdout
+    assert b"err-tail" in result.stderr
 
 
 class _ChunkedStream:

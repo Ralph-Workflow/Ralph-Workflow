@@ -27,6 +27,7 @@ The server is launched by ``ralph.process.manager`` via the
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import uuid
@@ -36,6 +37,7 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
+import anyio.to_thread
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, create_model
 
@@ -241,10 +243,18 @@ def _make_tool_metadata(
         arguments_parsed_model = arg_model.model_validate(arguments_pre_parsed)
         arguments_parsed_dict = cast("dict[str, object]", arguments_parsed_model.model_dump())
         arguments_parsed_dict |= arguments_to_pass_directly or {}
-        result = fn(**arguments_parsed_dict)
         if fn_is_async:
+            result = fn(**arguments_parsed_dict)
             return await cast("Awaitable[object]", result)
-        return result
+        # SINGLE async-offload point for EVERY registered tool. Every tool — both
+        # Ralph-native (exec, git_read, websearch, webvisit, …) and proxied
+        # third-party/upstream MCP tools — is registered via `_create_tool`, which
+        # wires this same `_make_tool_metadata`, so they all inherit this behavior
+        # with no per-tool duplication. Sync handlers block on subprocesses/IO/
+        # network for up to their timeout; running them in a worker thread keeps
+        # the asyncio event loop free. A frozen loop stalls SSE streaming and
+        # keepalives, which the MCP client surfaces as -32001 Request timed out.
+        return await anyio.to_thread.run_sync(functools.partial(fn, **arguments_parsed_dict))
 
     def convert_result(result: object) -> object:
         if (

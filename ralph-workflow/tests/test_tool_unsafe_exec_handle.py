@@ -279,3 +279,32 @@ class TestVcsCommandsConstant:
 
     def test_ls_is_not_in_vcs_commands(self) -> None:
         assert "ls" not in _VCS_COMMANDS
+
+
+def test_unsafe_exec_large_output_spills_to_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spill_dir = tmp_path / "spill"
+    spill_dir.mkdir()
+    body = "".join(f"line-{i:08d}\n" for i in range(150_000)).encode()
+    _mock_subprocess(monkeypatch, _make_completed_process(stdout=body, returncode=0))
+
+    session = MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY})
+    workspace = MockWorkspaceRoot(tmp_path)
+    result = handle_unsafe_exec(
+        session, workspace, {"command": "echo big"}, spill_dir=spill_dir
+    )
+
+    assert result.is_error is False
+    content = result.content[0]
+    assert isinstance(content, ToolContent)
+    # Bounded preview, not the whole body dumped inline.
+    assert len(content.text) < len(body)
+
+    spill_files = list(spill_dir.iterdir())
+    assert len(spill_files) == 1
+    spilled = spill_files[0]
+    assert str(spilled) in content.text
+    contents = spilled.read_text()
+    assert "line-00000000" in contents
+    assert "line-00149999" in contents

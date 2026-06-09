@@ -24,3 +24,6 @@ class ExecRunDeps:
     cwd_provider: CwdProvider | None = None
     process_manager: ProcessManager | None = None
     on_output_chunk: OutputChunkCallback | None = None
+    #: Directory for oversized-output spill files. Defaults to the OS temp dir
+    #: (``tempfile.gettempdir()``) so the OS reclaims them; injectable for tests.
+    spill_dir: Path | None = None

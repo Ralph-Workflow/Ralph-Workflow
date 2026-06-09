@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.tools._exec_execution_error import ExecutionError
+from ralph.mcp.tools._exec_output_spill import format_or_spill
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -27,7 +28,6 @@ if TYPE_CHECKING:
 
 PROCESS_EXEC_UNBOUNDED_CAPABILITY: Final = "ProcessExecUnbounded"
 _VCS_COMMANDS: frozenset[str] = frozenset({"git", "hg", "svn"})
-_MAX_OUTPUT_BYTES = 1 * 1024 * 1024
 
 type CwdProvider = Callable[[], Path]
 
@@ -49,6 +49,8 @@ def handle_unsafe_exec(
     session: CoordinationSessionLike,
     workspace: object,
     params: Mapping[str, object],
+    *,
+    spill_dir: Path | None = None,
 ) -> ToolResult:
     """Execute an unrestricted shell command in the real workspace directory."""
     require_capability(session, PROCESS_EXEC_UNBOUNDED_CAPABILITY, "Unsafe command execution")
@@ -110,17 +112,19 @@ def handle_unsafe_exec(
             is_error=True,
         )
 
-    stdout = result.stdout[:_MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
-    stderr = result.stderr[:_MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
+    stdout = result.stdout.decode("utf-8", errors="replace")
+    stderr = result.stderr.decode("utf-8", errors="replace")
     text = (
         f"Command: {command}\n"
         f"Exit code: {result.returncode}\n\n"
         f"Stdout:\n{stdout}\n\n"
         f"Stderr:\n{stderr}"
     )
-    return ToolResult(
-        content=[ToolContent.text_content(text)],
-        is_error=result.returncode != 0,
+    return format_or_spill(
+        text,
+        returncode=result.returncode,
+        truncated=False,
+        spill_dir=spill_dir,
     )
 
 
