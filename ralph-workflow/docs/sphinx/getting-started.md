@@ -46,6 +46,8 @@ The point of the first run is to see whether the default loop improves the repo 
 
 After the first successful `ralph --init`, the bundled skill bundle is also auto-symlinked from `~/.claude/skills/` into the Codex (`~/.codex/skills/`), OpenCode (`~/.config/opencode/skills/`), and Google Anti Gravity (`~/.gemini/antigravity-cli/skills/`) skill roots so all four supported agents pick up the same baseline skills without extra setup. The bundled `.gitignore` template now also covers common Python, Node, editor, and OS artifacts (`__pycache__/`, `node_modules/`, `.idea/`, `.DS_Store`, and so on) so a fresh repo is batteries-included from the first commit.
 
+**Note:** A normal `ralph` run (without `--init`) also auto-seeds the project-scope skills and the batteries-included `.gitignore` when missing, so the explicit first-run `ralph --init` step is no longer required for either artifact. Use `ralph --force-init-skills` to repair a conflict or overwrite the project-scope skills.
+
 ## Minimal first-run example
 
 ```bash

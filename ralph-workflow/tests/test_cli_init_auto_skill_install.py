@@ -331,8 +331,8 @@ def test_init_command_surfaces_skill_install_failure_codes(
     # The diagnose hint may be word-wrapped by the rich console, so we
     # normalize whitespace before checking the literal hint.
     normalized = " ".join(output.split())
-    assert "Run `ralph --diagnose`" in normalized, (
-        f"Expected 'Run `ralph --diagnose`' hint in normalized output, got: {normalized!r}"
+    assert "ralph --diagnose" in normalized, (
+        f"Expected 'ralph --diagnose' hint in normalized output, got: {normalized!r}"
     )
 
 
@@ -373,4 +373,46 @@ def test_init_command_surfaces_skill_install_failure_codes_on_rerun(
     output = stream.getvalue()
     assert "Skills auto-install reported: sibling-conflict-using-superpowers" in output, (
         f"Expected literal failure-code line in re-run output, got: {output!r}"
+    )
+
+
+def test_init_command_surfaces_force_init_skills_hint_in_warning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The init-path conflict warning must include the `ralph --force-init-skills` hint."""
+    stream = _attach_console(monkeypatch)
+    _install_fake_roots(monkeypatch, tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    def fake_ensure(
+        _self_obj: SkillManager, *, workspace_root: Path
+    ) -> tuple[CapabilityState, list[str]]:
+        return (
+            CapabilityState(
+                web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+                visit_url=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+                docs_mcp=CapabilityEntry(status=CapabilityStatus.NOT_INSTALLED),
+                skills=CapabilityEntry(status=CapabilityStatus.NEEDS_REPAIR),
+            ),
+            ["sibling-conflict-using-superpowers"],
+        )
+
+    monkeypatch.setattr(
+        manager_module.SkillManager,
+        "ensure_baseline_capabilities",
+        fake_ensure,
+    )
+
+    init_module.init_command(template="default")
+
+    output = stream.getvalue()
+    normalized = " ".join(output.split())
+    assert "ralph --force-init-skills" in normalized, (
+        f"Expected 'ralph --force-init-skills' hint in normalized output, got: {normalized!r}"
+    )
+    assert "ralph --diagnose" in normalized, (
+        f"Expected 'ralph --diagnose' hint in normalized output, got: {normalized!r}"
+    )
+    assert "Skills auto-install reported: sibling-conflict-using-superpowers" in output, (
+        f"Expected failure-code prefix to be preserved, got: {output!r}"
     )

@@ -33,12 +33,36 @@ re-verification source in the commit message. A future maintainer who
 notices a date is more than 180 days stale must either re-verify (bump
 the date with evidence) or remove the entry from the live registry per
 the path-fallback policy.
+
+Project-scope entries (project_sibling_skill_roots) carry the same
+source_url and last_verified_iso contract as user-global entries. The
+project canonical ``.opencode/skills/`` is intentionally NOT included
+in the project siblings; it is the fan-out source managed by
+install_project_baseline_skills.
+
+SCOPE-DOWN RATIONALE (PA-007): The prompt mentions ``./.claude/skills/``,
+``./.agents/skills``, etc. as sibling examples. We mirror only the 3
+non-canonical USER-GLOBAL entries (claude, codex, agy) as project
+siblings. The opencode project sibling is intentionally absent because:
+(a) the project canonical ``./.opencode/skills/`` IS the opencode
+project root, so it would be a self-symlink (forbidden); (b) the
+user-global opencode root at ``~/.config/opencode/skills/`` is already
+covered by the canonical user-global install; (c) the project-scope
+``./.agents/skills/`` path mentioned in the opencode docs is a
+USER-GLOBAL fallback for opencode (already covered by the canonical
+claude install at ``~/.claude/skills/`` per the OPENCODE CLAUDE-SKILLS
+FALLBACK section above). Therefore adding either ``./.opencode/skills/``
+or ``./.agents/skills/`` as a project sibling would either create a
+self-symlink or duplicate the user-global coverage. The 3 non-canonical
+user-global entries are the right mirror set.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+
+from ralph.skills._project_paths import ProjectAgentSkillRoot
 
 # A skill-discovery root is the directory an agent scans for `skills/<name>/SKILL.md`.
 # Sources (research-confirmed at plan time, last-verified dates populated per entry):
@@ -140,10 +164,64 @@ def sibling_agent_skill_roots() -> tuple[AgentSkillRoot, ...]:
     return tuple(entry for entry in AGENT_SKILL_ROOTS if not entry.is_canonical)
 
 
+# Project-scope helpers --------------------------------------------------------
+# Project scope is computed at call time from an explicit workspace_root. The
+# user-global AGENT_SKILL_ROOTS registry is intentionally NOT polluted with
+# project entries (test_skills_agent_paths.py forbids project-local segments
+# there) and ProjectAgentSkillRoot is a separate dataclass so the two scopes
+# never get cross-wired in resolve().
+
+_PROJECT_CANONICAL_DIR_SEGMENTS: tuple[str, ...] = (".opencode", "skills")
+
+
+def project_skill_root(workspace_root: Path) -> Path:
+    """Return the project-canonical skill directory for the given workspace.
+
+    The canonical is the single source of truth — sibling symlinks fan out
+    to entries below it. ALWAYS computed at call time so test code that
+    passes a per-test tmp_path re-resolves correctly.
+    """
+    return workspace_root.joinpath(*_PROJECT_CANONICAL_DIR_SEGMENTS)
+
+
+def project_sibling_skill_roots(
+    workspace_root: Path,
+) -> tuple[ProjectAgentSkillRoot, ...]:
+    """Return project-scope sibling skill roots (fan-out targets).
+
+    Mirrors the 3 non-canonical USER-GLOBAL entries (claude, codex, agy)
+    onto the project workspace. The opencode project sibling is intentionally
+    absent: it would be a self-symlink to ``./.opencode/skills/`` which is
+    the project canonical, and the user-global opencode root is already
+    covered by the user-global install. See the MAINTENANCE section above
+    for the full scope-down rationale (PA-007).
+    """
+    _ = workspace_root  # workspace_root is forwarded at resolve() time, not used here
+    by_agent: dict[str, AgentSkillRoot] = {entry.agent: entry for entry in AGENT_SKILL_ROOTS}
+    agents: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("claude", (".claude", "skills")),
+        ("codex", (".codex", "skills")),
+        ("agy", (".gemini", "antigravity-cli", "skills")),
+    )
+    return tuple(
+        ProjectAgentSkillRoot(
+            agent=agent,
+            path_segments=segments,
+            source_url=by_agent[agent].source_url,
+            is_canonical=False,
+            last_verified_iso=by_agent[agent].last_verified_iso,
+        )
+        for agent, segments in agents
+    )
+
+
 __all__ = [
     "AGENT_SKILL_ROOTS",
     "AgentSkillRoot",
+    "ProjectAgentSkillRoot",
     "agent_skill_roots",
     "canonical_agent_skill_root",
+    "project_sibling_skill_roots",
+    "project_skill_root",
     "sibling_agent_skill_roots",
 ]

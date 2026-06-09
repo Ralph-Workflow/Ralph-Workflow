@@ -12,7 +12,11 @@ from ralph.config.mcp_loader import McpConfigError, load_mcp_config
 from ralph.skills._capability_entry import CapabilityEntry
 from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._docs_mcp_probe import is_supported_docs_mcp_url, probe_docs_mcp
-from ralph.skills._installer import check_skills_update_available, install_baseline_skills
+from ralph.skills._installer import (
+    check_skills_update_available,
+    install_baseline_skills,
+    install_project_baseline_skills,
+)
 from ralph.skills._recheck_policy import DEFAULT_POLICY, RecheckPolicy, needs_recheck
 from ralph.skills._state_store import load_capability_state, save_capability_state
 from ralph.workspace.scope import resolve_workspace_scope
@@ -183,6 +187,66 @@ class SkillManager:
             "docs_mcp": state_to_report.docs_mcp.status == healthy,
             "skills": state_to_report.skills.status == healthy,
         }
+
+    def reinstall_baseline_skills(
+        self, workspace_root: Path
+    ) -> tuple[CapabilityState, list[str]]:
+        """Re-run user-global + project-scope baseline skill installation.
+
+        Used by ``ralph --force-init-skills`` to force a full re-resolve even
+        when the install predicates report a healthy state. The two install
+        calls are merged: the WORST CapabilityStatus wins (NEEDS_REPAIR >
+        INSTALLED_OUTDATED > others, per CapabilityStatus enum order) and
+        the failure-code lists are concatenated. Saved to state and
+        returned.
+
+        Non-fatal: a raising exception is caught and reported via the
+        'reinstall-exception' failure code so the CLI surface stays usable.
+        """
+        try:
+            user_entry, user_failures = install_baseline_skills()
+            project_entry, project_failures = install_project_baseline_skills(
+                workspace_root
+            )
+        except Exception:
+            return self._load_state(), ["reinstall-exception"]
+
+        merged_failures: list[str] = list(user_failures) + list(project_failures)
+
+        def _rank(status: CapabilityStatus) -> int:
+            # WORST is NEEDS_REPAIR (5) > INSTALLED_OUTDATED (3) > others.
+            # The exact ordering matches the plan's precedence contract.
+            order: dict[CapabilityStatus, int] = {
+                CapabilityStatus.NEEDS_REPAIR: 5,
+                CapabilityStatus.INSTALLED_DEGRADED: 4,
+                CapabilityStatus.INSTALLED_OUTDATED: 3,
+                CapabilityStatus.CONFIGURED_UNREACHABLE: 2,
+                CapabilityStatus.INSTALLED_HEALTHY: 1,
+                CapabilityStatus.NOT_INSTALLED: 0,
+            }
+            return order.get(status, 0)
+
+        worst = (
+            user_entry.status
+            if _rank(user_entry.status) >= _rank(project_entry.status)
+            else project_entry.status
+        )
+        now_iso = _now_iso()
+        if worst == CapabilityStatus.NEEDS_REPAIR:
+            merged_entry = CapabilityEntry(
+                status=CapabilityStatus.NEEDS_REPAIR,
+                last_check_fail_iso=now_iso,
+            )
+        else:
+            merged_entry = CapabilityEntry(
+                status=CapabilityStatus.INSTALLED_HEALTHY,
+                last_check_ok_iso=now_iso,
+            )
+
+        state = self._load_state()
+        updated = state.model_copy(update={"skills": merged_entry})
+        self._save_state(updated)
+        return updated, merged_failures
 
     def check_skills_for_updates(self) -> bool:
         """Auto-repair outdated baseline skills and return whether an update still remains."""

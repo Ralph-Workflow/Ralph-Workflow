@@ -12,6 +12,40 @@ Ralph Workflow currently supports **Claude**, **Codex**, **OpenCode**, **Nanocod
 
 > See `ralph/skills/_agent_paths.py` for the canonical mapping of every supported agent's user-global skill-discovery root.
 
+## Project-local skills
+
+In addition to the user-global skill bundle, every `ralph` run auto-seeds a project-local skill fan-out so the same baseline is available to every supported agent at the project scope (not just in your user home).
+
+### Canonical+symlinks design
+
+`.opencode/skills/` is the single source of truth. The 3 project-scope sibling roots (`./.claude/skills/`, `./.codex/skills/`, `./.gemini/antigravity-cli/skills/`) are symlinks into it. OpenCode is intentionally absent as a project sibling because the project canonical `./.opencode/skills/` IS the opencode project root, so it would be a self-symlink. The user-global opencode root at `~/.config/opencode/skills/` is covered by the user-global install.
+
+Self-improving skills are not yet implemented — see the future-extension sketch below and the `# FUTURE: self-improving skills hook goes here` comment at the END of `install_project_baseline_skills` in `ralph/skills/_installer.py`.
+
+### Auto-seed behavior
+
+On every `ralph` run, missing project skills AND the batteries-included `.gitignore` (see `_DEFAULT_GITIGNORE_PATTERNS` in `ralph/config/bootstrap.py`) are auto-seeded when missing. Re-running is idempotent. Use `ralph --force-init-skills` to force a full re-resolve even when valid installs exist. If a project-scope install reports a conflict (NEEDS_REPAIR), `_sync_shipped_skills_on_pipeline_run` surfaces `ralph --force-init-skills` as the remediation hint on a non-DEBUG channel so the user actually sees it.
+
+### Customization contract
+
+Editing the SKILL.md under `./.opencode/skills/` propagates to all sibling symlinks. Editing a sibling symlink's target directly is a no-op. The `.ralph-managed.json` marker protects user-edited content from being overwritten.
+
+### Code citations
+
+- `ralph/skills/_agent_paths.py` — `project_skill_root` and `project_sibling_skill_roots`
+- `ralph/skills/_installer.py` — `install_project_baseline_skills`, `_project_skills_need_install`
+- `ralph/cli/commands/run.py` — `_sync_shipped_skills_on_pipeline_run`
+
+### Self-improving skills (future)
+
+The TODO lives at the end of `install_project_baseline_skills` in `ralph/skills/_installer.py`. The future design is a hook called after every `ralph` run that lets agents write back improvements to `./.opencode/skills/<name>/SKILL.md`, with a prompt-confirmation gate to prevent runaway mutations. The hook entry point lives at `ralph/skills/_installer.py:self_improving_skills_hook` and is called from `install_project_baseline_skills` after every successful project fan-out. The default body is a no-op; the future implementation will gate mutations on a prompt-confirmation step.
+
+**Scope constraint:** the hook fires only on the project-scope fan-out (`install_project_baseline_skills`); the user-global install path (`install_baseline_skills`, invoked by `ralph --init` and `ralph --force-init-skills`) is intentionally NOT wired in this iteration to avoid silently mutating the user's home directory (e.g. `~/.claude/skills/`). Project-scope mutations are reversible (delete `./.opencode/skills/`, re-run `ralph`); user-global mutations are not.
+
+## Supported-agent research contract
+
+Every `AgentSkillRoot` in `ralph/skills/_agent_paths.py` carries a `source_url` and a `last_verified_iso` (YYYY-MM-DD). The audit in `tests/test_skills_agent_paths_research.py` pins the contract for user-global entries. `ProjectAgentSkillRoot` (in the same file) mirrors the same contract for project-scope entries; `tests/test_skills_project_paths_research.py` pins it. Future maintainers MUST bump `last_verified_iso` in the same commit that changes `source_url` or `path_segments`, citing the re-verification source.
+
 ## What this page is for
 
 This page explains how Ralph Workflow orchestrates agent sessions, what completion means, and why interactive and headless transports make different tradeoffs.

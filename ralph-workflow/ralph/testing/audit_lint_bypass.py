@@ -250,7 +250,7 @@ def _find_noqa_violations(lines: list[str], rel_path: str) -> list[LintBypassVio
     return violations
 
 
-def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]:  # noqa: PLR0912
+def _check_pyproject_config(pyproject_path: Path) -> list[LintBypassViolation]:
     """Check pyproject.toml for per-file-ignores violations."""
     violations: list[LintBypassViolation] = []
 

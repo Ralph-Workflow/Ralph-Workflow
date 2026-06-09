@@ -12,6 +12,12 @@ INIT_COMMAND: Final[str] = "ralph --init"
 INIT_LOCAL_CONFIG_COMMAND: Final[str] = "ralph --init-local-config"
 DIAGNOSE_COMMAND: Final[str] = "ralph --diagnose"
 RUN_COMMAND: Final[str] = "ralph"
+PROJECT_CANONICAL_SKILLS_PATH: Final[str] = "./.opencode/skills/"
+PROJECT_SIBLING_SKILL_PATHS: Final[tuple[str, ...]] = (
+    "./.claude/skills/",
+    "./.codex/skills/",
+    "./.gemini/antigravity-cli/skills/",
+)
 CODEBERG_REPO: Final[str] = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
 ERROR_REPORTING_DISCLOSURE: Final[str] = (
     "Error reporting: Ralph Workflow sends anonymous crash data and performance metrics. "
@@ -46,6 +52,7 @@ def init_help_text() -> str:
         "Initialize Ralph Workflow in the current directory (scaffolds PROMPT.md plus "
         "project-local MCP/pipeline/artifact files copied from the user-global config set). "
         f"Use `{INIT_LOCAL_CONFIG_COMMAND}` only when you want an {explanation}. "
+        "Also seeds project-scope skills and the batteries-included `.gitignore` when missing. "
         "Labels are deprecated and ignored; use `--init` without a label."
     )
 
@@ -70,10 +77,19 @@ def welcome_panel_next_steps() -> tuple[str, ...]:
     explanation = init_local_config_override_explanation()
 
     siblings = ", ".join(sibling.agent for sibling in sibling_agent_skill_roots())
+    project_siblings = ", ".join(PROJECT_SIBLING_SKILL_PATHS)
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
+        "Skills and a batteries-included .gitignore are auto-seeded on every `ralph` run when "
+        "missing (project scope: .opencode/skills/ canonical + symlinks to .claude/skills/, "
+        ".codex/skills/, .gemini/antigravity-cli/skills/). Run `ralph --force-init-skills` to "
+        "repair or overwrite a conflict.",
         "Install AI agents if missing (e.g., `claude`, `opencode`, `nanocoder`, `agy`)",
         f"Skills were installed to ~/.claude/skills/ and symlinked to {siblings}",
+        f"Project-local skills were seeded to {PROJECT_CANONICAL_SKILLS_PATH}and symlinked to "
+        f"{project_siblings} so every supported agent finds the same baseline. "
+        f"Edit the SKILL.md in that canonical directory to customize; sibling symlinks are "
+        f"preserved across `ralph` re-runs.",
         "The default .gitignore was seeded with patterns for Python, Node, Rust, Go, "
         "Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, "
         "and common IDE/OS files",
@@ -89,13 +105,18 @@ def welcome_panel_next_steps() -> tuple[str, ...]:
 def fallback_next_steps() -> tuple[str, ...]:
     """Return rerun guidance after init when files already exist."""
     explanation = init_local_config_override_explanation()
+    project_siblings = ", ".join(PROJECT_SIBLING_SKILL_PATHS)
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
         f"(Optional) Read {GETTING_STARTED_DOC} for a step-by-step first-run walkthrough",
         "Re-running init is idempotent; skills were re-checked and the default "
         ".gitignore was updated to cover common project structures (Python, Node, "
         "Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, "
-        "Terraform, IDE/OS)",
+        "Terraform, IDE/OS). A normal `ralph` run also auto-seeds the project-scope "
+        "skills and .gitignore when missing, without requiring `ralph --init`.",
+        f"Project-local skills under {PROJECT_CANONICAL_SKILLS_PATH}and the sibling symlinks "
+        f"{project_siblings} were re-checked; re-running `ralph` is idempotent and will "
+        f"not overwrite SKILL.md files you have edited.",
         f"(Optional) Run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}",
         "(Optional) Configure MCP servers in `.agent/mcp.toml` or "
         "`~/.config/ralph-workflow-mcp.toml`",

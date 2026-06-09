@@ -20,6 +20,7 @@ from rich.text import Text
 
 from ralph import __version__
 from ralph.api.opencode import list_providers as fetch_providers
+from ralph.cli._capability_summary import print_capability_summary
 from ralph.cli._cli_override_input import CLIOverrideInput
 from ralph.cli.commands.check_policy import check_policy_command
 from ralph.cli.commands.cleanup import cleanup
@@ -387,6 +388,33 @@ def _handle_early_exit_flags(
         raise typer.Exit(code=check_policy_command(policy_dir, counter_overrides=counter_overrides))
 
 
+def _handle_force_init_skills(
+    *, workspace_root: RuntimePath, console: Console
+) -> None:
+    """Run the ``--force-init-skills`` early-exit branch.
+
+    Extracted from ``main()`` to keep its branch / statement count under
+    the ruff ``PLR0912`` / ``PLR0915`` limits. Reinstalls baseline skills
+    and surfaces any failure codes with the ``ralph --force-init-skills``
+    remediation hint (re-printing the hint is harmless on the force path
+    because the user explicitly asked for it).
+    """
+    from ralph.skills.manager import SkillManager
+
+    manager = SkillManager()
+    cap_state, failures = manager.reinstall_baseline_skills(workspace_root=workspace_root)
+    print_capability_summary(console, cap_state, workspace_root=workspace_root)
+    if failures:
+        console.print(
+            Text(
+                f"Skills reinstall reported: {', '.join(failures)}. "
+                "Run `ralph --force-init-skills` to repair and overwrite, "
+                "or `ralph --diagnose` for details.",
+                style="theme.status.warning",
+            )
+        )
+
+
 def main(
     ctx: typer.Context,
     prompt: Annotated[
@@ -526,6 +554,17 @@ def main(
             "--regenerate-config",
             help="Rewrite global and local configs from bundled defaults"
             " (existing files are backed up to <name>.bak)",
+        ),
+    ] = False,
+    force_init_skills: Annotated[
+        bool,
+        typer.Option(
+            "--force-init-skills",
+            help=(
+                "Re-run baseline skill installation (user-global + project-scope) "
+                "and exit. Pairs with --init for an explicit re-init; standalone "
+                "forces the recheck path on a normal ralph run."
+            ),
         ),
     ] = False,
     generate_local_config: Annotated[
@@ -679,6 +718,12 @@ def main(
 
     if regenerate_config:
         _handle_regenerate_config(display_context=_cli_ctx)
+        raise typer.Exit()
+
+    if force_init_skills:
+        _handle_force_init_skills(
+            workspace_root=RuntimePath.cwd(), console=_console
+        )
         raise typer.Exit()
 
     if generate_local_config:

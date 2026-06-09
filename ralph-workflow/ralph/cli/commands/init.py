@@ -64,10 +64,9 @@ if TYPE_CHECKING:
         def from_config(cls, config: UnifiedConfig) -> AgentRegistry: ...
 
 
+from ralph.cli._capability_summary import print_capability_summary
 from ralph.display.context import make_display_context
-from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
 from ralph.skills._capability_state import CapabilityState
-from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -181,7 +180,8 @@ def _print_skill_failure_warning(console: Console, failures: list[str]) -> None:
     console.print(
         Text(
             f"Skills auto-install reported: {', '.join(failures)}. "
-            "Run `ralph --diagnose` for details.",
+            "Run `ralph --force-init-skills` to repair and overwrite, "
+            "or `ralph --diagnose` for details.",
             style="theme.status.warning",
         )
     )
@@ -208,82 +208,30 @@ def _ensure_baseline_capabilities(
     list into the welcome-banner and fallback code paths so a NEEDS_REPAIR is
     visible on every ralph --init invocation, not just first run.
     """
+    from contextlib import suppress
+
+    from ralph.skills._installer import (
+        _project_skills_need_install,
+        install_project_baseline_skills,
+    )
+
     ctx = display_context
     console = ctx.console
+    target_root = Path.cwd()
     try:
         manager = SkillManager()
-        cap_state, failures = manager.ensure_baseline_capabilities(workspace_root=Path.cwd())
-        _print_capability_summary(console, cap_state)
+        cap_state, failures = manager.ensure_baseline_capabilities(workspace_root=target_root)
+        with suppress(Exception):
+            if _project_skills_need_install(target_root):
+                # PA-004: discard the CapabilityEntry since
+                # ensure_baseline_capabilities already re-stamped the
+                # state with whichever user-global entry is worst.
+                _, project_failures = install_project_baseline_skills(target_root)
+                failures.extend(project_failures)
+        print_capability_summary(console, cap_state, workspace_root=target_root)
         return cap_state, failures
     except Exception:
         return CapabilityState(), []
-
-
-def _collect_skill_root_rows() -> list[tuple[str, str, Text]]:
-    """Build the (agent, skill_root, status_text) rows for the per-agent coverage table."""
-    from ralph.skills._agent_paths import agent_skill_roots
-    from ralph.skills._content import BASELINE_SKILL_NAMES
-
-    rows: list[tuple[str, str, Text]] = []
-    for entry in agent_skill_roots():
-        resolved = entry.resolve()
-        all_present = all((resolved / name / "SKILL.md").exists() for name in BASELINE_SKILL_NAMES)
-        if all_present:
-            status_text = Text("OK", style="theme.status.success")
-        else:
-            status_text = Text("Skipped", style="theme.status.pending")
-        label = f"{entry.agent} (canonical)" if entry.is_canonical else entry.agent
-        rows.append((label, str(resolved), status_text))
-    return rows
-
-
-def _print_capability_summary(console: Console, state: CapabilityState) -> None:
-    """Print the baseline capabilities summary table."""
-    from rich.table import Table
-
-    table = Table(title="Baseline Capabilities", show_header=True)
-    table.add_column("Capability", style="theme.cat.meta")
-    table.add_column("Type")
-    table.add_column("Status")
-    # Static built-in capabilities — always available
-    for cap in STATIC_BUILTIN_CAPABILITIES:
-        table.add_row(
-            cap.name.replace("_", " ").title(),
-            "Built-in",
-            Text("OK — always available", style="theme.status.success"),
-        )
-    # Health-tracked dependency-backed helpers
-    managed_rows = [
-        ("Web search (DuckDuckGo)", state.web_search),
-        ("Page retrieval (visit_url)", state.visit_url),
-        ("Docs MCP (localhost:6280)", state.docs_mcp),
-        ("Skill bundles", state.skills),
-    ]
-    for label, entry in managed_rows:
-        if entry.status == CapabilityStatus.INSTALLED_HEALTHY:
-            status_text = Text("OK", style="theme.status.success")
-        elif entry.update_available:
-            status_text = Text(
-                "Update available — run `ralph --init` to update",
-                style="theme.status.warning",
-            )
-        else:
-            status_text = Text(
-                f"{entry.status.value} — run `ralph --init` or check config",
-                style="theme.status.warning",
-            )
-        table.add_row(label, "Managed", status_text)
-    console.print(table)
-
-    if state.skills.status != CapabilityStatus.NOT_INSTALLED:
-        console.print(Text("Skill root coverage", style="theme.cat.meta"))
-        skill_table = Table(show_header=True)
-        skill_table.add_column("Agent", style="theme.cat.meta")
-        skill_table.add_column("Skill root", style="theme.text.muted")
-        skill_table.add_column("Status")
-        for agent_label, skill_root, status_text in _collect_skill_root_rows():
-            skill_table.add_row(agent_label, skill_root, status_text)
-        console.print(skill_table)
 
 
 def _print_fallback_next_steps(

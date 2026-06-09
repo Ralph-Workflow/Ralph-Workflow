@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, Protocol, Unpack, cast
 
 from loguru import logger
+from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
@@ -45,14 +46,16 @@ from ralph.policy.validation import (
     validate_recovery_config,
     validate_required_inputs,
 )
+from ralph.skills._installer import (
+    _project_skills_need_install,
+    install_project_baseline_skills,
+)
 from ralph.skills._process_view import SkillsProcessView, has_machine_global_skills
 from ralph.skills._state_store import default_state_path
 from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from rich.console import Console
-
     from ralph.cli.commands._legacy_run_pipeline_kwargs import _LegacyRunPipelineKwargs
     from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
@@ -497,9 +500,47 @@ def _warn_if_capabilities_degraded(console: Console, workspace_root: Path) -> No
         )
 
 
-def _sync_shipped_skills_on_pipeline_run() -> None:
+_PROJECT_SYNC_CONSOLE = Console()
+
+
+def _print_project_skill_conflict_hint(failures: list[str]) -> None:
+    """Surface a NEEDS_REPAIR on the project-scope auto-seed to the user.
+
+    Per the prompt, when a conflict blocks the project-scope install during a
+    normal `ralph` run, the user must be reminded that `ralph --force-init-skills`
+    is the remediation path. The hint is intentionally NOT routed through
+    `logger.debug` so the user actually sees it on a non-DEBUG channel.
+    """
+    if not failures:
+        return
+    _PROJECT_SYNC_CONSOLE.print(
+        Text(
+            f"Project-scope skill install reported: {', '.join(failures)}. "
+            "Run `ralph --force-init-skills` to repair and overwrite, "
+            "or `ralph --diagnose` for details.",
+            style="theme.status.warning",
+        ),
+        highlight=False,
+    )
+
+
+def _sync_shipped_skills_on_pipeline_run(workspace_root: Path | None = None) -> None:
     with suppress(Exception):
         SkillManager().check_skills_for_updates()
+    try:
+        target_root = workspace_root or Path.cwd()
+        if _project_skills_need_install(target_root):
+            _, failures = install_project_baseline_skills(target_root)
+            if failures:
+                _print_project_skill_conflict_hint(failures)
+    except Exception as exc:  # project-scope install is best-effort; must not break the pipeline
+        logger.debug("Project-scope skill install failed (non-fatal): {}", exc)
+    try:
+        from ralph.config.bootstrap import auto_seed_default_gitignore
+
+        auto_seed_default_gitignore(target_root)
+    except Exception as exc:  # gitignore auto-seed is best-effort
+        logger.debug("Project .gitignore auto-seed failed (non-fatal): {}", exc)
 
 
 sync_shipped_skills_on_pipeline_run = _sync_shipped_skills_on_pipeline_run
@@ -607,7 +648,9 @@ def run_pipeline(
 
     # Phase 2b: sync shipped skills (TTL-cached), then warn if capabilities are degraded
     if load_result.workspace_scope is not None:
-        _sync_shipped_skills_on_pipeline_run()
+        _sync_shipped_skills_on_pipeline_run(
+            workspace_root=load_result.workspace_scope.root
+        )
         _warn_if_capabilities_degraded(ctx.console, load_result.workspace_scope.root)
 
     # Phase 3: Handle dry-run

@@ -12,6 +12,8 @@ from ralph.skills._agent_paths import (
     AgentSkillRoot,
     agent_skill_roots,
     canonical_agent_skill_root,
+    project_sibling_skill_roots,
+    project_skill_root,
     sibling_agent_skill_roots,
 )
 from ralph.skills._capability_entry import CapabilityEntry
@@ -25,6 +27,8 @@ from ralph.skills._content import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.skills._project_paths import ProjectAgentSkillRoot
 
 
 def _now_iso() -> str:
@@ -168,6 +172,180 @@ def install_baseline_skills(
     )
 
 
+# --- Project-scope baseline skill installation --------------------------------
+#
+# The project scope is a separate fan-out (./.opencode/skills/ canonical +
+# 3 project siblings). Same precedence contract as the user-global install
+# above: canonical is all-or-nothing, sibling failures are appended flatly.
+# The project canonical NEVER appears in the sibling list (see PA-007 in
+# _agent_paths.py).
+
+def _materialize_project_sibling_dir(
+    sibling_dir: Path, canonical_root: Path, skill_name: str
+) -> str | None:
+    """Materialize a single project-scope sibling entry as a symlink to the canonical.
+
+    Returns ``None`` on success or a failure code on conflict / hard failure.
+    Uses ``Path.resolve()``-aware checks for macOS ``/tmp`` -> ``/private/tmp``
+    indirection safety (PA-007).
+    """
+    skill_file = sibling_dir / "SKILL.md"
+    marker = sibling_dir / _MANAGED_MARKER
+    if skill_file.exists() and not marker.exists():
+        try:
+            existing = skill_file.read_text(encoding="utf-8")
+        except OSError:
+            existing = ""
+        if existing != get_skill_content(skill_name):
+            return f"sibling-conflict-{skill_name}"
+
+    sibling_dir.parent.mkdir(parents=True, exist_ok=True)
+    if sibling_dir.is_symlink():
+        sibling_dir.unlink()
+    elif sibling_dir.is_dir():
+        shutil.rmtree(sibling_dir)
+    elif sibling_dir.exists():
+        sibling_dir.unlink()
+
+    canonical_target = canonical_root / skill_name
+    try:
+        sibling_dir.symlink_to(canonical_target, target_is_directory=True)
+    except OSError:
+        try:
+            shutil.copytree(canonical_target, sibling_dir)
+        except OSError:
+            return f"sibling-materialize-failed-{skill_name}"
+    return None
+
+
+def install_project_baseline_skills(
+    workspace_root: Path,
+) -> tuple[CapabilityEntry, list[str]]:
+    """Install the baseline skill bundle into the project scope.
+
+    Mirrors the user-global ``install_baseline_skills`` precedence contract:
+      (1) If the project-canonical has conflicting user-owned skill files,
+          return ``NEEDS_REPAIR`` with ``skills-conflict-*`` failures and
+          DO NOT materialize or touch any sibling. The user keeps their
+          files untouched.
+      (2) If canonical conflict detection passes, materialize the bundle
+          into the project-canonical root. On ``OSError`` during materialize,
+          return ``NEEDS_REPAIR`` with ``["skills-materialize-failed"]`` and
+          DO NOT touch any sibling.
+      (3) If canonical materialize succeeds, fan out the canonical to the
+          3 project-scope siblings (claude, codex, agy). Any sibling failure
+          (``sibling-conflict-*`` / ``sibling-materialize-failed-*``) is
+          appended to a flat ``failures`` list.
+
+    Returns ``(CapabilityEntry, failures)`` — the failures list is NEVER a
+    mix of canonical and sibling codes.
+    """
+    canonical = project_skill_root(workspace_root)
+    canonical_failures = _find_conflicts(canonical)
+    if canonical_failures:
+        return (
+            CapabilityEntry(
+                status=CapabilityStatus.NEEDS_REPAIR,
+                last_check_fail_iso=_now_iso(),
+            ),
+            [f"skills-conflict-{name}" for name in canonical_failures],
+        )
+    try:
+        materialize_skills_to_claude_dir(canonical)
+    except OSError:
+        return (
+            CapabilityEntry(
+                status=CapabilityStatus.NEEDS_REPAIR,
+                last_check_fail_iso=_now_iso(),
+            ),
+            ["skills-materialize-failed"],
+        )
+    sibling_failures: list[str] = []
+    siblings: tuple[ProjectAgentSkillRoot, ...] = project_sibling_skill_roots(workspace_root)
+    for sibling in siblings:
+        sibling_root = sibling.resolve(workspace_root)
+        sibling_root.mkdir(parents=True, exist_ok=True)
+        for skill_name in BASELINE_SKILL_NAMES:
+            failure = _materialize_project_sibling_dir(
+                sibling_dir=sibling_root / skill_name,
+                canonical_root=canonical,
+                skill_name=skill_name,
+            )
+            if failure is not None:
+                sibling_failures.append(failure)
+    if sibling_failures:
+        return (
+            CapabilityEntry(
+                status=CapabilityStatus.NEEDS_REPAIR,
+                last_check_fail_iso=_now_iso(),
+            ),
+            sibling_failures,
+        )
+    # FUTURE: self-improving skills hook goes here — see docs/sphinx/agents.md
+    # §'Self-improving skills (future)'. The hook will fire after every
+    # project-canonical+symlink fan-out and let agents write back improvements
+    # to .opencode/skills/<name>/SKILL.md with a prompt-confirmation gate.
+    self_improving_skills_hook(
+        workspace_root=workspace_root,
+        canonical_root=canonical,
+    )
+    return (
+        CapabilityEntry(
+            status=CapabilityStatus.INSTALLED_HEALTHY,
+            last_check_ok_iso=_now_iso(),
+        ),
+        [],
+    )
+
+
+def self_improving_skills_hook(*, workspace_root: Path, canonical_root: Path) -> None:
+    """No-op placeholder for the self-improving skills hook.
+
+    The future design calls agents back after every project-canonical +
+    sibling-symlink fan-out and lets them write back improvements to
+    ``./.opencode/skills/<name>/SKILL.md`` (sibling symlinks pick up the
+    change automatically because they are symlinks into the canonical).
+    A prompt-confirmation gate is the documented contract: the agent
+    MUST ask the user before mutating any ``SKILL.md``; this hook is the
+    single chokepoint where the prompt-confirmation step will be added.
+
+    Project-scope only by design; user-global is intentionally not wired
+    in this iteration to avoid silent home-dir mutation. See
+    ``docs/sphinx/agents.md`` §'Self-improving skills (future)' for the
+    full scope-decision rationale.
+
+    Args:
+        workspace_root: Project workspace root.
+        canonical_root: Resolved canonical skills root for the project
+            (e.g. ``workspace_root / ".opencode" / "skills"``).
+    """
+    return None
+
+
+def _project_skills_need_install(workspace_root: Path) -> bool:
+    """Return True when the project-scope install should run.
+
+    Precise 'missing' predicate — the canonical must be a real directory
+    (PA-005: an ``is_dir()`` check explicitly guards the silent-misclassification
+    case where a regular file sits at the canonical path), every baseline
+    skill must have a SKILL.md under the canonical, and every baseline
+    skill must be a symlink under every project sibling.
+    """
+    canonical = project_skill_root(workspace_root)
+    if not canonical.is_dir():
+        return True
+    for name in BASELINE_SKILL_NAMES:
+        if not (canonical / name / "SKILL.md").exists():
+            return True
+    for sibling in project_sibling_skill_roots(workspace_root):
+        sibling_root = sibling.resolve(workspace_root)
+        for name in BASELINE_SKILL_NAMES:
+            sibling_dir = sibling_root / name
+            if not sibling_dir.is_symlink():
+                return True
+    return False
+
+
 def _root_metadata_valid(resolved: Path) -> bool:
     metadata = resolved / "metadata.json"
     if not metadata.exists():
@@ -219,6 +397,9 @@ def check_skills_update_available() -> bool:
 __all__ = [
     "_mirror_baseline_skills_to_siblings",
     "_mirror_skill_to_sibling_root",
+    "_project_skills_need_install",
     "check_skills_update_available",
     "install_baseline_skills",
+    "install_project_baseline_skills",
+    "self_improving_skills_hook",
 ]

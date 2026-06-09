@@ -382,6 +382,42 @@ def _ensure_default_gitignore(repo_root: Path) -> None:
     append_to_gitignore(repo_root, list(_DEFAULT_GITIGNORE_PATTERNS))
 
 
+def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
+    """Auto-seed the batteries-included .gitignore on a normal `ralph` run.
+
+    Reads the existing ``.gitignore`` (if any), computes the patterns from
+    ``_DEFAULT_GITIGNORE_PATTERNS`` that are not already present, appends
+    them via ``append_to_gitignore`` (which filters duplicates by line), and
+    returns the list of patterns that were actually appended.
+
+    Idempotent: a second call with the same ``repo_root`` returns ``[]``
+    when every default pattern is already present (the underlying
+    ``append_to_gitignore`` short-circuits when nothing is missing). Does
+    NOT clobber user-added lines — user-customized patterns are preserved.
+
+    Handles the no-git case: the helper just touches ``.gitignore`` in
+    ``repo_root``; it does not require a ``.git`` directory to exist.
+
+    Args:
+        repo_root: Path to the repository (or project) root.
+
+    Returns:
+        List of patterns that were appended on this call. Empty when the
+        existing ``.gitignore`` already covered every default pattern.
+    """
+    gitignore_path = repo_root / ".gitignore"
+    existing: set[str] = set()
+    if gitignore_path.exists():
+        try:
+            existing = set(gitignore_path.read_text(encoding="utf-8").splitlines())
+        except OSError:
+            existing = set()
+    missing = [p for p in _DEFAULT_GITIGNORE_PATTERNS if p not in existing]
+    if missing:
+        append_to_gitignore(repo_root, missing)
+    return list(missing)
+
+
 def _regenerate_existing_advanced_local_configs(agent_dir: Path) -> list[BootstrapResult]:
     """Regenerate advanced local configs only when they already exist."""
     results: list[BootstrapResult] = []

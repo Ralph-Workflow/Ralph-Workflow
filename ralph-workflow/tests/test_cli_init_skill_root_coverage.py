@@ -15,7 +15,7 @@ from ralph.skills._agent_paths import AgentSkillRoot
 from ralph.skills._capability_entry import CapabilityEntry
 from ralph.skills._capability_state import CapabilityState
 from ralph.skills._capability_status import CapabilityStatus
-from ralph.skills._content import BASELINE_SKILL_NAMES
+from ralph.skills._content import BASELINE_SKILL_NAMES, get_skill_content
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -198,3 +198,74 @@ def test_init_command_skill_summary_reports_missing_sibling(
         f"Expected 'Skipped' for the opencode sibling row, got: {output!r}"
     )
     assert "opencode" in output
+
+
+def test_init_command_skill_summary_reports_project_skill_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The skill root coverage table must include project-scope rows with a 'Scope' column."""
+    stream = _attach_console_with_buffer(monkeypatch)
+    _canonical_dir, _codex_dir, _opencode_dir, _agy_dir = _install_fake_roots(
+        monkeypatch, tmp_path
+    )
+
+    # Pre-create project-scope canonical files so the rows render 'OK'.
+    project_canonical = tmp_path / ".opencode" / "skills"
+    for name in BASELINE_SKILL_NAMES:
+        skill_dir = project_canonical / name
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(f"# {name}\n", encoding="utf-8")
+
+    # Pre-create the project-scope siblings so they exist and are symlinked
+    # into the project canonical.
+    sibling_specs: tuple[tuple[str, Path], ...] = (
+        ("claude", tmp_path / ".claude" / "skills"),
+        ("codex", tmp_path / ".codex" / "skills"),
+        ("agy", tmp_path / ".gemini" / "antigravity-cli" / "skills"),
+    )
+    for _agent, sibling_root in sibling_specs:
+        sibling_root.mkdir(parents=True, exist_ok=True)
+        for name in BASELINE_SKILL_NAMES:
+            sibling_dir = sibling_root / name
+            sibling_dir.mkdir(parents=True, exist_ok=True)
+            (sibling_dir / "SKILL.md").write_text(
+                get_skill_content(name), encoding="utf-8"
+            )
+
+    monkeypatch.chdir(tmp_path)
+
+    def _fake_ensure(
+        _self_obj: object, *, workspace_root: object
+    ) -> tuple[CapabilityState, list[str]]:
+        return (
+            CapabilityState(
+                web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+                visit_url=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+                docs_mcp=CapabilityEntry(status=CapabilityStatus.NOT_INSTALLED),
+                skills=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+            ),
+            [],
+        )
+
+    monkeypatch.setattr(
+        manager_module.SkillManager,
+        "ensure_baseline_capabilities",
+        _fake_ensure,
+    )
+
+    init_module.init_command(template="default")
+
+    output = stream.getvalue()
+    assert "Scope" in output, (
+        f"Expected 'Scope' column header in output, got: {output!r}"
+    )
+    assert output.count("Scope") == 1, (
+        f"Expected exactly one 'Scope' column header, got {output.count('Scope')}: {output!r}"
+    )
+    assert "project" in output, (
+        f"Expected 'project' value in output, got: {output!r}"
+    )
+    for agent in ("claude (project)", "codex (project)", "agy (project)"):
+        assert agent in output, (
+            f"Expected {agent!r} in project-scope rows, got: {output!r}"
+        )
