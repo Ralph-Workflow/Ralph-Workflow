@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from ralph.skills import _agent_paths as agent_paths_module
 from ralph.skills._agent_paths import (
     AgentSkillRoot,
     agent_skill_roots,
@@ -81,8 +82,6 @@ def test_opencode_claude_fallback_documented() -> None:
     documented `~/.claude/skills/` fallback so future maintainers know
     no separate symlink entry is required.
     """
-    from ralph.skills import _agent_paths as agent_paths_module  # noqa: PLC0415
-
     docstring = agent_paths_module.__doc__ or ""
     assert "claude" in docstring.lower(), (
         "Module docstring must mention 'claude' to document the OpenCode fallback contract"

@@ -96,5 +96,6 @@ def test_agent_skill_root_dataclass_is_frozen() -> None:
         "agent",
         "path_segments",
         "source_url",
+        "last_verified_iso",
         "is_canonical",
     }

@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
     import pytest
 
+    from ralph.skills.manager import SkillManager
+
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
     stream = StringIO()
@@ -123,9 +125,9 @@ def test_init_command_always_runs_ensure_baseline_capabilities_on_first_run(
     called: list[Path] = []
 
     def fake_ensure(
-        _self_obj: object, *, workspace_root: object
+        _self_obj: SkillManager, *, workspace_root: Path
     ) -> tuple[CapabilityState, list[str]]:
-        called.append(workspace_root)  # type: ignore[arg-type]
+        called.append(workspace_root)
         return CapabilityState(), []
 
     monkeypatch.setattr(
@@ -162,7 +164,7 @@ def test_init_command_runs_ensure_baseline_capabilities_when_configs_already_exi
     (agent_dir / "artifacts.toml").write_text("# existing\n", encoding="utf-8")
 
     def fake_ensure(
-        _self_obj: object, *, workspace_root: object
+        _self_obj: SkillManager, *, workspace_root: Path
     ) -> tuple[CapabilityState, list[str]]:
         return (
             CapabilityState(
@@ -210,7 +212,7 @@ def test_init_command_runs_capability_refresh_on_every_run(
     calls = 0
 
     def fake_ensure(
-        _self_obj: object, *, workspace_root: object
+        _self_obj: SkillManager, *, workspace_root: Path
     ) -> tuple[CapabilityState, list[str]]:
         nonlocal calls
         calls += 1
@@ -248,9 +250,9 @@ def test_init_command_runs_ensure_baseline_capabilities_when_global_config_path_
     called: list[Path] = []
 
     def fake_ensure(
-        _self_obj: object, *, workspace_root: object
+        _self_obj: SkillManager, *, workspace_root: Path
     ) -> tuple[CapabilityState, list[str]]:
-        called.append(workspace_root)  # type: ignore[arg-type]
+        called.append(workspace_root)
         return CapabilityState(), []
 
     monkeypatch.setattr(
@@ -302,7 +304,7 @@ def test_init_command_surfaces_skill_install_failure_codes(
     monkeypatch.chdir(tmp_path)
 
     def fake_ensure(
-        _self_obj: object, *, workspace_root: object
+        _self_obj: SkillManager, *, workspace_root: Path
     ) -> tuple[CapabilityState, list[str]]:
         return (
             CapabilityState(
@@ -348,7 +350,7 @@ def test_init_command_surfaces_skill_install_failure_codes_on_rerun(
     (agent_dir / "artifacts.toml").write_text("# existing\n", encoding="utf-8")
 
     def fake_ensure(
-        _self_obj: object, *, workspace_root: object
+        _self_obj: SkillManager, *, workspace_root: Path
     ) -> tuple[CapabilityState, list[str]]:
         return (
             CapabilityState(
