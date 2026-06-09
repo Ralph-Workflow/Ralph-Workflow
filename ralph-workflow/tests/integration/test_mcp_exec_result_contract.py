@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -18,15 +17,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _fake_completed_process(stdout_text: str) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.CompletedProcess(
-        args="",
-        returncode=0,
-        stdout=stdout_text.encode("utf-8"),
-        stderr=b"",
-    )
-
-
 @pytest.mark.parametrize(
     ("tool_name", "arguments", "expected_fragment"),
     [
@@ -42,20 +32,17 @@ def test_jsonrpc_exec_family_returns_inline_text_result(
     arguments: dict[str, object],
     expected_fragment: str,
 ) -> None:
-    monkeypatch.setattr(
-        exec_tool,
-        "run_command",
-        lambda *args, **kwargs: exec_tool._CompletedProcessAdapter(
+    def _fake_run_command(*_args: object, **_kwargs: object) -> exec_tool._CompletedProcessAdapter:
+        return exec_tool._CompletedProcessAdapter(
             stdout=(expected_fragment + "\n").encode("utf-8"),
             stderr=b"",
             returncode=0,
-        ),
-    )
-    monkeypatch.setattr(
-        unsafe_exec_tool.subprocess,
-        "run",
-        lambda *args, **kwargs: _fake_completed_process(expected_fragment + "\n"),
-    )
+        )
+
+    # Both exec and the unsafe/raw family run through the bounded `run_command`;
+    # patch it in each module's namespace (unsafe_exec imports it by name).
+    monkeypatch.setattr(exec_tool, "run_command", _fake_run_command)
+    monkeypatch.setattr(unsafe_exec_tool, "run_command", _fake_run_command)
 
     session = AgentSession(
         session_id="exec-session",
