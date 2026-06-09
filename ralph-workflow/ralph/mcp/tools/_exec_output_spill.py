@@ -4,10 +4,13 @@ When a command's formatted result is larger than the inline limit, the exec
 tools must not dump it all into the agent's context (it floods the window) nor
 discard it (the old bounded-exec behavior killed the process and raised, forcing
 a blind retry loop that surfaced as ``-32001 Request timed out``). Instead the
-full output is written to a temp file under the OS temp directory, and the agent
-receives a bounded head/tail preview plus the path so it can read the rest in
-chunks. The files are not deleted here; they are reclaimed by the OS's temp-dir
-policy (e.g. ``systemd-tmpfiles`` / periodic cleanup / reboot), not immediately.
+full output is written to a spill file and the agent receives a bounded head/tail
+preview plus the path so it can read the rest in chunks. The exec tools pass a
+workspace-relative ``spill_dir`` (``<workspace>/.agent/tmp``) so the spill is
+reachable by the agent's workspace-scoped read tools — a spill outside the
+workspace root is rejected by those tools, leaving the agent told to read a file
+it cannot open. ``spill_output`` falls back to the OS temp dir only when no
+directory is supplied (direct/library callers). The files are not deleted here.
 
 Both ``exec`` and ``unsafe_exec`` share these helpers so their output caps and
 spill behavior cannot silently diverge.

@@ -397,6 +397,22 @@ def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) 
     return cwd_provider()
 
 
+def resolve_spill_dir(workspace: object, deps: ExecRunDeps | None) -> Path:
+    """Resolve where oversized exec output spills, INSIDE the workspace by default.
+
+    The agent reads spill files through the workspace-scoped read/exec tools,
+    which reject any path resolving outside the workspace root. Spilling to the
+    OS temp dir produces a path the agent is told to read but cannot reach — it
+    goes blind on exactly the large outputs (a full pytest run) where the failing
+    summary lives, and loops re-running the command until the watchdog kills it.
+    Default to ``<workspace>/.agent/tmp`` (Ralph's own readable scratch dir); an
+    explicitly injected ``deps.spill_dir`` (tests, custom deployments) wins.
+    """
+    if deps is not None and deps.spill_dir is not None:
+        return deps.spill_dir
+    return _workspace_root(workspace) / ".agent" / "tmp"
+
+
 def _child_env(cwd: Path) -> dict[str, str]:
     env = dict(os.environ)
     env["PWD"] = str(cwd)
@@ -648,12 +664,11 @@ def handle_exec_command(
             is_error=True,
         )
     text = format_exec_result(parsed.command, parsed.args, output, parsed.timeout_ms)
-    spill_dir = deps.spill_dir if deps is not None else None
     return format_or_spill(
         text,
         returncode=output.returncode,
         truncated=output.truncated,
-        spill_dir=spill_dir,
+        spill_dir=resolve_spill_dir(workspace, deps),
     )
 
 
@@ -670,6 +685,7 @@ __all__ = [
     "format_exec_result",
     "handle_exec_command",
     "parse_exec_params",
+    "resolve_spill_dir",
     "run_command",
 ]
 
