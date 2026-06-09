@@ -18,7 +18,7 @@ from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_t
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.protocol.session import McpSession
     from ralph.mcp.server._json_rpc_request import JsonRpcRequest
     from ralph.mcp.tools.bridge import ToolBridge
     from ralph.workspace.fs import FsWorkspace
@@ -125,7 +125,7 @@ class McpServer:
 
     def __init__(
         self,
-        session: AgentSession,
+        session: McpSession,
         workspace: FsWorkspace,
         registry: ToolBridge,
         *,

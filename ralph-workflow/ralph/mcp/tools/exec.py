@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
+from ralph.mcp.tools._exec_output_spill import SPILL_OUTPUT_LIMIT_BYTES, format_or_spill
 from ralph.mcp.tools._exec_params import ExecParams
 from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps, OutputChunkCallback
 from ralph.mcp.tools.coordination import (
@@ -46,7 +47,6 @@ PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
 # (or a slow git op) through exec does not time out on every call. Per-call
 # `timeout_ms` overrides this; the process tree is still killed on expiry.
 DEFAULT_TIMEOUT_MS = EXEC_DEFAULT_TIMEOUT_MS
-_MAX_OUTPUT_BYTES = 1 * 1024 * 1024
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
 _KILL_SIGNAL_ARG_COUNT = 2
 _ARCHIVE_EXTENSIONS = (".tar", ".zip", ".gz", ".bz2", ".xz")
@@ -515,20 +515,21 @@ def _run_subprocess(
     try:
         stdout, stderr = handle.communicate_and_cleanup(
             timeout=timeout_seconds,
-            output_limit_bytes=_MAX_OUTPUT_BYTES,
+            output_limit_bytes=SPILL_OUTPUT_LIMIT_BYTES,
             on_output_chunk=chunk_callback,
         )
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
         raise
     except ManagedProcessOutputLimitExceededError as exc:
-        stdout_text = exc.stdout.decode("utf-8", errors="replace")
-        stderr_text = exc.stderr.decode("utf-8", errors="replace")
-        raise ExecutionError(
-            f"Failed to execute '{command[0]}': killed after output exceeded "
-            f"{exc.output_limit_bytes} bytes.\n\n"
-            f"Last stdout:\n{stdout_text}\n\nLast stderr:\n{stderr_text}"
-        ) from exc
+        # Don't discard the output: return the captured tail flagged as truncated
+        # so the caller can spill it to a file instead of forcing a blind retry.
+        return _CompletedProcessAdapter(
+            stdout=exc.stdout,
+            stderr=exc.stderr,
+            returncode=handle.returncode if handle.returncode is not None else -1,
+            truncated=True,
+        )
     finally:
         _cleanup_exec_orphans(handle.record.pgid, handle.record.pid, effective_pm._psutil)
     return _CompletedProcessAdapter(
@@ -572,10 +573,12 @@ def format_exec_result(
 
 @runtime_checkable
 class _SessionWithStreaming(Protocol):
-    """Subset of AgentSession that supports tool output streaming."""
+    """Subset of AgentSession that supports thread-owned tool output streaming."""
 
-    def stream_tool_output(self, event: dict[str, object]) -> None:
-        """Forward a streaming tool output event."""
+    def current_thread_tool_output_sink(
+        self,
+    ) -> Callable[[dict[str, object]], None] | None:
+        """Return the active sink when the calling thread owns it."""
         ...
 
 
@@ -583,13 +586,20 @@ def _build_effective_deps(
     session: CoordinationSessionLike,
     deps: ExecRunDeps | None,
 ) -> ExecRunDeps | None:
-    """Compose session.stream_tool_output into deps.on_output_chunk when available."""
+    """Compose the session's thread-owned output sink into deps.on_output_chunk."""
     if not isinstance(session, _SessionWithStreaming):
         return deps
-    streaming_session = session
+    # Capture the sink ONCE, on the dispatching thread. The session is shared
+    # across concurrent request threads; resolving the sink at chunk time (from
+    # subprocess reader threads) would route this exec's output to whichever
+    # request swapped the shared sink last — cross-connection output cross-talk.
+    sink = session.current_thread_tool_output_sink()
+    if sink is None:
+        return deps
+    captured_sink = sink
 
     def _session_chunk(chunk: str) -> None:
-        streaming_session.stream_tool_output({"tool": "exec", "stream": "combined", "text": chunk})
+        captured_sink({"tool": "exec", "stream": "combined", "text": chunk})
 
     if deps is None:
         return ExecRunDeps(on_output_chunk=_session_chunk)
@@ -608,6 +618,7 @@ def _build_effective_deps(
         cwd_provider=deps.cwd_provider,
         process_manager=deps.process_manager,
         on_output_chunk=composed_cb,
+        spill_dir=deps.spill_dir,
     )
 
 
@@ -636,13 +647,13 @@ def handle_exec_command(
             content=[ToolContent.text_content(str(exc))],
             is_error=True,
         )
-    return ToolResult(
-        content=[
-            ToolContent.text_content(
-                format_exec_result(parsed.command, parsed.args, output, parsed.timeout_ms)
-            )
-        ],
-        is_error=output.returncode != 0,
+    text = format_exec_result(parsed.command, parsed.args, output, parsed.timeout_ms)
+    spill_dir = deps.spill_dir if deps is not None else None
+    return format_or_spill(
+        text,
+        returncode=output.returncode,
+        truncated=output.truncated,
+        spill_dir=spill_dir,
     )
 
 

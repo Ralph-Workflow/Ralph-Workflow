@@ -10,6 +10,8 @@ Ralph Workflow is a free, open-source composable loop framework that runs the co
 
 *Nightcrawler credits Ralph Workflow as its inspiration · ~1,300 installs/month on PyPI.*
 
+> **Help us make Ralph better (60 seconds, optional).** If you've installed `ralph-workflow`, we'd love ONE line of feedback: **"How would you feel if you could no longer use Ralph Workflow?"** — Very / Somewhat / Not disappointed. Open a [pmf-survey](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=pmf-survey) issue (just the letter V/S/N + a sentence of what you'd use instead), or run `ralph --feedback` after a run. This is the only signal we get — we don't collect telemetry, so this is how we know whether to keep going.
+
 ## Install and run
 
 ```bash

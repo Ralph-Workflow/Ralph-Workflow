@@ -18,6 +18,12 @@ from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS
 #: timed out` before the server finishes, producing a retry storm. exec is capped
 #: at EXEC_MAX_TIMEOUT_MS (the largest any tool can run); add headroom for server
 #: startup + output drain so even a max-length exec finishes before the client.
+#:
+#: IMPORTANT: OpenCode IGNORES the documented per-server ``mcp.<server>.timeout``
+#: field and hard-enforces the MCP SDK default (~60s). The setting it actually
+#: honors is the global ``experimental.mcp_timeout`` (opencode issues #8701/#8121).
+#: We set BOTH: the experimental key is the one that takes effect; the per-server
+#: field is kept for forward-compat if/when opencode starts honoring it.
 _OPENCODE_MCP_CLIENT_TIMEOUT_MS = EXEC_MAX_TIMEOUT_MS + 30_000
 
 
@@ -47,6 +53,15 @@ def build_opencode_provider_config(
             "timeout": _OPENCODE_MCP_CLIENT_TIMEOUT_MS,
         }
     }
+
+    # The field OpenCode actually honors for the MCP request timeout (the per-server
+    # `timeout` above is ignored). Without this, long tool calls (exec running tests/
+    # builds, large reads) die at OpenCode's ~60s default with `-32001`.
+    experimental_obj = config_obj.setdefault("experimental", {})
+    if not isinstance(experimental_obj, dict):
+        experimental_obj = {}
+        config_obj["experimental"] = experimental_obj
+    cast("dict[str, object]", experimental_obj)["mcp_timeout"] = _OPENCODE_MCP_CLIENT_TIMEOUT_MS
 
     permission_section_obj = config_obj.setdefault("permission", {})
     if not isinstance(permission_section_obj, dict):

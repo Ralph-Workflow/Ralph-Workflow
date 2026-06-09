@@ -12,3 +12,6 @@ class _CompletedProcessAdapter:
     stdout: bytes
     stderr: bytes
     returncode: int
+    #: True when output hit the capture cap and the process was killed, so the
+    #: captured bytes are the (tail) prefix of a larger, incomplete output.
+    truncated: bool = False

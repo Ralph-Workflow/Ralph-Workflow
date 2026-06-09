@@ -4,7 +4,6 @@ import asyncio
 import contextlib
 import io
 import json
-import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -24,15 +23,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _fake_completed_process(stdout_text: str) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.CompletedProcess(
-        args="",
-        returncode=0,
-        stdout=stdout_text.encode("utf-8"),
-        stderr=b"",
-    )
-
-
 @pytest.mark.parametrize(
     ("tool_name", "arguments", "expected_fragment"),
     [
@@ -48,20 +38,17 @@ def test_fastmcp_exec_family_returns_inline_text_result(
     arguments: dict[str, object],
     expected_fragment: str,
 ) -> None:
-    monkeypatch.setattr(
-        exec_tool,
-        "run_command",
-        lambda *args, **kwargs: exec_tool._CompletedProcessAdapter(
+    def _fake_run_command(*_args: object, **_kwargs: object) -> exec_tool._CompletedProcessAdapter:
+        return exec_tool._CompletedProcessAdapter(
             stdout=(expected_fragment + "\n").encode("utf-8"),
             stderr=b"",
             returncode=0,
-        ),
-    )
-    monkeypatch.setattr(
-        unsafe_exec_tool.subprocess,
-        "run",
-        lambda *args, **kwargs: _fake_completed_process(expected_fragment + "\n"),
-    )
+        )
+
+    # Both exec and the unsafe/raw family run through the bounded `run_command`;
+    # patch it in each module's namespace (unsafe_exec imports it by name).
+    monkeypatch.setattr(exec_tool, "run_command", _fake_run_command)
+    monkeypatch.setattr(unsafe_exec_tool, "run_command", _fake_run_command)
 
     server = build_fastmcp_server(tmp_path)
 
@@ -91,7 +78,7 @@ def test_exec_sse_streaming_post_sends_notification_frames_then_response() -> No
         drain="http://localhost",
         capabilities={"ProcessExecBounded"},
     )
-    assert session.tool_output_sink is None
+    assert session.tool_output_sink_entry is None
 
     final_result: dict[str, object] = {
         "content": [{"type": "text", "text": "stream-result"}],
@@ -101,8 +88,10 @@ def test_exec_sse_streaming_post_sends_notification_frames_then_response() -> No
     def fake_handle_request(
         request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse, ServerState]:
-        session.stream_tool_output({"tool": "exec", "stream": "combined", "text": "chunk-1"})
-        session.stream_tool_output({"tool": "exec", "stream": "combined", "text": "chunk-2"})
+        sink = session.current_thread_tool_output_sink()
+        assert sink is not None
+        sink({"tool": "exec", "stream": "combined", "text": "chunk-1"})
+        sink({"tool": "exec", "stream": "combined", "text": "chunk-2"})
         return (
             JsonRpcResponse(jsonrpc="2.0", result=final_result, msg_id=request.msg_id),
             state,
@@ -123,7 +112,7 @@ def test_exec_sse_streaming_post_sends_notification_frames_then_response() -> No
         write_frame=frames_written.append,
     )
 
-    assert session.tool_output_sink is None, "Session sink must be restored after streaming"
+    assert session.tool_output_sink_entry is None, "Session sink must be cleared after streaming"
 
     frames: list[dict[str, object]] = []
     for raw_bytes in frames_written:
@@ -179,7 +168,9 @@ def test_fastmcp_exec_session_sink_receives_output_chunks_before_result(
     def _capture_sink(event: dict[str, object]) -> None:
         received_events.append(event)
 
-    session.tool_output_sink = _capture_sink
+    # Owner None = "any thread": the FastMCP path dispatches tools on a
+    # worker thread, so a single-tenant embedder installs an unowned sink.
+    session.tool_output_sink_entry = (None, _capture_sink)
 
     def fake_run_command(
         command: str,
@@ -204,7 +195,7 @@ def test_fastmcp_exec_session_sink_receives_output_chunks_before_result(
         server._tool_manager.call_tool("exec", {"command": "echo", "args": ["hi"]})
     )
 
-    assert received_events, "Expected chunk events to be received via tool_output_sink"
+    assert received_events, "Expected chunk events via the unowned session sink entry"
     assert any(e.get("text") == "chunk-A\n" for e in received_events), (
         f"Expected 'chunk-A\\n' in events: {received_events}"
     )
@@ -224,7 +215,7 @@ def test_fallback_handler_exec_streaming_post_via_handler_seam() -> None:
         drain="http://localhost",
         capabilities={"ProcessExecBounded"},
     )
-    assert session.tool_output_sink is None
+    assert session.tool_output_sink_entry is None
 
     final_result: dict[str, object] = {
         "content": [{"type": "text", "text": "handler-seam-result"}],
@@ -234,8 +225,10 @@ def test_fallback_handler_exec_streaming_post_via_handler_seam() -> None:
     def _fake_handle(
         request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse, ServerState]:
-        session.stream_tool_output({"tool": "exec", "stream": "combined", "text": "seam-chunk-1"})
-        session.stream_tool_output({"tool": "exec", "stream": "combined", "text": "seam-chunk-2"})
+        sink = session.current_thread_tool_output_sink()
+        assert sink is not None
+        sink({"tool": "exec", "stream": "combined", "text": "seam-chunk-1"})
+        sink({"tool": "exec", "stream": "combined", "text": "seam-chunk-2"})
         return (
             JsonRpcResponse(jsonrpc="2.0", result=final_result, msg_id=request.msg_id),
             state,
@@ -270,7 +263,9 @@ def test_fallback_handler_exec_streaming_post_via_handler_seam() -> None:
 
     handler._handle_exec_streaming_post(request, mock_server)
 
-    assert session.tool_output_sink is None, "Session sink must be restored after handler returns"
+    assert session.tool_output_sink_entry is None, (
+        "Session sink must be cleared after handler returns"
+    )
 
     assert "Content-Length" not in sent_headers, (
         "Exec SSE streaming response must not set Content-Length"
@@ -305,19 +300,18 @@ def test_fallback_handler_exec_streaming_post_via_handler_seam() -> None:
     assert result_value is not None, "Final response must include inline exec result"
 
 
-def test_exec_sse_streaming_post_restores_sink_on_dispatch_error() -> None:
-    """exec_sse_streaming_post restores the session sink even when dispatch raises."""
+def test_exec_sse_streaming_post_clears_sink_on_dispatch_error() -> None:
+    """exec_sse_streaming_post clears its sink entry even when dispatch raises.
+
+    Clearing (rather than restoring a predecessor) guarantees a sink bound to
+    a finished request can never be resurrected and capture later output.
+    """
     session = AgentSession(
         session_id="test-error",
         run_id="run-3",
         drain="http://localhost",
         capabilities={"ProcessExecBounded"},
     )
-
-    def _original_sink(event: dict[str, object]) -> None:
-        del event
-
-    session.tool_output_sink = _original_sink
 
     def _raises(
         request: JsonRpcRequest, state: ServerState
@@ -339,8 +333,8 @@ def test_exec_sse_streaming_post_restores_sink_on_dispatch_error() -> None:
         write_frame=frames_written.append,
     )
 
-    assert session.tool_output_sink is _original_sink, (
-        "Session sink must be restored to original value even after dispatch error"
+    assert session.tool_output_sink_entry is None, (
+        "Session sink entry must be cleared even after dispatch error"
     )
     assert frames_written, "Expected an error frame to be written"
     raw = frames_written[-1].decode("utf-8")

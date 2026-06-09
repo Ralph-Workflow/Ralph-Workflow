@@ -2,16 +2,21 @@
 
 Executes unrestricted shell commands in the real workspace directory.
 Only version control commands (git, hg, svn) are blocked.
+
+Execution goes through the SAME bounded process-manager path as ``exec``
+(``run_command``): output is capped (and spilled to a file when oversized rather
+than buffered unbounded in memory) and the process tree is killed on timeout. The
+sync handler itself is offloaded off the asyncio event loop by the FastMCP
+dispatch (``ralph.mcp.server.runtime``), so a long shell command cannot freeze
+the server — it is async by default like every other tool.
 """
 
 from __future__ import annotations
 
-import subprocess
-from collections.abc import Callable
-from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.tools._exec_execution_error import ExecutionError
+from ralph.mcp.tools._exec_output_spill import format_or_spill
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -20,35 +25,23 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.mcp.tools.exec import run_command
 from ralph.timeout_defaults import EXEC_DEFAULT_TIMEOUT_MS, EXEC_MAX_TIMEOUT_MS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from ralph.mcp.tools._exec_run_deps import ExecRunDeps
+
 PROCESS_EXEC_UNBOUNDED_CAPABILITY: Final = "ProcessExecUnbounded"
 _VCS_COMMANDS: frozenset[str] = frozenset({"git", "hg", "svn"})
-_MAX_OUTPUT_BYTES = 1 * 1024 * 1024
-
-type CwdProvider = Callable[[], Path]
-
-
-def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
-    if isinstance(workspace, Path):
-        return workspace
-    if isinstance(workspace, str):
-        return Path(workspace)
-    root_value: object | None = getattr(workspace, "root", None)
-    if isinstance(root_value, Path):
-        return root_value
-    if isinstance(root_value, str):
-        return Path(root_value)
-    return cwd_provider()
 
 
 def handle_unsafe_exec(
     session: CoordinationSessionLike,
     workspace: object,
     params: Mapping[str, object],
+    deps: ExecRunDeps | None = None,
 ) -> ToolResult:
     """Execute an unrestricted shell command in the real workspace directory."""
     require_capability(session, PROCESS_EXEC_UNBOUNDED_CAPABILITY, "Unsafe command execution")
@@ -67,7 +60,7 @@ def handle_unsafe_exec(
 
     # Require a strictly positive timeout: 0/negative/non-int falls back to the
     # default. Zero must NOT mean "unbounded" — that would make unsafe_exec a
-    # blocking-forever call on the MCP server thread (an agent-controllable hang).
+    # blocking-forever call (an agent-controllable hang).
     timeout_value = params.get("timeout_ms", EXEC_DEFAULT_TIMEOUT_MS)
     timeout_ms = (
         timeout_value
@@ -78,49 +71,37 @@ def handle_unsafe_exec(
     # EXEC_MAX_TIMEOUT_MS, so this call can never outrun the client and re-trigger
     # the -32001 "Request timed out" storm.
     timeout_ms = min(timeout_ms, EXEC_MAX_TIMEOUT_MS)
-    timeout_seconds: float = timeout_ms / 1000
-
-    workspace_root = _workspace_root(workspace)
 
     try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            cwd=str(workspace_root),
-            capture_output=True,
-            timeout=timeout_seconds,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        # Return an actionable, non-retryable is_error result rather than letting
-        # the exception become a -32603 protocol error the agent reads as transient
-        # and re-issues forever (the 5-hour retry-storm pathology). The rendered
-        # message teaches both meanings of a timeout (raise the limit vs. fix a
-        # genuinely stuck command), matching what the tool description advertises.
-        # Never suggest above the cap (the client timeout exceeds EXEC_MAX_TIMEOUT_MS).
-        suggested = min(timeout_ms * 2, EXEC_MAX_TIMEOUT_MS) if timeout_ms > 0 else None
-        timeout_error = ExecutionError(
-            f"Failed to execute {command!r}: timed out after {timeout_ms}ms",
-            timed_out=True,
-            timeout_ms=timeout_ms,
-            suggested_timeout_ms=suggested,
-        )
+        # Run the arbitrary command through a shell, but via the bounded
+        # process-manager path (capped output + process-tree kill on timeout).
+        output = run_command("sh", ["-c", command], workspace, timeout_ms, deps=deps)
+    except ExecutionError as exc:
+        if not exc.timed_out:
+            raise
+        # A timeout becomes an actionable, non-retryable is_error result rather
+        # than a propagated -32603 protocol error the agent re-issues forever (the
+        # retry-storm pathology). The rendered message teaches both meanings of a
+        # timeout (raise the limit vs. fix a genuinely stuck command).
         return ToolResult(
-            content=[ToolContent.text_content(str(timeout_error))],
+            content=[ToolContent.text_content(str(exc))],
             is_error=True,
         )
 
-    stdout = result.stdout[:_MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
-    stderr = result.stderr[:_MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
+    stdout = output.stdout.decode("utf-8", errors="replace")
+    stderr = output.stderr.decode("utf-8", errors="replace")
     text = (
         f"Command: {command}\n"
-        f"Exit code: {result.returncode}\n\n"
+        f"Exit code: {output.returncode}\n\n"
         f"Stdout:\n{stdout}\n\n"
         f"Stderr:\n{stderr}"
     )
-    return ToolResult(
-        content=[ToolContent.text_content(text)],
-        is_error=result.returncode != 0,
+    spill_dir = deps.spill_dir if deps is not None else None
+    return format_or_spill(
+        text,
+        returncode=output.returncode,
+        truncated=output.truncated,
+        spill_dir=spill_dir,
     )
 
 

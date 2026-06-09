@@ -11,6 +11,7 @@ import pytest
 import ralph.mcp.tools._exec_completed_process as exec_completed_process
 import ralph.mcp.tools.exec as exec_tool
 from ralph.mcp.tools.exec import (
+    DEFAULT_TIMEOUT_MS,
     ExecRunDeps,
     ExecutionError,
     run_command,
@@ -52,9 +53,26 @@ def test_file_not_found_raises_execution_error(tmp_path: Path) -> None:
         run_command("nonexistent_command_xyz", [], tmp_path, 5000)
 
 
-def test_zero_timeout_means_no_timeout(tmp_path: Path) -> None:
-    result = run_command("echo", ["test"], tmp_path, 0)
+def test_zero_timeout_clamps_to_bounded_default(tmp_path: Path) -> None:
+    """A non-positive timeout must never mean unbounded; it clamps to the default.
+
+    The bounded-timeout pin lives in
+    test_tool_exec_handle_exec_command.py::TestRunCommandAlwaysBounded; this
+    confirms the clamped call still executes successfully end to end.
+    """
+    seen: dict[str, float | None] = {}
+
+    def fake_runner(
+        command: list[str], cwd: Path, timeout_seconds: float | None
+    ) -> exec_completed_process._CompletedProcessAdapter:
+        seen["timeout_seconds"] = timeout_seconds
+        return exec_completed_process._CompletedProcessAdapter(
+            stdout=b"test", stderr=b"", returncode=0
+        )
+
+    result = run_command("echo", ["test"], tmp_path, 0, deps=ExecRunDeps(runner=fake_runner))
     assert result.returncode == 0
+    assert seen["timeout_seconds"] == DEFAULT_TIMEOUT_MS / 1000
 
 
 def test_workspace_with_str_root(tmp_path: Path) -> None:
@@ -194,24 +212,26 @@ def test_run_command_kills_process_when_output_exceeds_limit(
                 self._returncode = 137 if (self._terminated or self._killed) else 0
             return self._returncode
 
-    monkeypatch.setattr(exec_tool, "_MAX_OUTPUT_BYTES", 12)
+    monkeypatch.setattr(exec_tool, "SPILL_OUTPUT_LIMIT_BYTES", 12)
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=lambda command, opts: StreamingFakePopen(),
     )
 
-    with pytest.raises(ExecutionError, match="killed after output exceeded 12 bytes") as excinfo:
-        run_command(
-            "python",
-            ["-c", "print('boom')"],
-            tmp_path,
-            5_000,
-            deps=ExecRunDeps(process_manager=pm),
-        )
+    # Exceeding the capture cap no longer raises (which forced a blind retry loop).
+    # The process is killed and the captured tail is returned flagged truncated, so
+    # the caller can spill it to a file and the agent can still see the output.
+    result = run_command(
+        "python",
+        ["-c", "print('boom')"],
+        tmp_path,
+        5_000,
+        deps=ExecRunDeps(process_manager=pm),
+    )
 
-    message = str(excinfo.value)
-    assert "67890-suffix" in message
-    assert "err-tail" in message
+    assert result.truncated is True
+    assert b"67890-suffix" in result.stdout
+    assert b"err-tail" in result.stderr
 
 
 class _ChunkedStream:
