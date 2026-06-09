@@ -45,12 +45,101 @@ _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     ".coverage",
     "htmlcov/",
     "dist/",
-    "build/",
+    "build/*",
+    "!build/.gitkeep",
     "*.egg-info/",
+    # Python extras
+    ".tox/",
+    ".nox/",
+    ".pdm-build/",
+    "*.pyo",
+    ".ipynb_checkpoints/",
+    "pip-wheel-metadata/",
     # Node
     "node_modules/",
     ".next/",
     ".nuxt/",
+    # Node extras
+    "coverage/",
+    "*.tsbuildinfo",
+    ".parcel-cache/",
+    ".cache/",
+    ".env",
+    ".env.local",
+    ".env.*.local",
+    # Rust (Cargo.lock intentionally NOT ignored)
+    "target/*",
+    "!target/.gitkeep",
+    "**/*.rs.bk",
+    # Go (vendor/ is opt-in, go.sum intentionally NOT ignored)
+    "vendor/*",
+    # Ruby
+    "vendor/bundle/*",
+    ".bundle/",
+    "log/",
+    "tmp/",
+    "*.gem",
+    # PHP
+    ".phpunit.cache/",
+    "/storage/*.key",
+    "composer.phar",
+    # Java/Kotlin extras
+    ".gradle/*",
+    "!.gradle/.gitkeep",
+    "*.class",
+    "*.jar",
+    # .NET
+    "bin/*",
+    "!bin/.gitkeep",
+    "obj/*",
+    "!obj/.gitkeep",
+    "*.user",
+    "*.suo",
+    "*.userosscache",
+    "*.sln.docstates",
+    "[Dd]ebug/",
+    "[Rr]elease/",
+    "x64/",
+    "x86/",
+    "*.dll",
+    "*.exe",
+    "*.pdb",
+    # Dart / Flutter
+    ".dart_tool/",
+    ".flutter-plugins",
+    ".flutter-plugins-dependencies",
+    ".packages",
+    ".pub-cache/",
+    ".pub/",
+    # Elixir
+    "_build/*",
+    "!_build/.gitkeep",
+    "deps/*",
+    "!deps/.gitkeep",
+    ".elixir_ls/",
+    "cover/",
+    "doc/",
+    "fetch.*.exs",
+    # Scala / Metals / BSP
+    ".bsp/",
+    ".metals/",
+    "project/target/",
+    "project/project/",
+    # Terraform
+    ".terraform/",
+    "*.tfstate",
+    "*.tfstate.*",
+    ".terraform.lock.hcl",
+    "terraform.tfvars",
+    "crash.log",
+    "crash.*.log",
+    "*.tfvars",
+    # Editors / IDEs extra
+    ".fleet/",
+    ".cursor/",
+    ".windsurf/",
+    ".idea_modules/",
+    "*.iml",
     # Editors (NOTE: .vscode/ intentionally NOT included — upstream repo
     # has tracked files under .vscode/.)
     ".idea/",
@@ -59,6 +148,10 @@ _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     # OS metadata
     ".DS_Store",
     "Thumbs.db",
+    # OS metadata extras
+    "Desktop.ini",
+    "ehthumbs.db",
+    "$RECYCLE.BIN/",
 )
 _EXPECTED_IGNORED_LOCAL_PATHS = (
     ".agent/mcp.toml",
@@ -70,6 +163,63 @@ _EXPECTED_IGNORED_LOCAL_PATHS = (
     ".agent/CURRENT_PROMPT.md",
     "PROMPT.md",
     "wt-123/worktree-file.txt",
+)
+# Per-category positive matches (one representative path per new gitignore category).
+# These MUST be ignored by the expanded _DEFAULT_GITIGNORE_PATTERNS after
+# ensure_local_configs(agent_dir) runs in a git repo.
+_EXPECTED_NEW_CATEGORY_POSITIVE_IGNORED_PATHS = (
+    # Rust
+    "target/main.o",
+    # Go (vendor/)
+    "vendor/gopkg.in/yaml.v2/",
+    # Java/Kotlin extras
+    "build/output.jar",
+    # .NET
+    "bin/Release/MyApp.dll",
+    # Dart / Flutter
+    ".dart_tool/package_config.json",
+    # Elixir
+    "_build/dev/lib/myapp/ebin/myapp.app",
+    # Scala / Metals / BSP
+    ".bsp/sbt.json",
+    # Terraform
+    ".terraform/terraform.tfstate",
+    # Node extras
+    "coverage/lcov.info",
+    # Ruby
+    "tmp/cache/redis.rdb",
+    # PHP
+    "vendor/autoload.php",
+    # Python extras
+    ".tox/pytest",
+    # Editor extras
+    ".idea/workspace.xml",
+    # OS extras
+    "Desktop.ini",
+)
+# Per-category tracked-file / convention non-matches. These MUST NOT be ignored
+# after ensure_local_configs(agent_dir) runs — they are common tracked files
+# (or source-controlled markers) that the new patterns must preserve.
+#
+# NOTE: `vendor/bundle/.gitkeep` is intentionally omitted from this list.
+# The Go `vendor/*` and Ruby `vendor/bundle/*` patterns are mutually
+# exclusive in gitignore semantics: a single `vendor/*` line matches
+# `vendor/bundle/.gitkeep` and there is no way to allowlist a marker file
+# inside an ignored dir. The Go convention (ignore everything in `vendor/`)
+# is the dominant case, so the default gitignore honors that. A user who
+# tracks `vendor/bundle/.gitkeep` can add a one-line `!vendor/bundle/.gitkeep`
+# to their project-local gitignore.
+_EXPECTED_TRACKED_NON_IGNORED_PATHS = (
+    ".vscode/launch.json",
+    "Cargo.lock",
+    "go.sum",
+    "target/.gitkeep",
+    "build/.gitkeep",
+    "bin/.gitkeep",
+    "obj/.gitkeep",
+    "_build/.gitkeep",
+    "deps/.gitkeep",
+    ".gradle/.gitkeep",
 )
 
 
@@ -469,6 +619,93 @@ def test_ensure_local_configs_gitignore_covers_representative_local_paths(
     ignored = {p.strip() for p in raw}
     missing = [p for p in _EXPECTED_IGNORED_LOCAL_PATHS if p not in ignored]
     assert not missing, f"Paths not covered by .gitignore: {missing}"
+
+
+def _paths_ignored_by_check_ignore(cwd: Path, paths: tuple[str, ...]) -> set[str]:
+    """Return the subset of paths git check-ignore -v reports as ignored.
+
+    A path is considered ignored iff a non-negation pattern matched it.
+    The matching pattern is the third colon-separated segment of the first
+    stdout line (after a tab).
+    """
+    if not paths:
+        return set()
+    result = Repo(cwd).git.check_ignore("-v", "--", *paths)
+    ignored: set[str] = set()
+    for line in result.splitlines():
+        if not line:
+            continue
+        prefix, _, path = line.partition("\t")
+        pattern = prefix.rsplit(":", 1)[-1] if ":" in prefix else prefix
+        if not pattern.startswith("!"):
+            ignored.add(path.strip())
+    return ignored
+
+
+def test_ensure_local_configs_gitignore_matches_per_category_positive_paths(
+    tmp_git_repo: Path,
+) -> None:
+    """Each new gitignore category must cover at least one representative path."""
+    agent_dir = tmp_git_repo / ".agent"
+    ensure_local_configs(agent_dir)
+
+    ignored = _paths_ignored_by_check_ignore(
+        tmp_git_repo, _EXPECTED_NEW_CATEGORY_POSITIVE_IGNORED_PATHS
+    )
+    missing = [p for p in _EXPECTED_NEW_CATEGORY_POSITIVE_IGNORED_PATHS if p not in ignored]
+    assert not missing, f"New-category paths not covered by .gitignore: {missing}"
+
+
+def test_ensure_local_configs_does_not_overignore_tracked_conventions(
+    tmp_git_repo: Path,
+) -> None:
+    """Tracked files and source-controlled .gitkeep markers must NOT be ignored.
+
+    Specifically locks in:
+    * .vscode/ — upstream repo has tracked files under .vscode/
+    * Cargo.lock — Rust apps intentionally check it in
+    * go.sum — Go modules intentionally check it in
+    * <dir>/.gitkeep — every dir-pattern added in step 3 has a paired
+      `!<dir>/.gitkeep` allowlist so source-controlled marker files stay
+      tracked even when the dir itself is ignored.
+    """
+    agent_dir = tmp_git_repo / ".agent"
+    ensure_local_configs(agent_dir)
+
+    ignored = _paths_ignored_by_check_ignore(
+        tmp_git_repo, _EXPECTED_TRACKED_NON_IGNORED_PATHS
+    )
+    over_ignored = [p for p in _EXPECTED_TRACKED_NON_IGNORED_PATHS if p in ignored]
+    assert not over_ignored, (
+        f"Tracked files or .gitkeep markers that the new gitignore must NOT ignore: {over_ignored}"
+    )
+
+
+def test_ensure_local_configs_gitignore_idempotent_for_new_categories(
+    tmp_git_repo: Path,
+) -> None:
+    """Re-running ensure_local_configs must not duplicate the new gitignore lines."""
+    agent_dir = tmp_git_repo / ".agent"
+    ensure_local_configs(agent_dir)
+    ensure_local_configs(agent_dir)
+
+    content = (tmp_git_repo / ".gitignore").read_text(encoding="utf-8")
+    for new_pattern in (
+        "target/*",
+        "vendor/bundle/*",
+        ".dart_tool/",
+        "_build/*",
+        ".bsp/",
+        ".terraform/",
+        "coverage/",
+        "tmp/",
+        ".tox/",
+        ".idea/",
+        "Desktop.ini",
+    ):
+        assert content.count(new_pattern) == 1, (
+            f"Pattern {new_pattern!r} duplicated in .gitignore: {content!r}"
+        )
 
 
 def test_ensure_local_configs_bootstraps_a_valid_policy_bundle(tmp_path: Path) -> None:

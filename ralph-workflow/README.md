@@ -24,7 +24,7 @@ $EDITOR PROMPT.md             # 3. edit PROMPT.md — your spec for the run
 ralph                         # 4. run the unattended workflow
 ```
 
-This also auto-symlinks the bundled skill bundle into the supported agent roots and seeds a batteries-included .gitignore.
+This also auto-symlinks the bundled skill bundle into the supported agent roots and seeds a batteries-included .gitignore covering Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS patterns.
 
 ## What an overnight run leaves you
 

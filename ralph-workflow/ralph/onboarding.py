@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from ralph.skills._agent_paths import sibling_agent_skill_roots
+
 GETTING_STARTED_DOC: Final[str] = "docs/sphinx/getting-started.md"
 PROMPT_FILE: Final[str] = "PROMPT.md"
 INIT_COMMAND: Final[str] = "ralph --init"
@@ -66,11 +68,15 @@ def fresh_workspace_next_steps() -> tuple[str, ...]:
 def welcome_panel_next_steps() -> tuple[str, ...]:
     """Return the richer onboarding steps shown after initialization succeeds."""
     explanation = init_local_config_override_explanation()
+
+    siblings = ", ".join(sibling.agent for sibling in sibling_agent_skill_roots())
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
         "Install AI agents if missing (e.g., `claude`, `opencode`, `nanocoder`, `agy`)",
-        "Skills were auto-symlinked into Claude, Codex, OpenCode, and AGY skill roots; "
-        f"run `{DIAGNOSE_COMMAND}` if any agent cannot see them",
+        f"Skills were installed to ~/.claude/skills/ and symlinked to {siblings}",
+        "The default .gitignore was seeded with patterns for Python, Node, Rust, Go, "
+        "Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, "
+        "and common IDE/OS files",
         f"(Optional) Run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}",
         f"(Recommended) Run {DIAGNOSE_COMMAND} to verify agents, MCP servers, and config "
         "before the first real run",
@@ -86,8 +92,10 @@ def fallback_next_steps() -> tuple[str, ...]:
     return (
         f"Edit {PROMPT_FILE} with your implementation task",
         f"(Optional) Read {GETTING_STARTED_DOC} for a step-by-step first-run walkthrough",
-        "Skills were auto-symlinked into Claude, Codex, OpenCode, and AGY skill roots; "
-        f"run `{DIAGNOSE_COMMAND}` if any agent cannot see them",
+        "Re-running init is idempotent; skills were re-checked and the default "
+        ".gitignore was updated to cover common project structures (Python, Node, "
+        "Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, "
+        "Terraform, IDE/OS)",
         f"(Optional) Run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}",
         "(Optional) Configure MCP servers in `.agent/mcp.toml` or "
         "`~/.config/ralph-workflow-mcp.toml`",

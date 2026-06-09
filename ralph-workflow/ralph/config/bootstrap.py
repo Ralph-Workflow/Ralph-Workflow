@@ -13,8 +13,9 @@ Bootstrap creates the standard first-run config set:
   - Project-local: .agent/ralph-workflow.toml, .agent/mcp.toml,
                    .agent/pipeline.toml, .agent/artifacts.toml
   - Advanced optional: .agent/agents.toml (only regenerated when already present)
-  - Batteries-included .gitignore: Ralph-local, Python, Node, editor, and OS
-    metadata patterns (see _DEFAULT_GITIGNORE_PATTERNS)
+  - Batteries-included .gitignore: Ralph-local, Python, Node, Rust, Go, Ruby,
+    PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, IDE,
+    and OS metadata patterns (see _DEFAULT_GITIGNORE_PATTERNS)
 """
 
 from __future__ import annotations
@@ -63,12 +64,108 @@ _DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
     ".coverage",
     "htmlcov/",
     "dist/",
-    "build/",
+    "build/*",
+    "!build/.gitkeep",
     "*.egg-info/",
+    # Python extras
+    ".tox/",
+    ".nox/",
+    ".pdm-build/",
+    "*.pyo",
+    ".ipynb_checkpoints/",
+    "pip-wheel-metadata/",
     # Node
     "node_modules/",
     ".next/",
     ".nuxt/",
+    # Node extras
+    "coverage/",
+    "*.tsbuildinfo",
+    ".parcel-cache/",
+    ".cache/",
+    ".env",
+    ".env.local",
+    ".env.*.local",
+    # Rust (Cargo.lock intentionally NOT ignored — Rust apps check it in)
+    "target/*",
+    "!target/.gitkeep",
+    "**/*.rs.bk",
+    # Go (vendor/ is opt-in; go.sum intentionally NOT ignored)
+    "vendor/*",
+    # Ruby (note: vendor/bundle/.gitkeep cannot be allowlisted here because
+    # the vendor/* pattern above also matches it. A user who tracks
+    # vendor/bundle/.gitkeep can add a one-line !vendor/bundle/.gitkeep
+    # to their project-local gitignore — the appended default cannot honor
+    # both the Go "ignore all of vendor/" and the Ruby "track this
+    # marker in vendor/bundle/" semantics simultaneously).
+    "vendor/bundle/*",
+    ".bundle/",
+    "log/",
+    "tmp/",
+    "*.gem",
+    # PHP
+    ".phpunit.cache/",
+    "/storage/*.key",
+    "composer.phar",
+    # Java/Kotlin extras (paired with existing .idea/ below)
+    ".gradle/*",
+    "!.gradle/.gitkeep",
+    "*.class",
+    "*.jar",
+    # .NET / Visual Studio
+    "bin/*",
+    "!bin/.gitkeep",
+    "obj/*",
+    "!obj/.gitkeep",
+    "*.user",
+    "*.suo",
+    "*.userosscache",
+    "*.sln.docstates",
+    "[Dd]ebug/",
+    "[Rr]elease/",
+    "x64/",
+    "x86/",
+    "*.dll",
+    "*.exe",
+    "*.pdb",
+    # Dart / Flutter
+    ".dart_tool/",
+    ".flutter-plugins",
+    ".flutter-plugins-dependencies",
+    ".packages",
+    ".pub-cache/",
+    ".pub/",
+    # Elixir
+    "_build/*",
+    "!_build/.gitkeep",
+    "deps/*",
+    "!deps/.gitkeep",
+    ".elixir_ls/",
+    "cover/",
+    "doc/",
+    "fetch.*.exs",
+    # Scala / Metals / BSP
+    ".bsp/",
+    ".metals/",
+    "project/target/",
+    "project/project/",
+    # Terraform (note: *.tfvars is in the positive list; *.tfvars.example
+    # is intentionally NOT allowlisted — the user must explicitly add
+    # tracked example files).
+    ".terraform/",
+    "*.tfstate",
+    "*.tfstate.*",
+    ".terraform.lock.hcl",
+    "terraform.tfvars",
+    "crash.log",
+    "crash.*.log",
+    "*.tfvars",
+    # Editors / IDEs extra
+    ".fleet/",
+    ".cursor/",
+    ".windsurf/",
+    ".idea_modules/",
+    "*.iml",
     # Editors / IDEs (NOTE: .vscode/ intentionally NOT included —
     # the upstream repository has tracked files under .vscode/ that
     # a blanket ignore would hide.)
@@ -78,6 +175,10 @@ _DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
     # OS metadata
     ".DS_Store",
     "Thumbs.db",
+    # OS metadata extras
+    "Desktop.ini",
+    "ehthumbs.db",
+    "$RECYCLE.BIN/",
 )
 
 

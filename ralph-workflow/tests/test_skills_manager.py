@@ -29,7 +29,7 @@ def test_ensure_baseline_capabilities_marks_skills_needs_repair_on_failure(
             CapabilityEntry(status=CapabilityStatus.NEEDS_REPAIR),
             ["skills-materialize-failed"],
         )
-        result = manager.ensure_baseline_capabilities(workspace_root=tmp_path)
+        result, _failures = manager.ensure_baseline_capabilities(workspace_root=tmp_path)
 
     assert result.skills.status == CapabilityStatus.NEEDS_REPAIR
 
@@ -69,7 +69,7 @@ def test_ensure_baseline_stamps_web_search_degraded_when_ddgs_unavailable(
             CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
             [],
         )
-        result = manager.ensure_baseline_capabilities(workspace_root=tmp_path)
+        result, _failures = manager.ensure_baseline_capabilities(workspace_root=tmp_path)
 
     assert result.web_search.status == CapabilityStatus.INSTALLED_DEGRADED
     assert result.web_search.last_check_fail_iso != ""
@@ -90,7 +90,7 @@ def test_ensure_baseline_stamps_visit_url_needs_repair_when_extraction_unavailab
             CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
             [],
         )
-        result = manager.ensure_baseline_capabilities(workspace_root=tmp_path)
+        result, _failures = manager.ensure_baseline_capabilities(workspace_root=tmp_path)
 
     assert result.visit_url.status == CapabilityStatus.NEEDS_REPAIR
     assert result.visit_url.last_check_fail_iso != ""

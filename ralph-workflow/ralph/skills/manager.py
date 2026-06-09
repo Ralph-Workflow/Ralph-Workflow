@@ -79,8 +79,16 @@ class SkillManager:
     def _save_state(self, state: CapabilityState) -> None:
         save_capability_state(state, self._state_path)
 
-    def ensure_baseline_capabilities(self, *, workspace_root: Path) -> CapabilityState:
-        """Install skills, probe docs_mcp, stamp web_search/visit_url with Ralph version."""
+    def ensure_baseline_capabilities(
+        self, *, workspace_root: Path
+    ) -> tuple[CapabilityState, list[str]]:
+        """Install skills, probe docs_mcp, stamp web_search/visit_url with Ralph version.
+
+        Returns (updated_state, failures) where failures is the list of failure codes
+        returned by install_baseline_skills (empty list on success). The failures list
+        is threaded up to the caller (init.py) so a NEEDS_REPAIR status from the skill
+        installer is visible in the user-facing init summary.
+        """
         state = self._load_state()
         current_version = _get_ralph_version()
 
@@ -140,7 +148,7 @@ class SkillManager:
             }
         )
         self._save_state(updated)
-        return updated
+        return updated, failures
 
     def check_baseline_health(self) -> dict[str, bool]:
         """Mark web_search/visit_url INSTALLED_OUTDATED if ralph version changed."""

@@ -38,7 +38,7 @@ Use the default initializer first:
 ralph --init
 ```
 
-`ralph --init` scaffolds `PROMPT.md` plus the standard project-local support files used for MCP, pipeline, and artifact configuration. It also installs Ralph Workflow's mirrored default skill bundle from the shipped package assets and prints a Baseline Capabilities summary showing the health of all default helpers. If you explicitly want a project-local override copy of the main config, create `.agent/ralph-workflow.toml` with:
+`ralph --init` scaffolds `PROMPT.md` plus the standard project-local support files used for MCP, pipeline, and artifact configuration. It also installs Ralph Workflow's mirrored default skill bundle from the shipped package assets and prints a Baseline Capabilities summary showing the health of all default helpers. The first run also installs the bundled skill bundle into `~/.claude/skills/` and creates symlinks into Codex, OpenCode, and AGY skill roots, so all supported agents can discover Ralph Workflow skills automatically. Re-running `ralph --init` is idempotent and re-checks every skill root plus refreshes the default .gitignore. If you explicitly want a project-local override copy of the main config, create `.agent/ralph-workflow.toml` with:
 
 ```bash
 ralph --init-local-config

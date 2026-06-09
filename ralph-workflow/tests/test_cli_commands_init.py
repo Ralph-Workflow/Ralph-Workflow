@@ -68,7 +68,7 @@ def test_init_command_calls_ensure_baseline_capabilities(
     def fake_ensure(_self_obj: object, *, workspace_root: object) -> object:
         nonlocal called
         called = True
-        return CapabilityState()
+        return CapabilityState(), []
     monkeypatch.setattr(
         manager_module.SkillManager,
         "ensure_baseline_capabilities",
@@ -89,12 +89,15 @@ def test_init_command_prints_capability_summary(
 
     def fake_ensure(
         _self_obj: object, *, workspace_root: object
-    ) -> CapabilityState:
-        return CapabilityState(
-            web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
-            visit_url=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
-            docs_mcp=CapabilityEntry(status=CapabilityStatus.NOT_INSTALLED),
-            skills=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+    ) -> tuple[CapabilityState, list[str]]:
+        return (
+            CapabilityState(
+                web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+                visit_url=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+                docs_mcp=CapabilityEntry(status=CapabilityStatus.NOT_INSTALLED),
+                skills=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+            ),
+            [],
         )
 
     monkeypatch.setattr(
@@ -139,10 +142,16 @@ def test_init_command_skill_failure_does_not_block_init(
     assert "Created" in output
 
 
-def test_init_command_fallback_path_skips_capability_refresh(
+def test_init_command_runs_capability_refresh_on_every_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The no-op init fallback should avoid repeating baseline capability refresh work."""
+    """Capability refresh MUST run on every ralph --init invocation, including re-runs.
+
+    The previous test name `test_init_command_fallback_path_skips_capability_refresh`
+    pinned the buggy behavior (skip on re-run). The new contract is the
+    always-on auto-skill-install — every invocation triggers the skill
+    installer + the full capability summary table.
+    """
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
 
@@ -151,7 +160,7 @@ def test_init_command_fallback_path_skips_capability_refresh(
     def fake_ensure(*_args: object, **_kwargs: object) -> object:
         nonlocal calls
         calls += 1
-        return CapabilityState()
+        return CapabilityState(), []
     monkeypatch.setattr(
         manager_module.SkillManager,
         "ensure_baseline_capabilities",
@@ -161,9 +170,9 @@ def test_init_command_fallback_path_skips_capability_refresh(
     init_module.init_command(template="default")
     assert calls == 1
 
-    # Second run should hit the fallback path without re-refreshing capabilities.
+    # Re-run also runs the capability refresh.
     init_module.init_command(template="default")
-    assert calls == 1
+    assert calls == 2
 
     output = stream.getvalue()
     assert "Ralph Workflow initialized in" in output

@@ -2,6 +2,16 @@
 
 This module implements the initialization command that sets up
 Ralph Workflow in a repository.
+
+AUTO-SKILL-INSTALL CONTRACT
+=============================
+`ralph --init` ALWAYS invokes the baseline skill installer on every run,
+including the re-run path where every bootstrap result is `skipped`.
+This guarantees that the bundled skill bundle is materialized at
+`~/.claude/skills/` and symlinked into every registered sibling agent
+root, regardless of whether other config files needed creation. The
+installer failures (e.g. `sibling-conflict-*`) are surfaced to the user
+on both the first-run and re-run paths.
 """
 
 from __future__ import annotations
@@ -56,6 +66,7 @@ if TYPE_CHECKING:
 
 from ralph.display.context import make_display_context
 from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
+from ralph.skills._capability_state import CapabilityState
 from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
@@ -123,6 +134,12 @@ def init_command(
         config_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(bundled_defaults / "ralph-workflow.toml"), str(config_path))
         console.print(_status_text("Created", str(config_path), "theme.status.success"))
+        # Even on the legacy config_path-copy branch, run the always-on
+        # auto-skill-install so a one-shot init copy still triggers the
+        # skill fan-out. Failures are swallowed and surfaced via the
+        # welcome-banner / fallback paths.
+        _, failures = _ensure_baseline_capabilities(display_context=ctx)
+        _print_skill_failure_warning(console, failures)
     elif config_path is None:
         global_results: list[BootstrapResult] = [
             ensure_global_config(),
@@ -132,7 +149,11 @@ def init_command(
         local_results = ensure_local_support_configs(agent_dir)
         all_results = global_results + local_results
 
-        # Show welcome banner if anything was created/regenerated
+        # Always run the capability refresh + summary table on every init invocation.
+        # The failures list is threaded into the welcome-banner / fallback path so
+        # a NEEDS_REPAIR is visible regardless of which code path fires.
+        _, failures = _ensure_baseline_capabilities(display_context=ctx)
+
         created_or_regenerated = [r for r in all_results if r.action in {"created", "regenerated"}]
         if created_or_regenerated:
             registry = _try_load_registry()
@@ -142,10 +163,28 @@ def init_command(
                 agent_registry=registry,
                 display_context=ctx,
             )
-            _ensure_baseline_capabilities(display_context=ctx)
+            _print_skill_failure_warning(console, failures)
         else:
-            # All skipped - show fallback next steps
-            _print_fallback_next_steps(target, display_context=ctx)
+            # All skipped - show fallback next steps (with skill-failure warning if any)
+            _print_fallback_next_steps(target, failures=failures, display_context=ctx)
+
+
+def _print_skill_failure_warning(console: Console, failures: list[str]) -> None:
+    """Print a one-line skill-install failure warning when the list is non-empty.
+
+    Surfaced on BOTH the first-run welcome banner path AND the re-run
+    fallback path so a NEEDS_REPAIR status from install_baseline_skills is
+    visible to the user regardless of which init code path fires.
+    """
+    if not failures:
+        return
+    console.print(
+        Text(
+            f"Skills auto-install reported: {', '.join(failures)}. "
+            "Run `ralph --diagnose` for details.",
+            style="theme.status.warning",
+        )
+    )
 
 
 def _try_load_registry() -> AgentRegistry | None:
@@ -158,16 +197,26 @@ def _try_load_registry() -> AgentRegistry | None:
         return None
 
 
-def _ensure_baseline_capabilities(*, display_context: DisplayContext) -> None:
-    """Install baseline skills and print the capability summary."""
+def _ensure_baseline_capabilities(
+    *, display_context: DisplayContext
+) -> tuple[CapabilityState, list[str]]:
+    """Install baseline skills, print the capability summary, and return (state, failures).
+
+    Returns (CapabilityState, list[str]) where the second element is the list of
+    failure codes returned by install_baseline_skills (empty list on success or
+    on a swallowed exception). The init_command caller threads the failures
+    list into the welcome-banner and fallback code paths so a NEEDS_REPAIR is
+    visible on every ralph --init invocation, not just first run.
+    """
     ctx = display_context
     console = ctx.console
     try:
         manager = SkillManager()
-        cap_state = manager.ensure_baseline_capabilities(workspace_root=Path.cwd())
+        cap_state, failures = manager.ensure_baseline_capabilities(workspace_root=Path.cwd())
         _print_capability_summary(console, cap_state)
+        return cap_state, failures
     except Exception:
-        pass
+        return CapabilityState(), []
 
 
 def _collect_skill_root_rows() -> list[tuple[str, str, Text]]:
@@ -237,7 +286,9 @@ def _print_capability_summary(console: Console, state: CapabilityState) -> None:
         console.print(skill_table)
 
 
-def _print_fallback_next_steps(target: Path, *, display_context: DisplayContext) -> None:
+def _print_fallback_next_steps(
+    target: Path, *, failures: list[str] | None = None, display_context: DisplayContext
+) -> None:
     """Print next steps when all configs were skipped (re-running init)."""
     ctx = display_context
     console = ctx.console
@@ -252,6 +303,8 @@ def _print_fallback_next_steps(target: Path, *, display_context: DisplayContext)
     console.print(Text("\nNext steps:", style="theme.text.muted"))
     for index, line in enumerate(fallback_next_steps(), start=1):
         console.print(f"  {index}. {line}")
+    if failures:
+        _print_skill_failure_warning(console, failures)
     console.print(
         "\n[theme.text.muted]To reset configs later:"
         " [theme.cat.meta]ralph --regenerate-config[/theme.cat.meta][/theme.text.muted]"

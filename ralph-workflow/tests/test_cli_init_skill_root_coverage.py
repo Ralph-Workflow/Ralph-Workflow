@@ -132,12 +132,15 @@ def test_init_command_skill_summary_mentions_canonical_root(
 
     def _fake_ensure(
         _self_obj: object, *, workspace_root: object
-    ) -> CapabilityState:
-        return CapabilityState(
-            web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
-            visit_url=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
-            docs_mcp=CapabilityEntry(status=CapabilityStatus.NOT_INSTALLED),
-            skills=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+    ) -> tuple[CapabilityState, list[str]]:
+        return (
+            CapabilityState(
+                web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+                visit_url=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+                docs_mcp=CapabilityEntry(status=CapabilityStatus.NOT_INSTALLED),
+                skills=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+            ),
+            [],
         )
 
     monkeypatch.setattr(
@@ -171,12 +174,15 @@ def test_init_command_skill_summary_reports_missing_sibling(
 
     def _fake_ensure(
         _self_obj: object, *, workspace_root: object
-    ) -> CapabilityState:
-        return CapabilityState(
-            web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
-            visit_url=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
-            docs_mcp=CapabilityEntry(status=CapabilityStatus.NOT_INSTALLED),
-            skills=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+    ) -> tuple[CapabilityState, list[str]]:
+        return (
+            CapabilityState(
+                web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+                visit_url=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+                docs_mcp=CapabilityEntry(status=CapabilityStatus.NOT_INSTALLED),
+                skills=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
+            ),
+            [],
         )
 
     monkeypatch.setattr(
