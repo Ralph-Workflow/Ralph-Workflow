@@ -46,7 +46,7 @@ from ralph.agents.system_clock import SystemClock
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.env import MAX_SESSION_SECONDS_ENV, SESSION_SOFT_WRAPUP_SECONDS_ENV
-from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.protocol.session import AgentSession, McpSession
 from ralph.mcp.server._fallback_standalone_server import _FallbackStandaloneServer
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
@@ -180,7 +180,7 @@ else:
 class McpServerExtras:
     """Optional DI parameters for building standalone MCP servers."""
 
-    session: AgentSession | None = None
+    session: McpSession | None = None
     upstream_registry: UpstreamRegistry | None = None
     mcp_config: McpConfig | None = None
 
@@ -429,7 +429,7 @@ def build_fastmcp_server(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     extras: McpServerExtras | None = None,
-    session: AgentSession | None = None,
+    session: McpSession | None = None,
 ) -> FastMcpServerLike:
     """Build a standalone FastMCP server exposing Ralph tools over HTTP."""
     _extras = extras or McpServerExtras()

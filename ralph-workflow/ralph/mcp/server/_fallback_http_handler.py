@@ -11,9 +11,14 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._runtime_constants import DEFAULT_MOUNT_PATH
 from ralph.mcp.server.exec_sse_streaming import exec_sse_streaming_post
+from ralph.mcp.tools.names import EXEC_TOOL, claude_tool_name, opencode_tool_name
 
 if TYPE_CHECKING:
     from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
+
+_EXEC_STREAMING_TOOL_NAMES = frozenset(
+    {str(EXEC_TOOL), claude_tool_name(EXEC_TOOL), opencode_tool_name(EXEC_TOOL)}
+)
 
 
 class _FallbackHttpHandler(BaseHTTPRequestHandler):
@@ -68,11 +73,13 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         )
         server = cast("_FallbackHttpServer", self.server)
 
-        # Exec tool calls use SSE streaming: chunk notifications before final frame.
+        # Exec tool calls use SSE streaming: chunk notifications before final
+        # frame. Match the server-advertised aliases too — clients calling
+        # `mcp__ralph__exec`/`ralph_exec` must stream the same way.
         if (
             request.method == "tools/call"
             and isinstance(request.params, dict)
-            and request.params.get("name") == "exec"
+            and request.params.get("name") in _EXEC_STREAMING_TOOL_NAMES
         ):
             self._handle_exec_streaming_post(request, server)
             return
@@ -107,7 +114,13 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
             encoded = f"event: message\r\ndata: {json.dumps(error_body)}\r\n\r\n".encode()
         session_id = None
         if request.method == "initialize":
-            session_id = cast("_FallbackHttpServer", self.server).mcp_server._session.session_id
+            # The production session re-reads its backing file on every access;
+            # a corrupt/missing file must degrade to a response without the
+            # session header, never destroy the already-encoded response.
+            with suppress(Exception):
+                session_id = (
+                    cast("_FallbackHttpServer", self.server).mcp_server._session.session_id
+                )
         self._write_sse(encoded, 200, session_id=session_id)
 
     def _handle_exec_streaming_post(
@@ -124,7 +137,11 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
         def _write_frame(frame: bytes) -> None:
-            with suppress(OSError):
+            # suppress(Exception), not just OSError: a concurrent write to the
+            # buffered socket writer raises RuntimeError (reentrant call), and
+            # any escape here kills the request thread after the 200 header —
+            # the bodyless-stream hang the streaming net exists to prevent.
+            with suppress(Exception):
                 self.wfile.write(frame)
                 self.wfile.flush()
 

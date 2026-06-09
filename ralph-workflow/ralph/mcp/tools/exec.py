@@ -573,10 +573,12 @@ def format_exec_result(
 
 @runtime_checkable
 class _SessionWithStreaming(Protocol):
-    """Subset of AgentSession that supports tool output streaming."""
+    """Subset of AgentSession that supports thread-owned tool output streaming."""
 
-    def stream_tool_output(self, event: dict[str, object]) -> None:
-        """Forward a streaming tool output event."""
+    def current_thread_tool_output_sink(
+        self,
+    ) -> Callable[[dict[str, object]], None] | None:
+        """Return the active sink when the calling thread owns it."""
         ...
 
 
@@ -584,13 +586,20 @@ def _build_effective_deps(
     session: CoordinationSessionLike,
     deps: ExecRunDeps | None,
 ) -> ExecRunDeps | None:
-    """Compose session.stream_tool_output into deps.on_output_chunk when available."""
+    """Compose the session's thread-owned output sink into deps.on_output_chunk."""
     if not isinstance(session, _SessionWithStreaming):
         return deps
-    streaming_session = session
+    # Capture the sink ONCE, on the dispatching thread. The session is shared
+    # across concurrent request threads; resolving the sink at chunk time (from
+    # subprocess reader threads) would route this exec's output to whichever
+    # request swapped the shared sink last — cross-connection output cross-talk.
+    sink = session.current_thread_tool_output_sink()
+    if sink is None:
+        return deps
+    captured_sink = sink
 
     def _session_chunk(chunk: str) -> None:
-        streaming_session.stream_tool_output({"tool": "exec", "stream": "combined", "text": chunk})
+        captured_sink({"tool": "exec", "stream": "combined", "text": chunk})
 
     if deps is None:
         return ExecRunDeps(on_output_chunk=_session_chunk)

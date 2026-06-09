@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import subprocess
+import threading
 from typing import TYPE_CHECKING
 
 import pytest
 
 import ralph.mcp.tools._exec_completed_process as exec_completed_process
 import ralph.mcp.tools.exec as exec_tool
+from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     ToolContent,
@@ -26,16 +28,6 @@ from tests.mock_workspace_root import MockWorkspaceRoot
 if TYPE_CHECKING:
     from pathlib import Path
 
-
-class _StreamingMockSession(MockSession):
-    """MockSession that records stream_tool_output calls."""
-
-    def __init__(self, caps: set[str]) -> None:
-        super().__init__(caps)
-        self.streamed_events: list[dict[str, object]] = []
-
-    def stream_tool_output(self, event: dict[str, object]) -> None:
-        self.streamed_events.append(event)
 
 CUSTOM_TIMEOUT_MS = 5000
 EXPECTED_TIMEOUT_SECONDS = 2.5
@@ -136,10 +128,15 @@ class TestHandleExecCommand:
         assert result.is_error is True
 
 
-    def test_session_stream_tool_output_receives_chunks_before_final_result(
+    def test_thread_owned_session_sink_receives_chunks_before_final_result(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """handle_exec_command forwards on_output_chunk events via session.stream_tool_output."""
+        """Output chunks flow to the sink owned by the dispatching thread.
+
+        The session is shared across concurrent request threads, so chunks
+        are attributed via thread ownership: the dispatching thread's sink
+        receives them; a sink owned by another thread receives nothing.
+        """
 
         def fake_run_command(
             command: str,
@@ -157,19 +154,30 @@ class TestHandleExecCommand:
 
         monkeypatch.setattr(exec_tool, "run_command", fake_run_command)
 
-        session = _StreamingMockSession({"ProcessExecBounded"})
+        session = AgentSession(
+            session_id="s", run_id="r", drain="d", capabilities={"ProcessExecBounded"}
+        )
+        streamed: list[dict[str, object]] = []
+        session.tool_output_sink_entry = (threading.get_ident(), streamed.append)
         workspace = MockWorkspaceRoot(tmp_path)
         params: dict[str, object] = {"command": "echo", "args": [], "timeout_ms": 5000}
 
         result = handle_exec_command(session, workspace, params)
 
         assert result.is_error is False
-        streamed = session.streamed_events
-        assert streamed, "stream_tool_output must be called at least once"
+        assert streamed, "the owning thread's sink must receive output chunks"
         for event in streamed:
             assert event.get("tool") == "exec"
             assert event.get("stream") == "combined"
             assert isinstance(event.get("text"), str)
+
+        # A sink owned by a DIFFERENT thread must receive nothing — routing
+        # this dispatch's output there is the cross-connection leak.
+        foreign: list[dict[str, object]] = []
+        session.tool_output_sink_entry = (threading.get_ident() + 1, foreign.append)
+        result = handle_exec_command(session, workspace, params)
+        assert result.is_error is False
+        assert foreign == []
         text_parts: list[str] = []
         for event in streamed:
             text_val = event.get("text")

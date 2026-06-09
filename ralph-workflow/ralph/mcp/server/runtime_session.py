@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -19,6 +21,7 @@ if TYPE_CHECKING:
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
+    ResolvedCapabilityProfile,
     profile_from_payload,
     resolve_capability_profile,
 )
@@ -32,7 +35,12 @@ from ralph.mcp.protocol.env import (
 from ralph.mcp.protocol.env import (
     WORKER_ARTIFACT_DIR_ENV as WORKER_ARTIFACT_DIR,
 )
-from ralph.mcp.protocol.session import AgentSession, session_has_capability
+from ralph.mcp.protocol.session import (
+    AgentSession,
+    McpSession,
+    ToolOutputSinkEntry,
+    session_has_capability,
+)
 
 
 class FileBackedSession:
@@ -55,6 +63,25 @@ class FileBackedSession:
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
         self._env_getter = env_getter if env_getter is not None else os.environ.get
         self._media_manifest = MediaManifest()
+        self._created_at = time.time()
+        # Streaming surface mirroring AgentSession: the exec SSE path swaps the
+        # atomic (owner thread, sink) entry per request and the exec handler
+        # captures it via current_thread_tool_output_sink. Production servers
+        # run with THIS class (via session_from_env), so it must carry the full
+        # session surface — enforced statically by session_from_env's McpSession
+        # return type and at runtime by
+        # tests/test_mcp_server_file_backed_session_agent_session_conformance.py.
+        self.tool_output_sink_entry: ToolOutputSinkEntry | None = None
+
+    def current_thread_tool_output_sink(self) -> Callable[[dict[str, object]], None] | None:
+        """Return the sink only when the calling thread owns it (single atomic read)."""
+        entry = self.tool_output_sink_entry
+        if entry is None:
+            return None
+        owner, sink = entry
+        if owner is None or owner == threading.get_ident():
+            return sink
+        return None
 
     def _load(self) -> dict[str, object]:
         return self._loader(self._path)
@@ -113,7 +140,7 @@ class FileBackedSession:
         return tuple(Path(item).resolve() for item in payload_raw if isinstance(item, str))
 
     @property
-    def model_identity(self) -> object:
+    def model_identity(self) -> MultimodalModelIdentity:
         raw = self._load().get("model_identity")
         if not isinstance(raw, dict):
             return UNKNOWN_IDENTITY
@@ -127,18 +154,44 @@ class FileBackedSession:
         )
 
     @property
-    def capability_profile(self) -> object:
+    def capability_profile(self) -> ResolvedCapabilityProfile | None:
         raw = self._load().get("capability_profile")
         if isinstance(raw, dict):
             return profile_from_payload(raw)
-        identity = self.model_identity
-        if not isinstance(identity, MultimodalModelIdentity):
-            return resolve_capability_profile(UNKNOWN_IDENTITY)
-        return resolve_capability_profile(identity)
+        return resolve_capability_profile(self.model_identity)
 
     @property
-    def media_manifest(self) -> object:
+    def media_manifest(self) -> MediaManifest:
         return self._media_manifest
+
+    @property
+    def policy_flags(self) -> set[str] | None:
+        payload_raw = self._load().get("policy_flags")
+        if not isinstance(payload_raw, list):
+            return None
+        return {item for item in payload_raw if isinstance(item, str)}
+
+    @property
+    def created_at(self) -> float:
+        payload_raw = self._load().get("created_at")
+        if isinstance(payload_raw, (int, float)) and not isinstance(payload_raw, bool):
+            return float(payload_raw)
+        return self._created_at
+
+    @property
+    def parallel_worker(self) -> bool:
+        return self.is_parallel_worker()
+
+    @property
+    def edit_area_result(self) -> object:
+        return self._load().get("edit_area_result")
+
+    @property
+    def stored_capability_profile(self) -> ResolvedCapabilityProfile | None:
+        raw = self._load().get("capability_profile")
+        if isinstance(raw, dict):
+            return profile_from_payload(raw)
+        return None
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"
@@ -174,18 +227,22 @@ def session_from_env(
     *,
     session_id_factory: Callable[[], str] | None = None,
     run_id_factory: Callable[[], str] | None = None,
-) -> AgentSession | None:
-    """Load optional session metadata from the environment."""
+) -> McpSession | None:
+    """Load optional session metadata from the environment.
+
+    Returns the structural :class:`McpSession` protocol — NOT a cast. mypy
+    verifies both return branches (``FileBackedSession`` and ``AgentSession``)
+    against the full session contract, so a public member added to one
+    implementation but not the other is a type error in ``make verify``, not a
+    production AttributeError.
+    """
     env_map = os.environ if env is None else env
     session_file = env_map.get(SESSION_FILE_ENV)
     if session_file:
-        return cast(
-            "AgentSession",
-            FileBackedSession(
-                Path(session_file),
-                session_id_factory=session_id_factory,
-                run_id_factory=run_id_factory,
-            ),
+        return FileBackedSession(
+            Path(session_file),
+            session_id_factory=session_id_factory,
+            run_id_factory=run_id_factory,
         )
 
     raw = env_map.get(SESSION_ENV)

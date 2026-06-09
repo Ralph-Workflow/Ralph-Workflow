@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import socket
-import subprocess
 import sys
 import tempfile
 import threading
@@ -587,20 +586,37 @@ def _subprocess_env(session_file: Path) -> dict[str, str]:
 
 
 def _spawn_process(
-    command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+    command: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    *,
+    phase: str | None = None,
+    spawn: Callable[[list[str], SpawnOptions], ManagedProcess] | None = None,
 ) -> ManagedProcess:
     label = f"phase:{phase}:mcp-server" if phase else "mcp-server"
-    return get_process_manager().spawn(
-        command,
-        SpawnOptions(
-            cwd=str(cwd),
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            label=label,
-        ),
-    )
+    # Persist server output instead of discarding it: with DEVNULL, a crash
+    # inside a request handler (e.g. an AttributeError after SSE headers) left
+    # no trace anywhere while the client hung to its request timeout (-32001).
+    log_dir = cwd / ".agent" / "tmp"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_fd = os.open(log_dir / "mcp-server.log", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        spawn_fn = spawn if spawn is not None else get_process_manager().spawn
+        return spawn_fn(
+            command,
+            SpawnOptions(
+                cwd=str(cwd),
+                env=env,
+                stdout=log_fd,
+                stderr=log_fd,
+                start_new_session=True,
+                label=label,
+            ),
+        )
+    finally:
+        # The child holds its own duplicate of the fd from spawn time; the
+        # parent's copy must be released or each restart leaks a descriptor.
+        os.close(log_fd)
 
 
 def _default_lifecycle_deps() -> LifecycleDeps:
