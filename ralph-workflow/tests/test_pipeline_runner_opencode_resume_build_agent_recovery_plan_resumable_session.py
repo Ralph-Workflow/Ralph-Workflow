@@ -5,6 +5,10 @@ Tests that:
 2. When resumable_session_id is None, extract_session_id() fallback is used from raw output.
 3. The resolved ``recovery_action`` is carried on the returned ``AgentRecoveryPlan``
    so the prompt constructor can branch on it (resume tail vs fresh inline).
+4. End-to-end: the production subprocess reader raises a resume-safe
+   ``AgentInactivityTimeoutError`` AND ``build_agent_recovery_plan`` maps it
+   to ``recovery_action='resume'`` with the right session id (proves the
+   new wiring in ``_process_reader.py`` feeds through to the plan).
 
 No real subprocesses, no real wall clock.
 """
@@ -12,19 +16,29 @@ No real subprocesses, no real wall clock.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+import threading
+from typing import TYPE_CHECKING, Literal
 
+import pytest
+
+from ralph.agents import invoke as invoke_module
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
+    InvokeOptions,
     OpenCodeResumableExitError,
+    invoke_agent,
 )
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
+from ralph.agents.timeout_clock import FakeClock
+from ralph.config.models import AgentConfig
 from ralph.pipeline.effect_executor import AgentRecoveryInput, build_agent_recovery_plan
 from ralph.pipeline.effects import InvokeAgentEffect
+from tests.agents.test_invoke_timeout_integration_helper__waitingstrategy import _WaitingStrategy
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -340,3 +354,140 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
             )
         )
         assert plan is None
+
+    def test_subprocess_reader_raises_resume_safe_then_plan_uses_resume_action(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """End-to-end: production subprocess reader -> recovery plan builder.
+
+        The full chain drives the actual production code path: the
+        ``invoke_agent`` seam (monkeypatched at ``subprocess.Popen``) raises
+        an ``AgentInactivityTimeoutError`` whose
+        ``session_resume_safe=True`` and ``resumable_session_id`` are
+        populated by the new ``_process_reader.py`` wiring, and
+        ``build_agent_recovery_plan`` maps that to
+        ``recovery_action='resume'`` with the right session id.
+
+        Pre-fix (or a future regression of Step 4) the subprocess reader
+        raised with ``session_resume_safe=False`` and
+        ``resumable_session_id=None``; the recovery plan builder would
+        then return ``recovery_action='fresh'`` and ``session_id=None``,
+        defeating resume and producing the restart-from-scratch wedge.
+        """
+        config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+        prompt_file = tmp_path / "PROMPT.md"
+        prompt_file.write_text("hello", encoding="utf-8")
+
+        class _FakeProcess:
+            pid: int = 12345
+
+            def __init__(self) -> None:
+                self._gate = threading.Event()
+                self._gate.set()
+                self.stdout = self._stdout_iter()
+                self.stderr = self._stderr()
+                self.returncode: int | None = 0
+                self.terminated = False
+
+            def _stdout_iter(self) -> Iterator[str]:
+                yield '{"type":"session","session_id":"sess-from-subprocess"}\n'
+                self._gate.clear()
+                self._gate.wait(timeout=5.0)
+                yield from ()
+
+            @staticmethod
+            def _stderr() -> object:
+                class _Stderr:
+                    @staticmethod
+                    def read() -> str:
+                        return ""
+
+                return _Stderr()
+
+            def poll(self) -> int | None:
+                return self.returncode
+
+            def __enter__(self) -> _FakeProcess:
+                return self
+
+            def __exit__(
+                self,
+                _exc_type: object,
+                _exc: object,
+                _tb: object,
+            ) -> Literal[False]:
+                return False
+
+            def wait(self, timeout: float | None = None) -> int:
+                del timeout
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.terminated = True
+                self.returncode = -15
+
+            def kill(self) -> None:
+                self.terminated = True
+                self.returncode = -9
+
+        proc = _FakeProcess()
+
+        monkeypatch.setattr(
+            invoke_module,
+            "strategy_for_transport",
+            lambda *args, **kwargs: _WaitingStrategy(),
+        )
+        monkeypatch.setattr(
+            "ralph.agents.invoke.subprocess.Popen",
+            lambda *args, **kwargs: proc,
+        )
+        monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+
+        clock = FakeClock()
+        opts = InvokeOptions(
+            show_progress=False,
+            workspace_path=tmp_path,
+            idle_timeout_seconds=0.05,
+            max_waiting_on_child_seconds=0.1,
+            max_waiting_on_child_no_progress_seconds=None,
+            waiting_status_interval_seconds=100.0,
+            idle_poll_interval_seconds=0.01,
+        )
+
+        try:
+            with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+                list(
+                    invoke_agent(
+                        config,
+                        str(prompt_file),
+                        options=opts,
+                        _clock=clock,
+                    )
+                )
+        finally:
+            proc._gate.set()
+
+        assert exc_info.value.session_resume_safe is True
+        assert exc_info.value.resumable_session_id == "sess-from-subprocess"
+        assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+        effect = _make_effect(agent_name="opencode")
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc_info.value,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=[],
+                rendered_output=[],
+                extracted_session_id=None,
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
+        )
+
+        assert plan is not None
+        assert plan.recovery_action == "resume"
+        assert plan.session_id == "sess-from-subprocess"

@@ -357,6 +357,7 @@ def _run_subprocess_and_read_lines(
             liveness_probe=ctx.liveness_probe,
             waiting_listener=ctx.waiting_listener,
             monitor=ctx.monitor,
+            expected_session_id=ctx.expected_session_id,
         )
         lines_iter = _ProcessLineReader(handle, reader_ctx, clock).read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
@@ -406,6 +407,11 @@ def _run_subprocess_and_read_lines(
                     WatchdogFireReason.PROCESS_EXIT_HANG,
                 )
         except _IdleStreamTimeoutError as exc:
+            session_resume_safe = exc.reason in {
+                WatchdogFireReason.NO_OUTPUT_DEADLINE,
+                WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
+                WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
+            }
             raise AgentInactivityTimeoutError(
                 _agent_command_name(ctx.config),
                 exc.timeout_seconds,
@@ -413,7 +419,12 @@ def _run_subprocess_and_read_lines(
                     tuple(parsed_output),
                     explicit_completion_seen=explicit_completion_seen,
                 ),
-                InactivityTimeoutOpts(reason=exc.reason, diagnostic=exc.diagnostic),
+                InactivityTimeoutOpts(
+                    reason=exc.reason,
+                    session_resume_safe=session_resume_safe,
+                    resumable_session_id=captured_session_id or reader_ctx.expected_session_id,
+                    diagnostic=exc.diagnostic,
+                ),
             ) from exc
 
         _check_process_result(

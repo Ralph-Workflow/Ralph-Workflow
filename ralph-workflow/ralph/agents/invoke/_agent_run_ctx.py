@@ -41,3 +41,4 @@ class _AgentRunCtx:
     required_artifact: RequiredArtifact | None = None
     clock: Clock | None = None
     evaluate_completion_fn: _EvalCompletionFn | None = None
+    expected_session_id: str | None = None
